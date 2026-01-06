@@ -1,0 +1,118 @@
+package components
+
+// ButtonVariant represents different button styles
+type ButtonVariant string
+
+const (
+	ButtonPrimary   ButtonVariant = "primary"
+	ButtonSecondary ButtonVariant = "secondary"
+	ButtonDanger    ButtonVariant = "danger"
+	ButtonSuccess   ButtonVariant = "success"
+	ButtonGhost     ButtonVariant = "ghost"
+)
+
+// ButtonSize represents different button sizes
+type ButtonSize string
+
+const (
+	ButtonSm ButtonSize = "sm"
+	ButtonMd ButtonSize = "md"
+	ButtonLg ButtonSize = "lg"
+)
+
+// ButtonProps contains button properties
+type ButtonProps struct {
+	Variant  ButtonVariant
+	Size     ButtonSize
+	Type     string
+	Disabled bool
+	Loading  bool
+	FullWidth bool
+	Class    string
+}
+
+// DefaultButtonProps returns default button properties
+func DefaultButtonProps() ButtonProps {
+	return ButtonProps{
+		Variant: ButtonPrimary,
+		Size:    ButtonMd,
+		Type:    "button",
+	}
+}
+
+func getButtonClasses(props ButtonProps) string {
+	base := "inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-nord-0 disabled:opacity-50 disabled:cursor-not-allowed"
+	
+	var variant string
+	switch props.Variant {
+	case ButtonPrimary:
+		variant = "bg-nord-8 text-nord-0 hover:bg-nord-7 focus:ring-nord-8"
+	case ButtonSecondary:
+		variant = "bg-nord-2 text-nord-4 hover:bg-nord-3 focus:ring-nord-3"
+	case ButtonDanger:
+		variant = "bg-nord-11 text-nord-6 hover:bg-red-600 focus:ring-nord-11"
+	case ButtonSuccess:
+		variant = "bg-nord-14 text-nord-0 hover:bg-green-600 focus:ring-nord-14"
+	case ButtonGhost:
+		variant = "bg-transparent text-nord-4 hover:bg-nord-2 focus:ring-nord-3"
+	default:
+		variant = "bg-nord-8 text-nord-0 hover:bg-nord-7 focus:ring-nord-8"
+	}
+	
+	var size string
+	switch props.Size {
+	case ButtonSm:
+		size = "px-3 py-1.5 text-sm"
+	case ButtonMd:
+		size = "px-4 py-2 text-sm"
+	case ButtonLg:
+		size = "px-6 py-3 text-base"
+	default:
+		size = "px-4 py-2 text-sm"
+	}
+	
+	width := ""
+	if props.FullWidth {
+		width = "w-full"
+	}
+	
+	return base + " " + variant + " " + size + " " + width + " " + props.Class
+}
+
+// Button renders a styled button
+templ Button(props ButtonProps) {
+	<button 
+		type={ props.Type }
+		disabled?={ props.Disabled || props.Loading }
+		class={ getButtonClasses(props) }
+	>
+		if props.Loading {
+			<svg class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+			</svg>
+		}
+		{ children... }
+	</button>
+}
+
+// ButtonLink renders a styled link that looks like a button
+templ ButtonLink(href string, props ButtonProps) {
+	<a 
+		href={ templ.SafeURL(href) }
+		class={ getButtonClasses(props) }
+	>
+		{ children... }
+	</a>
+}
+
+// IconButton renders a button with only an icon
+templ IconButton(props ButtonProps) {
+	<button 
+		type={ props.Type }
+		disabled?={ props.Disabled }
+		class={ "p-2 rounded-lg transition-colors " + string(props.Class) }
+	>
+		{ children... }
+	</button>
+}

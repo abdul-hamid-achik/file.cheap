@@ -1,0 +1,175 @@
+package pages
+
+import (
+	"github.com/abdul-hamid-achik/file-processor/internal/auth"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
+)
+
+// Landing renders the landing page
+templ Landing(user *auth.SessionUser) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Home",
+		Description: "Process your files with ease. Upload, transform, and manage your files in the cloud.",
+	}, user) {
+		<!-- Hero Section -->
+		<section class="relative overflow-hidden">
+			<div class="absolute inset-0 bg-gradient-to-br from-nord-8/10 via-transparent to-nord-15/10"></div>
+			<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-24 lg:py-32 relative">
+				<div class="text-center animate-fade-in">
+					<h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold text-nord-5 tracking-tight">
+						Process your files
+						<span class="text-nord-8"> with ease</span>
+					</h1>
+					<p class="mt-6 text-lg sm:text-xl text-nord-4 max-w-2xl mx-auto">
+						Upload, transform, and manage your files in the cloud. 
+						Resize images, generate thumbnails, convert formats, and more.
+					</p>
+					<div class="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
+						@components.ButtonLink("/register", components.ButtonProps{
+							Variant: components.ButtonPrimary,
+							Size:    components.ButtonLg,
+						}) {
+							Get started free
+							<svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+							</svg>
+						}
+						@components.ButtonLink("/docs", components.ButtonProps{
+							Variant: components.ButtonSecondary,
+							Size:    components.ButtonLg,
+						}) {
+							View documentation
+						}
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<!-- Features Section -->
+		<section class="py-24 bg-nord-1">
+			<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+				<div class="text-center mb-16">
+					<h2 class="text-3xl font-bold text-nord-5">Powerful file processing</h2>
+					<p class="mt-4 text-nord-4 max-w-2xl mx-auto">
+						Everything you need to handle your files efficiently
+					</p>
+				</div>
+				
+				<div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+					@components.FeatureCard(
+						"Image Thumbnails",
+						"Automatically generate optimized thumbnails for your images in various sizes.",
+						thumbnailIcon(),
+					)
+					@components.FeatureCard(
+						"Image Resizing",
+						"Resize images to any dimension while maintaining aspect ratio and quality.",
+						resizeIcon(),
+					)
+					@components.FeatureCard(
+						"WebP Conversion",
+						"Convert images to WebP format for smaller file sizes and faster loading.",
+						convertIcon(),
+					)
+					@components.FeatureCard(
+						"Watermarking",
+						"Add text or image watermarks to protect your content.",
+						watermarkIcon(),
+					)
+					@components.FeatureCard(
+						"PDF Thumbnails",
+						"Generate preview thumbnails from PDF documents.",
+						pdfIcon(),
+					)
+					@components.FeatureCard(
+						"Metadata Extraction",
+						"Extract EXIF data, document properties, and more from your files.",
+						metadataIcon(),
+					)
+				</div>
+			</div>
+		</section>
+
+		<!-- Stats Section -->
+		<section class="py-24">
+			<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+				<div class="grid grid-cols-2 lg:grid-cols-4 gap-8">
+					<div class="text-center">
+						<div class="text-4xl font-bold text-nord-8">10M+</div>
+						<div class="mt-2 text-nord-4">Files processed</div>
+					</div>
+					<div class="text-center">
+						<div class="text-4xl font-bold text-nord-8">99.9%</div>
+						<div class="mt-2 text-nord-4">Uptime</div>
+					</div>
+					<div class="text-center">
+						<div class="text-4xl font-bold text-nord-8">&lt;1s</div>
+						<div class="mt-2 text-nord-4">Avg. processing time</div>
+					</div>
+					<div class="text-center">
+						<div class="text-4xl font-bold text-nord-8">100+</div>
+						<div class="mt-2 text-nord-4">Supported formats</div>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<!-- CTA Section -->
+		<section class="py-24 bg-nord-1">
+			<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+				<div class="bg-gradient-to-r from-nord-8 to-nord-9 rounded-2xl p-12 text-center">
+					<h2 class="text-3xl font-bold text-nord-0">Ready to get started?</h2>
+					<p class="mt-4 text-nord-0/80 max-w-xl mx-auto">
+						Create your free account and start processing files in minutes.
+					</p>
+					<div class="mt-8">
+						@components.ButtonLink("/register", components.ButtonProps{
+							Variant: components.ButtonSecondary,
+							Size:    components.ButtonLg,
+							Class:   "bg-nord-0 text-nord-8 hover:bg-nord-1",
+						}) {
+							Create free account
+						}
+					</div>
+				</div>
+			</div>
+		</section>
+	}
+}
+
+templ thumbnailIcon() {
+	<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+	</svg>
+}
+
+templ resizeIcon() {
+	<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
+	</svg>
+}
+
+templ convertIcon() {
+	<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+	</svg>
+}
+
+templ watermarkIcon() {
+	<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+	</svg>
+}
+
+templ pdfIcon() {
+	<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+	</svg>
+}
+
+templ metadataIcon() {
+	<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+	</svg>
+}

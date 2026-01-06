@@ -1,0 +1,243 @@
+package layouts
+
+import (
+	"github.com/abdul-hamid-achik/file-processor/internal/auth"
+	"strconv"
+	"time"
+)
+
+func currentYear() string {
+	return strconv.Itoa(time.Now().Year())
+}
+
+type PageMeta struct {
+	Title       string
+	Description string
+}
+
+templ Base(meta PageMeta, user *auth.SessionUser) {
+	<!DOCTYPE html>
+	<html lang="en" class="h-full">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<meta name="description" content={ meta.Description }/>
+			<title>{ meta.Title } | File Processor</title>
+			<script src="https://cdn.tailwindcss.com"></script>
+			<script>
+				tailwind.config = {
+					theme: {
+						extend: {
+							colors: {
+								nord: {
+									0: '#2E3440',
+									1: '#3B4252',
+									2: '#434C5E',
+									3: '#4C566A',
+									4: '#D8DEE9',
+									5: '#E5E9F0',
+									6: '#ECEFF4',
+									7: '#8FBCBB',
+									8: '#88C0D0',
+									9: '#81A1C1',
+									10: '#5E81AC',
+									11: '#BF616A',
+									12: '#D08770',
+									13: '#EBCB8B',
+									14: '#A3BE8C',
+									15: '#B48EAD',
+								}
+							}
+						}
+					}
+				}
+			</script>
+			<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+			<script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+			<style>
+				.htmx-request .htmx-indicator { opacity: 1; }
+				.htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
+				@keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+				.animate-fade-in { animation: fadeIn 0.3s ease-out; }
+				@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+				.animate-slide-up { animation: slideUp 0.4s ease-out; }
+				@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+				.animate-pulse-slow { animation: pulse 2s ease-in-out infinite; }
+				::-webkit-scrollbar { width: 8px; height: 8px; }
+				::-webkit-scrollbar-track { background: #2E3440; }
+				::-webkit-scrollbar-thumb { background: #4C566A; border-radius: 4px; }
+				::-webkit-scrollbar-thumb:hover { background: #5E6779; }
+			</style>
+		</head>
+		<body class="h-full bg-nord-0 text-nord-4 antialiased" x-data="{ mobileMenuOpen: false }">
+			<a 
+				href="#main-content" 
+				class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-nord-8 focus:text-nord-0 focus:rounded-lg focus:font-medium focus:outline-none"
+			>
+				Skip to main content
+			</a>
+			<div class="min-h-full flex flex-col">
+				@Header(user)
+				<main id="main-content" class="flex-1" role="main">
+					{ children... }
+				</main>
+				@Footer()
+			</div>
+			<div 
+				id="toast-container" 
+				class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"
+				x-data="{ toasts: [] }"
+				@toast.window="toasts.push({id: Date.now(), message: $event.detail.message, type: $event.detail.type || 'info'}); setTimeout(() => toasts.shift(), 5000)"
+			>
+				<template x-for="toast in toasts" :key="toast.id">
+					<div 
+						x-show="true"
+						x-transition:enter="transform ease-out duration-300"
+						x-transition:enter-start="translate-x-full opacity-0"
+						x-transition:enter-end="translate-x-0 opacity-100"
+						x-transition:leave="transform ease-in duration-200"
+						x-transition:leave-start="translate-x-0 opacity-100"
+						x-transition:leave-end="translate-x-full opacity-0"
+						class="px-4 py-3 rounded-lg shadow-lg"
+						:class="{
+							'bg-nord-14 text-nord-0': toast.type === 'success',
+							'bg-nord-11 text-nord-6': toast.type === 'error',
+							'bg-nord-13 text-nord-0': toast.type === 'warning',
+							'bg-nord-8 text-nord-0': toast.type === 'info'
+						}"
+					>
+						<span x-text="toast.message"></span>
+					</div>
+				</template>
+			</div>
+		</body>
+	</html>
+}
+
+templ Header(user *auth.SessionUser) {
+	<header class="bg-nord-1 border-b border-nord-2" role="banner">
+		<nav class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8" aria-label="Main navigation">
+			<div class="flex h-16 items-center justify-between">
+				<div class="flex items-center">
+					<a href="/" class="flex items-center gap-2 text-nord-8 font-bold text-xl hover:text-nord-7 transition-colors focus:outline-none focus:ring-2 focus:ring-nord-8 focus:ring-offset-2 focus:ring-offset-nord-1 rounded-lg" aria-label="File Processor Home">
+						<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+						</svg>
+						<span>File Processor</span>
+					</a>
+				</div>
+				<div class="hidden md:flex md:items-center md:gap-6">
+					if user != nil {
+						<a href="/dashboard" class="text-nord-4 hover:text-nord-6 transition-colors focus:outline-none focus:ring-2 focus:ring-nord-8 rounded px-1">Dashboard</a>
+						<a href="/files" class="text-nord-4 hover:text-nord-6 transition-colors focus:outline-none focus:ring-2 focus:ring-nord-8 rounded px-1">Files</a>
+						<a href="/upload" class="text-nord-4 hover:text-nord-6 transition-colors focus:outline-none focus:ring-2 focus:ring-nord-8 rounded px-1">Upload</a>
+						<div class="relative" x-data="{ open: false }">
+							<button 
+								@click="open = !open" 
+								class="flex items-center gap-2 text-nord-4 hover:text-nord-6 transition-colors focus:outline-none focus:ring-2 focus:ring-nord-8 rounded-lg px-2 py-1"
+								aria-expanded="false"
+								:aria-expanded="open.toString()"
+								aria-haspopup="true"
+							>
+								if user.AvatarURL != nil {
+									<img src={ *user.AvatarURL } alt="Avatar" class="w-8 h-8 rounded-full"/>
+								} else {
+									<div class="w-8 h-8 rounded-full bg-nord-3 flex items-center justify-center">
+										<span class="text-sm font-medium">{ string(user.Name[0]) }</span>
+									</div>
+								}
+								<span>{ user.Name }</span>
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+								</svg>
+							</button>
+							<div 
+								x-show="open" 
+								@click.away="open = false"
+								x-transition:enter="transition ease-out duration-100"
+								x-transition:enter-start="transform opacity-0 scale-95"
+								x-transition:enter-end="transform opacity-100 scale-100"
+								x-transition:leave="transition ease-in duration-75"
+								x-transition:leave-start="transform opacity-100 scale-100"
+								x-transition:leave-end="transform opacity-0 scale-95"
+								class="absolute right-0 mt-2 w-48 origin-top-right rounded-md bg-nord-2 shadow-lg ring-1 ring-nord-3 focus:outline-none"
+							>
+								<div class="py-1">
+									<a href="/profile" class="block px-4 py-2 text-sm text-nord-4 hover:bg-nord-3 hover:text-nord-6">Profile</a>
+									<a href="/settings" class="block px-4 py-2 text-sm text-nord-4 hover:bg-nord-3 hover:text-nord-6">Settings</a>
+									<hr class="border-nord-3 my-1"/>
+									<form action="/logout" method="POST">
+										<button type="submit" class="block w-full text-left px-4 py-2 text-sm text-nord-11 hover:bg-nord-3">
+											Sign out
+										</button>
+									</form>
+								</div>
+							</div>
+						</div>
+					} else {
+						<a href="/login" class="text-nord-4 hover:text-nord-6 transition-colors">Sign in</a>
+						<a href="/register" class="bg-nord-8 text-nord-0 px-4 py-2 rounded-lg font-medium hover:bg-nord-7 transition-colors">
+							Get started
+						</a>
+					}
+				</div>
+				<div class="md:hidden">
+					<button 
+						@click="mobileMenuOpen = !mobileMenuOpen"
+						class="text-nord-4 hover:text-nord-6 p-2"
+					>
+						<svg x-show="!mobileMenuOpen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+						</svg>
+						<svg x-show="mobileMenuOpen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+						</svg>
+					</button>
+				</div>
+			</div>
+		</nav>
+		<div 
+			x-show="mobileMenuOpen" 
+			x-transition:enter="transition ease-out duration-100"
+			x-transition:enter-start="transform opacity-0 -translate-y-2"
+			x-transition:enter-end="transform opacity-100 translate-y-0"
+			x-transition:leave="transition ease-in duration-75"
+			x-transition:leave-start="transform opacity-100 translate-y-0"
+			x-transition:leave-end="transform opacity-0 -translate-y-2"
+			class="md:hidden bg-nord-1 border-b border-nord-2"
+		>
+			<div class="px-4 py-4 space-y-2">
+				if user != nil {
+					<a href="/dashboard" class="block py-2 text-nord-4 hover:text-nord-6">Dashboard</a>
+					<a href="/files" class="block py-2 text-nord-4 hover:text-nord-6">Files</a>
+					<a href="/upload" class="block py-2 text-nord-4 hover:text-nord-6">Upload</a>
+					<a href="/profile" class="block py-2 text-nord-4 hover:text-nord-6">Profile</a>
+					<hr class="border-nord-3 my-2"/>
+					<form action="/logout" method="POST">
+						<button type="submit" class="block w-full text-left py-2 text-nord-11">Sign out</button>
+					</form>
+				} else {
+					<a href="/login" class="block py-2 text-nord-4 hover:text-nord-6">Sign in</a>
+					<a href="/register" class="block py-2 text-nord-8 font-medium">Get started</a>
+				}
+			</div>
+		</div>
+	</header>
+}
+
+templ Footer() {
+	<footer class="bg-nord-1 border-t border-nord-2 mt-auto" role="contentinfo">
+		<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+			<div class="flex flex-col md:flex-row justify-between items-center gap-4">
+				<div class="text-nord-4 text-sm">
+					&copy; { currentYear() } File Processor. All rights reserved.
+				</div>
+				<nav class="flex gap-6" aria-label="Footer navigation">
+					<a href="/privacy" class="text-nord-4 hover:text-nord-5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-nord-8 rounded px-1">Privacy</a>
+					<a href="/terms" class="text-nord-4 hover:text-nord-5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-nord-8 rounded px-1">Terms</a>
+					<a href="/docs" class="text-nord-4 hover:text-nord-5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-nord-8 rounded px-1">Docs</a>
+				</nav>
+			</div>
+		</div>
+	</footer>
+}

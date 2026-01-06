@@ -1,0 +1,926 @@
+package pages
+
+import (
+	"github.com/abdul-hamid-achik/file-processor/internal/auth"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
+)
+
+// Privacy renders the privacy policy page
+templ Privacy(user *auth.SessionUser) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Privacy Policy",
+		Description: "Privacy policy for File Processor",
+	}, user) {
+		<div class="py-12">
+			<div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+				@components.Card("") {
+					@components.CardBody() {
+						<article class="prose prose-invert max-w-none">
+							<h1 class="text-3xl font-bold text-nord-5 mb-2">Privacy Policy</h1>
+							<p class="text-nord-4 mb-8">Last updated: January 2026</p>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">1. Introduction</h2>
+								<p class="text-nord-4 mb-4">
+									File Processor ("we", "our", or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our file processing service.
+								</p>
+								<p class="text-nord-4">
+									By using our service, you agree to the collection and use of information in accordance with this policy.
+								</p>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">2. Information We Collect</h2>
+								<h3 class="text-lg font-medium text-nord-5 mb-2">Personal Information</h3>
+								<ul class="list-disc list-inside text-nord-4 mb-4 space-y-1">
+									<li>Name and email address when you create an account</li>
+									<li>Profile information you choose to provide</li>
+									<li>Payment information when you subscribe to paid plans</li>
+									<li>Communications you send to us</li>
+								</ul>
+
+								<h3 class="text-lg font-medium text-nord-5 mb-2">Files and Content</h3>
+								<ul class="list-disc list-inside text-nord-4 mb-4 space-y-1">
+									<li>Files you upload for processing</li>
+									<li>Metadata extracted from your files (EXIF data, document properties)</li>
+									<li>Processed versions of your files (thumbnails, resized images)</li>
+								</ul>
+
+								<h3 class="text-lg font-medium text-nord-5 mb-2">Automatically Collected Information</h3>
+								<ul class="list-disc list-inside text-nord-4 space-y-1">
+									<li>IP address and browser type</li>
+									<li>Device information and operating system</li>
+									<li>Usage data and access times</li>
+									<li>Cookies and similar tracking technologies</li>
+								</ul>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">3. How We Use Your Information</h2>
+								<ul class="list-disc list-inside text-nord-4 space-y-1">
+									<li>To provide and maintain our file processing services</li>
+									<li>To process your files according to your instructions</li>
+									<li>To send you service-related communications</li>
+									<li>To improve and personalize your experience</li>
+									<li>To detect, prevent, and address technical issues</li>
+									<li>To comply with legal obligations</li>
+								</ul>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">4. Data Retention</h2>
+								<p class="text-nord-4 mb-4">
+									We retain your personal information for as long as your account is active or as needed to provide you services. Uploaded files are retained according to your account settings, with a default retention period of 30 days after processing.
+								</p>
+								<p class="text-nord-4">
+									You can delete your files at any time through the dashboard. When you delete your account, we will delete your personal information within 30 days, except as required by law.
+								</p>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">5. Data Security</h2>
+								<p class="text-nord-4">
+									We implement industry-standard security measures to protect your data, including encryption in transit (TLS 1.3), encryption at rest (AES-256), secure cloud storage, regular security audits, and access controls. However, no method of transmission over the Internet is 100% secure.
+								</p>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">6. Your Rights</h2>
+								
+								<h3 class="text-lg font-medium text-nord-5 mb-2">All Users</h3>
+								<ul class="list-disc list-inside text-nord-4 mb-4 space-y-1">
+									<li>Access your personal data</li>
+									<li>Correct inaccurate data</li>
+									<li>Delete your account and data</li>
+									<li>Export your data</li>
+									<li>Opt out of marketing communications</li>
+								</ul>
+
+								<h3 class="text-lg font-medium text-nord-8 mb-2">California Residents (CCPA)</h3>
+								<p class="text-nord-4 mb-4">
+									If you are a California resident, you have additional rights under the California Consumer Privacy Act (CCPA):
+								</p>
+								<ul class="list-disc list-inside text-nord-4 mb-4 space-y-1">
+									<li><strong class="text-nord-5">Right to Know:</strong> Request information about what personal data we collect and how it's used</li>
+									<li><strong class="text-nord-5">Right to Delete:</strong> Request deletion of your personal information</li>
+									<li><strong class="text-nord-5">Right to Opt-Out:</strong> Opt out of the sale of your personal information (we do not sell personal information)</li>
+									<li><strong class="text-nord-5">Right to Non-Discrimination:</strong> Equal service and pricing regardless of exercising privacy rights</li>
+								</ul>
+								<p class="text-nord-4 mb-4">
+									To exercise your CCPA rights, email us at privacy@fileprocessor.com or use the "Privacy Request" option in your account settings.
+								</p>
+
+								<h3 class="text-lg font-medium text-nord-8 mb-2">Canadian Residents (PIPEDA)</h3>
+								<p class="text-nord-4 mb-4">
+									If you are a Canadian resident, you have rights under the Personal Information Protection and Electronic Documents Act (PIPEDA):
+								</p>
+								<ul class="list-disc list-inside text-nord-4 mb-4 space-y-1">
+									<li><strong class="text-nord-5">Right to Access:</strong> Request access to your personal information held by us</li>
+									<li><strong class="text-nord-5">Right to Correction:</strong> Request correction of inaccurate personal information</li>
+									<li><strong class="text-nord-5">Right to Withdraw Consent:</strong> Withdraw consent for collection, use, or disclosure of your information</li>
+									<li><strong class="text-nord-5">Right to Complain:</strong> File a complaint with the Privacy Commissioner of Canada</li>
+								</ul>
+								<p class="text-nord-4 mb-4">
+									We collect, use, and disclose personal information only for purposes that a reasonable person would consider appropriate under the circumstances. You may contact our Privacy Officer at privacy@fileprocessor.com.
+								</p>
+
+								<h3 class="text-lg font-medium text-nord-8 mb-2">Mexican Residents (LFPDPPP)</h3>
+								<p class="text-nord-4 mb-4">
+									If you are a Mexican resident, you have rights under the Federal Law on Protection of Personal Data Held by Private Parties (Ley Federal de Proteccion de Datos Personales en Posesion de los Particulares - LFPDPPP):
+								</p>
+								<ul class="list-disc list-inside text-nord-4 mb-4 space-y-1">
+									<li><strong class="text-nord-5">Acceso (Access):</strong> Right to know what personal data we have about you</li>
+									<li><strong class="text-nord-5">Rectificacion (Rectification):</strong> Right to request correction of your data</li>
+									<li><strong class="text-nord-5">Cancelacion (Cancellation):</strong> Right to request deletion of your data</li>
+									<li><strong class="text-nord-5">Oposicion (Opposition):</strong> Right to oppose the processing of your data</li>
+								</ul>
+								<p class="text-nord-4 mb-4">
+									These are known as your ARCO rights. To exercise them, submit a request to privacy@fileprocessor.com with: your full name, email address associated with your account, description of the rights you wish to exercise, and any documents that help verify your identity.
+								</p>
+								<p class="text-nord-4">
+									We will respond to your request within 20 business days. You may also file a complaint with INAI (Instituto Nacional de Transparencia, Acceso a la Informacion y Proteccion de Datos Personales).
+								</p>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">7. Third-Party Services</h2>
+								<p class="text-nord-4 mb-4">We may use third-party services for:</p>
+								<ul class="list-disc list-inside text-nord-4 space-y-1">
+									<li>Cloud storage (AWS S3 / MinIO)</li>
+									<li>Payment processing (Stripe)</li>
+									<li>Email delivery</li>
+									<li>Analytics (privacy-focused)</li>
+								</ul>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">8. International Data Transfers</h2>
+								<p class="text-nord-4">
+									Your data may be processed in countries outside your jurisdiction. We ensure appropriate safeguards are in place for international transfers, including standard contractual clauses where applicable.
+								</p>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">9. Children's Privacy</h2>
+								<p class="text-nord-4">
+									Our service is not intended for children under 13 years of age. We do not knowingly collect personal information from children under 13.
+								</p>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">10. Changes to This Policy</h2>
+								<p class="text-nord-4">
+									We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page and updating the "Last updated" date.
+								</p>
+							</section>
+
+							<section>
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">11. Contact Us</h2>
+								<p class="text-nord-4 mb-4">If you have questions about this Privacy Policy, please contact us:</p>
+								<ul class="list-none text-nord-4 space-y-1">
+									<li>Email: privacy@fileprocessor.com</li>
+									<li>Privacy Officer: privacy@fileprocessor.com</li>
+								</ul>
+							</section>
+						</article>
+					}
+				}
+			</div>
+		</div>
+	}
+}
+
+// Terms renders the terms of service page
+templ Terms(user *auth.SessionUser) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Terms of Service",
+		Description: "Terms of service for File Processor",
+	}, user) {
+		<div class="py-12">
+			<div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+				@components.Card("") {
+					@components.CardBody() {
+						<article class="prose prose-invert max-w-none">
+							<h1 class="text-3xl font-bold text-nord-5 mb-2">Terms of Service</h1>
+							<p class="text-nord-4 mb-8">Last updated: January 2026</p>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">1. Acceptance of Terms</h2>
+								<p class="text-nord-4">
+									By accessing or using File Processor ("Service"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, do not use the Service.
+								</p>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">2. Description of Service</h2>
+								<p class="text-nord-4">
+									File Processor provides cloud-based file processing services including but not limited to: image thumbnail generation, image resizing and optimization, format conversion (WebP, etc.), watermarking, PDF processing, and metadata extraction.
+								</p>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">3. Account Registration</h2>
+								<p class="text-nord-4 mb-4">To use certain features, you must create an account. You agree to:</p>
+								<ul class="list-disc list-inside text-nord-4 space-y-1">
+									<li>Provide accurate and complete information</li>
+									<li>Maintain the security of your account credentials</li>
+									<li>Notify us immediately of any unauthorized access</li>
+									<li>Accept responsibility for all activities under your account</li>
+								</ul>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">4. Acceptable Use</h2>
+								<p class="text-nord-4 mb-4">You agree not to:</p>
+								<ul class="list-disc list-inside text-nord-4 space-y-1">
+									<li>Upload illegal, harmful, or offensive content</li>
+									<li>Violate intellectual property rights of others</li>
+									<li>Upload malware, viruses, or malicious code</li>
+									<li>Attempt to gain unauthorized access to our systems</li>
+									<li>Use the Service to send spam or unsolicited messages</li>
+									<li>Resell or redistribute the Service without permission</li>
+									<li>Interfere with the operation of the Service</li>
+									<li>Upload content depicting child exploitation (will be reported to authorities)</li>
+								</ul>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">5. Content Ownership</h2>
+								<p class="text-nord-4 mb-4">
+									<strong class="text-nord-5">Your Content:</strong> You retain all rights to the files you upload. By uploading content, you grant us a limited license to process, store, and deliver your files as necessary to provide the Service.
+								</p>
+								<p class="text-nord-4">
+									<strong class="text-nord-5">Our Content:</strong> The Service, including its design, features, and documentation, is protected by intellectual property laws. You may not copy, modify, or distribute our content without permission.
+								</p>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">6. Service Availability</h2>
+								<p class="text-nord-4">
+									We strive to maintain high availability but do not guarantee uninterrupted access. We may modify, suspend, or discontinue any part of the Service with reasonable notice. Scheduled maintenance will be announced in advance when possible.
+								</p>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">7. Pricing and Payment</h2>
+								<p class="text-nord-4 mb-4">
+									Some features require a paid subscription. By subscribing, you agree to pay all fees according to your chosen plan. Fees are non-refundable except as required by law or stated in our refund policy.
+								</p>
+								<p class="text-nord-4">
+									We reserve the right to change pricing with 30 days notice. Continued use after price changes constitutes acceptance.
+								</p>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">8. Limitation of Liability</h2>
+								<p class="text-nord-4 mb-4">
+									TO THE MAXIMUM EXTENT PERMITTED BY LAW, FILE PROCESSOR SHALL NOT BE LIABLE FOR:
+								</p>
+								<ul class="list-disc list-inside text-nord-4 space-y-1">
+									<li>Indirect, incidental, special, or consequential damages</li>
+									<li>Loss of profits, data, or business opportunities</li>
+									<li>Damages exceeding the amount paid in the 12 months prior</li>
+								</ul>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">9. Indemnification</h2>
+								<p class="text-nord-4">
+									You agree to indemnify and hold harmless File Processor from any claims, damages, or expenses arising from your use of the Service, your content, or your violation of these Terms.
+								</p>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">10. Termination</h2>
+								<p class="text-nord-4 mb-4">
+									We may suspend or terminate your account if you violate these Terms. You may delete your account at any time through your account settings.
+								</p>
+								<p class="text-nord-4">
+									Upon termination, your right to use the Service ceases immediately. We may retain your data as required by law or for legitimate business purposes.
+								</p>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">11. Governing Law</h2>
+								<p class="text-nord-4">
+									These Terms shall be governed by and construed in accordance with the laws of the jurisdiction in which File Processor operates, without regard to conflict of law principles.
+								</p>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">12. Dispute Resolution</h2>
+								<p class="text-nord-4">
+									Any disputes arising from these Terms or the Service shall first be attempted to be resolved through good-faith negotiation. If unsuccessful, disputes shall be resolved through binding arbitration in accordance with applicable rules.
+								</p>
+							</section>
+
+							<section class="mb-8">
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">13. Changes to Terms</h2>
+								<p class="text-nord-4">
+									We may update these Terms from time to time. We will notify you of material changes via email or through the Service. Continued use after changes constitutes acceptance.
+								</p>
+							</section>
+
+							<section>
+								<h2 class="text-xl font-semibold text-nord-5 mb-4">14. Contact</h2>
+								<p class="text-nord-4">
+									For questions about these Terms, contact us at legal@fileprocessor.com.
+								</p>
+							</section>
+						</article>
+					}
+				}
+			</div>
+		</div>
+	}
+}
+
+// DocsSection represents a documentation section
+type DocsSection struct {
+	ID          string
+	Title       string
+	Description string
+}
+
+// Docs renders the documentation page with multi-section navigation
+templ Docs(user *auth.SessionUser, activeSection string) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Documentation",
+		Description: "Learn how to use File Processor",
+	}, user) {
+		<div class="py-8">
+			<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+				<div class="lg:grid lg:grid-cols-4 lg:gap-8">
+					<!-- Sidebar Navigation -->
+					<nav class="hidden lg:block">
+						<div class="sticky top-8">
+							@components.Card("") {
+								@components.CardBody() {
+									<h2 class="text-lg font-semibold text-nord-5 mb-4">Documentation</h2>
+									<ul class="space-y-2">
+										@docsNavItem("getting-started", "Getting Started", activeSection)
+										@docsNavItem("uploading-files", "Uploading Files", activeSection)
+										@docsNavItem("image-processing", "Image Processing", activeSection)
+										@docsNavItem("pdf-processing", "PDF Processing", activeSection)
+										@docsNavItem("api-reference", "API Reference", activeSection)
+										@docsNavItem("authentication", "Authentication", activeSection)
+										@docsNavItem("webhooks", "Webhooks", activeSection)
+										@docsNavItem("rate-limits", "Rate Limits", activeSection)
+										@docsNavItem("errors", "Error Handling", activeSection)
+										@docsNavItem("faq", "FAQ", activeSection)
+									</ul>
+								}
+							}
+						</div>
+					</nav>
+
+					<!-- Mobile Navigation -->
+					<div class="lg:hidden mb-6">
+						@components.Card("") {
+							@components.CardBody() {
+								<select 
+									id="docs-nav-mobile"
+									class="w-full px-4 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 focus:outline-none focus:ring-2 focus:ring-nord-8"
+									onchange="window.location.href='/docs?section=' + this.value"
+								>
+									<option value="getting-started" selected?={ activeSection == "getting-started" }>Getting Started</option>
+									<option value="uploading-files" selected?={ activeSection == "uploading-files" }>Uploading Files</option>
+									<option value="image-processing" selected?={ activeSection == "image-processing" }>Image Processing</option>
+									<option value="pdf-processing" selected?={ activeSection == "pdf-processing" }>PDF Processing</option>
+									<option value="api-reference" selected?={ activeSection == "api-reference" }>API Reference</option>
+									<option value="authentication" selected?={ activeSection == "authentication" }>Authentication</option>
+									<option value="webhooks" selected?={ activeSection == "webhooks" }>Webhooks</option>
+									<option value="rate-limits" selected?={ activeSection == "rate-limits" }>Rate Limits</option>
+									<option value="errors" selected?={ activeSection == "errors" }>Error Handling</option>
+									<option value="faq" selected?={ activeSection == "faq" }>FAQ</option>
+								</select>
+							}
+						}
+					</div>
+
+					<!-- Content Area -->
+					<div class="lg:col-span-3">
+						@components.Card("") {
+							@components.CardBody() {
+								switch activeSection {
+								case "getting-started":
+									@docsGettingStarted()
+								case "uploading-files":
+									@docsUploadingFiles()
+								case "image-processing":
+									@docsImageProcessing()
+								case "pdf-processing":
+									@docsPdfProcessing()
+								case "api-reference":
+									@docsApiReference()
+								case "authentication":
+									@docsAuthentication()
+								case "webhooks":
+									@docsWebhooks()
+								case "rate-limits":
+									@docsRateLimits()
+								case "errors":
+									@docsErrors()
+								case "faq":
+									@docsFaq()
+								default:
+									@docsGettingStarted()
+								}
+							}
+						}
+					</div>
+				</div>
+			</div>
+		</div>
+	}
+}
+
+templ docsNavItem(section, title, activeSection string) {
+	<li>
+		<a 
+			href={ templ.SafeURL("/docs?section=" + section) }
+			class={ "block px-3 py-2 rounded-lg text-sm transition-colors " + 
+				func() string {
+					if section == activeSection {
+						return "bg-nord-8/10 text-nord-8 font-medium"
+					}
+					return "text-nord-4 hover:text-nord-5 hover:bg-nord-2"
+				}() }
+		>
+			{ title }
+		</a>
+	</li>
+}
+
+templ docsGettingStarted() {
+	<article class="prose prose-invert max-w-none">
+		<h1 class="text-3xl font-bold text-nord-5 mb-6">Getting Started</h1>
+		
+		<p class="text-nord-4 mb-6">
+			Welcome to File Processor! This guide will help you get up and running quickly.
+		</p>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Quick Start</h2>
+		<ol class="list-decimal list-inside text-nord-4 mb-6 space-y-2">
+			<li><strong class="text-nord-5">Create an account</strong> - Sign up for free at <a href="/register" class="text-nord-8 hover:text-nord-7">/register</a></li>
+			<li><strong class="text-nord-5">Upload a file</strong> - Go to the <a href="/upload" class="text-nord-8 hover:text-nord-7">upload page</a> and drop your first file</li>
+			<li><strong class="text-nord-5">Choose processing options</strong> - Select thumbnails, resize, or format conversion</li>
+			<li><strong class="text-nord-5">Download results</strong> - Get your processed files from the dashboard</li>
+		</ol>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Supported File Types</h2>
+		<div class="grid md:grid-cols-2 gap-4 mb-6">
+			<div class="bg-nord-2 rounded-lg p-4">
+				<h3 class="font-medium text-nord-5 mb-2">Images</h3>
+				<p class="text-nord-4 text-sm">JPEG, PNG, GIF, WebP, BMP, TIFF</p>
+			</div>
+			<div class="bg-nord-2 rounded-lg p-4">
+				<h3 class="font-medium text-nord-5 mb-2">Documents</h3>
+				<p class="text-nord-4 text-sm">PDF</p>
+			</div>
+		</div>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">File Size Limits</h2>
+		<table class="w-full text-nord-4 mb-6">
+			<thead>
+				<tr class="border-b border-nord-3">
+					<th class="text-left py-2 text-nord-5">Plan</th>
+					<th class="text-left py-2 text-nord-5">Max File Size</th>
+					<th class="text-left py-2 text-nord-5">Monthly Uploads</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr class="border-b border-nord-2">
+					<td class="py-2">Free</td>
+					<td class="py-2">50 MB</td>
+					<td class="py-2">100</td>
+				</tr>
+				<tr class="border-b border-nord-2">
+					<td class="py-2">Pro</td>
+					<td class="py-2">500 MB</td>
+					<td class="py-2">10,000</td>
+				</tr>
+				<tr>
+					<td class="py-2">Enterprise</td>
+					<td class="py-2">5 GB</td>
+					<td class="py-2">Unlimited</td>
+				</tr>
+			</tbody>
+		</table>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Next Steps</h2>
+		<ul class="list-disc list-inside text-nord-4 space-y-1">
+			<li>Learn about <a href="/docs?section=image-processing" class="text-nord-8 hover:text-nord-7">image processing options</a></li>
+			<li>Explore the <a href="/docs?section=api-reference" class="text-nord-8 hover:text-nord-7">API reference</a> { "for" } programmatic access</li>
+			<li>Set up <a href="/docs?section=webhooks" class="text-nord-8 hover:text-nord-7">webhooks</a> { "for" } async processing notifications</li>
+		</ul>
+	</article>
+}
+
+templ docsUploadingFiles() {
+	<article class="prose prose-invert max-w-none">
+		<h1 class="text-3xl font-bold text-nord-5 mb-6">Uploading Files</h1>
+		
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Web Interface</h2>
+		<p class="text-nord-4 mb-4">
+			The easiest way to upload files is through our web interface. Simply drag and drop files onto the upload area, or click to browse your files.
+		</p>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">API Upload</h2>
+		<p class="text-nord-4 mb-4">For programmatic uploads, use the REST API:</p>
+		
+		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code>curl -X POST https://api.fileprocessor.com/v1/files \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -F "file=@/path/to/image.jpg" \
+  -F "generate_thumbnail=true" \
+  -F "generate_resize=true"</code></pre>
+		</div>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Processing Options</h2>
+		<table class="w-full text-nord-4 mb-6">
+			<thead>
+				<tr class="border-b border-nord-3">
+					<th class="text-left py-2 text-nord-5">Option</th>
+					<th class="text-left py-2 text-nord-5">Description</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr class="border-b border-nord-2">
+					<td class="py-2"><code class="text-nord-8">generate_thumbnail</code></td>
+					<td class="py-2">Create 150x150 thumbnail</td>
+				</tr>
+				<tr class="border-b border-nord-2">
+					<td class="py-2"><code class="text-nord-8">generate_resize</code></td>
+					<td class="py-2">Create small, medium, and large variants</td>
+				</tr>
+				<tr class="border-b border-nord-2">
+					<td class="py-2"><code class="text-nord-8">convert_webp</code></td>
+					<td class="py-2">Convert to WebP format</td>
+				</tr>
+				<tr>
+					<td class="py-2"><code class="text-nord-8">extract_metadata</code></td>
+					<td class="py-2">Extract EXIF and document properties</td>
+				</tr>
+			</tbody>
+		</table>
+	</article>
+}
+
+templ docsImageProcessing() {
+	<article class="prose prose-invert max-w-none">
+		<h1 class="text-3xl font-bold text-nord-5 mb-6">Image Processing</h1>
+		
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Thumbnails</h2>
+		<p class="text-nord-4 mb-4">
+			Thumbnails are generated at 150x150 pixels by default, maintaining aspect ratio with smart cropping focused on the center of the image.
+		</p>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Resizing</h2>
+		<p class="text-nord-4 mb-4">The resize option creates three variants:</p>
+		<ul class="list-disc list-inside text-nord-4 mb-6 space-y-1">
+			<li><strong class="text-nord-5">Small:</strong> 320px width</li>
+			<li><strong class="text-nord-5">Medium:</strong> 640px width</li>
+			<li><strong class="text-nord-5">Large:</strong> 1280px width</li>
+		</ul>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">WebP Conversion</h2>
+		<p class="text-nord-4 mb-4">
+			WebP format typically reduces file size by 25-35% compared to JPEG while maintaining visual quality. Great for web optimization.
+		</p>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Watermarking</h2>
+		<p class="text-nord-4 mb-4">
+			Add text or image watermarks to protect your content. Configure position, opacity, and size through the API.
+		</p>
+	</article>
+}
+
+templ docsPdfProcessing() {
+	<article class="prose prose-invert max-w-none">
+		<h1 class="text-3xl font-bold text-nord-5 mb-6">PDF Processing</h1>
+		
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Thumbnail Generation</h2>
+		<p class="text-nord-4 mb-4">
+			Generate preview thumbnails from the first page of PDF documents. Useful for document previews and galleries.
+		</p>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Metadata Extraction</h2>
+		<p class="text-nord-4 mb-4">Extract document properties including:</p>
+		<ul class="list-disc list-inside text-nord-4 space-y-1">
+			<li>Title, Author, Subject</li>
+			<li>Creation and modification dates</li>
+			<li>Page count</li>
+			<li>PDF version</li>
+		</ul>
+	</article>
+}
+
+templ docsApiReference() {
+	<article class="prose prose-invert max-w-none">
+		<h1 class="text-3xl font-bold text-nord-5 mb-6">API Reference</h1>
+		
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Base URL</h2>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6">
+			<code class="text-nord-8">https://api.fileprocessor.com/v1</code>
+		</div>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Authentication</h2>
+		<p class="text-nord-4 mb-4">All API requests require a Bearer token in the Authorization header:</p>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6">
+			<code class="text-nord-4 text-sm">Authorization: Bearer YOUR_API_TOKEN</code>
+		</div>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Endpoints</h2>
+		
+		<h3 class="text-lg font-medium text-nord-5 mb-2">Upload File</h3>
+		<div class="bg-nord-2 rounded-lg p-4 mb-4">
+			<code class="text-nord-14">POST</code> <code class="text-nord-4">/files</code>
+		</div>
+		
+		<h3 class="text-lg font-medium text-nord-5 mb-2">List Files</h3>
+		<div class="bg-nord-2 rounded-lg p-4 mb-4">
+			<code class="text-nord-8">GET</code> <code class="text-nord-4">/files</code>
+		</div>
+
+		<h3 class="text-lg font-medium text-nord-5 mb-2">Get File</h3>
+		<div class="bg-nord-2 rounded-lg p-4 mb-4">
+			<code class="text-nord-8">GET</code> <code class="text-nord-4">/files/:id</code>
+		</div>
+
+		<h3 class="text-lg font-medium text-nord-5 mb-2">Delete File</h3>
+		<div class="bg-nord-2 rounded-lg p-4 mb-4">
+			<code class="text-nord-11">DELETE</code> <code class="text-nord-4">/files/:id</code>
+		</div>
+
+		<h3 class="text-lg font-medium text-nord-5 mb-2">Get Processing Job</h3>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6">
+			<code class="text-nord-8">GET</code> <code class="text-nord-4">/jobs/:id</code>
+		</div>
+	</article>
+}
+
+templ docsAuthentication() {
+	<article class="prose prose-invert max-w-none">
+		<h1 class="text-3xl font-bold text-nord-5 mb-6">Authentication</h1>
+		
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">API Tokens</h2>
+		<p class="text-nord-4 mb-4">
+			Generate API tokens from your account settings. Each token has full access to your account, so keep them secure.
+		</p>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">OAuth</h2>
+		<p class="text-nord-4 mb-4">
+			We support OAuth 2.0 login with Google and GitHub for the web interface.
+		</p>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Session Security</h2>
+		<p class="text-nord-4">
+			Sessions expire after 7 days of inactivity. Enable two-factor authentication for additional security.
+		</p>
+	</article>
+}
+
+templ docsWebhooks() {
+	<article class="prose prose-invert max-w-none">
+		<h1 class="text-3xl font-bold text-nord-5 mb-6">Webhooks</h1>
+		
+		<p class="text-nord-4 mb-6">
+			Receive HTTP callbacks when file processing completes. Configure webhooks in your account settings.
+		</p>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Event Types</h2>
+		<ul class="list-disc list-inside text-nord-4 mb-6 space-y-1">
+			<li><code class="text-nord-8">file.uploaded</code> - File was successfully uploaded</li>
+			<li><code class="text-nord-8">processing.started</code> - Processing has begun</li>
+			<li><code class="text-nord-8">processing.completed</code> - All processing finished</li>
+			<li><code class="text-nord-8">processing.failed</code> - Processing encountered an error</li>
+		</ul>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Payload Example</h2>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`{
+  "event": "processing.completed",
+  "timestamp": "2026-01-05T12:00:00Z",
+  "data": {
+    "file_id": "abc123",
+    "variants": [
+      {"type": "thumbnail", "url": "..."},
+      {"type": "webp", "url": "..."}
+    ]
+  }
+}`)</code></pre>
+		</div>
+	</article>
+}
+
+templ docsRateLimits() {
+	<article class="prose prose-invert max-w-none">
+		<h1 class="text-3xl font-bold text-nord-5 mb-6">Rate Limits</h1>
+		
+		<table class="w-full text-nord-4 mb-6">
+			<thead>
+				<tr class="border-b border-nord-3">
+					<th class="text-left py-2 text-nord-5">Plan</th>
+					<th class="text-left py-2 text-nord-5">Requests/minute</th>
+					<th class="text-left py-2 text-nord-5">Concurrent uploads</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr class="border-b border-nord-2">
+					<td class="py-2">Free</td>
+					<td class="py-2">60</td>
+					<td class="py-2">3</td>
+				</tr>
+				<tr class="border-b border-nord-2">
+					<td class="py-2">Pro</td>
+					<td class="py-2">300</td>
+					<td class="py-2">10</td>
+				</tr>
+				<tr>
+					<td class="py-2">Enterprise</td>
+					<td class="py-2">Custom</td>
+					<td class="py-2">Custom</td>
+				</tr>
+			</tbody>
+		</table>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Rate Limit Headers</h2>
+		<p class="text-nord-4 mb-4">API responses include rate limit information:</p>
+		<ul class="list-disc list-inside text-nord-4 space-y-1">
+			<li><code class="text-nord-8">X-RateLimit-Limit</code> - Maximum requests allowed</li>
+			<li><code class="text-nord-8">X-RateLimit-Remaining</code> - Requests remaining</li>
+			<li><code class="text-nord-8">X-RateLimit-Reset</code> - Unix timestamp when limit resets</li>
+		</ul>
+	</article>
+}
+
+templ docsErrors() {
+	<article class="prose prose-invert max-w-none">
+		<h1 class="text-3xl font-bold text-nord-5 mb-6">Error Handling</h1>
+		
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Error Response Format</h2>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`{
+  "error": {
+    "code": "INVALID_FILE_TYPE",
+    "message": "File type not supported",
+    "details": "Expected image/*, got application/zip"
+  }
+}`)</code></pre>
+		</div>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Common Error Codes</h2>
+		<table class="w-full text-nord-4">
+			<thead>
+				<tr class="border-b border-nord-3">
+					<th class="text-left py-2 text-nord-5">Code</th>
+					<th class="text-left py-2 text-nord-5">HTTP Status</th>
+					<th class="text-left py-2 text-nord-5">Description</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr class="border-b border-nord-2">
+					<td class="py-2">UNAUTHORIZED</td>
+					<td class="py-2">401</td>
+					<td class="py-2">Invalid or missing API token</td>
+				</tr>
+				<tr class="border-b border-nord-2">
+					<td class="py-2">RATE_LIMITED</td>
+					<td class="py-2">429</td>
+					<td class="py-2">Too many requests</td>
+				</tr>
+				<tr class="border-b border-nord-2">
+					<td class="py-2">FILE_TOO_LARGE</td>
+					<td class="py-2">413</td>
+					<td class="py-2">File exceeds size limit</td>
+				</tr>
+				<tr class="border-b border-nord-2">
+					<td class="py-2">INVALID_FILE_TYPE</td>
+					<td class="py-2">400</td>
+					<td class="py-2">Unsupported file format</td>
+				</tr>
+				<tr>
+					<td class="py-2">PROCESSING_FAILED</td>
+					<td class="py-2">500</td>
+					<td class="py-2">Processing error occurred</td>
+				</tr>
+			</tbody>
+		</table>
+	</article>
+}
+
+templ docsFaq() {
+	<article class="prose prose-invert max-w-none">
+		<h1 class="text-3xl font-bold text-nord-5 mb-6">Frequently Asked Questions</h1>
+		
+		<div class="space-y-6">
+			<div>
+				<h3 class="text-lg font-medium text-nord-5 mb-2">How long are files stored?</h3>
+				<p class="text-nord-4">
+					Uploaded files are stored for 30 days by default. Pro and Enterprise plans offer extended retention options.
+				</p>
+			</div>
+
+			<div>
+				<h3 class="text-lg font-medium text-nord-5 mb-2">Is my data secure?</h3>
+				<p class="text-nord-4">
+					Yes. All files are encrypted in transit (TLS 1.3) and at rest (AES-256). We do not access or analyze your file contents.
+				</p>
+			</div>
+
+			<div>
+				<h3 class="text-lg font-medium text-nord-5 mb-2">Can I use the API for commercial purposes?</h3>
+				<p class="text-nord-4">
+					Yes. All paid plans include commercial usage rights. The free tier is for personal and evaluation use.
+				</p>
+			</div>
+
+			<div>
+				<h3 class="text-lg font-medium text-nord-5 mb-2">What happens if processing fails?</h3>
+				<p class="text-nord-4">
+					Failed jobs are automatically retried up to 3 times. If all retries fail, you'll receive a webhook notification (if configured) and can view the error in your dashboard.
+				</p>
+			</div>
+
+			<div>
+				<h3 class="text-lg font-medium text-nord-5 mb-2">Do you support batch processing?</h3>
+				<p class="text-nord-4">
+					Yes. You can upload multiple files in a single request via the API. The web interface also supports multi-file drag and drop.
+				</p>
+			</div>
+
+			<div>
+				<h3 class="text-lg font-medium text-nord-5 mb-2">How do I cancel my subscription?</h3>
+				<p class="text-nord-4">
+					Go to Settings &gt; Billing and click "Cancel subscription". Your access continues until the end of the billing period.
+				</p>
+			</div>
+		</div>
+	</article>
+}
+
+// NotFound renders the 404 error page
+templ NotFound(user *auth.SessionUser) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Page Not Found",
+		Description: "The page you're looking for doesn't exist",
+	}, user) {
+		<div class="min-h-[calc(100vh-200px)] flex items-center justify-center py-12 px-4">
+			<div class="text-center animate-fade-in">
+				<div class="text-8xl font-bold text-nord-3 mb-4">404</div>
+				<h1 class="text-2xl font-bold text-nord-5 mb-2">Page Not Found</h1>
+				<p class="text-nord-4 mb-8 max-w-md mx-auto">
+					Sorry, the page you're looking for doesn't exist or has been moved.
+				</p>
+				<div class="flex flex-col sm:flex-row gap-4 justify-center">
+					@components.ButtonLink("/", components.ButtonProps{
+						Variant: components.ButtonPrimary,
+						Size:    components.ButtonMd,
+					}) {
+						Go Home
+					}
+					@components.ButtonLink("/docs", components.ButtonProps{
+						Variant: components.ButtonSecondary,
+						Size:    components.ButtonMd,
+					}) {
+						View Docs
+					}
+				</div>
+			</div>
+		</div>
+	}
+}
+
+// ServerError renders the 500 error page
+templ ServerError(user *auth.SessionUser) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Server Error",
+		Description: "Something went wrong",
+	}, user) {
+		<div class="min-h-[calc(100vh-200px)] flex items-center justify-center py-12 px-4">
+			<div class="text-center animate-fade-in">
+				<div class="text-8xl font-bold text-nord-11 mb-4">500</div>
+				<h1 class="text-2xl font-bold text-nord-5 mb-2">Server Error</h1>
+				<p class="text-nord-4 mb-8 max-w-md mx-auto">
+					Something went wrong on our end. Our team has been notified and we're working to fix it.
+				</p>
+				<div class="flex flex-col sm:flex-row gap-4 justify-center">
+					@components.ButtonLink("/", components.ButtonProps{
+						Variant: components.ButtonPrimary,
+						Size:    components.ButtonMd,
+					}) {
+						Go Home
+					}
+					<a 
+						href="javascript:location.reload()"
+						class="inline-flex items-center justify-center px-4 py-2 bg-nord-2 text-nord-4 hover:text-nord-5 rounded-lg font-medium transition-colors"
+					>
+						Try Again
+					</a>
+				</div>
+			</div>
+		</div>
+	}
+}

@@ -1,0 +1,131 @@
+package components
+
+// InputProps contains input field properties
+type InputProps struct {
+	Type        string
+	Name        string
+	ID          string
+	Placeholder string
+	Value       string
+	Required    bool
+	Disabled    bool
+	Error       string
+	Class       string
+	AutoComplete string
+}
+
+// DefaultInputProps returns default input properties
+func DefaultInputProps() InputProps {
+	return InputProps{
+		Type: "text",
+	}
+}
+
+// Input renders a styled input field
+templ Input(props InputProps) {
+	<input
+		type={ props.Type }
+		name={ props.Name }
+		id={ props.ID }
+		placeholder={ props.Placeholder }
+		value={ props.Value }
+		required?={ props.Required }
+		disabled?={ props.Disabled }
+		autocomplete={ props.AutoComplete }
+		class={
+			"w-full px-4 py-2 bg-nord-2 border rounded-lg text-nord-5 placeholder-nord-4 focus:outline-none focus:ring-2 focus:ring-nord-8 focus:border-transparent transition-all " +
+			func() string {
+				if props.Error != "" {
+					return "border-nord-11"
+				}
+				return "border-nord-3"
+			}() + " " + props.Class,
+		}
+	/>
+	if props.Error != "" {
+		<p class="mt-1 text-sm text-nord-11">{ props.Error }</p>
+	}
+}
+
+// FormField renders a complete form field with label
+templ FormField(label string, props InputProps) {
+	<div class="space-y-1">
+		<label for={ props.ID } class="block text-sm font-medium text-nord-4">
+			{ label }
+			if props.Required {
+				<span class="text-nord-11 ml-1">*</span>
+			}
+		</label>
+		@Input(props)
+	</div>
+}
+
+// TextArea renders a styled textarea
+templ TextArea(props InputProps, rows int) {
+	<textarea
+		name={ props.Name }
+		id={ props.ID }
+		placeholder={ props.Placeholder }
+		required?={ props.Required }
+		disabled?={ props.Disabled }
+		rows={ templ.Attributes{"rows": rows}["rows"].(string) }
+		class={
+			"w-full px-4 py-2 bg-nord-2 border rounded-lg text-nord-5 placeholder-nord-4 focus:outline-none focus:ring-2 focus:ring-nord-8 focus:border-transparent transition-all resize-none " +
+			func() string {
+				if props.Error != "" {
+					return "border-nord-11"
+				}
+				return "border-nord-3"
+			}() + " " + props.Class,
+		}
+	>{ props.Value }</textarea>
+	if props.Error != "" {
+		<p class="mt-1 text-sm text-nord-11">{ props.Error }</p>
+	}
+}
+
+// Checkbox renders a styled checkbox
+templ Checkbox(name, id, label string, checked bool, disabled bool) {
+	<label class="flex items-center gap-3 cursor-pointer group">
+		<input
+			type="checkbox"
+			name={ name }
+			id={ id }
+			checked?={ checked }
+			disabled?={ disabled }
+			class="w-4 h-4 rounded border-nord-3 bg-nord-2 text-nord-8 focus:ring-nord-8 focus:ring-offset-nord-0"
+		/>
+		<span class="text-sm text-nord-4 group-hover:text-nord-5">{ label }</span>
+	</label>
+}
+
+// Select renders a styled select dropdown
+templ Select(name, id string, options []SelectOption, selected string, disabled bool, errMsg string) {
+	<select
+		name={ name }
+		id={ id }
+		disabled?={ disabled }
+		class={
+			"w-full px-4 py-2 bg-nord-2 border rounded-lg text-nord-5 focus:outline-none focus:ring-2 focus:ring-nord-8 focus:border-transparent transition-all appearance-none " +
+			func() string {
+				if errMsg != "" {
+					return "border-nord-11"
+				}
+				return "border-nord-3"
+			}(),
+		}
+	>
+		for _, opt := range options {
+			<option value={ opt.Value } selected?={ opt.Value == selected }>{ opt.Label }</option>
+		}
+	</select>
+	if errMsg != "" {
+		<p class="mt-1 text-sm text-nord-11">{ errMsg }</p>
+	}
+}
+
+// SelectOption represents an option in a select dropdown
+type SelectOption struct {
+	Value string
+	Label string
+}

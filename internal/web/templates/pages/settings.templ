@@ -1,0 +1,448 @@
+package pages
+
+import (
+	"github.com/abdul-hamid-achik/file-processor/internal/auth"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
+)
+
+// SettingsPageData contains data for the settings page
+type SettingsPageData struct {
+	Error               string
+	Success             string
+	PasswordError       string
+	PasswordSuccess     string
+	NewToken            string
+	ActiveTab           string
+	// Notification settings
+	EmailNotifications  bool
+	ProcessingAlerts    bool
+	MarketingEmails     bool
+	// File settings
+	DefaultRetention    string
+	AutoDeleteEnabled   bool
+	// API settings
+	APITokens           []APIToken
+}
+
+// APIToken represents an API token
+type APIToken struct {
+	ID        string
+	Name      string
+	LastUsed  string
+	CreatedAt string
+	Prefix    string
+}
+
+func getTabInitScript(activeTab string) string {
+	if activeTab == "" {
+		activeTab = "security"
+	}
+	return "{ activeTab: '" + activeTab + "' }"
+}
+
+script copyToClipboard(token string) {
+	navigator.clipboard.writeText(token).then(() => {
+		alert('Token copied to clipboard!');
+	});
+}
+
+// Settings renders the user settings page
+templ Settings(user *auth.SessionUser, data SettingsPageData) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Settings",
+		Description: "Manage your account settings",
+	}, user) {
+		<div class="py-8">
+			<div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+				<!-- Header -->
+				<div class="mb-8">
+					<h1 class="text-2xl font-bold text-nord-5">Settings</h1>
+					<p class="text-nord-4 mt-1">Manage your account preferences and security</p>
+				</div>
+
+				if data.Error != "" {
+					<div class="mb-6">
+						@components.Alert(components.AlertError, data.Error, true)
+					</div>
+				}
+
+				if data.Success != "" {
+					<div class="mb-6">
+						@components.Alert(components.AlertSuccess, data.Success, true)
+					</div>
+				}
+
+				if data.NewToken != "" {
+					<div class="mb-6 p-4 bg-nord-14/10 border border-nord-14 rounded-lg">
+						<p class="text-nord-14 font-medium mb-2">API Token Created Successfully</p>
+						<p class="text-nord-4 text-sm mb-3">Copy this token now. You won't be able to see it again!</p>
+						<div class="flex items-center gap-2">
+							<code class="flex-1 px-3 py-2 bg-nord-2 rounded text-nord-5 font-mono text-sm break-all">{ data.NewToken }</code>
+							<button 
+								type="button"
+								onclick={ copyToClipboard(data.NewToken) }
+								class="px-3 py-2 bg-nord-8 text-nord-0 rounded text-sm font-medium hover:bg-nord-7 transition-colors"
+							>
+								Copy
+							</button>
+						</div>
+					</div>
+				}
+
+				<div x-data={ getTabInitScript(data.ActiveTab) }>
+				<!-- Tab Navigation -->
+				<div class="mb-6 border-b border-nord-2">
+					<nav class="flex gap-8">
+						<button 
+							@click="activeTab = 'security'"
+							:class="activeTab === 'security' ? 'border-nord-8 text-nord-8' : 'border-transparent text-nord-4 hover:text-nord-5'"
+							class="pb-4 border-b-2 font-medium transition-colors"
+						>
+							Security
+						</button>
+						<button 
+							@click="activeTab = 'notifications'"
+							:class="activeTab === 'notifications' ? 'border-nord-8 text-nord-8' : 'border-transparent text-nord-4 hover:text-nord-5'"
+							class="pb-4 border-b-2 font-medium transition-colors"
+						>
+							Notifications
+						</button>
+						<button 
+							@click="activeTab = 'files'"
+							:class="activeTab === 'files' ? 'border-nord-8 text-nord-8' : 'border-transparent text-nord-4 hover:text-nord-5'"
+							class="pb-4 border-b-2 font-medium transition-colors"
+						>
+							Files
+						</button>
+						<button 
+							@click="activeTab = 'api'"
+							:class="activeTab === 'api' ? 'border-nord-8 text-nord-8' : 'border-transparent text-nord-4 hover:text-nord-5'"
+							class="pb-4 border-b-2 font-medium transition-colors"
+						>
+							API
+						</button>
+					</nav>
+				</div>
+
+				<!-- Security Tab -->
+				<div x-show="activeTab === 'security'">
+					if data.PasswordError != "" {
+						<div class="mb-6">
+							@components.Alert(components.AlertError, data.PasswordError, true)
+						</div>
+					}
+
+					if data.PasswordSuccess != "" {
+						<div class="mb-6">
+							@components.Alert(components.AlertSuccess, data.PasswordSuccess, true)
+						</div>
+					}
+
+					@components.Card("mb-6") {
+						@components.CardHeader() {
+							@components.CardTitle("Change Password")
+							@components.CardDescription("Update your password regularly to keep your account secure")
+						}
+						@components.CardBody() {
+							<form action="/settings/password" method="POST" class="space-y-4">
+								@components.FormField("Current Password", components.InputProps{
+									Type:         "password",
+									Name:         "current_password",
+									ID:           "current_password",
+									Placeholder:  "Enter current password",
+									Required:     true,
+									AutoComplete: "current-password",
+								})
+
+								@components.FormField("New Password", components.InputProps{
+									Type:         "password",
+									Name:         "new_password",
+									ID:           "new_password",
+									Placeholder:  "At least 8 characters",
+									Required:     true,
+									AutoComplete: "new-password",
+								})
+
+								@components.FormField("Confirm New Password", components.InputProps{
+									Type:         "password",
+									Name:         "confirm_password",
+									ID:           "confirm_password",
+									Placeholder:  "Confirm new password",
+									Required:     true,
+									AutoComplete: "new-password",
+								})
+
+								<div class="pt-2">
+									@components.Button(components.ButtonProps{
+										Variant: components.ButtonPrimary,
+										Size:    components.ButtonMd,
+										Type:    "submit",
+									}) {
+										Update Password
+									}
+								</div>
+							</form>
+						}
+					}
+
+					@components.Card("") {
+						@components.CardHeader() {
+							@components.CardTitle("Two-Factor Authentication")
+							@components.CardDescription("Add an extra layer of security to your account")
+						}
+						@components.CardBody() {
+							<div class="flex items-center justify-between">
+								<div>
+									<p class="text-nord-5 font-medium">Authenticator App</p>
+									<p class="text-nord-4 text-sm">Use an authenticator app to generate one-time codes</p>
+								</div>
+								<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-nord-3/20 text-nord-4">
+									Coming Soon
+								</span>
+							</div>
+						}
+					}
+				</div>
+
+				<!-- Notifications Tab -->
+				<div x-show="activeTab === 'notifications'" x-cloak>
+					@components.Card("") {
+						@components.CardHeader() {
+							@components.CardTitle("Email Notifications")
+							@components.CardDescription("Choose what emails you want to receive")
+						}
+						@components.CardBody() {
+							<form action="/settings/notifications" method="POST" class="space-y-4">
+								<label class="flex items-center justify-between cursor-pointer">
+									<div>
+										<p class="text-nord-5 font-medium">Processing Alerts</p>
+										<p class="text-nord-4 text-sm">Get notified when file processing completes or fails</p>
+									</div>
+									<input 
+										type="checkbox" 
+										name="processing_alerts"
+										checked?={ data.ProcessingAlerts }
+										class="w-5 h-5 rounded border-nord-3 bg-nord-2 text-nord-8 focus:ring-nord-8"
+									/>
+								</label>
+
+								<div class="border-t border-nord-2 pt-4">
+									<label class="flex items-center justify-between cursor-pointer">
+										<div>
+											<p class="text-nord-5 font-medium">Account Notifications</p>
+											<p class="text-nord-4 text-sm">Security alerts and account updates</p>
+										</div>
+										<input 
+											type="checkbox" 
+											name="email_notifications"
+											checked?={ data.EmailNotifications }
+											class="w-5 h-5 rounded border-nord-3 bg-nord-2 text-nord-8 focus:ring-nord-8"
+										/>
+									</label>
+								</div>
+
+								<div class="border-t border-nord-2 pt-4">
+									<label class="flex items-center justify-between cursor-pointer">
+										<div>
+											<p class="text-nord-5 font-medium">Marketing Emails</p>
+											<p class="text-nord-4 text-sm">Product updates, tips, and promotional content</p>
+										</div>
+										<input 
+											type="checkbox" 
+											name="marketing_emails"
+											checked?={ data.MarketingEmails }
+											class="w-5 h-5 rounded border-nord-3 bg-nord-2 text-nord-8 focus:ring-nord-8"
+										/>
+									</label>
+								</div>
+
+								<div class="pt-4">
+									@components.Button(components.ButtonProps{
+										Variant: components.ButtonPrimary,
+										Size:    components.ButtonMd,
+										Type:    "submit",
+									}) {
+										Save Preferences
+									}
+								</div>
+							</form>
+						}
+					}
+				</div>
+
+				<!-- Files Tab -->
+				<div x-show="activeTab === 'files'" x-cloak>
+					@components.Card("") {
+						@components.CardHeader() {
+							@components.CardTitle("File Settings")
+							@components.CardDescription("Configure how your files are stored and managed")
+						}
+						@components.CardBody() {
+							<form action="/settings/files" method="POST" class="space-y-4">
+								<div class="space-y-1">
+									<label class="block text-sm font-medium text-nord-4">
+										Default File Retention
+									</label>
+									<select 
+										name="default_retention"
+										class="w-full px-4 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 focus:outline-none focus:ring-2 focus:ring-nord-8"
+									>
+										<option value="7" selected?={ data.DefaultRetention == "7" }>7 days</option>
+										<option value="30" selected?={ data.DefaultRetention == "30" }>30 days</option>
+										<option value="90" selected?={ data.DefaultRetention == "90" }>90 days</option>
+										<option value="365" selected?={ data.DefaultRetention == "365" }>1 year</option>
+										<option value="0" selected?={ data.DefaultRetention == "0" }>Never delete</option>
+									</select>
+									<p class="text-nord-4 text-xs">Files older than this will be automatically deleted</p>
+								</div>
+
+								<div class="border-t border-nord-2 pt-4">
+									<label class="flex items-center justify-between cursor-pointer">
+										<div>
+											<p class="text-nord-5 font-medium">Auto-delete processed originals</p>
+											<p class="text-nord-4 text-sm">Automatically delete original files after processing</p>
+										</div>
+										<input 
+											type="checkbox" 
+											name="auto_delete"
+											checked?={ data.AutoDeleteEnabled }
+											class="w-5 h-5 rounded border-nord-3 bg-nord-2 text-nord-8 focus:ring-nord-8"
+										/>
+									</label>
+								</div>
+
+								<div class="pt-4">
+									@components.Button(components.ButtonProps{
+										Variant: components.ButtonPrimary,
+										Size:    components.ButtonMd,
+										Type:    "submit",
+									}) {
+										Save Settings
+									}
+								</div>
+							</form>
+						}
+					}
+				</div>
+
+				<!-- API Tab -->
+				<div x-show="activeTab === 'api'" x-cloak>
+					@components.Card("mb-6") {
+						@components.CardHeader() {
+							<div class="flex items-center justify-between">
+								<div>
+									@components.CardTitle("API Tokens")
+									@components.CardDescription("Manage tokens to access the API programmatically")
+								</div>
+								<button 
+									type="button"
+									onclick="document.getElementById('new-token-modal').classList.remove('hidden')"
+									class="inline-flex items-center px-3 py-1.5 bg-nord-8 text-nord-0 rounded-lg text-sm font-medium hover:bg-nord-7 transition-colors"
+								>
+									<svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+									</svg>
+									New Token
+								</button>
+							</div>
+						}
+						@components.CardBody() {
+							if len(data.APITokens) == 0 {
+								<div class="text-center py-8">
+									<svg class="w-12 h-12 mx-auto text-nord-3 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+									</svg>
+									<p class="text-nord-4 mb-2">No API tokens yet</p>
+									<p class="text-nord-4 text-sm">Create a token to start using the API</p>
+								</div>
+							} else {
+								<div class="space-y-4">
+									for _, token := range data.APITokens {
+										<div class="flex items-center justify-between p-4 bg-nord-2 rounded-lg">
+											<div>
+												<p class="text-nord-5 font-medium">{ token.Name }</p>
+												<div class="flex items-center gap-4 text-nord-4 text-sm mt-1">
+													<span class="font-mono">{ token.Prefix }...</span>
+													<span>Last used: { token.LastUsed }</span>
+													<span>Created: { token.CreatedAt }</span>
+												</div>
+											</div>
+											<form action={ templ.SafeURL("/settings/tokens/" + token.ID + "/delete") } method="POST">
+												<button 
+													type="submit"
+													class="text-nord-4 hover:text-nord-11 transition-colors"
+													title="Delete token"
+												>
+													<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+													</svg>
+												</button>
+											</form>
+										</div>
+									}
+								</div>
+							}
+						}
+					}
+
+					@components.Card("") {
+						@components.CardHeader() {
+							@components.CardTitle("API Documentation")
+						}
+						@components.CardBody() {
+							<p class="text-nord-4 mb-4">
+								Learn how to integrate with our API to automate your file processing workflows.
+							</p>
+							@components.ButtonLink("/docs?section=api-reference", components.ButtonProps{
+								Variant: components.ButtonSecondary,
+								Size:    components.ButtonMd,
+							}) {
+								View API Docs
+							}
+						}
+					}
+				</div>
+				</div>
+
+				<!-- New Token Modal -->
+				<div id="new-token-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+					<div class="flex items-center justify-center min-h-screen px-4">
+						<div class="fixed inset-0 bg-nord-0/80" onclick="document.getElementById('new-token-modal').classList.add('hidden')"></div>
+						<div class="relative bg-nord-1 rounded-xl p-6 max-w-md w-full border border-nord-2">
+							<h3 class="text-xl font-bold text-nord-5 mb-2">Create API Token</h3>
+							<p class="text-nord-4 mb-4">
+								Give your token a name to help you remember what it's used { "for" }.
+							</p>
+							<form action="/settings/tokens" method="POST" class="space-y-4">
+								@components.FormField("Token Name", components.InputProps{
+									Type:        "text",
+									Name:        "name",
+									ID:          "token_name",
+									Placeholder: "e.g., Production Server",
+									Required:    true,
+								})
+								<div class="flex gap-3 justify-end">
+									<button 
+										type="button"
+										onclick="document.getElementById('new-token-modal').classList.add('hidden')"
+										class="px-4 py-2 bg-nord-2 text-nord-4 hover:text-nord-5 rounded-lg font-medium transition-colors"
+									>
+										Cancel
+									</button>
+									@components.Button(components.ButtonProps{
+										Variant: components.ButtonPrimary,
+										Size:    components.ButtonMd,
+										Type:    "submit",
+									}) {
+										Create Token
+									}
+								</div>
+							</form>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	}
+}

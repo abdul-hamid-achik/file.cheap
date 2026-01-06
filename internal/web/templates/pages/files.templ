@@ -1,0 +1,597 @@
+package pages
+
+import (
+	"github.com/abdul-hamid-achik/file-processor/internal/auth"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
+)
+
+// FileListPageData contains data for the file list page
+type FileListPageData struct {
+	Files       []FileItem
+	TotalCount  int64
+	CurrentPage int
+	TotalPages  int
+	PageSize    int
+	Query       string
+	Filter      string
+}
+
+// FileItem represents a file in the list
+type FileItem struct {
+	ID           string
+	Name         string
+	Size         string
+	ContentType  string
+	Status       string
+	ThumbnailURL string
+	CreatedAt    string
+	UpdatedAt    string
+}
+
+// FileList renders the file list page
+templ FileList(user *auth.SessionUser, data FileListPageData) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Files",
+		Description: "View and manage your files",
+	}, user) {
+		<div class="py-8">
+			<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+				<!-- Header -->
+				<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
+					<div>
+						<h1 class="text-2xl font-bold text-nord-5">Files</h1>
+						<p class="text-nord-4 mt-1">{ formatFileCount(data.TotalCount) } total</p>
+					</div>
+					@components.ButtonLink("/upload", components.ButtonProps{
+						Variant: components.ButtonPrimary,
+						Size:    components.ButtonMd,
+					}) {
+						<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+						</svg>
+						Upload Files
+					}
+				</div>
+
+				<!-- Search and Filters -->
+				<div class="mb-6">
+					@components.Card("") {
+						@components.CardBody() {
+							<form action="/files" method="GET" class="flex flex-col sm:flex-row gap-4">
+								<div class="flex-1">
+									<input 
+										type="text"
+										name="q"
+										value={ data.Query }
+										placeholder="Search files..."
+										class="w-full px-4 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 placeholder-nord-4 focus:outline-none focus:ring-2 focus:ring-nord-8"
+									/>
+								</div>
+								<div>
+									<select 
+										name="filter"
+										class="w-full sm:w-auto px-4 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 focus:outline-none focus:ring-2 focus:ring-nord-8"
+									>
+										<option value="" selected?={ data.Filter == "" }>All files</option>
+										<option value="images" selected?={ data.Filter == "images" }>Images</option>
+										<option value="documents" selected?={ data.Filter == "documents" }>Documents</option>
+										<option value="processing" selected?={ data.Filter == "processing" }>Processing</option>
+										<option value="completed" selected?={ data.Filter == "completed" }>Completed</option>
+										<option value="failed" selected?={ data.Filter == "failed" }>Failed</option>
+									</select>
+								</div>
+								@components.Button(components.ButtonProps{
+									Variant: components.ButtonSecondary,
+									Size:    components.ButtonMd,
+									Type:    "submit",
+								}) {
+									Search
+								}
+							</form>
+						}
+					}
+				</div>
+
+				<!-- File Grid/List -->
+				if len(data.Files) == 0 {
+					@components.Card("") {
+						<div class="p-12 text-center">
+							<svg class="w-16 h-16 mx-auto text-nord-3 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+							</svg>
+							if data.Query != "" {
+								<p class="text-nord-4 mb-2">No files found matching "{ data.Query }"</p>
+								<p class="text-nord-4 text-sm mb-4">Try a different search term</p>
+							} else {
+								<p class="text-nord-4 mb-2">No files yet</p>
+								<p class="text-nord-4 text-sm mb-4">Upload your first file to get started</p>
+							}
+							@components.ButtonLink("/upload", components.ButtonProps{
+								Variant: components.ButtonPrimary,
+								Size:    components.ButtonMd,
+							}) {
+								Upload Files
+							}
+						</div>
+					}
+				} else {
+					<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+						for _, file := range data.Files {
+							@fileCard(file)
+						}
+					</div>
+
+					<!-- Pagination -->
+					if data.TotalPages > 1 {
+						<div class="mt-8 flex justify-center">
+							<nav class="flex items-center gap-2">
+								if data.CurrentPage > 1 {
+									<a 
+										href={ templ.SafeURL("/files?page=" + formatInt(data.CurrentPage-1) + "&q=" + data.Query + "&filter=" + data.Filter) }
+										class="px-3 py-2 bg-nord-2 text-nord-4 hover:text-nord-5 rounded-lg transition-colors"
+									>
+										Previous
+									</a>
+								}
+
+								for i := 1; i <= data.TotalPages; i++ {
+									if i == data.CurrentPage {
+										<span class="px-3 py-2 bg-nord-8 text-nord-0 rounded-lg font-medium">
+											{ formatInt(i) }
+										</span>
+									} else if i == 1 || i == data.TotalPages || (i >= data.CurrentPage-2 && i <= data.CurrentPage+2) {
+										<a 
+											href={ templ.SafeURL("/files?page=" + formatInt(i) + "&q=" + data.Query + "&filter=" + data.Filter) }
+											class="px-3 py-2 bg-nord-2 text-nord-4 hover:text-nord-5 rounded-lg transition-colors"
+										>
+											{ formatInt(i) }
+										</a>
+									} else if i == data.CurrentPage-3 || i == data.CurrentPage+3 {
+										<span class="px-2 text-nord-4">...</span>
+									}
+								}
+
+								if data.CurrentPage < data.TotalPages {
+									<a 
+										href={ templ.SafeURL("/files?page=" + formatInt(data.CurrentPage+1) + "&q=" + data.Query + "&filter=" + data.Filter) }
+										class="px-3 py-2 bg-nord-2 text-nord-4 hover:text-nord-5 rounded-lg transition-colors"
+									>
+										Next
+									</a>
+								}
+							</nav>
+						</div>
+					}
+				}
+			</div>
+		</div>
+	}
+}
+
+templ fileCard(file FileItem) {
+	<a href={ templ.SafeURL("/files/" + file.ID) } class="group">
+		@components.Card("hover:border-nord-8 transition-colors h-full") {
+			<!-- Thumbnail -->
+			<div class="aspect-video bg-nord-2 relative overflow-hidden">
+				if file.ThumbnailURL != "" {
+					<img 
+						src={ file.ThumbnailURL } 
+						alt={ file.Name }
+						class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+					/>
+				} else {
+					<div class="w-full h-full flex items-center justify-center">
+						@fileTypeIconLarge(file.ContentType)
+					</div>
+				}
+				<!-- Status badge -->
+				<div class="absolute top-2 right-2">
+					@fileStatusBadge(file.Status)
+				</div>
+			</div>
+
+			@components.CardBody() {
+				<div class="space-y-2">
+					<h3 class="text-nord-5 font-medium truncate group-hover:text-nord-8 transition-colors">
+						{ file.Name }
+					</h3>
+					<div class="flex items-center justify-between text-sm text-nord-4">
+						<span>{ file.Size }</span>
+						<span>{ file.CreatedAt }</span>
+					</div>
+				</div>
+			}
+		}
+	</a>
+}
+
+templ fileTypeIconLarge(contentType string) {
+	switch {
+	case contentType == "application/pdf":
+		<svg class="w-12 h-12 text-nord-11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+		</svg>
+	default:
+		<svg class="w-12 h-12 text-nord-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+		</svg>
+	}
+}
+
+templ fileStatusBadge(status string) {
+	switch status {
+	case "completed":
+		<span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-nord-14 text-nord-0">
+			Completed
+		</span>
+	case "processing":
+		<span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-nord-8 text-nord-0">
+			<svg class="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
+				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+			</svg>
+			Processing
+		</span>
+	case "pending":
+		<span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-nord-13 text-nord-0">
+			Pending
+		</span>
+	case "failed":
+		<span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-nord-11 text-nord-0">
+			Failed
+		</span>
+	default:
+		<span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-nord-3 text-nord-5">
+			{ status }
+		</span>
+	}
+}
+
+func formatFileCount(count int64) string {
+	if count == 1 {
+		return "1 file"
+	}
+	return formatInt64(count) + " files"
+}
+
+func formatInt(i int) string {
+	return string(rune('0'+i%10)) + formatIntHelper(i/10)
+}
+
+func formatIntHelper(i int) string {
+	if i == 0 {
+		return ""
+	}
+	return formatIntHelper(i/10) + string(rune('0'+i%10))
+}
+
+func formatInt64(i int64) string {
+	if i < 10 {
+		return string(rune('0' + i))
+	}
+	return formatInt64(i/10) + string(rune('0'+i%10))
+}
+
+// FileDetailPageData contains data for the file detail page
+type FileDetailPageData struct {
+	File       FileDetail
+	Variants   []FileVariant
+	Jobs       []ProcessingJob
+	Error      string
+	Success    string
+}
+
+// FileDetail contains detailed file information
+type FileDetail struct {
+	ID           string
+	Name         string
+	Size         string
+	ContentType  string
+	Status       string
+	URL          string
+	ThumbnailURL string
+	Metadata     map[string]string
+	CreatedAt    string
+	UpdatedAt    string
+}
+
+// FileVariant represents a processed variant of a file
+type FileVariant struct {
+	ID          string
+	Type        string
+	Size        string
+	URL         string
+	ContentType string
+	CreatedAt   string
+}
+
+// ProcessingJob represents a processing job
+type ProcessingJob struct {
+	ID        string
+	Type      string
+	Status    string
+	Progress  int
+	Error     string
+	CreatedAt string
+	UpdatedAt string
+}
+
+// FileDetailPage renders the file detail page
+templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       data.File.Name,
+		Description: "File details and processing status",
+	}, user) {
+		<div class="py-8">
+			<div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+				<!-- Breadcrumb -->
+				<nav class="mb-6 text-sm">
+					<ol class="flex items-center gap-2">
+						<li><a href="/files" class="text-nord-4 hover:text-nord-5">Files</a></li>
+						<li class="text-nord-4">/</li>
+						<li class="text-nord-5">{ data.File.Name }</li>
+					</ol>
+				</nav>
+
+				if data.Error != "" {
+					<div class="mb-6">
+						@components.Alert(components.AlertError, data.Error, true)
+					</div>
+				}
+
+				if data.Success != "" {
+					<div class="mb-6">
+						@components.Alert(components.AlertSuccess, data.Success, true)
+					</div>
+				}
+
+				<div class="grid lg:grid-cols-3 gap-8">
+					<!-- Main Content -->
+					<div class="lg:col-span-2 space-y-6">
+						<!-- Preview -->
+						@components.Card("") {
+							<div class="aspect-video bg-nord-2 relative overflow-hidden rounded-t-xl">
+								if data.File.ThumbnailURL != "" {
+									<img 
+										src={ data.File.ThumbnailURL } 
+										alt={ data.File.Name }
+										class="w-full h-full object-contain"
+									/>
+								} else {
+									<div class="w-full h-full flex items-center justify-center">
+										@fileTypeIconLarge(data.File.ContentType)
+									</div>
+								}
+							</div>
+							@components.CardBody() {
+								<div class="flex items-center justify-between">
+									<div>
+										<h1 class="text-xl font-bold text-nord-5">{ data.File.Name }</h1>
+										<p class="text-nord-4 text-sm mt-1">
+											{ data.File.ContentType } • { data.File.Size }
+										</p>
+									</div>
+									<div class="flex gap-2">
+										<a 
+											href={ templ.SafeURL(data.File.URL) }
+											download
+											class="inline-flex items-center px-4 py-2 bg-nord-8 text-nord-0 rounded-lg font-medium hover:bg-nord-7 transition-colors"
+										>
+											<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+											</svg>
+											Download
+										</a>
+									</div>
+								</div>
+							}
+						}
+
+						<!-- Variants -->
+						if len(data.Variants) > 0 {
+							@components.Card("") {
+								@components.CardHeader() {
+									@components.CardTitle("Processed Versions")
+									@components.CardDescription("Download different sizes and formats")
+								}
+								@components.CardBody() {
+									<div class="grid sm:grid-cols-2 gap-4">
+										for _, variant := range data.Variants {
+											<div class="flex items-center justify-between p-4 bg-nord-2 rounded-lg">
+												<div>
+													<p class="text-nord-5 font-medium capitalize">{ variant.Type }</p>
+													<p class="text-nord-4 text-sm">{ variant.Size } • { variant.ContentType }</p>
+												</div>
+												<a 
+													href={ templ.SafeURL(variant.URL) }
+													download
+													class="p-2 text-nord-4 hover:text-nord-8 transition-colors"
+													title="Download"
+												>
+													<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+													</svg>
+												</a>
+											</div>
+										}
+									</div>
+								}
+							}
+						}
+
+						<!-- Processing Jobs -->
+						if len(data.Jobs) > 0 {
+							@components.Card("") {
+								@components.CardHeader() {
+									@components.CardTitle("Processing History")
+								}
+								@components.CardBody() {
+									<div class="space-y-4">
+										for _, job := range data.Jobs {
+											<div class="flex items-center justify-between p-4 bg-nord-2 rounded-lg">
+												<div class="flex items-center gap-4">
+													@jobStatusIcon(job.Status)
+													<div>
+														<p class="text-nord-5 font-medium capitalize">{ job.Type }</p>
+														<p class="text-nord-4 text-sm">{ job.CreatedAt }</p>
+													</div>
+												</div>
+												<div class="text-right">
+													@jobStatusBadge(job.Status)
+													if job.Error != "" {
+														<p class="text-nord-11 text-xs mt-1">{ job.Error }</p>
+													}
+												</div>
+											</div>
+										}
+									</div>
+								}
+							}
+						}
+					</div>
+
+					<!-- Sidebar -->
+					<div class="space-y-6">
+						<!-- Status -->
+						@components.Card("") {
+							@components.CardHeader() {
+								@components.CardTitle("Status")
+							}
+							@components.CardBody() {
+								<div class="flex items-center gap-3">
+									@fileStatusBadge(data.File.Status)
+									<span class="text-nord-4 text-sm">
+										switch data.File.Status {
+										case "completed":
+											All processing complete
+										case "processing":
+											Processing in progress...
+										case "pending":
+											Waiting to process
+										case "failed":
+											Processing failed
+										default:
+											{ data.File.Status }
+										}
+									</span>
+								</div>
+							}
+						}
+
+						<!-- Metadata -->
+						if len(data.File.Metadata) > 0 {
+							@components.Card("") {
+								@components.CardHeader() {
+									@components.CardTitle("Metadata")
+								}
+								@components.CardBody() {
+									<dl class="space-y-3">
+										for key, value := range data.File.Metadata {
+											<div>
+												<dt class="text-nord-4 text-sm">{ key }</dt>
+												<dd class="text-nord-5">{ value }</dd>
+											</div>
+										}
+									</dl>
+								}
+							}
+						}
+
+						<!-- File Info -->
+						@components.Card("") {
+							@components.CardHeader() {
+								@components.CardTitle("Details")
+							}
+							@components.CardBody() {
+								<dl class="space-y-3">
+									<div>
+										<dt class="text-nord-4 text-sm">Uploaded</dt>
+										<dd class="text-nord-5">{ data.File.CreatedAt }</dd>
+									</div>
+									<div>
+										<dt class="text-nord-4 text-sm">Last modified</dt>
+										<dd class="text-nord-5">{ data.File.UpdatedAt }</dd>
+									</div>
+									<div>
+										<dt class="text-nord-4 text-sm">File ID</dt>
+										<dd class="text-nord-4 font-mono text-sm break-all">{ data.File.ID }</dd>
+									</div>
+								</dl>
+							}
+						}
+
+						<!-- Actions -->
+						@components.Card("border-nord-11/30") {
+							@components.CardHeader() {
+								<h3 class="text-lg font-semibold text-nord-11">Danger Zone</h3>
+							}
+							@components.CardBody() {
+								<form action={ templ.SafeURL("/files/" + data.File.ID + "/delete") } method="POST">
+									<button 
+										type="submit"
+										onclick="return confirm('Are you sure you want to delete this file? This action cannot be undone.')"
+										class="w-full px-4 py-2 bg-nord-11/10 text-nord-11 hover:bg-nord-11/20 rounded-lg font-medium transition-colors text-sm"
+									>
+										Delete File
+									</button>
+								</form>
+							}
+						}
+					</div>
+				</div>
+			</div>
+		</div>
+	}
+}
+
+templ jobStatusIcon(status string) {
+	switch status {
+	case "completed":
+		<div class="w-10 h-10 rounded-full bg-nord-14/10 flex items-center justify-center">
+			<svg class="w-5 h-5 text-nord-14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+			</svg>
+		</div>
+	case "processing":
+		<div class="w-10 h-10 rounded-full bg-nord-8/10 flex items-center justify-center">
+			<svg class="w-5 h-5 text-nord-8 animate-spin" fill="none" viewBox="0 0 24 24">
+				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+			</svg>
+		</div>
+	case "failed":
+		<div class="w-10 h-10 rounded-full bg-nord-11/10 flex items-center justify-center">
+			<svg class="w-5 h-5 text-nord-11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+			</svg>
+		</div>
+	default:
+		<div class="w-10 h-10 rounded-full bg-nord-3/20 flex items-center justify-center">
+			<svg class="w-5 h-5 text-nord-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+			</svg>
+		</div>
+	}
+}
+
+templ jobStatusBadge(status string) {
+	switch status {
+	case "completed":
+		<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-nord-14/10 text-nord-14">
+			Completed
+		</span>
+	case "processing":
+		<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-nord-8/10 text-nord-8">
+			Processing
+		</span>
+	case "failed":
+		<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-nord-11/10 text-nord-11">
+			Failed
+		</span>
+	default:
+		<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-nord-3/10 text-nord-4">
+			{ status }
+		</span>
+	}
+}

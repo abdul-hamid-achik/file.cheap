@@ -1,0 +1,257 @@
+package pages
+
+import (
+	"github.com/abdul-hamid-achik/file-processor/internal/auth"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
+)
+
+// UploadPageData contains data for the upload page
+type UploadPageData struct {
+	Error   string
+	Success string
+}
+
+// Upload renders the file upload page
+templ Upload(user *auth.SessionUser, data UploadPageData) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Upload Files",
+		Description: "Upload files for processing",
+	}, user) {
+		<div class="py-8">
+			<div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+				<!-- Header -->
+				<div class="mb-8">
+					<h1 class="text-2xl font-bold text-nord-5">Upload Files</h1>
+					<p class="text-nord-4 mt-1">Upload images and documents for processing</p>
+				</div>
+
+				if data.Error != "" {
+					<div class="mb-6">
+						@components.Alert(components.AlertError, data.Error, true)
+					</div>
+				}
+
+				if data.Success != "" {
+					<div class="mb-6">
+						@components.Alert(components.AlertSuccess, data.Success, true)
+					</div>
+				}
+
+				@components.Card("") {
+					@components.CardBody() {
+						<!-- Drop Zone -->
+						<div 
+							x-data="uploadHandler()"
+							class="relative"
+						>
+							<div 
+								@dragover.prevent="dragover = true"
+								@dragleave.prevent="dragover = false"
+								@drop.prevent="handleDrop($event)"
+								:class="dragover ? 'border-nord-8 bg-nord-8/5' : 'border-nord-3'"
+								class="border-2 border-dashed rounded-xl p-12 text-center transition-colors"
+							>
+								<input 
+									type="file" 
+									id="fileInput"
+									@change="handleFileSelect($event)"
+									multiple
+									accept="image/*,.pdf"
+									class="hidden"
+								/>
+								
+								<div x-show="!uploading">
+									<svg class="w-16 h-16 mx-auto text-nord-3 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+									</svg>
+									<p class="text-nord-4 mb-2">
+										<label for="fileInput" class="text-nord-8 cursor-pointer hover:text-nord-7 font-medium">
+											Click to upload
+										</label>
+										or drag and drop
+									</p>
+									<p class="text-nord-4 text-sm">PNG, JPG, GIF, WebP or PDF up to 50MB</p>
+								</div>
+
+								<div x-show="uploading" class="py-4">
+									<svg class="animate-spin w-12 h-12 mx-auto text-nord-8 mb-4" fill="none" viewBox="0 0 24 24">
+										<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+										<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+									</svg>
+									<p class="text-nord-4">Uploading... <span x-text="progress"></span>%</p>
+								</div>
+							</div>
+
+							<!-- File List -->
+							<div x-show="files.length > 0" class="mt-6 space-y-4">
+								<h3 class="font-medium text-nord-5">Selected Files</h3>
+								<template x-for="(file, index) in files" :key="index">
+									<div class="flex items-center justify-between p-4 bg-nord-2 rounded-lg">
+										<div class="flex items-center gap-3">
+											<div class="w-10 h-10 bg-nord-3 rounded-lg flex items-center justify-center">
+												<svg class="w-5 h-5 text-nord-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+												</svg>
+											</div>
+											<div>
+												<p class="text-nord-5 font-medium" x-text="file.name"></p>
+												<p class="text-nord-4 text-sm" x-text="formatSize(file.size)"></p>
+											</div>
+										</div>
+										<button 
+											@click="removeFile(index)"
+											class="p-2 text-nord-4 hover:text-nord-11 transition-colors"
+											:disabled="uploading"
+										>
+											<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+											</svg>
+										</button>
+									</div>
+								</template>
+							</div>
+
+							<!-- Upload Button -->
+							<div x-show="files.length > 0 && !uploading" class="mt-6">
+								@components.Button(components.ButtonProps{
+									Variant:   components.ButtonPrimary,
+									Size:      components.ButtonLg,
+									FullWidth: true,
+									Type:      "button",
+								}) {
+									<span @click="uploadFiles()">
+										Upload <span x-text="files.length"></span> file(s)
+									</span>
+								}
+							</div>
+						</div>
+					}
+				}
+
+				<!-- Processing Options -->
+				@components.Card("mt-6") {
+					@components.CardHeader() {
+						@components.CardTitle("Processing Options")
+						@components.CardDescription("Choose how to process your uploaded files")
+					}
+					@components.CardBody() {
+						<div class="space-y-4">
+							@components.Checkbox("generate_thumbnail", "generate_thumbnail", "Generate thumbnails (150x150)", true, false)
+							@components.Checkbox("generate_resize", "generate_resize", "Create resized versions (small, medium, large)", true, false)
+							@components.Checkbox("convert_webp", "convert_webp", "Convert to WebP format", false, false)
+							@components.Checkbox("extract_metadata", "extract_metadata", "Extract metadata (EXIF, document properties)", false, false)
+						</div>
+					}
+				}
+			</div>
+		</div>
+
+		<script>
+			function uploadHandler() {
+				return {
+					files: [],
+					dragover: false,
+					uploading: false,
+					progress: 0,
+
+					handleDrop(e) {
+						this.dragover = false;
+						const droppedFiles = Array.from(e.dataTransfer.files);
+						this.addFiles(droppedFiles);
+					},
+
+					handleFileSelect(e) {
+						const selectedFiles = Array.from(e.target.files);
+						this.addFiles(selectedFiles);
+					},
+
+					addFiles(newFiles) {
+						// Filter valid files
+						const validFiles = newFiles.filter(file => {
+							const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+							const maxSize = 50 * 1024 * 1024; // 50MB
+							return validTypes.includes(file.type) && file.size <= maxSize;
+						});
+						this.files = [...this.files, ...validFiles];
+					},
+
+					removeFile(index) {
+						this.files.splice(index, 1);
+					},
+
+					formatSize(bytes) {
+						if (bytes === 0) return '0 Bytes';
+						const k = 1024;
+						const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+						const i = Math.floor(Math.log(bytes) / Math.log(k));
+						return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+					},
+
+					async uploadFiles() {
+						if (this.files.length === 0) return;
+
+						this.uploading = true;
+						this.progress = 0;
+
+						const formData = new FormData();
+						this.files.forEach(file => {
+							formData.append('files', file);
+						});
+
+						// Add processing options
+						const options = ['generate_thumbnail', 'generate_resize', 'convert_webp', 'extract_metadata'];
+						options.forEach(opt => {
+							const checkbox = document.getElementById(opt);
+							if (checkbox && checkbox.checked) {
+								formData.append(opt, 'true');
+							}
+						});
+
+						try {
+							const xhr = new XMLHttpRequest();
+							xhr.upload.addEventListener('progress', (e) => {
+								if (e.lengthComputable) {
+									this.progress = Math.round((e.loaded / e.total) * 100);
+								}
+							});
+
+							xhr.onload = () => {
+								this.uploading = false;
+								if (xhr.status >= 200 && xhr.status < 300) {
+									window.dispatchEvent(new CustomEvent('toast', {
+										detail: { message: 'Files uploaded successfully!', type: 'success' }
+									}));
+									this.files = [];
+									// Redirect to files page after short delay
+									setTimeout(() => {
+										window.location.href = '/files';
+									}, 1500);
+								} else {
+									window.dispatchEvent(new CustomEvent('toast', {
+										detail: { message: 'Upload failed. Please try again.', type: 'error' }
+									}));
+								}
+							};
+
+							xhr.onerror = () => {
+								this.uploading = false;
+								window.dispatchEvent(new CustomEvent('toast', {
+									detail: { message: 'Upload failed. Please try again.', type: 'error' }
+								}));
+							};
+
+							xhr.open('POST', '/api/files');
+							xhr.send(formData);
+						} catch (error) {
+							this.uploading = false;
+							window.dispatchEvent(new CustomEvent('toast', {
+								detail: { message: 'Upload failed. Please try again.', type: 'error' }
+							}));
+						}
+					}
+				};
+			}
+		</script>
+	}
+}

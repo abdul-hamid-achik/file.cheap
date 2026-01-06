@@ -1,0 +1,141 @@
+package pages
+
+import (
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
+)
+
+// VerifyEmailPageData contains data for the email verification page
+type VerifyEmailPageData struct {
+	Error   string
+	Success bool
+	Email   string
+}
+
+// VerifyEmail renders the email verification result page
+templ VerifyEmail(data VerifyEmailPageData) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Verify Email",
+		Description: "Email verification",
+	}, nil) {
+		<div class="min-h-[calc(100vh-200px)] flex items-center justify-center py-12 px-4">
+			<div class="w-full max-w-md animate-slide-up">
+				@components.Card("") {
+					@components.CardBody() {
+						if data.Success {
+							<div class="text-center">
+								<div class="w-16 h-16 mx-auto mb-6 rounded-full bg-nord-14/10 flex items-center justify-center">
+									<svg class="w-8 h-8 text-nord-14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+									</svg>
+								</div>
+								<h1 class="text-2xl font-bold text-nord-5 mb-2">Email Verified!</h1>
+								<p class="text-nord-4 mb-6">
+									Your email address has been successfully verified. You can now access all features.
+								</p>
+								@components.ButtonLink("/dashboard", components.ButtonProps{
+									Variant:   components.ButtonPrimary,
+									Size:      components.ButtonMd,
+									FullWidth: true,
+								}) {
+									Go to Dashboard
+								}
+							</div>
+						} else {
+							<div class="text-center">
+								<div class="w-16 h-16 mx-auto mb-6 rounded-full bg-nord-11/10 flex items-center justify-center">
+									<svg class="w-8 h-8 text-nord-11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+									</svg>
+								</div>
+								<h1 class="text-2xl font-bold text-nord-5 mb-2">Verification Failed</h1>
+								<p class="text-nord-4 mb-6">
+									{ data.Error }
+								</p>
+								<div class="space-y-3">
+									@components.ButtonLink("/resend-verification", components.ButtonProps{
+										Variant:   components.ButtonPrimary,
+										Size:      components.ButtonMd,
+										FullWidth: true,
+									}) {
+										Resend Verification Email
+									}
+									<p class="text-nord-4 text-sm">
+										<a href="/login" class="text-nord-8 hover:text-nord-7">Back to sign in</a>
+									</p>
+								</div>
+							</div>
+						}
+					}
+				}
+			</div>
+		</div>
+	}
+}
+
+// ResendVerificationPageData contains data for the resend verification page
+type ResendVerificationPageData struct {
+	Error   string
+	Success string
+	Email   string
+}
+
+// ResendVerification renders the resend verification email page
+templ ResendVerification(data ResendVerificationPageData) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Resend Verification",
+		Description: "Resend verification email",
+	}, nil) {
+		<div class="min-h-[calc(100vh-200px)] flex items-center justify-center py-12 px-4">
+			<div class="w-full max-w-md animate-slide-up">
+				@components.Card("") {
+					@components.CardBody() {
+						<div class="text-center mb-8">
+							<h1 class="text-2xl font-bold text-nord-5">Resend Verification Email</h1>
+							<p class="text-nord-4 mt-2">Enter your email to receive a new verification link</p>
+						</div>
+
+						if data.Error != "" {
+							<div class="mb-6">
+								@components.Alert(components.AlertError, data.Error, true)
+							</div>
+						}
+
+						if data.Success != "" {
+							<div class="mb-6">
+								@components.Alert(components.AlertSuccess, data.Success, false)
+							</div>
+						} else {
+							<form action="/resend-verification" method="POST" class="space-y-4">
+								@components.FormField("Email", components.InputProps{
+									Type:         "email",
+									Name:         "email",
+									ID:           "email",
+									Value:        data.Email,
+									Placeholder:  "you@example.com",
+									Required:     true,
+									AutoComplete: "email",
+								})
+
+								@components.Button(components.ButtonProps{
+									Variant:   components.ButtonPrimary,
+									Size:      components.ButtonMd,
+									Type:      "submit",
+									FullWidth: true,
+								}) {
+									Send Verification Email
+								}
+							</form>
+						}
+
+						<p class="mt-6 text-center text-sm text-nord-4">
+							<a href="/login" class="text-nord-8 hover:text-nord-7 font-medium">
+								Back to sign in
+							</a>
+						</p>
+					}
+				}
+			</div>
+		</div>
+	}
+}

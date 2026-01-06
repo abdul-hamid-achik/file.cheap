@@ -1,0 +1,152 @@
+version: '3'
+
+vars:
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/fileprocessor?sslmode=disable
+  REDIS_URL: redis://localhost:6379
+
+tasks:
+  setup:
+    desc: Install required tools via Homebrew
+    cmds:
+      - brew install sqlc templ tailwindcss go-task
+      - mkdir -p static/js
+      - curl -sL https://unpkg.com/htmx.org@2/dist/htmx.min.js -o static/js/htmx.min.js
+      - echo "Setup complete! Run 'task docker:up' to start services."
+
+  deps:
+    desc: Download Go dependencies
+    cmds:
+      - go mod download
+      - go mod tidy
+
+  docker:up:
+    desc: Start all services (postgres, redis, minio)
+    cmds:
+      - docker compose up -d
+
+  docker:down:
+    desc: Stop all services
+    cmds:
+      - docker compose down
+
+  docker:logs:
+    desc: View service logs
+    cmds:
+      - docker compose logs -f
+
+  docker:clean:
+    desc: Stop services and remove volumes
+    cmds:
+      - docker compose down -v
+
+  migrate:
+    desc: Run database migrations
+    cmds:
+      - psql "{{.DATABASE_URL}}" -f migrations/001_initial_schema.sql
+      - psql "{{.DATABASE_URL}}" -f migrations/002_users_and_auth.sql
+      - psql "{{.DATABASE_URL}}" -f migrations/003_user_settings_and_api_tokens.sql
+
+  sqlc:
+    desc: Generate Go code from SQL queries
+    cmds:
+      - sqlc generate
+
+  templ:
+    desc: Generate Go code from templ files
+    cmds:
+      - templ generate
+
+  templ:watch:
+    desc: Watch and regenerate templ files
+    cmds:
+      - templ generate --watch
+
+  css:
+    desc: Build CSS with Tailwind 4
+    cmds:
+      - tailwindcss -i static/css/input.css -o static/css/output.css --minify
+
+  css:watch:
+    desc: Watch and rebuild CSS with Tailwind 4
+    cmds:
+      - tailwindcss -i static/css/input.css -o static/css/output.css --watch
+
+  generate:
+    desc: Run all code generation (sqlc, templ, css)
+    cmds:
+      - task: sqlc
+      - task: templ
+      - task: css
+
+  build:api:
+    desc: Build API binary
+    deps: [generate]
+    cmds:
+      - go build -o bin/api ./cmd/api
+
+  build:worker:
+    desc: Build worker binary
+    deps: [generate]
+    cmds:
+      - go build -o bin/worker ./cmd/worker
+
+  build:
+    desc: Build all binaries
+    cmds:
+      - task: build:api
+      - task: build:worker
+
+  run:api:
+    desc: Run the API server
+    cmds:
+      - go run ./cmd/api
+
+  run:worker:
+    desc: Run the background worker
+    cmds:
+      - go run ./cmd/worker
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test ./...
+
+  test:unit:
+    desc: Run unit tests only (skip integration)
+    cmds:
+      - go test -short ./...
+
+  test:integration:
+    desc: Run integration tests
+    cmds:
+      - go test -run Integration ./tests/integration/...
+
+  test:v:
+    desc: Run tests with verbose output
+    cmds:
+      - go test -v ./...
+
+  test:coverage:
+    desc: Run tests with coverage report
+    cmds:
+      - go test -coverprofile=coverage.out ./...
+      - go tool cover -html=coverage.out -o coverage.html
+      - echo 'Coverage report generated at coverage.html'
+
+  fmt:
+    desc: Format all code
+    cmds:
+      - go fmt ./...
+      - templ fmt .
+
+  lint:
+    desc: Run linter
+    cmds:
+      - golangci-lint run ./...
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf bin/
+      - rm -f coverage.out coverage.html
+      - rm -f static/css/output.css

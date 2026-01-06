@@ -1,0 +1,90 @@
+package components
+
+// Card renders a styled card container
+templ Card(class string) {
+	<div class={ "bg-nord-1 rounded-xl border border-nord-2 overflow-hidden " + class }>
+		{ children... }
+	</div>
+}
+
+// CardHeader renders a card header section
+templ CardHeader() {
+	<div class="px-6 py-4 border-b border-nord-2">
+		{ children... }
+	</div>
+}
+
+// CardBody renders a card body section
+templ CardBody() {
+	<div class="px-6 py-4">
+		{ children... }
+	</div>
+}
+
+// CardFooter renders a card footer section
+templ CardFooter() {
+	<div class="px-6 py-4 bg-nord-2/50 border-t border-nord-2">
+		{ children... }
+	</div>
+}
+
+// CardTitle renders a card title
+templ CardTitle(title string) {
+	<h3 class="text-lg font-semibold text-nord-5">{ title }</h3>
+}
+
+// CardDescription renders a card description
+templ CardDescription(description string) {
+	<p class="text-sm text-nord-4 mt-1">{ description }</p>
+}
+
+// StatCard renders a statistics card
+templ StatCard(title string, value string, icon templ.Component, trend string, trendUp bool) {
+	@Card("") {
+		@CardBody() {
+			<div class="flex items-center justify-between">
+				<div>
+					<p class="text-sm font-medium text-nord-4">{ title }</p>
+					<p class="text-2xl font-bold text-nord-5 mt-1">{ value }</p>
+					if trend != "" {
+						<div class={ "flex items-center gap-1 mt-2 text-sm " + func() string {
+							if trendUp {
+								return "text-nord-14"
+							}
+							return "text-nord-11"
+						}() }>
+							if trendUp {
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+								</svg>
+							} else {
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+								</svg>
+							}
+							<span>{ trend }</span>
+						</div>
+					}
+				</div>
+				<div class="p-3 bg-nord-2 rounded-lg">
+					@icon
+				</div>
+			</div>
+		}
+	}
+}
+
+// FeatureCard renders a feature highlight card
+templ FeatureCard(title, description string, icon templ.Component) {
+	@Card("hover:border-nord-8 transition-colors") {
+		@CardBody() {
+			<div class="flex flex-col items-center text-center p-4">
+				<div class="p-3 bg-nord-8/10 rounded-lg text-nord-8 mb-4">
+					@icon
+				</div>
+				<h3 class="text-lg font-semibold text-nord-5 mb-2">{ title }</h3>
+				<p class="text-nord-4">{ description }</p>
+			</div>
+		}
+	}
+}

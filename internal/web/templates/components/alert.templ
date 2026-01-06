@@ -1,0 +1,109 @@
+package components
+
+// AlertType represents different alert styles
+type AlertType string
+
+const (
+	AlertInfo    AlertType = "info"
+	AlertSuccess AlertType = "success"
+	AlertWarning AlertType = "warning"
+	AlertError   AlertType = "error"
+)
+
+func getAlertClasses(alertType AlertType) string {
+	base := "rounded-lg p-4 flex items-start gap-3"
+	
+	switch alertType {
+	case AlertInfo:
+		return base + " bg-nord-8/10 text-nord-8 border border-nord-8/20"
+	case AlertSuccess:
+		return base + " bg-nord-14/10 text-nord-14 border border-nord-14/20"
+	case AlertWarning:
+		return base + " bg-nord-13/10 text-nord-13 border border-nord-13/20"
+	case AlertError:
+		return base + " bg-nord-11/10 text-nord-11 border border-nord-11/20"
+	default:
+		return base + " bg-nord-8/10 text-nord-8 border border-nord-8/20"
+	}
+}
+
+// Alert renders a styled alert box
+templ Alert(alertType AlertType, message string, dismissible bool) {
+	<div 
+		class={ getAlertClasses(alertType) }
+		x-data="{ show: true }"
+		x-show="show"
+		x-transition:leave="transition ease-in duration-200"
+		x-transition:leave-start="opacity-100"
+		x-transition:leave-end="opacity-0"
+	>
+		switch alertType {
+		case AlertInfo:
+			<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+			</svg>
+		case AlertSuccess:
+			<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+			</svg>
+		case AlertWarning:
+			<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+			</svg>
+		case AlertError:
+			<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+			</svg>
+		}
+		<span class="flex-1">{ message }</span>
+		if dismissible {
+			<button @click="show = false" class="flex-shrink-0 hover:opacity-70 transition-opacity">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+				</svg>
+			</button>
+		}
+	</div>
+}
+
+// AlertWithTitle renders an alert with a title
+templ AlertWithTitle(alertType AlertType, title, message string, dismissible bool) {
+	<div 
+		class={ getAlertClasses(alertType) }
+		x-data="{ show: true }"
+		x-show="show"
+		x-transition:leave="transition ease-in duration-200"
+		x-transition:leave-start="opacity-100"
+		x-transition:leave-end="opacity-0"
+	>
+		switch alertType {
+		case AlertInfo:
+			<svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+			</svg>
+		case AlertSuccess:
+			<svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+			</svg>
+		case AlertWarning:
+			<svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+			</svg>
+		case AlertError:
+			<svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+			</svg>
+		}
+		<div class="flex-1">
+			<h4 class="font-semibold">{ title }</h4>
+			<p class="mt-1 text-sm opacity-90">{ message }</p>
+		</div>
+		if dismissible {
+			<button @click="show = false" class="flex-shrink-0 hover:opacity-70 transition-opacity">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+				</svg>
+			</button>
+		}
+	</div>
+}

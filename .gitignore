@@ -1,0 +1,74 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# Build output
+bin/
+dist/
+api
+worker
+cookies.txt
+cookies2.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Test coverage
+coverage.html
+coverage.out
+
+# Air (live reload)
+tmp/
+
+# Debug
+debug
+__debug_bin
+
+# Uploaded files (local development)
+uploads/
+
+# Test data images (see testdata/README.md for how to create)
+testdata/*.jpg
+testdata/*.jpeg
+testdata/*.png
+testdata/*.gif
+testdata/*.webp
+
+# Generated CSS
+static/css/output.css
+
+# Generated templ files
+*_templ.go
