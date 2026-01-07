@@ -80,6 +80,7 @@ tasks:
       - psql "{{.DATABASE_URL}}" -f migrations/004_subscription_tier.sql
       - psql "{{.DATABASE_URL}}" -f migrations/005_file_shares.sql
       - psql "{{.DATABASE_URL}}" -f migrations/006_stripe_billing.sql
+      - psql "{{.DATABASE_URL}}" -f migrations/007_image_presets.sql
 
   gen:
     desc: Run all code generation (sqlc, templ, css)
