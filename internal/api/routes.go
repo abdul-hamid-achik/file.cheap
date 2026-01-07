@@ -38,6 +38,8 @@ type Querier interface {
 	DeleteFileShare(ctx context.Context, arg db.DeleteFileShareParams) error
 	GetUserBillingInfo(ctx context.Context, id pgtype.UUID) (db.GetUserBillingInfoRow, error)
 	GetUserFilesCount(ctx context.Context, userID pgtype.UUID) (int64, error)
+	GetUserTransformationUsage(ctx context.Context, id pgtype.UUID) (db.GetUserTransformationUsageRow, error)
+	IncrementTransformationCount(ctx context.Context, id pgtype.UUID) error
 }
 
 type Broker interface {
@@ -81,6 +83,8 @@ func NewRouter(cfg *Config) http.Handler {
 	apiMux.HandleFunc("POST /api/v1/files/{id}/share", CreateShareHandler(cdnCfg, cfg.BaseURL))
 	apiMux.HandleFunc("GET /api/v1/files/{id}/shares", ListSharesHandler(cdnCfg))
 	apiMux.HandleFunc("DELETE /api/v1/shares/{shareId}", DeleteShareHandler(cdnCfg))
+
+	apiMux.HandleFunc("POST /api/v1/files/{id}/transform", transformHandler(cfg))
 
 	rateLimit := cfg.RateLimit
 	if rateLimit <= 0 {
@@ -485,4 +489,194 @@ func uuidFromPgtype(id pgtype.UUID) string {
 	}
 	u := uuid.UUID(id.Bytes)
 	return u.String()
+}
+
+type TransformRequest struct {
+	Presets   []string `json:"presets"`
+	WebP      bool     `json:"webp"`
+	Quality   int      `json:"quality"`
+	Watermark string   `json:"watermark"`
+}
+
+type TransformResponse struct {
+	FileID string   `json:"file_id"`
+	Jobs   []string `json:"jobs"`
+}
+
+func transformHandler(cfg *Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log := logger.FromContext(r.Context())
+
+		userID, ok := GetUserID(r.Context())
+		if !ok {
+			apperror.WriteJSON(w, r, apperror.ErrUnauthorized)
+			return
+		}
+
+		fileIDStr := r.PathValue("id")
+		fileID, err := uuid.Parse(fileIDStr)
+		if err != nil {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(err, "invalid_file_id", "Invalid file ID format", http.StatusBadRequest))
+			return
+		}
+
+		log = log.With("user_id", userID.String(), "file_id", fileIDStr)
+
+		if cfg.Queries == nil {
+			apperror.WriteJSON(w, r, apperror.ErrInternal)
+			return
+		}
+
+		pgFileID := pgtype.UUID{Bytes: fileID, Valid: true}
+		pgUserID := pgtype.UUID{Bytes: userID, Valid: true}
+
+		file, err := cfg.Queries.GetFile(r.Context(), pgFileID)
+		if err != nil {
+			apperror.WriteJSON(w, r, apperror.ErrNotFound)
+			return
+		}
+
+		fileUserID := uuidFromPgtype(file.UserID)
+		if fileUserID != userID.String() {
+			apperror.WriteJSON(w, r, apperror.ErrNotFound)
+			return
+		}
+
+		if file.DeletedAt.Valid {
+			apperror.WriteJSON(w, r, apperror.ErrNotFound)
+			return
+		}
+
+		var req TransformRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(err, "invalid_request", "Invalid JSON request body", http.StatusBadRequest))
+			return
+		}
+
+		if len(req.Presets) == 0 && !req.WebP && req.Watermark == "" {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "no_transformations", "At least one transformation is required", http.StatusBadRequest))
+			return
+		}
+
+		jobCount := len(req.Presets)
+		if req.WebP {
+			jobCount++
+		}
+		if req.Watermark != "" {
+			jobCount++
+		}
+
+		billingInfo := GetBilling(r.Context())
+		if billingInfo != nil {
+			usage, err := cfg.Queries.GetUserTransformationUsage(r.Context(), pgUserID)
+			if err == nil {
+				remaining := int(usage.TransformationsLimit) - int(usage.TransformationsCount)
+				if usage.TransformationsLimit != -1 && remaining < jobCount {
+					apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "transformation_limit_reached",
+						fmt.Sprintf("Not enough transformations remaining. Need %d, have %d.", jobCount, remaining),
+						http.StatusForbidden))
+					return
+				}
+			}
+
+			for _, preset := range req.Presets {
+				if !billing.CanUseFeature(billingInfo.Tier, preset) {
+					apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "feature_not_available",
+						fmt.Sprintf("Preset '%s' is not available on your plan. Upgrade to Pro for access.", preset),
+						http.StatusForbidden))
+					return
+				}
+			}
+
+			if req.Watermark != "" && !billing.CanUseFeature(billingInfo.Tier, "watermark") {
+				apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "feature_not_available",
+					"Custom watermarks are not available on your plan. Upgrade to Pro for access.",
+					http.StatusForbidden))
+				return
+			}
+		}
+
+		if cfg.Broker == nil {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "service_unavailable", "Job queue is not available", http.StatusServiceUnavailable))
+			return
+		}
+
+		var jobIDs []string
+		quality := req.Quality
+		if quality <= 0 {
+			quality = 85
+		}
+
+		for _, preset := range req.Presets {
+			var payload interface{}
+			var jobType string
+
+			switch preset {
+			case "thumbnail":
+				payload = worker.NewThumbnailPayload(fileID)
+				jobType = "thumbnail"
+			case "sm", "md", "lg", "xl":
+				payload = worker.NewResponsivePayload(fileID, preset)
+				jobType = "resize"
+			case "og", "twitter", "instagram_square", "instagram_portrait", "instagram_story":
+				payload = worker.NewSocialPayload(fileID, preset)
+				jobType = "resize"
+			default:
+				log.Warn("unknown preset requested", "preset", preset)
+				continue
+			}
+
+			jobID, err := cfg.Broker.Enqueue(jobType, payload)
+			if err != nil {
+				log.Error("failed to enqueue job", "preset", preset, "error", err)
+				continue
+			}
+			jobIDs = append(jobIDs, jobID)
+
+			if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
+				log.Error("failed to increment transformation count", "error", err)
+			}
+		}
+
+		if req.WebP {
+			payload := worker.NewWebPPayload(fileID, quality)
+			jobID, err := cfg.Broker.Enqueue("webp", payload)
+			if err != nil {
+				log.Error("failed to enqueue webp job", "error", err)
+			} else {
+				jobIDs = append(jobIDs, jobID)
+				if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
+					log.Error("failed to increment transformation count", "error", err)
+				}
+			}
+		}
+
+		if req.Watermark != "" {
+			isPremium := billingInfo != nil && (billingInfo.Tier == db.SubscriptionTierPro || billingInfo.Tier == db.SubscriptionTierEnterprise)
+			payload := worker.NewWatermarkPayload(fileID, req.Watermark, "bottom-right", 0.5, isPremium)
+			jobID, err := cfg.Broker.Enqueue("watermark", payload)
+			if err != nil {
+				log.Error("failed to enqueue watermark job", "error", err)
+			} else {
+				jobIDs = append(jobIDs, jobID)
+				if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
+					log.Error("failed to increment transformation count", "error", err)
+				}
+			}
+		}
+
+		if len(jobIDs) == 0 {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "no_jobs_created", "Failed to create any transformation jobs", http.StatusInternalServerError))
+			return
+		}
+
+		log.Info("transform jobs created", "job_count", len(jobIDs))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(TransformResponse{
+			FileID: fileIDStr,
+			Jobs:   jobIDs,
+		})
+	}
 }

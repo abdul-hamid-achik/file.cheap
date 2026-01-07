@@ -310,6 +310,32 @@ func (m *MockQuerier) GetUserFilesCount(ctx context.Context, userID pgtype.UUID)
 	return m.CountFilesByUser(ctx, userID)
 }
 
+func (m *MockQuerier) GetUserTransformationUsage(ctx context.Context, id pgtype.UUID) (db.GetUserTransformationUsageRow, error) {
+	tier := m.BillingTier
+	if tier == "" {
+		tier = db.SubscriptionTierPro
+	}
+
+	var limit int32
+	switch tier {
+	case db.SubscriptionTierEnterprise:
+		limit = -1
+	case db.SubscriptionTierPro:
+		limit = 10000
+	default:
+		limit = 100
+	}
+
+	return db.GetUserTransformationUsageRow{
+		TransformationsCount: 0,
+		TransformationsLimit: limit,
+	}, nil
+}
+
+func (m *MockQuerier) IncrementTransformationCount(ctx context.Context, id pgtype.UUID) error {
+	return nil
+}
+
 func (m *MockQuerier) GetAllFiles() []db.File {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

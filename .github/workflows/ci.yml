@@ -21,7 +21,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.25"
           cache: true
 
       - name: Install dependencies
@@ -34,7 +34,7 @@ jobs:
         run: templ generate
 
       - name: Run tests
-        run: go test -race -coverprofile=coverage.out ./...
+        run: go test -v -race -short -coverprofile=coverage.out ./...
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
@@ -45,7 +45,6 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -53,19 +52,25 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.25"
           cache: true
 
+      - name: Install templ
+        run: go install github.com/a-h/templ/cmd/templ@latest
+
+      - name: Generate templ files
+        run: templ generate
+
+      - name: Install golangci-lint from source
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v4
-        with:
-          version: v1.61.0
-          args: --timeout=5m
+        run: golangci-lint run --timeout=5m ./...
 
   build:
     name: Build Images
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [test, lint]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
