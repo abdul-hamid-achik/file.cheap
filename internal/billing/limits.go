@@ -179,3 +179,43 @@ func CanUseAPI(tier db.SubscriptionTier, write bool) bool {
 		return false
 	}
 }
+
+func CanTransform(current, limit int) bool {
+	if limit == -1 {
+		return true
+	}
+	return current < limit
+}
+
+func (s *SubscriptionInfo) CanTransform() bool {
+	return CanTransform(s.TransformationsUsed, s.TransformationsLimit)
+}
+
+func (s *SubscriptionInfo) RemainingTransformations() int {
+	if s.TransformationsLimit == -1 {
+		return -1
+	}
+	remaining := s.TransformationsLimit - s.TransformationsUsed
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
+func (s *SubscriptionInfo) TransformationsUsagePercent() int {
+	if s.TransformationsLimit <= 0 {
+		return 0
+	}
+	return int((int64(s.TransformationsUsed) * 100) / int64(s.TransformationsLimit))
+}
+
+func (s *SubscriptionInfo) DaysUntilTransformationReset() int {
+	if s.TransformationsResetAt == nil {
+		return 0
+	}
+	remaining := time.Until(*s.TransformationsResetAt)
+	if remaining <= 0 {
+		return 0
+	}
+	return int(remaining.Hours()/24) + 1
+}

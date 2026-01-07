@@ -383,3 +383,153 @@ func TestSubscriptionInfoRemainingFiles(t *testing.T) {
 		})
 	}
 }
+
+func TestCanTransform(t *testing.T) {
+	tests := []struct {
+		name    string
+		current int
+		limit   int
+		want    bool
+	}{
+		{"under_limit", 50, 100, true},
+		{"at_limit", 100, 100, false},
+		{"over_limit", 150, 100, false},
+		{"unlimited", 10000, -1, true},
+		{"zero_current_unlimited", 0, -1, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CanTransform(tt.current, tt.limit); got != tt.want {
+				t.Errorf("CanTransform(%d, %d) = %v, want %v", tt.current, tt.limit, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSubscriptionInfoCanTransform(t *testing.T) {
+	tests := []struct {
+		name string
+		info SubscriptionInfo
+		want bool
+	}{
+		{
+			name: "under_limit",
+			info: SubscriptionInfo{TransformationsUsed: 50, TransformationsLimit: 100},
+			want: true,
+		},
+		{
+			name: "at_limit",
+			info: SubscriptionInfo{TransformationsUsed: 100, TransformationsLimit: 100},
+			want: false,
+		},
+		{
+			name: "unlimited",
+			info: SubscriptionInfo{TransformationsUsed: 10000, TransformationsLimit: -1},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.info.CanTransform(); got != tt.want {
+				t.Errorf("CanTransform() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSubscriptionInfoRemainingTransformations(t *testing.T) {
+	tests := []struct {
+		name string
+		info SubscriptionInfo
+		want int
+	}{
+		{
+			name: "50_remaining",
+			info: SubscriptionInfo{TransformationsUsed: 50, TransformationsLimit: 100},
+			want: 50,
+		},
+		{
+			name: "0_remaining",
+			info: SubscriptionInfo{TransformationsUsed: 100, TransformationsLimit: 100},
+			want: 0,
+		},
+		{
+			name: "negative_returns_0",
+			info: SubscriptionInfo{TransformationsUsed: 150, TransformationsLimit: 100},
+			want: 0,
+		},
+		{
+			name: "unlimited_returns_negative_1",
+			info: SubscriptionInfo{TransformationsUsed: 1000, TransformationsLimit: -1},
+			want: -1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.info.RemainingTransformations(); got != tt.want {
+				t.Errorf("RemainingTransformations() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSubscriptionInfoTransformationsUsagePercent(t *testing.T) {
+	tests := []struct {
+		name string
+		info SubscriptionInfo
+		want int
+	}{
+		{
+			name: "50_percent",
+			info: SubscriptionInfo{TransformationsUsed: 50, TransformationsLimit: 100},
+			want: 50,
+		},
+		{
+			name: "100_percent",
+			info: SubscriptionInfo{TransformationsUsed: 100, TransformationsLimit: 100},
+			want: 100,
+		},
+		{
+			name: "0_percent",
+			info: SubscriptionInfo{TransformationsUsed: 0, TransformationsLimit: 100},
+			want: 0,
+		},
+		{
+			name: "unlimited_returns_0",
+			info: SubscriptionInfo{TransformationsUsed: 1000, TransformationsLimit: -1},
+			want: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.info.TransformationsUsagePercent(); got != tt.want {
+				t.Errorf("TransformationsUsagePercent() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetTierLimitsTransformations(t *testing.T) {
+	tests := []struct {
+		name      string
+		tier      db.SubscriptionTier
+		wantLimit int
+	}{
+		{"free_tier", db.SubscriptionTierFree, FreeTransformationsLimit},
+		{"pro_tier", db.SubscriptionTierPro, ProTransformationsLimit},
+		{"enterprise_tier", db.SubscriptionTierEnterprise, EnterpriseTransformationsLimit},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			limits := GetTierLimits(tt.tier)
+			if limits.TransformationsLimit != tt.wantLimit {
+				t.Errorf("TransformationsLimit = %d, want %d", limits.TransformationsLimit, tt.wantLimit)
+			}
+		})
+	}
+}

@@ -120,7 +120,10 @@ SELECT
     subscription_period_end,
     trial_ends_at,
     files_limit,
-    max_file_size
+    max_file_size,
+    transformations_count,
+    transformations_limit,
+    transformations_reset_at
 FROM users
 WHERE id = $1 AND deleted_at IS NULL;
 

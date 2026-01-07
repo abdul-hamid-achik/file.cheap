@@ -20,8 +20,8 @@ vendor/
 # Build output
 bin/
 dist/
-api
-worker
+/api
+/worker
 cookies.txt
 cookies2.txt
 
