@@ -86,7 +86,7 @@ func (s *MinIOStorage) Download(ctx context.Context, key string) (io.ReadCloser,
 
 	info, err := obj.Stat()
 	if err != nil {
-		obj.Close()
+		_ = obj.Close()
 		if isNotFoundError(err) {
 			log.Warn("storage object not found", "key", key)
 			return nil, ErrNotFound

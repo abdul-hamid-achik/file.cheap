@@ -129,7 +129,7 @@ func (s *OAuthService) getGoogleUserInfo(ctx context.Context, token *oauth2.Toke
 	if err != nil {
 		return nil, apperror.Wrap(err, apperror.ErrInternal)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -162,7 +162,7 @@ func (s *OAuthService) getGitHubUserInfo(ctx context.Context, token *oauth2.Toke
 	if err != nil {
 		return nil, apperror.Wrap(err, apperror.ErrInternal)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -204,7 +204,7 @@ func (s *OAuthService) getGitHubPrimaryEmail(ctx context.Context, client *http.C
 	if err != nil {
 		return "", apperror.Wrap(err, apperror.ErrInternal)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

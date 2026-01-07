@@ -108,7 +108,7 @@ func TestUploadHandler(t *testing.T) {
 				// Empty multipart form
 				var buf bytes.Buffer
 				writer := multipart.NewWriter(&buf)
-				writer.Close()
+				_ = writer.Close()
 
 				req := httptest.NewRequest("POST", "/api/v1/upload", &buf)
 				req.Header.Set("Content-Type", writer.FormDataContentType())

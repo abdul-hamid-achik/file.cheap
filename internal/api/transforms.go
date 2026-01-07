@@ -32,8 +32,8 @@ func (t *TransformOptions) ToProcessorOptions() *processor.Options {
 
 func (t *TransformOptions) CacheKey() string {
 	h := sha256.New()
-	h.Write([]byte(fmt.Sprintf("w=%d,h=%d,q=%d,f=%s,c=%s,wm=%s",
-		t.Width, t.Height, t.Quality, t.Format, t.Crop, t.Watermark)))
+	_, _ = fmt.Fprintf(h, "w=%d,h=%d,q=%d,f=%s,c=%s,wm=%s",
+		t.Width, t.Height, t.Quality, t.Format, t.Crop, t.Watermark)
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 

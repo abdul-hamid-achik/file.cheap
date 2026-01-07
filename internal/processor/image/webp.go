@@ -90,16 +90,16 @@ func (p *WebPProcessor) processWithCwebp(ctx context.Context, inputData []byte, 
 		return nil, fmt.Errorf("failed to create input temp file: %w", err)
 	}
 	inputPath := inputFile.Name()
-	defer os.Remove(inputPath)
+	defer func() { _ = os.Remove(inputPath) }()
 
 	if _, err := inputFile.Write(inputData); err != nil {
-		inputFile.Close()
+		_ = inputFile.Close()
 		return nil, fmt.Errorf("failed to write input data: %w", err)
 	}
-	inputFile.Close()
+	_ = inputFile.Close()
 
 	outputPath := filepath.Join(tempDir, fmt.Sprintf("webp-output-%d.webp", os.Getpid()))
-	defer os.Remove(outputPath)
+	defer func() { _ = os.Remove(outputPath) }()
 
 	args := []string{
 		"-q", strconv.Itoa(quality),

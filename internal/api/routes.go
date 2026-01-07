@@ -218,7 +218,7 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":       fileID.String(),
 			"filename": header.Filename,
 			"status":   "pending",
@@ -260,7 +260,7 @@ func listFilesHandler(cfg *Config) http.HandlerFunc {
 
 		if cfg.Queries == nil {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"files":    []any{},
 				"total":    0,
 				"has_more": false,

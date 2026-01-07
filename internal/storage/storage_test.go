@@ -155,7 +155,7 @@ func TestMemoryStorage_Download(t *testing.T) {
 			}
 
 			if tt.wantErr == nil {
-				defer reader.Close()
+				defer func() { _ = reader.Close() }()
 				content, _ := io.ReadAll(reader)
 				if string(content) != tt.wantContent {
 					t.Errorf("Download() content = %q, want %q", string(content), tt.wantContent)
@@ -240,7 +240,7 @@ func TestMemoryStorage_Exists(t *testing.T) {
 		{
 			name: "file exists",
 			setup: func(s *MemoryStorage) {
-				s.Upload(context.Background(), "test/file.txt", strings.NewReader("content"), "text/plain", 7)
+				_ = s.Upload(context.Background(), "test/file.txt", strings.NewReader("content"), "text/plain", 7)
 			},
 			key:        "test/file.txt",
 			wantExists: true,
@@ -300,7 +300,7 @@ func TestMemoryStorage_GetPresignedURL(t *testing.T) {
 		{
 			name: "generate URL for existing file",
 			setup: func(s *MemoryStorage) {
-				s.Upload(context.Background(), "test/file.txt", strings.NewReader("content"), "text/plain", 7)
+				_ = s.Upload(context.Background(), "test/file.txt", strings.NewReader("content"), "text/plain", 7)
 			},
 			key:           "test/file.txt",
 			expirySeconds: 3600,
@@ -366,7 +366,7 @@ func TestMemoryStorage_Concurrent(t *testing.T) {
 			_, _ = storage.Exists(ctx, key)
 			if r, err := storage.Download(ctx, key); err == nil {
 				_, _ = io.Copy(io.Discard, r)
-				r.Close()
+				_ = r.Close()
 			}
 		}(i)
 	}
@@ -447,7 +447,7 @@ func TestMinIOStorage_Upload(t *testing.T) {
 					t.Errorf("Download() after upload failed: %v", err)
 					return
 				}
-				defer r.Close()
+				defer func() { _ = r.Close() }()
 
 				content, _ := io.ReadAll(r)
 				if string(content) != tt.content {
@@ -497,7 +497,7 @@ func TestMinIOStorage_Download(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Download() error = %v", err)
 		}
-		defer r.Close()
+		defer func() { _ = r.Close() }()
 
 		data, _ := io.ReadAll(r)
 		if string(data) != content {

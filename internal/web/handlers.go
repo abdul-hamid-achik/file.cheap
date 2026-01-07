@@ -55,7 +55,7 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
 			GoogleEnabled: h.oauthService != nil && h.oauthService.IsGoogleConfigured(),
 			GitHubEnabled: h.oauthService != nil && h.oauthService.IsGitHubConfigured(),
 		}
-		pages.Login(data).Render(r.Context(), w)
+		_ = pages.Login(data).Render(r.Context(), w)
 		return
 	}
 
@@ -74,7 +74,7 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
 			GoogleEnabled: h.oauthService != nil && h.oauthService.IsGoogleConfigured(),
 			GitHubEnabled: h.oauthService != nil && h.oauthService.IsGitHubConfigured(),
 		}
-		pages.Login(data).Render(r.Context(), w)
+		_ = pages.Login(data).Render(r.Context(), w)
 		return
 	}
 
@@ -84,7 +84,7 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
 			GoogleEnabled: h.oauthService != nil && h.oauthService.IsGoogleConfigured(),
 			GitHubEnabled: h.oauthService != nil && h.oauthService.IsGitHubConfigured(),
 		}
-		pages.Login(data).Render(r.Context(), w)
+		_ = pages.Login(data).Render(r.Context(), w)
 		return
 	}
 
@@ -329,11 +329,11 @@ func (h *Handlers) UploadFileAPI(w http.ResponseWriter, r *http.Request) {
 		log.Info("uploading file", "filename", fileHeader.Filename, "size", fileHeader.Size)
 
 		if err := h.cfg.Storage.Upload(r.Context(), storageKey, file, fileHeader.Header.Get("Content-Type"), fileHeader.Size); err != nil {
-			file.Close()
+			_ = file.Close()
 			log.Error("storage upload failed", "filename", fileHeader.Filename, "error", err)
 			continue
 		}
-		file.Close()
+		_ = file.Close()
 
 		if h.cfg.Queries != nil {
 			contentType := fileHeader.Header.Get("Content-Type")
@@ -395,7 +395,7 @@ func (h *Handlers) UploadFileAPI(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"files":   results,
 		"message": fmt.Sprintf("Successfully uploaded %d file(s)", len(results)),
 	})
@@ -672,7 +672,7 @@ func (h *Handlers) ProcessFile(w http.ResponseWriter, r *http.Request) {
 	if !billing.CanUseFeature(user.SubscriptionTier, action) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, `<div class="p-4 bg-nord-11/20 text-nord-11 rounded-lg text-sm">This feature requires a Pro subscription. <a href="/billing" class="underline">Upgrade now</a></div>`)
+		_, _ = fmt.Fprintf(w, `<div class="p-4 bg-nord-11/20 text-nord-11 rounded-lg text-sm">This feature requires a Pro subscription. <a href="/billing" class="underline">Upgrade now</a></div>`)
 		return
 	}
 
@@ -774,7 +774,7 @@ func (h *Handlers) ProcessFile(w http.ResponseWriter, r *http.Request) {
 	if hasVariant {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `<div class="p-4 bg-nord-13/20 text-nord-13 rounded-lg text-sm">This variant already exists.</div>`)
+		_, _ = fmt.Fprintf(w, `<div class="p-4 bg-nord-13/20 text-nord-13 rounded-lg text-sm">This variant already exists.</div>`)
 		return
 	}
 
@@ -796,7 +796,7 @@ func (h *Handlers) ProcessFile(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusAccepted)
-	fmt.Fprintf(w, `<div class="p-4 bg-nord-14/20 text-nord-14 rounded-lg text-sm">Processing started! Refresh the page to see the result.</div>`)
+	_, _ = fmt.Fprintf(w, `<div class="p-4 bg-nord-14/20 text-nord-14 rounded-lg text-sm">Processing started! Refresh the page to see the result.</div>`)
 }
 
 func (h *Handlers) DownloadFile(w http.ResponseWriter, r *http.Request) {

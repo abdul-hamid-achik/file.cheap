@@ -618,7 +618,7 @@ func TestHandlerConcurrency(t *testing.T) {
 		mockQueries.AddFile(makeTestFile(fileID, uuid.New(), "test.jpg", "uploads/"+fileID.String()+"/test.jpg"))
 		ctx := context.Background()
 		imgData := createTestJPEG(100, 100)
-		mockStorage.MemoryStorage.Upload(ctx, "uploads/"+fileID.String()+"/test.jpg", bytes.NewReader(imgData), "image/jpeg", int64(len(imgData)))
+		_ = mockStorage.MemoryStorage.Upload(ctx, "uploads/"+fileID.String()+"/test.jpg", bytes.NewReader(imgData), "image/jpeg", int64(len(imgData)))
 	}
 
 	deps := &testDependencies{
@@ -684,7 +684,7 @@ func TestHandlerContextCancellation(t *testing.T) {
 	fileID := uuid.New()
 	mockQueries.AddFile(makeTestFile(fileID, uuid.New(), "test.jpg", "uploads/"+fileID.String()+"/test.jpg"))
 	imgData := createTestJPEG(100, 100)
-	mockStorage.MemoryStorage.Upload(context.Background(), "uploads/"+fileID.String()+"/test.jpg", bytes.NewReader(imgData), "image/jpeg", int64(len(imgData)))
+	_ = mockStorage.MemoryStorage.Upload(context.Background(), "uploads/"+fileID.String()+"/test.jpg", bytes.NewReader(imgData), "image/jpeg", int64(len(imgData)))
 
 	deps := &testDependencies{
 		storage:  mockStorage,
@@ -769,7 +769,7 @@ func testThumbnailHandler(deps *testDependencies) func(context.Context, *mockJob
 		if err != nil {
 			return err
 		}
-		defer reader.Close()
+		defer func() { _ = reader.Close() }()
 
 		proc := deps.registry.getForContentType(file.ContentType)
 		if proc == nil {
@@ -844,7 +844,7 @@ func testResizeHandler(deps *testDependencies) func(context.Context, *mockJob) e
 		if err != nil {
 			return err
 		}
-		defer reader.Close()
+		defer func() { _ = reader.Close() }()
 
 		proc := deps.registry.getForContentType(file.ContentType)
 		if proc == nil {
