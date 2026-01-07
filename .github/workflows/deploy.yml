@@ -62,9 +62,6 @@ jobs:
               newTag: ${TAG}
             - name: ghcr.io/abdul-hamid-achik/file.cheap/worker
               newTag: ${TAG}
-          
-          commonLabels:
-            environment: production
           EOF
 
       - name: Apply Kubernetes manifests
