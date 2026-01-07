@@ -2,11 +2,7 @@ package web
 
 import (
 	"bytes"
-	"image"
-	"image/color"
-	"image/jpeg"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -455,40 +451,6 @@ func TestRouterHTTPHeaders(t *testing.T) {
 			t.Error("response missing Content-Type header")
 		}
 	}
-}
-
-func createRouterTestImage(t *testing.T) (io.Reader, string) {
-	t.Helper()
-
-	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
-	for y := 0; y < 100; y++ {
-		for x := 0; x < 100; x++ {
-			img.Set(x, y, color.RGBA{R: uint8(x * 2), G: uint8(y * 2), B: 128, A: 255})
-		}
-	}
-
-	var imgBuf bytes.Buffer
-	if err := jpeg.Encode(&imgBuf, img, &jpeg.Options{Quality: 85}); err != nil {
-		t.Fatalf("failed to encode JPEG: %v", err)
-	}
-
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-
-	part, err := writer.CreateFormFile("file", "test.jpg")
-	if err != nil {
-		t.Fatalf("failed to create form file: %v", err)
-	}
-
-	if _, err := part.Write(imgBuf.Bytes()); err != nil {
-		t.Fatalf("failed to write image: %v", err)
-	}
-
-	if err := writer.Close(); err != nil {
-		t.Fatalf("failed to close writer: %v", err)
-	}
-
-	return &buf, writer.FormDataContentType()
 }
 
 // Unused in current tests but kept for future use

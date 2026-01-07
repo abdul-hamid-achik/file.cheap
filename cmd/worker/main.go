@@ -117,10 +117,10 @@ func run() error {
 
 	log.Info("registering job handlers")
 	registry := worker.NewRegistry()
-	registry.Register("thumbnail", fpworker.ThumbnailHandler(deps))
-	registry.Register("resize", fpworker.ResizeHandler(deps))
-	registry.Register("webp", fpworker.WebPHandler(deps))
-	registry.Register("watermark", fpworker.WatermarkHandler(deps))
+	_ = registry.Register("thumbnail", fpworker.ThumbnailHandler(deps))
+	_ = registry.Register("resize", fpworker.ResizeHandler(deps))
+	_ = registry.Register("webp", fpworker.WebPHandler(deps))
+	_ = registry.Register("watermark", fpworker.WatermarkHandler(deps))
 
 	log.Info("handlers registered", "count", len(registry.Types()))
 

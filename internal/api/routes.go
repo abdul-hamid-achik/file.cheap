@@ -40,6 +40,11 @@ type Querier interface {
 	GetUserFilesCount(ctx context.Context, userID pgtype.UUID) (int64, error)
 	GetUserTransformationUsage(ctx context.Context, id pgtype.UUID) (db.GetUserTransformationUsageRow, error)
 	IncrementTransformationCount(ctx context.Context, id pgtype.UUID) error
+	CreateBatchOperation(ctx context.Context, arg db.CreateBatchOperationParams) (db.BatchOperation, error)
+	GetBatchOperationByUser(ctx context.Context, arg db.GetBatchOperationByUserParams) (db.BatchOperation, error)
+	CreateBatchItem(ctx context.Context, arg db.CreateBatchItemParams) (db.BatchItem, error)
+	ListBatchItems(ctx context.Context, batchID pgtype.UUID) ([]db.BatchItem, error)
+	CountBatchItemsByStatus(ctx context.Context, batchID pgtype.UUID) (db.CountBatchItemsByStatusRow, error)
 }
 
 type Broker interface {
@@ -85,6 +90,9 @@ func NewRouter(cfg *Config) http.Handler {
 	apiMux.HandleFunc("DELETE /api/v1/shares/{shareId}", DeleteShareHandler(cdnCfg))
 
 	apiMux.HandleFunc("POST /api/v1/files/{id}/transform", transformHandler(cfg))
+
+	apiMux.HandleFunc("POST /api/v1/batch/transform", batchTransformHandler(cfg))
+	apiMux.HandleFunc("GET /api/v1/batch/{id}", getBatchHandler(cfg))
 
 	rateLimit := cfg.RateLimit
 	if rateLimit <= 0 {
@@ -163,7 +171,7 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 
 		if cfg.Queries != nil {
 			var pgUserID pgtype.UUID
-			pgUserID.Scan(userID)
+			_ = pgUserID.Scan(userID)
 
 			contentType := header.Header.Get("Content-Type")
 			if contentType == "" {
@@ -200,7 +208,7 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusAccepted)
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id":       fileIDStr,
 				"filename": dbFile.Filename,
 				"status":   string(dbFile.Status),
@@ -678,5 +686,350 @@ func transformHandler(cfg *Config) http.HandlerFunc {
 			FileID: fileIDStr,
 			Jobs:   jobIDs,
 		})
+	}
+}
+
+const maxBatchFiles = 100
+
+type BatchTransformRequest struct {
+	FileIDs   []string `json:"file_ids"`
+	Presets   []string `json:"presets"`
+	WebP      bool     `json:"webp"`
+	Quality   int      `json:"quality"`
+	Watermark string   `json:"watermark"`
+}
+
+type BatchTransformResponse struct {
+	BatchID    string `json:"batch_id"`
+	TotalFiles int    `json:"total_files"`
+	TotalJobs  int    `json:"total_jobs"`
+	Status     string `json:"status"`
+	StatusURL  string `json:"status_url"`
+}
+
+func batchTransformHandler(cfg *Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log := logger.FromContext(r.Context())
+
+		userID, ok := GetUserID(r.Context())
+		if !ok {
+			apperror.WriteJSON(w, r, apperror.ErrUnauthorized)
+			return
+		}
+
+		log = log.With("user_id", userID.String())
+
+		if cfg.Queries == nil || cfg.Broker == nil {
+			apperror.WriteJSON(w, r, apperror.ErrInternal)
+			return
+		}
+
+		var req BatchTransformRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(err, "invalid_request", "Invalid JSON request body", http.StatusBadRequest))
+			return
+		}
+
+		if len(req.FileIDs) == 0 {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "no_files", "At least one file ID is required", http.StatusBadRequest))
+			return
+		}
+
+		if len(req.FileIDs) > maxBatchFiles {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "too_many_files",
+				fmt.Sprintf("Maximum %d files per batch. You requested %d.", maxBatchFiles, len(req.FileIDs)),
+				http.StatusBadRequest))
+			return
+		}
+
+		if len(req.Presets) == 0 && !req.WebP && req.Watermark == "" {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "no_transformations", "At least one transformation is required", http.StatusBadRequest))
+			return
+		}
+
+		jobsPerFile := len(req.Presets)
+		if req.WebP {
+			jobsPerFile++
+		}
+		if req.Watermark != "" {
+			jobsPerFile++
+		}
+		totalJobs := jobsPerFile * len(req.FileIDs)
+
+		pgUserID := pgtype.UUID{Bytes: userID, Valid: true}
+		billingInfo := GetBilling(r.Context())
+
+		if billingInfo != nil {
+			usage, err := cfg.Queries.GetUserTransformationUsage(r.Context(), pgUserID)
+			if err == nil {
+				remaining := int(usage.TransformationsLimit) - int(usage.TransformationsCount)
+				if usage.TransformationsLimit != -1 && remaining < totalJobs {
+					apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "transformation_limit_reached",
+						fmt.Sprintf("Not enough transformations remaining. Need %d, have %d.", totalJobs, remaining),
+						http.StatusForbidden))
+					return
+				}
+			}
+
+			for _, preset := range req.Presets {
+				if !billing.CanUseFeature(billingInfo.Tier, preset) {
+					apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "feature_not_available",
+						fmt.Sprintf("Preset '%s' is not available on your plan. Upgrade to Pro for access.", preset),
+						http.StatusForbidden))
+					return
+				}
+			}
+
+			if req.Watermark != "" && !billing.CanUseFeature(billingInfo.Tier, "watermark") {
+				apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "feature_not_available",
+					"Custom watermarks are not available on your plan. Upgrade to Pro for access.",
+					http.StatusForbidden))
+				return
+			}
+		}
+
+		var validFileIDs []uuid.UUID
+		for _, fileIDStr := range req.FileIDs {
+			fileID, err := uuid.Parse(fileIDStr)
+			if err != nil {
+				continue
+			}
+
+			pgFileID := pgtype.UUID{Bytes: fileID, Valid: true}
+			file, err := cfg.Queries.GetFile(r.Context(), pgFileID)
+			if err != nil {
+				continue
+			}
+
+			if uuidFromPgtype(file.UserID) != userID.String() || file.DeletedAt.Valid {
+				continue
+			}
+
+			validFileIDs = append(validFileIDs, fileID)
+		}
+
+		if len(validFileIDs) == 0 {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "no_valid_files", "No valid file IDs found", http.StatusBadRequest))
+			return
+		}
+
+		quality := req.Quality
+		if quality <= 0 {
+			quality = 85
+		}
+
+		var watermark *string
+		if req.Watermark != "" {
+			watermark = &req.Watermark
+		}
+
+		batch, err := cfg.Queries.CreateBatchOperation(r.Context(), db.CreateBatchOperationParams{
+			UserID:     pgUserID,
+			TotalFiles: int32(len(validFileIDs)),
+			Presets:    req.Presets,
+			Webp:       req.WebP,
+			Quality:    int32(quality),
+			Watermark:  watermark,
+		})
+		if err != nil {
+			log.Error("failed to create batch operation", "error", err)
+			apperror.WriteJSON(w, r, apperror.ErrInternal)
+			return
+		}
+
+		batchIDStr := uuidFromPgtype(batch.ID)
+		log = log.With("batch_id", batchIDStr)
+
+		isPremium := billingInfo != nil && (billingInfo.Tier == db.SubscriptionTierPro || billingInfo.Tier == db.SubscriptionTierEnterprise)
+
+		var totalJobsCreated int
+		for _, fileID := range validFileIDs {
+			var jobIDs []string
+
+			for _, preset := range req.Presets {
+				var payload interface{}
+				var jobType string
+
+				switch preset {
+				case "thumbnail":
+					payload = worker.NewThumbnailPayload(fileID)
+					jobType = "thumbnail"
+				case "sm", "md", "lg", "xl":
+					payload = worker.NewResponsivePayload(fileID, preset)
+					jobType = "resize"
+				case "og", "twitter", "instagram_square", "instagram_portrait", "instagram_story":
+					payload = worker.NewSocialPayload(fileID, preset)
+					jobType = "resize"
+				default:
+					continue
+				}
+
+				jobID, err := cfg.Broker.Enqueue(jobType, payload)
+				if err != nil {
+					log.Error("failed to enqueue job", "file_id", fileID, "preset", preset, "error", err)
+					continue
+				}
+				jobIDs = append(jobIDs, jobID)
+
+				if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
+					log.Error("failed to increment transformation count", "error", err)
+				}
+			}
+
+			if req.WebP {
+				payload := worker.NewWebPPayload(fileID, quality)
+				jobID, err := cfg.Broker.Enqueue("webp", payload)
+				if err != nil {
+					log.Error("failed to enqueue webp job", "file_id", fileID, "error", err)
+				} else {
+					jobIDs = append(jobIDs, jobID)
+					if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
+						log.Error("failed to increment transformation count", "error", err)
+					}
+				}
+			}
+
+			if req.Watermark != "" {
+				payload := worker.NewWatermarkPayload(fileID, req.Watermark, "bottom-right", 0.5, isPremium)
+				jobID, err := cfg.Broker.Enqueue("watermark", payload)
+				if err != nil {
+					log.Error("failed to enqueue watermark job", "file_id", fileID, "error", err)
+				} else {
+					jobIDs = append(jobIDs, jobID)
+					if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
+						log.Error("failed to increment transformation count", "error", err)
+					}
+				}
+			}
+
+			if len(jobIDs) > 0 {
+				pgFileID := pgtype.UUID{Bytes: fileID, Valid: true}
+				_, err := cfg.Queries.CreateBatchItem(r.Context(), db.CreateBatchItemParams{
+					BatchID: batch.ID,
+					FileID:  pgFileID,
+					JobIds:  jobIDs,
+				})
+				if err != nil {
+					log.Error("failed to create batch item", "file_id", fileID, "error", err)
+				}
+				totalJobsCreated += len(jobIDs)
+			}
+		}
+
+		log.Info("batch transform created", "total_files", len(validFileIDs), "total_jobs", totalJobsCreated)
+
+		statusURL := fmt.Sprintf("/api/v1/batch/%s", batchIDStr)
+		if cfg.BaseURL != "" {
+			statusURL = cfg.BaseURL + statusURL
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(BatchTransformResponse{
+			BatchID:    batchIDStr,
+			TotalFiles: len(validFileIDs),
+			TotalJobs:  totalJobsCreated,
+			Status:     string(batch.Status),
+			StatusURL:  statusURL,
+		})
+	}
+}
+
+type BatchStatusResponse struct {
+	ID             string                    `json:"id"`
+	Status         string                    `json:"status"`
+	TotalFiles     int                       `json:"total_files"`
+	CompletedFiles int                       `json:"completed_files"`
+	FailedFiles    int                       `json:"failed_files"`
+	Presets        []string                  `json:"presets"`
+	WebP           bool                      `json:"webp"`
+	Quality        int                       `json:"quality"`
+	Watermark      *string                   `json:"watermark,omitempty"`
+	CreatedAt      string                    `json:"created_at"`
+	StartedAt      *string                   `json:"started_at,omitempty"`
+	CompletedAt    *string                   `json:"completed_at,omitempty"`
+	Items          []BatchItemStatusResponse `json:"items,omitempty"`
+}
+
+type BatchItemStatusResponse struct {
+	FileID       string   `json:"file_id"`
+	Status       string   `json:"status"`
+	JobIDs       []string `json:"job_ids"`
+	ErrorMessage *string  `json:"error_message,omitempty"`
+}
+
+func getBatchHandler(cfg *Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, ok := GetUserID(r.Context())
+		if !ok {
+			apperror.WriteJSON(w, r, apperror.ErrUnauthorized)
+			return
+		}
+
+		batchIDStr := r.PathValue("id")
+		batchID, err := uuid.Parse(batchIDStr)
+		if err != nil {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(err, "invalid_batch_id", "Invalid batch ID format", http.StatusBadRequest))
+			return
+		}
+
+		if cfg.Queries == nil {
+			apperror.WriteJSON(w, r, apperror.ErrInternal)
+			return
+		}
+
+		pgBatchID := pgtype.UUID{Bytes: batchID, Valid: true}
+		pgUserID := pgtype.UUID{Bytes: userID, Valid: true}
+
+		batch, err := cfg.Queries.GetBatchOperationByUser(r.Context(), db.GetBatchOperationByUserParams{
+			ID:     pgBatchID,
+			UserID: pgUserID,
+		})
+		if err != nil {
+			apperror.WriteJSON(w, r, apperror.ErrNotFound)
+			return
+		}
+
+		response := BatchStatusResponse{
+			ID:             uuidFromPgtype(batch.ID),
+			Status:         string(batch.Status),
+			TotalFiles:     int(batch.TotalFiles),
+			CompletedFiles: int(batch.CompletedFiles),
+			FailedFiles:    int(batch.FailedFiles),
+			Presets:        batch.Presets,
+			WebP:           batch.Webp,
+			Quality:        int(batch.Quality),
+			Watermark:      batch.Watermark,
+			CreatedAt:      batch.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+		}
+
+		if batch.StartedAt.Valid {
+			startedAt := batch.StartedAt.Time.Format("2006-01-02T15:04:05Z07:00")
+			response.StartedAt = &startedAt
+		}
+
+		if batch.CompletedAt.Valid {
+			completedAt := batch.CompletedAt.Time.Format("2006-01-02T15:04:05Z07:00")
+			response.CompletedAt = &completedAt
+		}
+
+		includeItems := r.URL.Query().Get("include_items") == "true"
+		if includeItems {
+			items, err := cfg.Queries.ListBatchItems(r.Context(), pgBatchID)
+			if err == nil {
+				response.Items = make([]BatchItemStatusResponse, len(items))
+				for i, item := range items {
+					response.Items[i] = BatchItemStatusResponse{
+						FileID:       uuidFromPgtype(item.FileID),
+						Status:       string(item.Status),
+						JobIDs:       item.JobIds,
+						ErrorMessage: item.ErrorMessage,
+					}
+				}
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
 	}
 }

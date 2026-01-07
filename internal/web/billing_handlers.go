@@ -70,7 +70,7 @@ func (h *BillingHandlers) Billing(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pages.Billing(user, data).Render(r.Context(), w)
+	_ = pages.Billing(user, data).Render(r.Context(), w)
 }
 
 func (h *BillingHandlers) StartTrial(w http.ResponseWriter, r *http.Request) {

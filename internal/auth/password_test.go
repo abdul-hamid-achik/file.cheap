@@ -144,7 +144,7 @@ func TestValidatePassword(t *testing.T) {
 func BenchmarkHashPassword(b *testing.B) {
 	password := "benchmarkpassword"
 	for i := 0; i < b.N; i++ {
-		HashPassword(password)
+		_, _ = HashPassword(password)
 	}
 }
 
@@ -153,13 +153,13 @@ func BenchmarkCheckPassword(b *testing.B) {
 	hash, _ := HashPassword(password)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		CheckPassword(password, hash)
+		_ = CheckPassword(password, hash)
 	}
 }
 
 func BenchmarkGenerateToken(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		GenerateToken()
+		_, _, _ = GenerateToken()
 	}
 }
 

@@ -36,7 +36,7 @@ func NewHandlers(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oa
 
 func (h *Handlers) Home(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUserFromContext(r.Context())
-	pages.Landing(user).Render(r.Context(), w)
+	_ = pages.Landing(user).Render(r.Context(), w)
 }
 
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +45,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		GoogleEnabled: h.oauthService != nil && h.oauthService.IsGoogleConfigured(),
 		GitHubEnabled: h.oauthService != nil && h.oauthService.IsGitHubConfigured(),
 	}
-	pages.Login(data).Render(r.Context(), w)
+	_ = pages.Login(data).Render(r.Context(), w)
 }
 
 func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
@@ -157,7 +157,7 @@ func (h *Handlers) RegisterPost(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
-	h.sessionManager.DeleteSession(r.Context(), w, r)
+	_ = h.sessionManager.DeleteSession(r.Context(), w, r)
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
@@ -175,7 +175,7 @@ func (h *Handlers) ForgotPasswordPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	email := r.FormValue("email")
-	h.authService.RequestPasswordReset(r.Context(), email)
+	_, _ = h.authService.RequestPasswordReset(r.Context(), email)
 
 	data := pages.ForgotPasswordPageData{
 		Success: "If an account exists with this email, you will receive a password reset link.",
@@ -967,7 +967,7 @@ func (h *Handlers) ProfileDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info("user account deleted", "user_id", user.ID.String(), "email", user.Email)
-	h.sessionManager.DeleteSession(r.Context(), w, r)
+	_ = h.sessionManager.DeleteSession(r.Context(), w, r)
 	http.Redirect(w, r, "/?deleted=1", http.StatusFound)
 }
 

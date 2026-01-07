@@ -12,6 +12,51 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type BatchStatus string
+
+const (
+	BatchStatusPending    BatchStatus = "pending"
+	BatchStatusProcessing BatchStatus = "processing"
+	BatchStatusCompleted  BatchStatus = "completed"
+	BatchStatusFailed     BatchStatus = "failed"
+	BatchStatusPartial    BatchStatus = "partial"
+)
+
+func (e *BatchStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = BatchStatus(s)
+	case string:
+		*e = BatchStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for BatchStatus: %T", src)
+	}
+	return nil
+}
+
+type NullBatchStatus struct {
+	BatchStatus BatchStatus `json:"batch_status"`
+	Valid       bool        `json:"valid"` // Valid is true if BatchStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullBatchStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.BatchStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.BatchStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullBatchStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.BatchStatus), nil
+}
+
 type FileStatus string
 
 const (
@@ -383,6 +428,34 @@ type ApiToken struct {
 	LastUsedAt  pgtype.Timestamptz `json:"last_used_at"`
 	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type BatchItem struct {
+	ID           pgtype.UUID        `json:"id"`
+	BatchID      pgtype.UUID        `json:"batch_id"`
+	FileID       pgtype.UUID        `json:"file_id"`
+	Status       BatchStatus        `json:"status"`
+	JobIds       []string           `json:"job_ids"`
+	ErrorMessage *string            `json:"error_message"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	CompletedAt  pgtype.Timestamptz `json:"completed_at"`
+}
+
+type BatchOperation struct {
+	ID             pgtype.UUID        `json:"id"`
+	UserID         pgtype.UUID        `json:"user_id"`
+	Status         BatchStatus        `json:"status"`
+	TotalFiles     int32              `json:"total_files"`
+	CompletedFiles int32              `json:"completed_files"`
+	FailedFiles    int32              `json:"failed_files"`
+	Presets        []string           `json:"presets"`
+	Webp           bool               `json:"webp"`
+	Quality        int32              `json:"quality"`
+	Watermark      *string            `json:"watermark"`
+	ErrorMessage   *string            `json:"error_message"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	StartedAt      pgtype.Timestamptz `json:"started_at"`
+	CompletedAt    pgtype.Timestamptz `json:"completed_at"`
 }
 
 type EmailVerification struct {

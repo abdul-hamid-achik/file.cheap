@@ -165,7 +165,7 @@ func TestAuthMiddleware(t *testing.T) {
 			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				capturedUserID, hasUserID = GetUserID(r.Context())
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("OK"))
+				_, _ = w.Write([]byte("OK"))
 			})
 
 			// Wrap with auth middleware
@@ -262,7 +262,7 @@ func TestCORS(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("OK"))
+				_, _ = w.Write([]byte("OK"))
 			})
 
 			handler := CORS(nextHandler)
@@ -414,7 +414,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	handler := RateLimit(limiter)(nextHandler)

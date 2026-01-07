@@ -457,7 +457,7 @@ func TestGetFileHandler(t *testing.T) {
 			setupMocks: func(q *MockQuerier) {
 				f := createTestFileWithID(existingFileID, testUserID, "deleted.jpg")
 				var deletedAt pgtype.Timestamptz
-				deletedAt.Scan(time.Now())
+				_ = deletedAt.Scan(time.Now())
 				f.DeletedAt = deletedAt
 				q.AddFile(f)
 			},
@@ -618,7 +618,7 @@ func TestDeleteHandler(t *testing.T) {
 				f := createTestFileWithID(existingFileID, testUserID, "to-delete.jpg")
 				q.AddFile(f)
 				// Also add to storage
-				s.MemoryStorage.Upload(context.Background(), f.StorageKey, strings.NewReader("data"), "image/jpeg", 4)
+				_ = s.MemoryStorage.Upload(context.Background(), f.StorageKey, strings.NewReader("data"), "image/jpeg", 4)
 			},
 			wantStatus: http.StatusNoContent,
 		},
@@ -652,7 +652,7 @@ func TestDeleteHandler(t *testing.T) {
 			setupMocks: func(q *MockQuerier, s *MockStorage) {
 				f := createTestFileWithID(existingFileID, testUserID, "deleted.jpg")
 				var deletedAt pgtype.Timestamptz
-				deletedAt.Scan(time.Now())
+				_ = deletedAt.Scan(time.Now())
 				f.DeletedAt = deletedAt
 				q.AddFile(f)
 			},
@@ -926,4 +926,311 @@ func TestUploadVerifiesJobEnqueued(t *testing.T) {
 	// This verifies the integration between upload and job queue
 	_ = broker // Will be used when implementation supports broker injection
 	_ = queries
+}
+
+func TestTransformHandler(t *testing.T) {
+	testUserID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	existingFileID := uuid.MustParse("770e8400-e29b-41d4-a716-446655440000")
+
+	tests := []struct {
+		name       string
+		fileID     string
+		body       string
+		setupMocks func(q *MockQuerier)
+		wantStatus int
+	}{
+		{
+			name:   "transform with thumbnail preset",
+			fileID: existingFileID.String(),
+			body:   `{"presets": ["thumbnail"]}`,
+			setupMocks: func(q *MockQuerier) {
+				q.AddFile(createTestFileWithID(existingFileID, testUserID, "test.jpg"))
+			},
+			wantStatus: http.StatusAccepted,
+		},
+		{
+			name:   "transform with multiple presets",
+			fileID: existingFileID.String(),
+			body:   `{"presets": ["thumbnail", "sm", "md"]}`,
+			setupMocks: func(q *MockQuerier) {
+				q.AddFile(createTestFileWithID(existingFileID, testUserID, "test.jpg"))
+			},
+			wantStatus: http.StatusAccepted,
+		},
+		{
+			name:   "transform with webp conversion",
+			fileID: existingFileID.String(),
+			body:   `{"webp": true, "quality": 85}`,
+			setupMocks: func(q *MockQuerier) {
+				q.AddFile(createTestFileWithID(existingFileID, testUserID, "test.jpg"))
+			},
+			wantStatus: http.StatusAccepted,
+		},
+		{
+			name:   "transform with social presets",
+			fileID: existingFileID.String(),
+			body:   `{"presets": ["og", "twitter"]}`,
+			setupMocks: func(q *MockQuerier) {
+				q.AddFile(createTestFileWithID(existingFileID, testUserID, "test.jpg"))
+			},
+			wantStatus: http.StatusAccepted,
+		},
+		{
+			name:       "transform non-existent file",
+			fileID:     "00000000-0000-0000-0000-000000000000",
+			body:       `{"presets": ["thumbnail"]}`,
+			setupMocks: func(q *MockQuerier) {},
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name:       "transform invalid file ID",
+			fileID:     "not-a-uuid",
+			body:       `{"presets": ["thumbnail"]}`,
+			setupMocks: func(q *MockQuerier) {},
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:   "transform with no transformations",
+			fileID: existingFileID.String(),
+			body:   `{}`,
+			setupMocks: func(q *MockQuerier) {
+				q.AddFile(createTestFileWithID(existingFileID, testUserID, "test.jpg"))
+			},
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:   "transform with invalid JSON",
+			fileID: existingFileID.String(),
+			body:   `{invalid}`,
+			setupMocks: func(q *MockQuerier) {
+				q.AddFile(createTestFileWithID(existingFileID, testUserID, "test.jpg"))
+			},
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queries, storage, broker, cfg := setupTestDeps(t)
+
+			if tt.setupMocks != nil {
+				tt.setupMocks(queries)
+			}
+
+			router := NewRouter(&Config{
+				Storage:       storage,
+				Queries:       queries,
+				Broker:        broker,
+				MaxUploadSize: cfg.MaxUploadSize,
+				JWTSecret:     cfg.JWTSecret,
+			})
+
+			req := httptest.NewRequest("POST", "/api/v1/files/"+tt.fileID+"/transform", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d; body = %s", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+
+			if tt.wantStatus == http.StatusAccepted {
+				var body map[string]interface{}
+				if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+					t.Fatalf("failed to decode response: %v", err)
+				}
+				if _, ok := body["file_id"]; !ok {
+					t.Error("response missing file_id")
+				}
+				if _, ok := body["jobs"]; !ok {
+					t.Error("response missing jobs")
+				}
+			}
+		})
+	}
+}
+
+func TestBatchTransformHandler(t *testing.T) {
+	testUserID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	fileID1 := uuid.MustParse("770e8400-e29b-41d4-a716-446655440001")
+	fileID2 := uuid.MustParse("770e8400-e29b-41d4-a716-446655440002")
+	fileID3 := uuid.MustParse("770e8400-e29b-41d4-a716-446655440003")
+
+	tests := []struct {
+		name       string
+		body       string
+		setupMocks func(q *MockQuerier)
+		wantStatus int
+	}{
+		{
+			name: "batch transform single file",
+			body: `{"file_ids": ["` + fileID1.String() + `"], "presets": ["thumbnail"]}`,
+			setupMocks: func(q *MockQuerier) {
+				q.AddFile(createTestFileWithID(fileID1, testUserID, "test1.jpg"))
+			},
+			wantStatus: http.StatusAccepted,
+		},
+		{
+			name: "batch transform multiple files",
+			body: `{"file_ids": ["` + fileID1.String() + `", "` + fileID2.String() + `", "` + fileID3.String() + `"], "presets": ["thumbnail", "sm"]}`,
+			setupMocks: func(q *MockQuerier) {
+				q.AddFile(createTestFileWithID(fileID1, testUserID, "test1.jpg"))
+				q.AddFile(createTestFileWithID(fileID2, testUserID, "test2.jpg"))
+				q.AddFile(createTestFileWithID(fileID3, testUserID, "test3.jpg"))
+			},
+			wantStatus: http.StatusAccepted,
+		},
+		{
+			name: "batch transform with webp",
+			body: `{"file_ids": ["` + fileID1.String() + `"], "webp": true, "quality": 90}`,
+			setupMocks: func(q *MockQuerier) {
+				q.AddFile(createTestFileWithID(fileID1, testUserID, "test1.jpg"))
+			},
+			wantStatus: http.StatusAccepted,
+		},
+		{
+			name:       "batch transform with no files",
+			body:       `{"file_ids": [], "presets": ["thumbnail"]}`,
+			setupMocks: func(q *MockQuerier) {},
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "batch transform with no transformations",
+			body:       `{"file_ids": ["` + fileID1.String() + `"]}`,
+			setupMocks: func(q *MockQuerier) {},
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name: "batch transform with invalid file IDs",
+			body: `{"file_ids": ["invalid-uuid"], "presets": ["thumbnail"]}`,
+			setupMocks: func(q *MockQuerier) {
+				// No valid files
+			},
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name: "batch transform skips non-existent files",
+			body: `{"file_ids": ["` + fileID1.String() + `", "00000000-0000-0000-0000-000000000000"], "presets": ["thumbnail"]}`,
+			setupMocks: func(q *MockQuerier) {
+				q.AddFile(createTestFileWithID(fileID1, testUserID, "test1.jpg"))
+			},
+			wantStatus: http.StatusAccepted,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queries, storage, broker, cfg := setupTestDeps(t)
+
+			if tt.setupMocks != nil {
+				tt.setupMocks(queries)
+			}
+
+			router := NewRouter(&Config{
+				Storage:       storage,
+				Queries:       queries,
+				Broker:        broker,
+				MaxUploadSize: cfg.MaxUploadSize,
+				JWTSecret:     cfg.JWTSecret,
+			})
+
+			req := httptest.NewRequest("POST", "/api/v1/batch/transform", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d; body = %s", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+
+			if tt.wantStatus == http.StatusAccepted {
+				var body map[string]interface{}
+				if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+					t.Fatalf("failed to decode response: %v", err)
+				}
+				if _, ok := body["batch_id"]; !ok {
+					t.Error("response missing batch_id")
+				}
+				if _, ok := body["total_files"]; !ok {
+					t.Error("response missing total_files")
+				}
+				if _, ok := body["status_url"]; !ok {
+					t.Error("response missing status_url")
+				}
+			}
+		})
+	}
+}
+
+func TestGetBatchHandler(t *testing.T) {
+	testUserID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	batchID := uuid.MustParse("880e8400-e29b-41d4-a716-446655440000")
+
+	tests := []struct {
+		name       string
+		batchID    string
+		query      string
+		wantStatus int
+	}{
+		{
+			name:       "get batch status",
+			batchID:    batchID.String(),
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "get batch with items",
+			batchID:    batchID.String(),
+			query:      "?include_items=true",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "get batch with invalid ID",
+			batchID:    "not-a-uuid",
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queries, storage, broker, cfg := setupTestDeps(t)
+
+			router := NewRouter(&Config{
+				Storage:       storage,
+				Queries:       queries,
+				Broker:        broker,
+				MaxUploadSize: cfg.MaxUploadSize,
+				JWTSecret:     cfg.JWTSecret,
+			})
+
+			req := httptest.NewRequest("GET", "/api/v1/batch/"+tt.batchID+tt.query, nil)
+			req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d; body = %s", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+
+			if tt.wantStatus == http.StatusOK {
+				var body map[string]interface{}
+				if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+					t.Fatalf("failed to decode response: %v", err)
+				}
+				if _, ok := body["id"]; !ok {
+					t.Error("response missing id")
+				}
+				if _, ok := body["status"]; !ok {
+					t.Error("response missing status")
+				}
+				if _, ok := body["total_files"]; !ok {
+					t.Error("response missing total_files")
+				}
+			}
+		})
+	}
 }

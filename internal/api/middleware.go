@@ -76,7 +76,7 @@ func handleAPIKeyAuth(w http.ResponseWriter, r *http.Request, next http.Handler,
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		queries.UpdateAPITokenLastUsed(ctx, row.ID)
+		_ = queries.UpdateAPITokenLastUsed(ctx, row.ID)
 	}()
 
 	userID, err := uuid.FromBytes(row.UserID.Bytes[:])
@@ -291,7 +291,7 @@ func isReadOnlyMethod(method string) bool {
 func writeJSONError(w http.ResponseWriter, code, message string, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"error": map[string]string{
 			"code":    code,
 			"message": message,

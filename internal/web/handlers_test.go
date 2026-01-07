@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/abdul-hamid-achik/file-processor/internal/auth"
 	"github.com/abdul-hamid-achik/file-processor/internal/db"
@@ -18,14 +17,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
-
-func uuidToPgtype(id uuid.UUID) pgtype.UUID {
-	return pgtype.UUID{Bytes: id, Valid: true}
-}
-
-func nowPgtype() pgtype.Timestamptz {
-	return pgtype.Timestamptz{Time: time.Now(), Valid: true}
-}
 
 // MockQuerier implements a mock database querier for testing
 type MockQuerier struct {

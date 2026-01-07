@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -116,7 +115,7 @@ func TestMemoryStorage_Download(t *testing.T) {
 		{
 			name: "download existing file",
 			setup: func(s *MemoryStorage) {
-				s.Upload(context.Background(), "test/file.txt", strings.NewReader("hello world"), "text/plain", 11)
+				_ = s.Upload(context.Background(), "test/file.txt", strings.NewReader("hello world"), "text/plain", 11)
 			},
 			key:         "test/file.txt",
 			wantContent: "hello world",
@@ -132,7 +131,7 @@ func TestMemoryStorage_Download(t *testing.T) {
 		{
 			name: "download empty file",
 			setup: func(s *MemoryStorage) {
-				s.Upload(context.Background(), "test/empty.txt", strings.NewReader(""), "text/plain", 0)
+				_ = s.Upload(context.Background(), "test/empty.txt", strings.NewReader(""), "text/plain", 0)
 			},
 			key:         "test/empty.txt",
 			wantContent: "",
@@ -169,7 +168,7 @@ func TestMemoryStorage_Download(t *testing.T) {
 // TestMemoryStorage_Download_ContextCanceled tests download with canceled context.
 func TestMemoryStorage_Download_ContextCanceled(t *testing.T) {
 	storage := NewMemoryStorage()
-	storage.Upload(context.Background(), "test.txt", strings.NewReader("data"), "text/plain", 4)
+	_ = storage.Upload(context.Background(), "test.txt", strings.NewReader("data"), "text/plain", 4)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -192,7 +191,7 @@ func TestMemoryStorage_Delete(t *testing.T) {
 		{
 			name: "delete existing file",
 			setup: func(s *MemoryStorage) {
-				s.Upload(context.Background(), "test/file.txt", strings.NewReader("content"), "text/plain", 7)
+				_ = s.Upload(context.Background(), "test/file.txt", strings.NewReader("content"), "text/plain", 7)
 			},
 			key:     "test/file.txt",
 			wantErr: nil,
@@ -257,8 +256,8 @@ func TestMemoryStorage_Exists(t *testing.T) {
 		{
 			name: "file deleted",
 			setup: func(s *MemoryStorage) {
-				s.Upload(context.Background(), "test/file.txt", strings.NewReader("content"), "text/plain", 7)
-				s.Delete(context.Background(), "test/file.txt")
+				_ = s.Upload(context.Background(), "test/file.txt", strings.NewReader("content"), "text/plain", 7)
+				_ = s.Delete(context.Background(), "test/file.txt")
 			},
 			key:        "test/file.txt",
 			wantExists: false,
@@ -354,7 +353,7 @@ func TestMemoryStorage_Concurrent(t *testing.T) {
 			defer wg.Done()
 			key := string(rune('a'+n%26)) + "/file.txt"
 			content := strings.Repeat("x", n)
-			storage.Upload(ctx, key, strings.NewReader(content), "text/plain", int64(len(content)))
+			_ = storage.Upload(ctx, key, strings.NewReader(content), "text/plain", int64(len(content)))
 		}(i)
 	}
 
@@ -364,9 +363,9 @@ func TestMemoryStorage_Concurrent(t *testing.T) {
 		go func(n int) {
 			defer wg.Done()
 			key := string(rune('a'+n%26)) + "/file.txt"
-			storage.Exists(ctx, key)
+			_, _ = storage.Exists(ctx, key)
 			if r, err := storage.Download(ctx, key); err == nil {
-				io.Copy(io.Discard, r)
+				_, _ = io.Copy(io.Discard, r)
 				r.Close()
 			}
 		}(i)
@@ -441,7 +440,7 @@ func TestMinIOStorage_Upload(t *testing.T) {
 
 			// Verify by downloading
 			if !tt.wantErr {
-				defer storage.Delete(ctx, tt.key) // Cleanup
+				defer func() { _ = storage.Delete(ctx, tt.key) }() // Cleanup
 
 				r, err := storage.Download(ctx, tt.key)
 				if err != nil {
@@ -491,7 +490,7 @@ func TestMinIOStorage_Download(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Setup upload failed: %v", err)
 		}
-		defer storage.Delete(ctx, key)
+		defer func() { _ = storage.Delete(ctx, key) }()
 
 		// Download
 		r, err := storage.Download(ctx, key)
@@ -541,7 +540,7 @@ func TestMinIOStorage_Delete(t *testing.T) {
 		key := "test/delete-test.txt"
 
 		// Upload first
-		storage.Upload(ctx, key, strings.NewReader("content"), "text/plain", 7)
+		_ = storage.Upload(ctx, key, strings.NewReader("content"), "text/plain", 7)
 
 		// Delete
 		err := storage.Delete(ctx, key)
@@ -589,8 +588,8 @@ func TestMinIOStorage_Exists(t *testing.T) {
 
 	t.Run("file exists", func(t *testing.T) {
 		key := "test/exists-test.txt"
-		storage.Upload(ctx, key, strings.NewReader("content"), "text/plain", 7)
-		defer storage.Delete(ctx, key)
+		_ = storage.Upload(ctx, key, strings.NewReader("content"), "text/plain", 7)
+		defer func() { _ = storage.Delete(ctx, key) }()
 
 		exists, err := storage.Exists(ctx, key)
 		if err != nil {
@@ -637,8 +636,8 @@ func TestMinIOStorage_GetPresignedURL(t *testing.T) {
 
 	t.Run("generate URL for existing file", func(t *testing.T) {
 		key := "test/presign-test.txt"
-		storage.Upload(ctx, key, strings.NewReader("content"), "text/plain", 7)
-		defer storage.Delete(ctx, key)
+		_ = storage.Upload(ctx, key, strings.NewReader("content"), "text/plain", 7)
+		defer func() { _ = storage.Delete(ctx, key) }()
 
 		url, err := storage.GetPresignedURL(ctx, key, 3600)
 		if err != nil {
@@ -654,15 +653,4 @@ func TestMinIOStorage_GetPresignedURL(t *testing.T) {
 			t.Logf("URL: %s", url)
 		}
 	})
-}
-
-// Helper function to read all content from a ReadCloser
-func readAll(t *testing.T, r io.ReadCloser) string {
-	t.Helper()
-	defer r.Close()
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, r); err != nil {
-		t.Fatalf("failed to read: %v", err)
-	}
-	return buf.String()
 }

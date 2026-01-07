@@ -1,11 +1,9 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
-	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
@@ -336,6 +334,70 @@ func (m *MockQuerier) IncrementTransformationCount(ctx context.Context, id pgtyp
 	return nil
 }
 
+func (m *MockQuerier) CreateBatchOperation(ctx context.Context, arg db.CreateBatchOperationParams) (db.BatchOperation, error) {
+	id := uuid.New()
+	pgID := pgtype.UUID{Bytes: id, Valid: true}
+	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+
+	return db.BatchOperation{
+		ID:             pgID,
+		UserID:         arg.UserID,
+		Status:         db.BatchStatusPending,
+		TotalFiles:     arg.TotalFiles,
+		CompletedFiles: 0,
+		FailedFiles:    0,
+		Presets:        arg.Presets,
+		Webp:           arg.Webp,
+		Quality:        arg.Quality,
+		Watermark:      arg.Watermark,
+		CreatedAt:      now,
+	}, nil
+}
+
+func (m *MockQuerier) GetBatchOperationByUser(ctx context.Context, arg db.GetBatchOperationByUserParams) (db.BatchOperation, error) {
+	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+	return db.BatchOperation{
+		ID:             arg.ID,
+		UserID:         arg.UserID,
+		Status:         db.BatchStatusPending,
+		TotalFiles:     5,
+		CompletedFiles: 0,
+		FailedFiles:    0,
+		Presets:        []string{"thumbnail"},
+		Webp:           false,
+		Quality:        85,
+		CreatedAt:      now,
+	}, nil
+}
+
+func (m *MockQuerier) CreateBatchItem(ctx context.Context, arg db.CreateBatchItemParams) (db.BatchItem, error) {
+	id := uuid.New()
+	pgID := pgtype.UUID{Bytes: id, Valid: true}
+	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+
+	return db.BatchItem{
+		ID:        pgID,
+		BatchID:   arg.BatchID,
+		FileID:    arg.FileID,
+		Status:    db.BatchStatusPending,
+		JobIds:    arg.JobIds,
+		CreatedAt: now,
+	}, nil
+}
+
+func (m *MockQuerier) ListBatchItems(ctx context.Context, batchID pgtype.UUID) ([]db.BatchItem, error) {
+	return []db.BatchItem{}, nil
+}
+
+func (m *MockQuerier) CountBatchItemsByStatus(ctx context.Context, batchID pgtype.UUID) (db.CountBatchItemsByStatusRow, error) {
+	return db.CountBatchItemsByStatusRow{
+		Pending:    0,
+		Processing: 0,
+		Completed:  0,
+		Failed:     0,
+	}, nil
+}
+
 func (m *MockQuerier) GetAllFiles() []db.File {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -509,20 +571,6 @@ func createTestVariant(fileID uuid.UUID, variantType string) db.FileVariant {
 		Width:       &width,
 		Height:      &height,
 		CreatedAt:   createdAt,
-	}
-}
-
-func assertStatus(t *testing.T, rec *httptest.ResponseRecorder, want int) {
-	t.Helper()
-	if rec.Code != want {
-		t.Errorf("status = %d, want %d; body = %s", rec.Code, want, rec.Body.String())
-	}
-}
-
-func assertBodyContains(t *testing.T, rec *httptest.ResponseRecorder, substr string) {
-	t.Helper()
-	if !bytes.Contains(rec.Body.Bytes(), []byte(substr)) {
-		t.Errorf("body = %q, want to contain %q", rec.Body.String(), substr)
 	}
 }
 

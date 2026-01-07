@@ -81,7 +81,7 @@ func CDNHandler(cfg *CDNConfig) http.HandlerFunc {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			cfg.Queries.IncrementShareAccessCount(ctx, share.ID)
+			_ = cfg.Queries.IncrementShareAccessCount(ctx, share.ID)
 		}()
 
 		opts, err := ParseTransforms(transforms)
@@ -119,7 +119,7 @@ func CDNHandler(cfg *CDNConfig) http.HandlerFunc {
 			go func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				cfg.Queries.IncrementTransformCacheCount(ctx, db.IncrementTransformCacheCountParams{
+				_ = cfg.Queries.IncrementTransformCacheCount(ctx, db.IncrementTransformCacheCountParams{
 					FileID:   fileID,
 					CacheKey: cacheKey,
 				})
@@ -260,7 +260,7 @@ func serveResult(w http.ResponseWriter, r *http.Request, result *processor.Resul
 	w.Header().Set("Cache-Control", cacheControlShort)
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filename))
 
-	io.Copy(w, result.Data)
+	_, _ = io.Copy(w, result.Data)
 }
 
 func CreateShareHandler(cfg *CDNConfig, baseURL string) http.HandlerFunc {

@@ -53,7 +53,7 @@ func createTestJPEG(width, height int) []byte {
 		}
 	}
 	var buf bytes.Buffer
-	jpeg.Encode(&buf, img, &jpeg.Options{Quality: 85})
+	_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 85})
 	return buf.Bytes()
 }
 
@@ -248,7 +248,7 @@ func TestThumbnailHandler(t *testing.T) {
 			}
 			if tt.setupImage != nil && tt.setupFile != nil {
 				ctx := context.Background()
-				mockStorage.MemoryStorage.Upload(ctx, tt.setupFile.StorageKey, bytes.NewReader(tt.setupImage), "image/jpeg", int64(len(tt.setupImage)))
+				_ = mockStorage.MemoryStorage.Upload(ctx, tt.setupFile.StorageKey, bytes.NewReader(tt.setupImage), "image/jpeg", int64(len(tt.setupImage)))
 			}
 
 			testRegistry := newTestRegistry()
@@ -307,7 +307,7 @@ func TestThumbnailHandler_StatusUpdate(t *testing.T) {
 	mockQueries.AddFile(testFile)
 
 	imgData := createTestJPEG(800, 600)
-	mockStorage.MemoryStorage.Upload(context.Background(), testFile.StorageKey, bytes.NewReader(imgData), "image/jpeg", int64(len(imgData)))
+	_ = mockStorage.MemoryStorage.Upload(context.Background(), testFile.StorageKey, bytes.NewReader(imgData), "image/jpeg", int64(len(imgData)))
 
 	testRegistry := newTestRegistry()
 	testRegistry.register("thumbnail", mockProc)
@@ -457,7 +457,7 @@ func TestResizeHandler(t *testing.T) {
 			}
 			if tt.setupImage != nil && tt.setupFile != nil {
 				ctx := context.Background()
-				mockStorage.MemoryStorage.Upload(ctx, tt.setupFile.StorageKey, bytes.NewReader(tt.setupImage), "image/jpeg", int64(len(tt.setupImage)))
+				_ = mockStorage.MemoryStorage.Upload(ctx, tt.setupFile.StorageKey, bytes.NewReader(tt.setupImage), "image/jpeg", int64(len(tt.setupImage)))
 			}
 
 			testRegistry := newTestRegistry()
@@ -733,11 +733,6 @@ func (r *testRegistry) register(name string, p processor.Processor) {
 	for _, ct := range p.SupportedTypes() {
 		r.contentTypes[ct] = p
 	}
-}
-
-func (r *testRegistry) get(name string) (processor.Processor, bool) {
-	p, ok := r.processors[name]
-	return p, ok
 }
 
 func (r *testRegistry) getForContentType(contentType string) processor.Processor {

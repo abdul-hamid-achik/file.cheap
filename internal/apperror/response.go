@@ -34,7 +34,7 @@ func WriteJSON(w http.ResponseWriter, r *http.Request, err error) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(appErr.StatusCode)
-	json.NewEncoder(w).Encode(ErrorResponse{
+	_ = json.NewEncoder(w).Encode(ErrorResponse{
 		Error:   appErr.Code,
 		Code:    appErr.Code,
 		Message: appErr.Message,
