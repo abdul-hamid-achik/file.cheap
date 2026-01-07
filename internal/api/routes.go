@@ -69,7 +69,7 @@ func NewRouter(cfg *Config) http.Handler {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
 	apiMux := http.NewServeMux()
@@ -157,7 +157,7 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 			apperror.WriteJSON(w, r, apperror.WrapWithMessage(err, "missing_file", "Please select a file to upload", http.StatusBadRequest))
 			return
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		fileID := uuid.New()
 		storageKey := fmt.Sprintf("uploads/%s/%s/%s", userID.String(), fileID.String(), header.Filename)
@@ -288,7 +288,7 @@ func listFilesHandler(cfg *Config) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"files":    filesList,
 			"total":    total,
 			"has_more": int64(offset)+int64(len(files)) < total,
@@ -354,7 +354,7 @@ func getFileHandler(cfg *Config) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}
 }
 
@@ -682,7 +682,7 @@ func transformHandler(cfg *Config) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(TransformResponse{
+		_ = json.NewEncoder(w).Encode(TransformResponse{
 			FileID: fileIDStr,
 			Jobs:   jobIDs,
 		})

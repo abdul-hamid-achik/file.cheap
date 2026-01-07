@@ -99,7 +99,7 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 		GoogleEnabled: h.oauthService != nil && h.oauthService.IsGoogleConfigured(),
 		GitHubEnabled: h.oauthService != nil && h.oauthService.IsGitHubConfigured(),
 	}
-	pages.Register(data).Render(r.Context(), w)
+	_ = pages.Register(data).Render(r.Context(), w)
 }
 
 func (h *Handlers) RegisterPost(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +109,7 @@ func (h *Handlers) RegisterPost(w http.ResponseWriter, r *http.Request) {
 			GoogleEnabled: h.oauthService != nil && h.oauthService.IsGoogleConfigured(),
 			GitHubEnabled: h.oauthService != nil && h.oauthService.IsGitHubConfigured(),
 		}
-		pages.Register(data).Render(r.Context(), w)
+		_ = pages.Register(data).Render(r.Context(), w)
 		return
 	}
 
@@ -124,7 +124,7 @@ func (h *Handlers) RegisterPost(w http.ResponseWriter, r *http.Request) {
 			GoogleEnabled: h.oauthService != nil && h.oauthService.IsGoogleConfigured(),
 			GitHubEnabled: h.oauthService != nil && h.oauthService.IsGitHubConfigured(),
 		}
-		pages.Register(data).Render(r.Context(), w)
+		_ = pages.Register(data).Render(r.Context(), w)
 		return
 	}
 
@@ -869,7 +869,7 @@ func (h *Handlers) DownloadFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to download file", http.StatusInternalServerError)
 		return
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filename))

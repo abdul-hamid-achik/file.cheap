@@ -192,7 +192,7 @@ func processTransform(ctx context.Context, cfg *CDNConfig, storageKey string, op
 	if err != nil {
 		return nil, fmt.Errorf("failed to download file: %w", err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	procName := opts.ProcessorName()
 	if procName == "" {
@@ -322,11 +322,11 @@ func CreateShareHandler(cfg *CDNConfig, baseURL string) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		fmt.Fprintf(w, `{"id":"%s","token":"%s","share_url":"%s"`, uuidFromPgtype(share.ID), token, shareURL)
+		_, _ = fmt.Fprintf(w, `{"id":"%s","token":"%s","share_url":"%s"`, uuidFromPgtype(share.ID), token, shareURL)
 		if expiresAt.Valid {
-			fmt.Fprintf(w, `,"expires_at":"%s"`, expiresAt.Time.Format(time.RFC3339))
+			_, _ = fmt.Fprintf(w, `,"expires_at":"%s"`, expiresAt.Time.Format(time.RFC3339))
 		}
-		fmt.Fprint(w, "}")
+		_, _ = fmt.Fprint(w, "}")
 	}
 }
 
@@ -365,19 +365,19 @@ func ListSharesHandler(cfg *CDNConfig) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"shares":[`)
+		_, _ = fmt.Fprint(w, `{"shares":[`)
 		for i, s := range shares {
 			if i > 0 {
-				fmt.Fprint(w, ",")
+				_, _ = fmt.Fprint(w, ",")
 			}
-			fmt.Fprintf(w, `{"id":"%s","token":"%s","access_count":%d,"created_at":"%s"`,
+			_, _ = fmt.Fprintf(w, `{"id":"%s","token":"%s","access_count":%d,"created_at":"%s"`,
 				uuidFromPgtype(s.ID), s.Token, s.AccessCount, s.CreatedAt.Time.Format(time.RFC3339))
 			if s.ExpiresAt.Valid {
-				fmt.Fprintf(w, `,"expires_at":"%s"`, s.ExpiresAt.Time.Format(time.RFC3339))
+				_, _ = fmt.Fprintf(w, `,"expires_at":"%s"`, s.ExpiresAt.Time.Format(time.RFC3339))
 			}
-			fmt.Fprint(w, "}")
+			_, _ = fmt.Fprint(w, "}")
 		}
-		fmt.Fprint(w, "]}")
+		_, _ = fmt.Fprint(w, "]}")
 	}
 }
 

@@ -83,7 +83,7 @@ func run() error {
 		return fmt.Errorf("failed to parse redis url: %w", err)
 	}
 	redisClient := redis.NewClient(redisOpt)
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		return fmt.Errorf("failed to connect to redis: %w", err)
@@ -149,7 +149,7 @@ func run() error {
 	metricsMux.Handle("/metrics", promhttp.Handler())
 	metricsMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	})
 
 	metricsServer := &http.Server{
