@@ -170,7 +170,7 @@ func (h *Handlers) ForgotPasswordPost(w http.ResponseWriter, r *http.Request) {
 		data := pages.ForgotPasswordPageData{
 			Error: apperror.SafeMessage(apperror.Wrap(err, apperror.ErrBadRequest)),
 		}
-		pages.ForgotPassword(data).Render(r.Context(), w)
+		_ = pages.ForgotPassword(data).Render(r.Context(), w)
 		return
 	}
 
@@ -180,7 +180,7 @@ func (h *Handlers) ForgotPasswordPost(w http.ResponseWriter, r *http.Request) {
 	data := pages.ForgotPasswordPageData{
 		Success: "If an account exists with this email, you will receive a password reset link.",
 	}
-	pages.ForgotPassword(data).Render(r.Context(), w)
+	_ = pages.ForgotPassword(data).Render(r.Context(), w)
 }
 
 func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
@@ -248,7 +248,7 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pages.Dashboard(user, data).Render(r.Context(), w)
+	_ = pages.Dashboard(user, data).Render(r.Context(), w)
 }
 
 func (h *Handlers) UploadPage(w http.ResponseWriter, r *http.Request) {
@@ -259,7 +259,7 @@ func (h *Handlers) UploadPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := pages.UploadPageData{}
-	pages.Upload(user, data).Render(r.Context(), w)
+	_ = pages.Upload(user, data).Render(r.Context(), w)
 }
 
 func (h *Handlers) UploadFile(w http.ResponseWriter, r *http.Request) {
@@ -487,7 +487,7 @@ func (h *Handlers) FileList(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pages.FileList(user, data).Render(r.Context(), w)
+	_ = pages.FileList(user, data).Render(r.Context(), w)
 }
 
 func (h *Handlers) FileDetail(w http.ResponseWriter, r *http.Request) {
@@ -585,7 +585,7 @@ func (h *Handlers) FileDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pages.FileDetailPage(user, data).Render(r.Context(), w)
+	_ = pages.FileDetailPage(user, data).Render(r.Context(), w)
 }
 
 func (h *Handlers) DeleteFile(w http.ResponseWriter, r *http.Request) {
@@ -903,7 +903,7 @@ func (h *Handlers) Profile(w http.ResponseWriter, r *http.Request) {
 		data.AvatarURL = *user.AvatarURL
 	}
 
-	pages.Profile(user, data).Render(r.Context(), w)
+	_ = pages.Profile(user, data).Render(r.Context(), w)
 }
 
 func (h *Handlers) ProfilePost(w http.ResponseWriter, r *http.Request) {
@@ -1038,7 +1038,7 @@ func (h *Handlers) Settings(w http.ResponseWriter, r *http.Request) {
 		data.ActiveTab = tab
 	}
 
-	pages.Settings(user, data).Render(r.Context(), w)
+	_ = pages.Settings(user, data).Render(r.Context(), w)
 }
 
 func (h *Handlers) SettingsPassword(w http.ResponseWriter, r *http.Request) {
@@ -1176,41 +1176,41 @@ func (h *Handlers) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		data := pages.VerifyEmailPageData{
 			Error: "Invalid verification link. Please request a new one.",
 		}
-		pages.VerifyEmail(data).Render(r.Context(), w)
+		_ = pages.VerifyEmail(data).Render(r.Context(), w)
 		return
 	}
 
 	data := pages.VerifyEmailPageData{
 		Success: true,
 	}
-	pages.VerifyEmail(data).Render(r.Context(), w)
+	_ = pages.VerifyEmail(data).Render(r.Context(), w)
 }
 
 func (h *Handlers) ResendVerification(w http.ResponseWriter, r *http.Request) {
-	pages.ResendVerification(pages.ResendVerificationPageData{}).Render(r.Context(), w)
+	_ = pages.ResendVerification(pages.ResendVerificationPageData{}).Render(r.Context(), w)
 }
 
 func (h *Handlers) ResendVerificationPost(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		data := pages.ResendVerificationPageData{Error: "Invalid form data"}
-		pages.ResendVerification(data).Render(r.Context(), w)
+		_ = pages.ResendVerification(data).Render(r.Context(), w)
 		return
 	}
 
 	data := pages.ResendVerificationPageData{
 		Success: "If an account exists with this email, you will receive a verification link.",
 	}
-	pages.ResendVerification(data).Render(r.Context(), w)
+	_ = pages.ResendVerification(data).Render(r.Context(), w)
 }
 
 func (h *Handlers) Privacy(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUserFromContext(r.Context())
-	pages.Privacy(user).Render(r.Context(), w)
+	_ = pages.Privacy(user).Render(r.Context(), w)
 }
 
 func (h *Handlers) Terms(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUserFromContext(r.Context())
-	pages.Terms(user).Render(r.Context(), w)
+	_ = pages.Terms(user).Render(r.Context(), w)
 }
 
 func (h *Handlers) Docs(w http.ResponseWriter, r *http.Request) {
@@ -1219,19 +1219,19 @@ func (h *Handlers) Docs(w http.ResponseWriter, r *http.Request) {
 	if section == "" {
 		section = "getting-started"
 	}
-	pages.Docs(user, section).Render(r.Context(), w)
+	_ = pages.Docs(user, section).Render(r.Context(), w)
 }
 
 func (h *Handlers) NotFound(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUserFromContext(r.Context())
 	w.WriteHeader(http.StatusNotFound)
-	pages.NotFound(user).Render(r.Context(), w)
+	_ = pages.NotFound(user).Render(r.Context(), w)
 }
 
 func (h *Handlers) ServerError(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUserFromContext(r.Context())
 	w.WriteHeader(http.StatusInternalServerError)
-	pages.ServerError(user).Render(r.Context(), w)
+	_ = pages.ServerError(user).Render(r.Context(), w)
 }
 
 func uuidToString(id pgtype.UUID) string {
