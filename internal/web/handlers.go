@@ -139,7 +139,7 @@ func (h *Handlers) RegisterPost(w http.ResponseWriter, r *http.Request) {
 			GoogleEnabled: h.oauthService != nil && h.oauthService.IsGoogleConfigured(),
 			GitHubEnabled: h.oauthService != nil && h.oauthService.IsGitHubConfigured(),
 		}
-		pages.Register(data).Render(r.Context(), w)
+		_ = pages.Register(data).Render(r.Context(), w)
 		return
 	}
 
@@ -149,7 +149,7 @@ func (h *Handlers) RegisterPost(w http.ResponseWriter, r *http.Request) {
 			GoogleEnabled: h.oauthService != nil && h.oauthService.IsGoogleConfigured(),
 			GitHubEnabled: h.oauthService != nil && h.oauthService.IsGitHubConfigured(),
 		}
-		pages.Register(data).Render(r.Context(), w)
+		_ = pages.Register(data).Render(r.Context(), w)
 		return
 	}
 
@@ -162,7 +162,7 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) ForgotPassword(w http.ResponseWriter, r *http.Request) {
-	pages.ForgotPassword(pages.ForgotPasswordPageData{}).Render(r.Context(), w)
+	_ = pages.ForgotPassword(pages.ForgotPasswordPageData{}).Render(r.Context(), w)
 }
 
 func (h *Handlers) ForgotPasswordPost(w http.ResponseWriter, r *http.Request) {

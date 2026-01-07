@@ -925,7 +925,7 @@ func batchTransformHandler(cfg *Config) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(BatchTransformResponse{
+		_ = json.NewEncoder(w).Encode(BatchTransformResponse{
 			BatchID:    batchIDStr,
 			TotalFiles: len(validFileIDs),
 			TotalJobs:  totalJobsCreated,
@@ -1030,6 +1030,6 @@ func getBatchHandler(cfg *Config) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}
 }
