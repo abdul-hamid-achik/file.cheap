@@ -64,6 +64,9 @@ CREATE TABLE users (
     trial_ends_at TIMESTAMPTZ,
     files_limit INTEGER NOT NULL DEFAULT 100,
     max_file_size BIGINT NOT NULL DEFAULT 10485760,
+    transformations_count INTEGER NOT NULL DEFAULT 0,
+    transformations_limit INTEGER NOT NULL DEFAULT 100,
+    transformations_reset_at TIMESTAMPTZ NOT NULL DEFAULT DATE_TRUNC('month', NOW()) + INTERVAL '1 month',
     email_verified_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -285,3 +288,22 @@ CREATE TABLE transform_cache (
 CREATE INDEX idx_transform_cache_file_id ON transform_cache(file_id);
 CREATE INDEX idx_transform_cache_lookup ON transform_cache(file_id, cache_key);
 CREATE INDEX idx_transform_cache_request_count ON transform_cache(request_count DESC);
+
+-- ============================================================================
+-- USAGE TRACKING
+-- ============================================================================
+
+-- Monthly usage history table for analytics and billing
+CREATE TABLE monthly_usage (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    year_month VARCHAR(7) NOT NULL,
+    transformations_count INTEGER NOT NULL DEFAULT 0,
+    bytes_processed BIGINT NOT NULL DEFAULT 0,
+    files_uploaded INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id, year_month)
+);
+
+CREATE INDEX idx_monthly_usage_user ON monthly_usage(user_id, year_month DESC);

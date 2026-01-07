@@ -429,6 +429,17 @@ type FileVariant struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+type MonthlyUsage struct {
+	ID                   pgtype.UUID        `json:"id"`
+	UserID               pgtype.UUID        `json:"user_id"`
+	YearMonth            string             `json:"year_month"`
+	TransformationsCount int32              `json:"transformations_count"`
+	BytesProcessed       int64              `json:"bytes_processed"`
+	FilesUploaded        int32              `json:"files_uploaded"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+}
+
 type OauthAccount struct {
 	ID             pgtype.UUID        `json:"id"`
 	UserID         pgtype.UUID        `json:"user_id"`
@@ -488,24 +499,27 @@ type TransformCache struct {
 }
 
 type User struct {
-	ID                    pgtype.UUID        `json:"id"`
-	Email                 string             `json:"email"`
-	PasswordHash          *string            `json:"password_hash"`
-	Name                  string             `json:"name"`
-	AvatarUrl             *string            `json:"avatar_url"`
-	Role                  UserRole           `json:"role"`
-	SubscriptionTier      SubscriptionTier   `json:"subscription_tier"`
-	StripeCustomerID      *string            `json:"stripe_customer_id"`
-	StripeSubscriptionID  *string            `json:"stripe_subscription_id"`
-	SubscriptionStatus    SubscriptionStatus `json:"subscription_status"`
-	SubscriptionPeriodEnd pgtype.Timestamptz `json:"subscription_period_end"`
-	TrialEndsAt           pgtype.Timestamptz `json:"trial_ends_at"`
-	FilesLimit            int32              `json:"files_limit"`
-	MaxFileSize           int64              `json:"max_file_size"`
-	EmailVerifiedAt       pgtype.Timestamptz `json:"email_verified_at"`
-	CreatedAt             pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
-	DeletedAt             pgtype.Timestamptz `json:"deleted_at"`
+	ID                     pgtype.UUID        `json:"id"`
+	Email                  string             `json:"email"`
+	PasswordHash           *string            `json:"password_hash"`
+	Name                   string             `json:"name"`
+	AvatarUrl              *string            `json:"avatar_url"`
+	Role                   UserRole           `json:"role"`
+	SubscriptionTier       SubscriptionTier   `json:"subscription_tier"`
+	StripeCustomerID       *string            `json:"stripe_customer_id"`
+	StripeSubscriptionID   *string            `json:"stripe_subscription_id"`
+	SubscriptionStatus     SubscriptionStatus `json:"subscription_status"`
+	SubscriptionPeriodEnd  pgtype.Timestamptz `json:"subscription_period_end"`
+	TrialEndsAt            pgtype.Timestamptz `json:"trial_ends_at"`
+	FilesLimit             int32              `json:"files_limit"`
+	MaxFileSize            int64              `json:"max_file_size"`
+	TransformationsCount   int32              `json:"transformations_count"`
+	TransformationsLimit   int32              `json:"transformations_limit"`
+	TransformationsResetAt pgtype.Timestamptz `json:"transformations_reset_at"`
+	EmailVerifiedAt        pgtype.Timestamptz `json:"email_verified_at"`
+	CreatedAt              pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt              pgtype.Timestamptz `json:"deleted_at"`
 }
 
 type UserSetting struct {

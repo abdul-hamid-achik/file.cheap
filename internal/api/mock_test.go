@@ -79,12 +79,15 @@ type MockQuerier struct {
 	SoftDeleteFileErr error
 	ListVariantsErr   error
 	CountFilesResult  int64
+
+	BillingTier db.SubscriptionTier
 }
 
 func NewMockQuerier() *MockQuerier {
 	return &MockQuerier{
-		files:    make(map[string]db.File),
-		variants: make(map[string]db.FileVariant),
+		files:       make(map[string]db.File),
+		variants:    make(map[string]db.FileVariant),
+		BillingTier: db.SubscriptionTierPro, // Default to Pro for existing tests
 	}
 }
 
@@ -272,6 +275,39 @@ func (m *MockQuerier) ListFileSharesByFile(ctx context.Context, fileID pgtype.UU
 
 func (m *MockQuerier) DeleteFileShare(ctx context.Context, arg db.DeleteFileShareParams) error {
 	return errors.New("not implemented in mock")
+}
+
+func (m *MockQuerier) GetUserBillingInfo(ctx context.Context, id pgtype.UUID) (db.GetUserBillingInfoRow, error) {
+	tier := m.BillingTier
+	if tier == "" {
+		tier = db.SubscriptionTierPro
+	}
+
+	var filesLimit int32
+	var maxFileSize int64
+	var status db.SubscriptionStatus
+
+	switch tier {
+	case db.SubscriptionTierPro, db.SubscriptionTierEnterprise:
+		filesLimit = 2000
+		maxFileSize = 100 * 1024 * 1024 // 100 MB
+		status = db.SubscriptionStatusActive
+	default:
+		filesLimit = 100
+		maxFileSize = 10 * 1024 * 1024 // 10 MB
+		status = db.SubscriptionStatusNone
+	}
+
+	return db.GetUserBillingInfoRow{
+		SubscriptionTier:   tier,
+		SubscriptionStatus: status,
+		FilesLimit:         filesLimit,
+		MaxFileSize:        maxFileSize,
+	}, nil
+}
+
+func (m *MockQuerier) GetUserFilesCount(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	return m.CountFilesByUser(ctx, userID)
 }
 
 func (m *MockQuerier) GetAllFiles() []db.File {
