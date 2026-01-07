@@ -15,7 +15,6 @@ type Config struct {
 
 	Environment string
 	LogLevel    string
-	LogFormat   string
 
 	DatabaseURL string
 	RedisURL    string
@@ -46,6 +45,12 @@ type Config struct {
 	SMTPPassword    string
 	SMTPFromAddress string
 	SMTPFromName    string
+
+	// Stripe configuration
+	StripeSecretKey      string
+	StripePublishableKey string
+	StripeWebhookSecret  string
+	StripePriceIDPro     string
 }
 
 func Load() (*Config, error) {
@@ -108,12 +113,17 @@ func Load() (*Config, error) {
 	cfg.SMTPPort = getEnvInt("SMTP_PORT", 1025)
 	cfg.SMTPUsername = os.Getenv("SMTP_USERNAME")
 	cfg.SMTPPassword = os.Getenv("SMTP_PASSWORD")
-	cfg.SMTPFromAddress = getEnvString("SMTP_FROM_ADDRESS", "noreply@fileprocessor.local")
-	cfg.SMTPFromName = getEnvString("SMTP_FROM_NAME", "File Processor")
+	cfg.SMTPFromAddress = getEnvString("SMTP_FROM_ADDRESS", "noreply@file.cheap")
+	cfg.SMTPFromName = getEnvString("SMTP_FROM_NAME", "file.cheap")
 
 	cfg.Environment = getEnvString("ENVIRONMENT", "development")
 	cfg.LogLevel = getEnvString("LOG_LEVEL", "info")
-	cfg.LogFormat = os.Getenv("LOG_FORMAT")
+
+	// Stripe (optional)
+	cfg.StripeSecretKey = os.Getenv("STRIPE_SECRET_KEY")
+	cfg.StripePublishableKey = os.Getenv("STRIPE_PUBLISHABLE_KEY")
+	cfg.StripeWebhookSecret = os.Getenv("STRIPE_WEBHOOK_SECRET")
+	cfg.StripePriceIDPro = os.Getenv("STRIPE_PRICE_ID_PRO")
 
 	return cfg, nil
 }

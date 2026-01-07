@@ -1,0 +1,7 @@
+---
+- name: Install K3s agent on worker nodes
+  hosts: workers
+  become: true
+  serial: 1
+  roles:
+    - k3s-worker

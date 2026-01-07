@@ -1,6 +1,6 @@
-# File Processor
+# file.cheap
 
-A hands-on Go learning project for building a production-style file processing pipeline.
+File processing that doesn't cost a fortune. A production-ready Go application for image and document processing.
 
 ## What You'll Learn
 

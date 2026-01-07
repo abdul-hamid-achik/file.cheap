@@ -241,7 +241,7 @@ templ Upload(user *auth.SessionUser, data UploadPageData) {
 								}));
 							};
 
-							xhr.open('POST', '/api/files');
+							xhr.open('POST', '/files/upload');
 							xhr.send(formData);
 						} catch (error) {
 							this.uploading = false;

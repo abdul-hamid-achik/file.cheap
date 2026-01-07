@@ -3,15 +3,31 @@ version: '3'
 vars:
   DATABASE_URL: postgres://postgres:postgres@localhost:5432/fileprocessor?sslmode=disable
   REDIS_URL: redis://localhost:6379
+  DOMAIN: file.cheap
+  KUBECONFIG: "{{.HOME}}/.kube/file-cheap"
+  GITHUB_USER: abdul-hamid-achik
+  INFRA_DIR: infrastructure
+  TF_DIR: infrastructure/terraform
+  ANSIBLE_DIR: infrastructure/ansible
+  K8S_DIR: infrastructure/k8s
 
 tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # LOCAL DEVELOPMENT
+  # ════════════════════════════════════════════════════════════════════════════
+
   setup:
     desc: Install required tools via Homebrew
     cmds:
       - brew install sqlc templ tailwindcss go-task
       - mkdir -p static/js
       - curl -sL https://unpkg.com/htmx.org@2/dist/htmx.min.js -o static/js/htmx.min.js
-      - echo "Setup complete! Run 'task docker:up' to start services."
+      - echo "Setup complete! Run 'task up' to start services."
 
   deps:
     desc: Download Go dependencies
@@ -19,23 +35,39 @@ tasks:
       - go mod download
       - go mod tidy
 
-  docker:up:
-    desc: Start all services (postgres, redis, minio)
+  up:
+    desc: Start all services
     cmds:
       - docker compose up -d
+      - 'echo ""'
+      - 'echo "  ✓ Services started"'
+      - 'echo ""'
+      - 'echo "    API:      http://localhost:8080"'
+      - 'echo "    Grafana:  http://localhost:3000"'
+      - 'echo ""'
 
-  docker:down:
+  down:
     desc: Stop all services
     cmds:
       - docker compose down
 
-  docker:logs:
-    desc: View service logs
+  restart:
+    desc: Restart all services
+    cmds:
+      - docker compose restart
+
+  logs:
+    desc: View all service logs
     cmds:
       - docker compose logs -f
 
-  docker:clean:
-    desc: Stop services and remove volumes
+  ps:
+    desc: Show running services
+    cmds:
+      - docker compose ps
+
+  nuke:
+    desc: Stop services and remove all volumes (destructive!)
     cmds:
       - docker compose down -v
 
@@ -45,6 +77,17 @@ tasks:
       - psql "{{.DATABASE_URL}}" -f migrations/001_initial_schema.sql
       - psql "{{.DATABASE_URL}}" -f migrations/002_users_and_auth.sql
       - psql "{{.DATABASE_URL}}" -f migrations/003_user_settings_and_api_tokens.sql
+      - psql "{{.DATABASE_URL}}" -f migrations/004_subscription_tier.sql
+      - psql "{{.DATABASE_URL}}" -f migrations/005_file_shares.sql
+      - psql "{{.DATABASE_URL}}" -f migrations/006_stripe_billing.sql
+
+  gen:
+    desc: Run all code generation (sqlc, templ, css)
+    aliases: [generate]
+    cmds:
+      - task: sqlc
+      - task: templ
+      - task: css
 
   sqlc:
     desc: Generate Go code from SQL queries
@@ -56,82 +99,80 @@ tasks:
     cmds:
       - templ generate
 
-  templ:watch:
-    desc: Watch and regenerate templ files
-    cmds:
-      - templ generate --watch
-
   css:
     desc: Build CSS with Tailwind 4
     cmds:
       - tailwindcss -i static/css/input.css -o static/css/output.css --minify
 
-  css:watch:
-    desc: Watch and rebuild CSS with Tailwind 4
+  "watch:templ":
+    desc: Watch and regenerate templ files
+    cmds:
+      - templ generate --watch
+
+  "watch:css":
+    desc: Watch and rebuild CSS
     cmds:
       - tailwindcss -i static/css/input.css -o static/css/output.css --watch
 
-  generate:
-    desc: Run all code generation (sqlc, templ, css)
+  build:
+    desc: Build all binaries
+    deps: [gen]
     cmds:
-      - task: sqlc
-      - task: templ
-      - task: css
+      - go build -o bin/api ./cmd/api
+      - go build -o bin/worker ./cmd/worker
 
-  build:api:
-    desc: Build API binary
-    deps: [generate]
+  "build:api":
+    desc: Build API binary only
+    deps: [gen]
     cmds:
       - go build -o bin/api ./cmd/api
 
-  build:worker:
-    desc: Build worker binary
-    deps: [generate]
+  "build:worker":
+    desc: Build worker binary only
+    deps: [gen]
     cmds:
       - go build -o bin/worker ./cmd/worker
 
-  build:
-    desc: Build all binaries
-    cmds:
-      - task: build:api
-      - task: build:worker
-
-  run:api:
+  run:
     desc: Run the API server
+    aliases: [dev, api]
     cmds:
       - go run ./cmd/api
 
-  run:worker:
+  worker:
     desc: Run the background worker
     cmds:
       - go run ./cmd/worker
 
   test:
     desc: Run all tests
+    aliases: [t]
     cmds:
       - go test ./...
 
-  test:unit:
+  "test:v":
+    desc: Run tests with verbose output
+    aliases: [tv]
+    cmds:
+      - go test -v ./...
+
+  "test:short":
     desc: Run unit tests only (skip integration)
     cmds:
       - go test -short ./...
 
-  test:integration:
+  "test:int":
     desc: Run integration tests
     cmds:
       - go test -run Integration ./tests/integration/...
 
-  test:v:
-    desc: Run tests with verbose output
-    cmds:
-      - go test -v ./...
-
-  test:coverage:
+  cov:
     desc: Run tests with coverage report
+    aliases: [coverage]
     cmds:
       - go test -coverprofile=coverage.out ./...
       - go tool cover -html=coverage.out -o coverage.html
-      - echo 'Coverage report generated at coverage.html'
+      - open coverage.html || true
 
   fmt:
     desc: Format all code
@@ -150,3 +191,562 @@ tasks:
       - rm -rf bin/
       - rm -f coverage.out coverage.html
       - rm -f static/css/output.css
+
+  mon:
+    desc: Open Grafana dashboard
+    aliases: [grafana, dashboard]
+    cmds:
+      - open http://localhost:3000 || echo "Open http://localhost:3000"
+
+  "mon:up":
+    desc: Start monitoring stack only
+    cmds:
+      - docker compose up -d grafana prometheus loki promtail
+
+  "mon:down":
+    desc: Stop monitoring stack
+    cmds:
+      - docker compose stop grafana prometheus loki promtail
+
+  "mon:logs":
+    desc: View monitoring logs
+    cmds:
+      - docker compose logs -f grafana prometheus loki promtail
+
+  metrics:
+    desc: Test Prometheus metrics endpoints
+    cmds:
+      - curl -sf http://localhost:8080/metrics | grep -E "^(http_requests|app_)" | head -10 || echo "API not running"
+      - curl -sf http://localhost:9091/metrics | grep -E "^(jobs_|worker_|app_)" | head -10 || echo "Worker not running"
+
+  prom:
+    desc: Open Prometheus UI
+    cmds:
+      - open http://localhost:9090 || echo "Open http://localhost:9090"
+
+  targets:
+    desc: Check Prometheus scrape targets
+    cmds:
+      - 'curl -sf http://localhost:9090/api/v1/targets | jq -r ''.data.activeTargets[] | "\(.labels.job): \(.health)"'' || echo "Prometheus not running"'
+
+  rebuild:
+    desc: Rebuild and restart API and worker containers
+    cmds:
+      - docker compose build api worker
+      - docker compose up -d api worker
+
+  db:
+    desc: Connect to PostgreSQL
+    cmds:
+      - psql "{{.DATABASE_URL}}"
+
+  redis:
+    desc: Connect to Redis CLI
+    cmds:
+      - redis-cli -u {{.REDIS_URL}}
+
+  "stripe:listen":
+    desc: Forward Stripe webhooks to local server
+    aliases: [stripe]
+    cmds:
+      - stripe listen --forward-to localhost:8080/billing/webhook
+
+  "stripe:trigger":
+    desc: Trigger a Stripe test event
+    cmds:
+      - stripe trigger {{.CLI_ARGS}}
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # INFRASTRUCTURE - Setup & Provisioning
+  # ════════════════════════════════════════════════════════════════════════════
+
+  infra:
+    desc: Show infrastructure commands
+    cmds:
+      - |
+        echo ""
+        echo "  ╔═══════════════════════════════════════════════════════════════╗"
+        echo "  ║               file.cheap Infrastructure                       ║"
+        echo "  ╚═══════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "  Setup & Provisioning"
+        echo "  ─────────────────────"
+        echo "    task infra:setup       Install infrastructure tools"
+        echo "    task infra:init        Initialize Terraform & Ansible"
+        echo "    task infra:up          Provision entire cluster"
+        echo "    task infra:down        Destroy cluster (careful!)"
+        echo ""
+        echo "  Daily Operations"
+        echo "  ─────────────────────"
+        echo "    task status            Cluster health dashboard"
+        echo "    task ship              Test -> Build -> Push -> Deploy"
+        echo "    task deploy            Deploy to production"
+        echo "    task prod:logs         Tail production logs"
+        echo ""
+        echo "  Shortcuts"
+        echo "  ─────────────────────"
+        echo "    task wtf               Debug: logs + events + status"
+        echo "    task doctor            Diagnose common issues"
+        echo "    task fix               Restart stuck pods"
+        echo ""
+
+  "infra:setup":
+    desc: Install infrastructure tools
+    cmds:
+      - |
+        echo ""
+        echo "  Installing infrastructure tools..."
+        echo ""
+      - brew install terraform ansible kubectl helm k9s tailscale
+      - ansible-galaxy install -r {{.ANSIBLE_DIR}}/requirements.yml
+      - |
+        echo ""
+        echo "  ✓ Tools installed"
+        echo ""
+        echo "  Next steps:"
+        echo "    1. cp infrastructure/terraform.tfvars.example infrastructure/terraform.tfvars"
+        echo "    2. Add your Hetzner API token to terraform.tfvars"
+        echo "    3. Add your SSH public key to terraform.tfvars"
+        echo "    4. Run 'task infra:init'"
+        echo ""
+
+  "infra:init":
+    desc: Initialize Terraform and Ansible
+    cmds:
+      - terraform -chdir={{.TF_DIR}} init
+      - ansible-galaxy install -r {{.ANSIBLE_DIR}}/requirements.yml
+      - |
+        echo ""
+        echo "  ✓ Terraform and Ansible initialized"
+        echo ""
+        echo "  Run 'task infra:plan' to preview changes"
+        echo "  Run 'task infra:up' to provision the cluster"
+        echo ""
+
+  "infra:plan":
+    desc: Preview infrastructure changes
+    cmds:
+      - terraform -chdir={{.TF_DIR}} plan
+
+  "infra:up":
+    desc: Provision and configure entire cluster
+    cmds:
+      - |
+        echo ""
+        echo "  ╔═══════════════════════════════════════════════════════════════╗"
+        echo "  ║         Provisioning file.cheap cluster...                    ║"
+        echo "  ╚═══════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "  ► Creating infrastructure with Terraform..."
+      - terraform -chdir={{.TF_DIR}} apply -auto-approve
+      - |
+        echo ""
+        echo "  ► Configuring servers with Ansible..."
+      - ansible-playbook -i {{.ANSIBLE_DIR}}/inventory/hosts.yml {{.ANSIBLE_DIR}}/playbooks/site.yml
+      - |
+        echo ""
+        echo "  ► Fetching kubeconfig..."
+      - task: "infra:kubeconfig"
+      - |
+        echo ""
+        echo "  ► Deploying applications..."
+      - kubectl apply -k {{.K8S_DIR}}/overlays/production --kubeconfig={{.KUBECONFIG}}
+      - |
+        echo ""
+        echo "  ╔═══════════════════════════════════════════════════════════════╗"
+        echo "  ║  ✓ Cluster ready!                                             ║"
+        echo "  ╚═══════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "    App:       https://{{.DOMAIN}}"
+        echo "    API:       https://api.{{.DOMAIN}}"
+        echo ""
+        echo "  Run 'task status' to see cluster health"
+        echo "  Run 'task prod:grafana' to access Grafana"
+        echo ""
+      - osascript -e 'display notification "Cluster provisioned successfully!" with title "file.cheap" sound name "Glass"' || true
+
+  "infra:down":
+    desc: Destroy entire cluster (DANGEROUS)
+    prompt: This will DESTROY your entire file.cheap cluster. Are you sure?
+    cmds:
+      - terraform -chdir={{.TF_DIR}} destroy
+      - rm -f {{.KUBECONFIG}}
+      - 'echo "  ✓ Cluster destroyed"'
+
+  "infra:kubeconfig":
+    desc: Fetch kubeconfig from cluster
+    cmds:
+      - |
+        MASTER_IP=$(terraform -chdir={{.TF_DIR}} output -raw master_public_ip)
+        mkdir -p $(dirname {{.KUBECONFIG}})
+        scp -o StrictHostKeyChecking=no root@$MASTER_IP:/etc/rancher/k3s/k3s.yaml {{.KUBECONFIG}}
+        sed -i '' "s/127.0.0.1/$MASTER_IP/g" {{.KUBECONFIG}}
+        chmod 600 {{.KUBECONFIG}}
+        echo "  ✓ Kubeconfig saved to {{.KUBECONFIG}}"
+
+  "infra:output":
+    desc: Show Terraform outputs
+    cmds:
+      - terraform -chdir={{.TF_DIR}} output
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # PRODUCTION - Daily Operations
+  # ════════════════════════════════════════════════════════════════════════════
+
+  status:
+    desc: Cluster health dashboard
+    aliases: [st, health]
+    cmds:
+      - |
+        echo ""
+        echo "  ╔═══════════════════════════════════════════════════════════════╗"
+        echo "  ║               file.cheap cluster status                       ║"
+        echo "  ╚═══════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "  Nodes"
+        echo "  ─────"
+        kubectl get nodes --kubeconfig={{.KUBECONFIG}} 2>/dev/null | sed 's/^/    /' || echo "    ✗ Cannot connect to cluster (run: task infra:kubeconfig)"
+        echo ""
+        echo "  Workloads"
+        echo "  ─────────"
+        kubectl get deploy,sts -n file-processor --kubeconfig={{.KUBECONFIG}} 2>/dev/null | sed 's/^/    /' || true
+        echo ""
+        echo "  Pods"
+        echo "  ────"
+        kubectl get pods -n file-processor --kubeconfig={{.KUBECONFIG}} 2>/dev/null | sed 's/^/    /' || true
+        echo ""
+        echo "  Autoscaling"
+        echo "  ───────────"
+        kubectl get hpa -n file-processor --kubeconfig={{.KUBECONFIG}} 2>/dev/null | sed 's/^/    /' || true
+        echo ""
+
+  ship:
+    desc: Test, build, push, and deploy in one command
+    cmds:
+      - |
+        echo ""
+        echo "  ╔═══════════════════════════════════════════════════════════════╗"
+        echo "  ║                    Shipping to production                     ║"
+        echo "  ╚═══════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "  ► Running tests..."
+      - go test ./...
+      - |
+        echo ""
+        echo "  ► Building images..."
+      - docker build -t ghcr.io/{{.GITHUB_USER}}/file-processor/api:latest --target api .
+      - docker build -t ghcr.io/{{.GITHUB_USER}}/file-processor/worker:latest --target worker .
+      - |
+        echo ""
+        echo "  ► Pushing to registry..."
+      - docker push ghcr.io/{{.GITHUB_USER}}/file-processor/api:latest
+      - docker push ghcr.io/{{.GITHUB_USER}}/file-processor/worker:latest
+      - |
+        echo ""
+        echo "  ► Deploying to file.cheap..."
+      - task: deploy
+      - |
+        echo ""
+        echo "  ╔═══════════════════════════════════════════════════════════════╗"
+        echo "  ║  ✓ Shipped!                                                   ║"
+        echo "  ╚═══════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "    https://{{.DOMAIN}}"
+        echo ""
+      - osascript -e 'display notification "Deployment complete!" with title "file.cheap" sound name "Glass"' || true
+
+  deploy:
+    desc: Deploy to production
+    aliases: [d]
+    cmds:
+      - 'echo "  Deploying to file.cheap..."'
+      - kubectl apply -k {{.K8S_DIR}}/overlays/production --kubeconfig={{.KUBECONFIG}}
+      - kubectl rollout restart deploy/api -n file-processor --kubeconfig={{.KUBECONFIG}}
+      - kubectl rollout restart deploy/worker -n file-processor --kubeconfig={{.KUBECONFIG}}
+      - 'echo "  Waiting for rollout..."'
+      - kubectl rollout status deploy/api -n file-processor --kubeconfig={{.KUBECONFIG}} --timeout=180s
+      - kubectl rollout status deploy/worker -n file-processor --kubeconfig={{.KUBECONFIG}} --timeout=180s
+      - |
+        echo ""
+        echo "  ✓ Deployed to https://{{.DOMAIN}}"
+        echo ""
+      - osascript -e 'display notification "Deployment complete!" with title "file.cheap" sound name "Glass"' || true
+
+  "deploy:api":
+    desc: Deploy only API
+    cmds:
+      - kubectl rollout restart deploy/api -n file-processor --kubeconfig={{.KUBECONFIG}}
+      - kubectl rollout status deploy/api -n file-processor --kubeconfig={{.KUBECONFIG}} --timeout=180s
+      - echo "  ✓ API deployed"
+
+  "deploy:worker":
+    desc: Deploy only worker
+    cmds:
+      - kubectl rollout restart deploy/worker -n file-processor --kubeconfig={{.KUBECONFIG}}
+      - kubectl rollout status deploy/worker -n file-processor --kubeconfig={{.KUBECONFIG}} --timeout=180s
+      - echo "  ✓ Worker deployed"
+
+  "rollback:api":
+    desc: Rollback API to previous version
+    cmds:
+      - kubectl rollout undo deploy/api -n file-processor --kubeconfig={{.KUBECONFIG}}
+      - echo "  ✓ API rolled back"
+
+  "rollback:worker":
+    desc: Rollback worker to previous version
+    cmds:
+      - kubectl rollout undo deploy/worker -n file-processor --kubeconfig={{.KUBECONFIG}}
+      - echo "  ✓ Worker rolled back"
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # PRODUCTION - Logs & Shell Access
+  # ════════════════════════════════════════════════════════════════════════════
+
+  "prod:logs":
+    desc: Tail production logs (api + worker)
+    aliases: [pl]
+    cmds:
+      - kubectl logs -f -l app.kubernetes.io/part-of=file-processor -n file-processor --kubeconfig={{.KUBECONFIG}} --prefix --tail=50
+
+  "prod:logs:api":
+    desc: Tail API logs
+    cmds:
+      - kubectl logs -f deploy/api -n file-processor --kubeconfig={{.KUBECONFIG}} --tail=100
+
+  "prod:logs:worker":
+    desc: Tail worker logs
+    cmds:
+      - kubectl logs -f deploy/worker -n file-processor --kubeconfig={{.KUBECONFIG}} --tail=100
+
+  "prod:shell":
+    desc: Open shell in API pod
+    aliases: [sh]
+    cmds:
+      - kubectl exec -it deploy/api -n file-processor --kubeconfig={{.KUBECONFIG}} -- /bin/sh
+
+  "prod:shell:worker":
+    desc: Open shell in worker pod
+    cmds:
+      - kubectl exec -it deploy/worker -n file-processor --kubeconfig={{.KUBECONFIG}} -- /bin/sh
+
+  "prod:psql":
+    desc: Connect to production PostgreSQL
+    cmds:
+      - kubectl exec -it sts/postgres -n file-processor --kubeconfig={{.KUBECONFIG}} -- psql -U postgres -d fileprocessor
+
+  "prod:redis":
+    desc: Connect to production Redis
+    cmds:
+      - kubectl exec -it sts/redis -n file-processor --kubeconfig={{.KUBECONFIG}} -- redis-cli
+
+  "prod:grafana":
+    desc: Port-forward Grafana (http://localhost:3001)
+    cmds:
+      - |
+        echo "  Opening Grafana at http://localhost:3001"
+        echo "  Press Ctrl+C to stop"
+      - kubectl port-forward svc/grafana 3001:3000 -n monitoring --kubeconfig={{.KUBECONFIG}}
+
+  "prod:minio":
+    desc: Port-forward MinIO console (http://localhost:9001)
+    cmds:
+      - |
+        echo "  Opening MinIO console at http://localhost:9001"
+        echo "  Press Ctrl+C to stop"
+      - kubectl port-forward svc/minio 9001:9001 -n file-processor --kubeconfig={{.KUBECONFIG}}
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # PRODUCTION - Debugging
+  # ════════════════════════════════════════════════════════════════════════════
+
+  wtf:
+    desc: Debug mode - show everything that might be wrong
+    cmds:
+      - |
+        echo ""
+        echo "  ╔═══════════════════════════════════════════════════════════════╗"
+        echo "  ║                    Debugging file.cheap                       ║"
+        echo "  ╚═══════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "  Recent Events"
+        echo "  ─────────────"
+        kubectl get events -n file-processor --kubeconfig={{.KUBECONFIG}} --sort-by='.lastTimestamp' 2>/dev/null | tail -15 | sed 's/^/    /' || echo "    Cannot connect"
+        echo ""
+        echo "  Pod Status"
+        echo "  ──────────"
+        kubectl get pods -n file-processor --kubeconfig={{.KUBECONFIG}} -o wide 2>/dev/null | sed 's/^/    /'
+        echo ""
+        echo "  Pods NOT Running"
+        echo "  ────────────────"
+        kubectl get pods -n file-processor --kubeconfig={{.KUBECONFIG}} --field-selector=status.phase!=Running 2>/dev/null | sed 's/^/    /' || echo "    All pods running ✓"
+        echo ""
+        echo "  Resource Usage"
+        echo "  ──────────────"
+        kubectl top pods -n file-processor --kubeconfig={{.KUBECONFIG}} 2>/dev/null | sed 's/^/    /' || echo "    Metrics not available"
+        echo ""
+        echo "  Recent API Errors"
+        echo "  ─────────────────"
+        kubectl logs deploy/api -n file-processor --kubeconfig={{.KUBECONFIG}} --tail=100 2>/dev/null | grep -i error | tail -5 | sed 's/^/    /' || echo "    No recent errors ✓"
+        echo ""
+
+  doctor:
+    desc: Diagnose common issues
+    cmds:
+      - |
+        echo ""
+        echo "  ╔═══════════════════════════════════════════════════════════════╗"
+        echo "  ║                      Running diagnostics                      ║"
+        echo "  ╚═══════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "  Local Tools"
+        echo "  ───────────"
+        command -v terraform >/dev/null && echo "    ✓ terraform" || echo "    ✗ terraform (run: brew install terraform)"
+        command -v ansible >/dev/null && echo "    ✓ ansible" || echo "    ✗ ansible (run: brew install ansible)"
+        command -v kubectl >/dev/null && echo "    ✓ kubectl" || echo "    ✗ kubectl (run: brew install kubectl)"
+        command -v helm >/dev/null && echo "    ✓ helm" || echo "    ✗ helm (run: brew install helm)"
+        command -v k9s >/dev/null && echo "    ✓ k9s" || echo "    ✗ k9s (run: brew install k9s)"
+        command -v tailscale >/dev/null && echo "    ✓ tailscale" || echo "    ✗ tailscale (run: brew install tailscale)"
+        echo ""
+        echo "  Cluster Connectivity"
+        echo "  ────────────────────"
+        kubectl cluster-info --kubeconfig={{.KUBECONFIG}} >/dev/null 2>&1 && echo "    ✓ Connected to cluster" || echo "    ✗ Cannot connect (run: task infra:kubeconfig)"
+        echo ""
+        echo "  Tailscale"
+        echo "  ─────────"
+        tailscale status >/dev/null 2>&1 && echo "    ✓ Tailscale connected" || echo "    ✗ Tailscale not connected (run: tailscale up)"
+        echo ""
+        echo "  DNS Resolution"
+        echo "  ──────────────"
+        curl -sf --max-time 5 https://{{.DOMAIN}}/health >/dev/null 2>&1 && echo "    ✓ {{.DOMAIN}} reachable" || echo "    ✗ {{.DOMAIN}} not reachable"
+        curl -sf --max-time 5 https://api.{{.DOMAIN}}/health >/dev/null 2>&1 && echo "    ✓ api.{{.DOMAIN}} reachable" || echo "    ✗ api.{{.DOMAIN}} not reachable"
+        echo ""
+
+  fix:
+    desc: Common fixes - restart stuck pods
+    cmds:
+      - 'echo "  Restarting deployments..."'
+      - kubectl rollout restart deploy -n file-processor --kubeconfig={{.KUBECONFIG}}
+      - 'echo "  Clearing failed pods..."'
+      - kubectl delete pods -n file-processor --kubeconfig={{.KUBECONFIG}} --field-selector=status.phase=Failed 2>/dev/null || true
+      - |
+        echo ""
+        echo "  ✓ Done. Run 'task status' to check"
+        echo ""
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # PRODUCTION - Scaling
+  # ════════════════════════════════════════════════════════════════════════════
+
+  scale:
+    desc: Show current scale and autoscaling status
+    cmds:
+      - |
+        echo ""
+        echo "  Current Replicas"
+        echo "  ────────────────"
+        kubectl get deploy -n file-processor --kubeconfig={{.KUBECONFIG}} -o custom-columns="NAME:.metadata.name,REPLICAS:.spec.replicas,READY:.status.readyReplicas" | sed 's/^/    /'
+        echo ""
+        echo "  Autoscaling"
+        echo "  ───────────"
+        kubectl get hpa -n file-processor --kubeconfig={{.KUBECONFIG}} | sed 's/^/    /'
+        echo ""
+        echo "  Scale manually:"
+        echo "    task scale:api -- 3"
+        echo "    task scale:worker -- 5"
+        echo ""
+
+  "scale:api":
+    desc: "Scale API replicas (usage: task scale:api -- 3)"
+    cmds:
+      - kubectl scale deploy/api --replicas={{.CLI_ARGS}} -n file-processor --kubeconfig={{.KUBECONFIG}}
+      - echo "  ✓ API scaled to {{.CLI_ARGS}} replicas"
+
+  "scale:worker":
+    desc: "Scale worker replicas (usage: task scale:worker -- 5)"
+    cmds:
+      - kubectl scale deploy/worker --replicas={{.CLI_ARGS}} -n file-processor --kubeconfig={{.KUBECONFIG}}
+      - echo "  ✓ Worker scaled to {{.CLI_ARGS}} replicas"
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # PRODUCTION - Backups
+  # ════════════════════════════════════════════════════════════════════════════
+
+  backup:
+    desc: Run database backup now
+    cmds:
+      - 'echo "  Starting backup..."'
+      - kubectl create job backup-$(date +%Y%m%d-%H%M%S) --from=cronjob/postgres-backup -n file-processor --kubeconfig={{.KUBECONFIG}}
+      - |
+        echo "  ✓ Backup job started"
+        echo ""
+        echo "  Run 'task backup:list' to see all backups"
+
+  "backup:list":
+    desc: List available backups
+    cmds:
+      - |
+        echo ""
+        echo "  Available Backups"
+        echo "  ─────────────────"
+      - kubectl exec sts/minio -n file-processor --kubeconfig={{.KUBECONFIG}} -- mc ls local/backups/ 2>/dev/null | sed 's/^/    /' || echo "    No backups found"
+      - echo ""
+
+  "backup:restore":
+    desc: "Restore from backup (usage: task backup:restore -- backup-20240106.sql.gz)"
+    prompt: This will OVERWRITE the production database. Are you sure?
+    cmds:
+      - |
+        echo "  Restoring from {{.CLI_ARGS}}..."
+        kubectl exec sts/minio -n file-processor --kubeconfig={{.KUBECONFIG}} -- mc cp local/backups/{{.CLI_ARGS}} /tmp/
+        kubectl cp file-processor/minio-0:/tmp/{{.CLI_ARGS}} /tmp/restore.sql.gz --kubeconfig={{.KUBECONFIG}}
+        gunzip -f /tmp/restore.sql.gz
+        kubectl exec -i sts/postgres -n file-processor --kubeconfig={{.KUBECONFIG}} -- psql -U postgres -d fileprocessor < /tmp/restore.sql
+        rm /tmp/restore.sql
+        echo "  ✓ Restore complete"
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # PRODUCTION - SSH & Cluster UI
+  # ════════════════════════════════════════════════════════════════════════════
+
+  k9s:
+    desc: Open k9s cluster UI
+    aliases: [ui]
+    cmds:
+      - k9s --kubeconfig={{.KUBECONFIG}}
+
+  ssh:
+    desc: SSH to master node
+    cmds:
+      - ssh root@$(terraform -chdir={{.TF_DIR}} output -raw master_public_ip)
+
+  "ssh:worker":
+    desc: "SSH to worker node (usage: task ssh:worker -- 1)"
+    cmds:
+      - |
+        WORKER_IPS=($(terraform -chdir={{.TF_DIR}} output -json worker_public_ips | jq -r '.[]'))
+        INDEX=$(({{.CLI_ARGS}} - 1))
+        ssh root@${WORKER_IPS[$INDEX]}
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # SECRETS MANAGEMENT
+  # ════════════════════════════════════════════════════════════════════════════
+
+  "secrets:create":
+    desc: Create app secrets from .env.production file
+    cmds:
+      - |
+        echo "  Creating secrets from .env.production..."
+        kubectl create secret generic app-secrets \
+          --from-env-file=.env.production \
+          --dry-run=client -o yaml | kubectl apply -f - -n file-processor --kubeconfig={{.KUBECONFIG}}
+        echo "  ✓ Secrets created"
+
+  "secrets:show":
+    desc: Show current secrets (keys only)
+    cmds:
+      - |
+        echo ""
+        echo "  Current Secrets"
+        echo "  ───────────────"
+      - kubectl get secret app-secrets -n file-processor --kubeconfig={{.KUBECONFIG}} -o jsonpath='{.data}' | jq -r 'keys[]' | sed 's/^/    /'
+      - echo ""

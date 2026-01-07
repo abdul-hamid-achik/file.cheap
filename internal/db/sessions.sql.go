@@ -84,7 +84,7 @@ func (q *Queries) DeleteUserSessions(ctx context.Context, userID pgtype.UUID) er
 }
 
 const getSessionByTokenHash = `-- name: GetSessionByTokenHash :one
-SELECT s.id, s.user_id, s.token_hash, s.user_agent, s.ip_address, s.expires_at, s.created_at, u.email, u.name, u.avatar_url, u.role, u.email_verified_at
+SELECT s.id, s.user_id, s.token_hash, s.user_agent, s.ip_address, s.expires_at, s.created_at, u.email, u.name, u.avatar_url, u.role, u.subscription_tier, u.email_verified_at
 FROM sessions s
 JOIN users u ON s.user_id = u.id
 WHERE s.token_hash = $1 
@@ -93,18 +93,19 @@ WHERE s.token_hash = $1
 `
 
 type GetSessionByTokenHashRow struct {
-	ID              pgtype.UUID        `json:"id"`
-	UserID          pgtype.UUID        `json:"user_id"`
-	TokenHash       string             `json:"token_hash"`
-	UserAgent       *string            `json:"user_agent"`
-	IpAddress       *netip.Addr        `json:"ip_address"`
-	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-	Email           string             `json:"email"`
-	Name            string             `json:"name"`
-	AvatarUrl       *string            `json:"avatar_url"`
-	Role            UserRole           `json:"role"`
-	EmailVerifiedAt pgtype.Timestamptz `json:"email_verified_at"`
+	ID               pgtype.UUID        `json:"id"`
+	UserID           pgtype.UUID        `json:"user_id"`
+	TokenHash        string             `json:"token_hash"`
+	UserAgent        *string            `json:"user_agent"`
+	IpAddress        *netip.Addr        `json:"ip_address"`
+	ExpiresAt        pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	Email            string             `json:"email"`
+	Name             string             `json:"name"`
+	AvatarUrl        *string            `json:"avatar_url"`
+	Role             UserRole           `json:"role"`
+	SubscriptionTier SubscriptionTier   `json:"subscription_tier"`
+	EmailVerifiedAt  pgtype.Timestamptz `json:"email_verified_at"`
 }
 
 func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash string) (GetSessionByTokenHashRow, error) {
@@ -122,6 +123,7 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash string) (
 		&i.Name,
 		&i.AvatarUrl,
 		&i.Role,
+		&i.SubscriptionTier,
 		&i.EmailVerifiedAt,
 	)
 	return i, err

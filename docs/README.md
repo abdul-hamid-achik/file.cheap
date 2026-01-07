@@ -1,4 +1,4 @@
-# File Processor Documentation
+# file.cheap Documentation
 
 Documentation for AI agents and developers working on this codebase.
 
@@ -63,9 +63,21 @@ Code style and project conventions:
 
 **Follow these guidelines** for all code changes.
 
+### [STRIPE_SETUP.md](./STRIPE_SETUP.md)
+Complete Stripe billing integration guide:
+- API key configuration
+- Product and price creation
+- Customer Portal setup
+- Webhook configuration
+- Local testing with Stripe CLI
+- Production checklist
+- Troubleshooting
+
+**Use this** when deploying billing features.
+
 ## Project Overview
 
-File Processor is a Go web application for uploading, storing, and processing files (primarily images and PDFs).
+file.cheap is a Go web application for uploading, storing, and processing files (primarily images and PDFs).
 
 ### Key Features
 
@@ -76,6 +88,7 @@ File Processor is a Go web application for uploading, storing, and processing fi
 - **Dual Interface**: REST API (JWT) and Web UI (sessions)
 - **Authentication**: Email/password, Google OAuth, GitHub OAuth
 - **Database**: PostgreSQL with type-safe sqlc queries
+- **Billing**: Stripe integration with Pro plan ($19/mo), 7-day trial
 
 ### Tech Stack
 
@@ -186,6 +199,7 @@ task test               # Run all tests
 - **HTMX**: https://htmx.org/
 - **Tailwind CSS**: https://tailwindcss.com/
 - **Nord Theme**: https://www.nordtheme.com/
+- **Stripe**: https://stripe.com/docs
 
 ## Contributing
 

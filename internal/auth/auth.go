@@ -355,7 +355,10 @@ func (s *Service) ListAPITokens(ctx context.Context, userID uuid.UUID) ([]db.Api
 	return tokens, nil
 }
 
+const APITokenPrefix = "fp_"
+
 // CreateAPIToken creates a new API token for a user.
+// The returned token is prefixed with "fp_" for easy identification.
 func (s *Service) CreateAPIToken(ctx context.Context, userID uuid.UUID, name string) (string, *db.ApiToken, error) {
 	pgID := pgtype.UUID{Bytes: userID, Valid: true}
 
@@ -364,7 +367,8 @@ func (s *Service) CreateAPIToken(ctx context.Context, userID uuid.UUID, name str
 		return "", nil, apperror.Wrap(err, apperror.ErrInternal)
 	}
 
-	prefix := rawToken[:8]
+	prefixedToken := APITokenPrefix + rawToken
+	prefix := prefixedToken[:10]
 
 	token, err := s.queries.CreateAPIToken(ctx, db.CreateAPITokenParams{
 		UserID:      pgID,
@@ -376,7 +380,7 @@ func (s *Service) CreateAPIToken(ctx context.Context, userID uuid.UUID, name str
 		return "", nil, apperror.Wrap(err, apperror.ErrInternal)
 	}
 
-	return rawToken, &token, nil
+	return prefixedToken, &token, nil
 }
 
 // DeleteAPIToken deletes an API token by ID.

@@ -15,13 +15,34 @@ CREATE TYPE job_type AS ENUM ('thumbnail', 'resize', 'webp', 'watermark', 'pdf_t
 CREATE TYPE job_status AS ENUM ('pending', 'running', 'completed', 'failed');
 
 -- File variant type enum
-CREATE TYPE variant_type AS ENUM ('thumbnail', 'large', 'medium', 'small', 'webp', 'watermarked', 'optimized', 'pdf_preview');
+CREATE TYPE variant_type AS ENUM (
+    'thumbnail',
+    'sm',
+    'md',
+    'lg',
+    'xl',
+    'og',
+    'twitter',
+    'instagram_square',
+    'instagram_portrait',
+    'instagram_story',
+    'webp',
+    'watermarked',
+    'optimized',
+    'pdf_preview'
+);
 
 -- User roles
 CREATE TYPE user_role AS ENUM ('user', 'admin');
 
 -- OAuth providers
 CREATE TYPE oauth_provider AS ENUM ('google', 'github');
+
+-- Subscription tiers
+CREATE TYPE subscription_tier AS ENUM ('free', 'pro', 'enterprise');
+
+-- Subscription status
+CREATE TYPE subscription_status AS ENUM ('none', 'trialing', 'active', 'past_due', 'canceled', 'unpaid');
 
 -- ============================================================================
 -- TABLES
@@ -35,6 +56,14 @@ CREATE TABLE users (
     name VARCHAR(255) NOT NULL,
     avatar_url TEXT,
     role user_role NOT NULL DEFAULT 'user',
+    subscription_tier subscription_tier NOT NULL DEFAULT 'free',
+    stripe_customer_id VARCHAR(255),
+    stripe_subscription_id VARCHAR(255),
+    subscription_status subscription_status NOT NULL DEFAULT 'none',
+    subscription_period_end TIMESTAMPTZ,
+    trial_ends_at TIMESTAMPTZ,
+    files_limit INTEGER NOT NULL DEFAULT 100,
+    max_file_size BIGINT NOT NULL DEFAULT 10485760,
     email_verified_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -170,7 +199,11 @@ CREATE TABLE api_tokens (
 -- Users indexes
 CREATE INDEX idx_users_email ON users(email) WHERE deleted_at IS NULL;
 CREATE INDEX idx_users_role ON users(role) WHERE deleted_at IS NULL;
+CREATE INDEX idx_users_subscription_tier ON users(subscription_tier) WHERE deleted_at IS NULL;
 CREATE INDEX idx_users_created_at ON users(created_at DESC) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_users_stripe_customer_id ON users(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
+CREATE INDEX idx_users_stripe_subscription_id ON users(stripe_subscription_id) WHERE stripe_subscription_id IS NOT NULL;
+CREATE INDEX idx_users_subscription_status ON users(subscription_status) WHERE deleted_at IS NULL;
 
 -- Files indexes (for common queries, excluding soft-deleted)
 CREATE INDEX idx_files_user_id ON files(user_id) WHERE deleted_at IS NULL;
@@ -212,3 +245,43 @@ CREATE INDEX idx_user_settings_user_id ON user_settings(user_id);
 -- API tokens indexes
 CREATE INDEX idx_api_tokens_user_id ON api_tokens(user_id);
 CREATE INDEX idx_api_tokens_token_hash ON api_tokens(token_hash);
+
+-- ============================================================================
+-- FILE SHARING AND TRANSFORM CACHE
+-- ============================================================================
+
+-- File shares table for public CDN-style URLs
+CREATE TABLE file_shares (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    file_id UUID NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    token VARCHAR(64) NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ,
+    allowed_transforms TEXT[],
+    access_count INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_file_shares_token ON file_shares(token);
+CREATE INDEX idx_file_shares_file_id ON file_shares(file_id);
+CREATE INDEX idx_file_shares_expires_at ON file_shares(expires_at) WHERE expires_at IS NOT NULL;
+
+-- Transform cache for frequently requested transforms
+CREATE TABLE transform_cache (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    file_id UUID NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    cache_key VARCHAR(32) NOT NULL,
+    transform_params TEXT NOT NULL,
+    storage_key TEXT NOT NULL,
+    content_type VARCHAR(100) NOT NULL,
+    size_bytes BIGINT NOT NULL,
+    width INT,
+    height INT,
+    request_count INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_accessed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(file_id, cache_key)
+);
+
+CREATE INDEX idx_transform_cache_file_id ON transform_cache(file_id);
+CREATE INDEX idx_transform_cache_lookup ON transform_cache(file_id, cache_key);
+CREATE INDEX idx_transform_cache_request_count ON transform_cache(request_count DESC);

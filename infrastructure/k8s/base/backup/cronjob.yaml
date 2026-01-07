@@ -1,0 +1,79 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  labels:
+    app: postgres-backup
+    app.kubernetes.io/name: postgres-backup
+    app.kubernetes.io/component: backup
+spec:
+  schedule: "0 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: postgres-backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: postgres:17-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  BACKUP_FILE="/tmp/backup-${TIMESTAMP}.sql.gz"
+                  
+                  echo "Starting backup at $(date)"
+                  
+                  pg_dump -h postgres -U postgres -d fileprocessor | gzip > "${BACKUP_FILE}"
+                  
+                  echo "Uploading to MinIO..."
+                  
+                  apk add --no-cache curl
+                  
+                  # Calculate date for signing
+                  DATE=$(date -u +"%Y%m%dT%H%M%SZ")
+                  DATE_SHORT=$(date -u +"%Y%m%d")
+                  
+                  # Upload using mc (MinIO Client)
+                  wget -q https://dl.min.io/client/mc/release/linux-amd64/mc -O /tmp/mc
+                  chmod +x /tmp/mc
+                  /tmp/mc alias set minio http://minio:9000 "${MINIO_ACCESS_KEY}" "${MINIO_SECRET_KEY}"
+                  /tmp/mc mb --ignore-existing minio/backups
+                  /tmp/mc cp "${BACKUP_FILE}" minio/backups/
+                  
+                  # Cleanup old backups (keep 7 daily + 4 weekly)
+                  echo "Cleaning up old backups..."
+                  /tmp/mc rm --older-than 30d minio/backups/ --recursive --force || true
+                  
+                  echo "Backup completed successfully at $(date)"
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: POSTGRES_PASSWORD
+                - name: MINIO_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: MINIO_ACCESS_KEY
+                - name: MINIO_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: MINIO_SECRET_KEY
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi

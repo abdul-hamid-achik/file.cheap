@@ -1,0 +1,53 @@
+#cloud-config
+
+hostname: ${hostname}
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - curl
+  - wget
+  - git
+  - vim
+  - htop
+  - jq
+  - unzip
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - lsb-release
+  - open-iscsi
+  - nfs-common
+
+runcmd:
+  - systemctl enable --now iscsid
+  - echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+  - echo "net.ipv6.conf.all.forwarding=1" >> /etc/sysctl.conf
+  - sysctl -p
+  - |
+    cat <<EOF > /etc/modules-load.d/k8s.conf
+    overlay
+    br_netfilter
+    EOF
+  - modprobe overlay
+  - modprobe br_netfilter
+  - |
+    cat <<EOF > /etc/sysctl.d/k8s.conf
+    net.bridge.bridge-nf-call-iptables  = 1
+    net.bridge.bridge-nf-call-ip6tables = 1
+    net.ipv4.ip_forward                 = 1
+    EOF
+  - sysctl --system
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/hardening.conf
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin prohibit-password
+      X11Forwarding no
+      MaxAuthTries 3
+      AllowTcpForwarding no
+      AllowAgentForwarding no
+
+final_message: "Cloud-init completed after $UPTIME seconds"

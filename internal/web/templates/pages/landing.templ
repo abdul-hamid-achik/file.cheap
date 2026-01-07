@@ -10,7 +10,7 @@ import (
 templ Landing(user *auth.SessionUser) {
 	@layouts.Base(layouts.PageMeta{
 		Title:       "Home",
-		Description: "Process your files with ease. Upload, transform, and manage your files in the cloud.",
+		Description: "Cheap file processing that doesn't compromise on quality. Resize, convert, and transform files at unbeatable prices.",
 	}, user) {
 		<!-- Hero Section -->
 		<section class="relative overflow-hidden">
@@ -18,12 +18,12 @@ templ Landing(user *auth.SessionUser) {
 			<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-24 lg:py-32 relative">
 				<div class="text-center animate-fade-in">
 					<h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold text-nord-5 tracking-tight">
-						Process your files
-						<span class="text-nord-8"> with ease</span>
+						File processing
+						<span class="text-nord-8"> that doesn't cost a fortune</span>
 					</h1>
 					<p class="mt-6 text-lg sm:text-xl text-nord-4 max-w-2xl mx-auto">
-						Upload, transform, and manage your files in the cloud. 
-						Resize images, generate thumbnails, convert formats, and more.
+						Resize images, generate thumbnails, and convert formats — 
+						all at prices that won't break the bank.
 					</p>
 					<div class="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
 						@components.ButtonLink("/register", components.ButtonProps{
@@ -50,9 +50,9 @@ templ Landing(user *auth.SessionUser) {
 		<section class="py-24 bg-nord-1">
 			<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 				<div class="text-center mb-16">
-					<h2 class="text-3xl font-bold text-nord-5">Powerful file processing</h2>
+					<h2 class="text-3xl font-bold text-nord-5">Premium processing, budget pricing</h2>
 					<p class="mt-4 text-nord-4 max-w-2xl mx-auto">
-						Everything you need to handle your files efficiently
+						All the features you need, none of the enterprise price tag
 					</p>
 				</div>
 				
@@ -119,9 +119,9 @@ templ Landing(user *auth.SessionUser) {
 		<section class="py-24 bg-nord-1">
 			<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 				<div class="bg-gradient-to-r from-nord-8 to-nord-9 rounded-2xl p-12 text-center">
-					<h2 class="text-3xl font-bold text-nord-0">Ready to get started?</h2>
+					<h2 class="text-3xl font-bold text-nord-0">Start processing for less</h2>
 					<p class="mt-4 text-nord-0/80 max-w-xl mx-auto">
-						Create your free account and start processing files in minutes.
+						No credit card required. Get 100 free file operations to try it out.
 					</p>
 					<div class="mt-8">
 						@components.ButtonLink("/register", components.ButtonProps{

@@ -40,3 +40,90 @@ LIMIT $1 OFFSET $2;
 
 -- name: CountUsers :one
 SELECT COUNT(*) FROM users WHERE deleted_at IS NULL;
+
+-- name: UpdateUserSubscriptionTier :one
+UPDATE users
+SET subscription_tier = $2, updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING *;
+
+-- name: GetUserSubscriptionTier :one
+SELECT subscription_tier FROM users
+WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: GetUserByStripeCustomerID :one
+SELECT * FROM users
+WHERE stripe_customer_id = $1 AND deleted_at IS NULL;
+
+-- name: UpdateUserStripeCustomer :one
+UPDATE users
+SET stripe_customer_id = $2, updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING *;
+
+-- name: UpdateUserSubscription :one
+UPDATE users
+SET 
+    stripe_subscription_id = $2,
+    subscription_status = $3,
+    subscription_tier = $4,
+    subscription_period_end = $5,
+    trial_ends_at = $6,
+    files_limit = $7,
+    max_file_size = $8,
+    updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING *;
+
+-- name: UpdateUserSubscriptionStatus :one
+UPDATE users
+SET 
+    subscription_status = $2,
+    subscription_period_end = $3,
+    updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING *;
+
+-- name: CancelUserSubscription :one
+UPDATE users
+SET 
+    stripe_subscription_id = NULL,
+    subscription_status = 'canceled',
+    subscription_tier = 'free',
+    files_limit = 100,
+    max_file_size = 10485760,
+    updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING *;
+
+-- name: StartUserTrial :one
+UPDATE users
+SET 
+    subscription_tier = 'pro',
+    subscription_status = 'trialing',
+    trial_ends_at = $2,
+    files_limit = 2000,
+    max_file_size = 104857600,
+    updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING *;
+
+-- name: GetUserBillingInfo :one
+SELECT 
+    id,
+    email,
+    name,
+    subscription_tier,
+    stripe_customer_id,
+    stripe_subscription_id,
+    subscription_status,
+    subscription_period_end,
+    trial_ends_at,
+    files_limit,
+    max_file_size
+FROM users
+WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: GetUserFilesCount :one
+SELECT COUNT(*) FROM files
+WHERE user_id = $1 AND deleted_at IS NULL;

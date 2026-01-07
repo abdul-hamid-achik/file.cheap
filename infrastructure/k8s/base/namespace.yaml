@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: file-processor
+  labels:
+    app.kubernetes.io/name: file-processor
+    app.kubernetes.io/part-of: file-processor

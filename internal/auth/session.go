@@ -36,13 +36,14 @@ func NewSessionManager(queries *db.Queries, secure bool) *SessionManager {
 
 // SessionUser represents user data from a session lookup.
 type SessionUser struct {
-	ID              uuid.UUID
-	Email           string
-	Name            string
-	AvatarURL       *string
-	Role            db.UserRole
-	EmailVerifiedAt *time.Time
-	SessionID       uuid.UUID
+	ID               uuid.UUID
+	Email            string
+	Name             string
+	AvatarURL        *string
+	Role             db.UserRole
+	SubscriptionTier db.SubscriptionTier
+	EmailVerifiedAt  *time.Time
+	SessionID        uuid.UUID
 }
 
 // CreateSession creates a new session for a user and sets the cookie.
@@ -112,12 +113,13 @@ func (sm *SessionManager) GetSession(ctx context.Context, r *http.Request) (*Ses
 	}
 
 	user := &SessionUser{
-		ID:        userID,
-		Email:     row.Email,
-		Name:      row.Name,
-		AvatarURL: row.AvatarUrl,
-		Role:      row.Role,
-		SessionID: sessionID,
+		ID:               userID,
+		Email:            row.Email,
+		Name:             row.Name,
+		AvatarURL:        row.AvatarUrl,
+		Role:             row.Role,
+		SubscriptionTier: row.SubscriptionTier,
+		SessionID:        sessionID,
 	}
 
 	if row.EmailVerifiedAt.Valid {

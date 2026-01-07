@@ -1,0 +1,32 @@
+# Hetzner Cloud API token (required)
+# Get it from: https://console.hetzner.cloud/projects/YOUR_PROJECT/security/tokens
+hcloud_token = "your-hetzner-api-token"
+
+# SSH public key for server access (required)
+# Example: cat ~/.ssh/id_ed25519.pub
+ssh_public_key = "ssh-ed25519 AAAA... your-email@example.com"
+
+# Restrict SSH access to specific IPs (recommended for production)
+# ssh_allowed_ips = ["YOUR_IP/32"]
+
+# Cluster configuration
+cluster_name = "file-cheap"
+domain       = "file.cheap"
+
+# Datacenter location
+# Options: fsn1 (Falkenstein), nbg1 (Nuremberg), hel1 (Helsinki)
+location = "fsn1"
+
+# Server types (https://www.hetzner.com/cloud)
+# cx21: 2 vCPU, 4GB RAM  - ~4.17/mo - good for master
+# cx31: 2 vCPU, 8GB RAM  - ~6.59/mo - good for workers
+# cx41: 4 vCPU, 16GB RAM - ~13.19/mo - for heavy workloads
+master_server_type = "cx21"
+worker_server_type = "cx31"
+worker_count       = 2
+
+# Volume sizes in GB
+# Pricing: ~0.05/GB/month
+postgres_volume_size = 20
+redis_volume_size    = 10
+minio_volume_size    = 50

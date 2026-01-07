@@ -1,0 +1,6 @@
+---
+- name: Install K3s server on master node
+  hosts: masters
+  become: true
+  roles:
+    - k3s-master

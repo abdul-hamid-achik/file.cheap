@@ -26,13 +26,26 @@ scrape_configs:
           expressions:
             level: level
             msg: msg
+            message: message
+            time: time
             request_id: request_id
             user_id: user_id
             job_id: job_id
             file_id: file_id
+            method: method
+            path: path
+            status: status
+            duration_ms: duration_ms
+            error: error
+            job_type: job_type
+            worker_id: worker_id
       - labels:
           level:
-          request_id:
-          user_id:
-          job_id:
-          file_id:
+          service:
+          method:
+          status:
+          job_type:
+      - output:
+          source: msg
+      - output:
+          source: message

@@ -1,0 +1,101 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (default: latest)"
+        required: false
+        default: "latest"
+
+env:
+  KUBECONFIG_PATH: /tmp/kubeconfig
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: "v1.30.0"
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $(dirname $KUBECONFIG_PATH)
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > $KUBECONFIG_PATH
+          chmod 600 $KUBECONFIG_PATH
+
+      - name: Update image tags
+        run: |
+          TAG="${{ github.event.inputs.image_tag || 'latest' }}"
+          cd infrastructure/k8s/overlays/production
+          
+          # Update kustomization with new image tags
+          cat > kustomization.yaml << EOF
+          apiVersion: kustomize.config.k8s.io/v1beta1
+          kind: Kustomization
+          
+          namespace: file-processor
+          
+          resources:
+            - ../../base
+          
+          patches:
+            - path: patches/api-resources.yaml
+            - path: patches/worker-resources.yaml
+            - path: patches/replicas.yaml
+          
+          images:
+            - name: ghcr.io/abdul-hamid-achik/file-processor/api
+              newTag: ${TAG}
+            - name: ghcr.io/abdul-hamid-achik/file-processor/worker
+              newTag: ${TAG}
+          
+          commonLabels:
+            environment: production
+          EOF
+
+      - name: Apply Kubernetes manifests
+        run: |
+          kubectl apply -k infrastructure/k8s/overlays/production --kubeconfig=$KUBECONFIG_PATH
+
+      - name: Restart deployments
+        run: |
+          kubectl rollout restart deployment/api -n file-processor --kubeconfig=$KUBECONFIG_PATH
+          kubectl rollout restart deployment/worker -n file-processor --kubeconfig=$KUBECONFIG_PATH
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/api -n file-processor --timeout=300s --kubeconfig=$KUBECONFIG_PATH
+          kubectl rollout status deployment/worker -n file-processor --timeout=300s --kubeconfig=$KUBECONFIG_PATH
+
+      - name: Verify deployment
+        run: |
+          echo "Deployment Status:"
+          kubectl get deployments -n file-processor --kubeconfig=$KUBECONFIG_PATH
+          echo ""
+          echo "Pod Status:"
+          kubectl get pods -n file-processor --kubeconfig=$KUBECONFIG_PATH
+
+      - name: Send notification (success)
+        if: success()
+        run: |
+          echo "Deployment successful!"
+          # Add Slack/Discord notification here if needed
+
+      - name: Send notification (failure)
+        if: failure()
+        run: |
+          echo "Deployment failed!"
+          # Add Slack/Discord notification here if needed

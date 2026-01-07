@@ -265,7 +265,7 @@ Deletes file, all variants, and associated database records.
 - Enqueues processing jobs
 - Redirects to `/files`
 
-**POST** `/api/files`
+**POST** `/files/upload`
 - AJAX file upload endpoint
 - Returns JSON response
 

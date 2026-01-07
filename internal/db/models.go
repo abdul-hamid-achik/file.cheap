@@ -189,6 +189,95 @@ func (ns NullOauthProvider) Value() (driver.Value, error) {
 	return string(ns.OauthProvider), nil
 }
 
+type SubscriptionStatus string
+
+const (
+	SubscriptionStatusNone     SubscriptionStatus = "none"
+	SubscriptionStatusTrialing SubscriptionStatus = "trialing"
+	SubscriptionStatusActive   SubscriptionStatus = "active"
+	SubscriptionStatusPastDue  SubscriptionStatus = "past_due"
+	SubscriptionStatusCanceled SubscriptionStatus = "canceled"
+	SubscriptionStatusUnpaid   SubscriptionStatus = "unpaid"
+)
+
+func (e *SubscriptionStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SubscriptionStatus(s)
+	case string:
+		*e = SubscriptionStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SubscriptionStatus: %T", src)
+	}
+	return nil
+}
+
+type NullSubscriptionStatus struct {
+	SubscriptionStatus SubscriptionStatus `json:"subscription_status"`
+	Valid              bool               `json:"valid"` // Valid is true if SubscriptionStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSubscriptionStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.SubscriptionStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SubscriptionStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSubscriptionStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SubscriptionStatus), nil
+}
+
+type SubscriptionTier string
+
+const (
+	SubscriptionTierFree       SubscriptionTier = "free"
+	SubscriptionTierPro        SubscriptionTier = "pro"
+	SubscriptionTierEnterprise SubscriptionTier = "enterprise"
+)
+
+func (e *SubscriptionTier) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SubscriptionTier(s)
+	case string:
+		*e = SubscriptionTier(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SubscriptionTier: %T", src)
+	}
+	return nil
+}
+
+type NullSubscriptionTier struct {
+	SubscriptionTier SubscriptionTier `json:"subscription_tier"`
+	Valid            bool             `json:"valid"` // Valid is true if SubscriptionTier is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSubscriptionTier) Scan(value interface{}) error {
+	if value == nil {
+		ns.SubscriptionTier, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SubscriptionTier.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSubscriptionTier) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SubscriptionTier), nil
+}
+
 type UserRole string
 
 const (
@@ -234,14 +323,20 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 type VariantType string
 
 const (
-	VariantTypeThumbnail   VariantType = "thumbnail"
-	VariantTypeLarge       VariantType = "large"
-	VariantTypeMedium      VariantType = "medium"
-	VariantTypeSmall       VariantType = "small"
-	VariantTypeWebp        VariantType = "webp"
-	VariantTypeWatermarked VariantType = "watermarked"
-	VariantTypeOptimized   VariantType = "optimized"
-	VariantTypePdfPreview  VariantType = "pdf_preview"
+	VariantTypeThumbnail         VariantType = "thumbnail"
+	VariantTypeSm                VariantType = "sm"
+	VariantTypeMd                VariantType = "md"
+	VariantTypeLg                VariantType = "lg"
+	VariantTypeXl                VariantType = "xl"
+	VariantTypeOg                VariantType = "og"
+	VariantTypeTwitter           VariantType = "twitter"
+	VariantTypeInstagramSquare   VariantType = "instagram_square"
+	VariantTypeInstagramPortrait VariantType = "instagram_portrait"
+	VariantTypeInstagramStory    VariantType = "instagram_story"
+	VariantTypeWebp              VariantType = "webp"
+	VariantTypeWatermarked       VariantType = "watermarked"
+	VariantTypeOptimized         VariantType = "optimized"
+	VariantTypePdfPreview        VariantType = "pdf_preview"
 )
 
 func (e *VariantType) Scan(src interface{}) error {
@@ -312,6 +407,16 @@ type File struct {
 	DeletedAt   pgtype.Timestamptz `json:"deleted_at"`
 }
 
+type FileShare struct {
+	ID                pgtype.UUID        `json:"id"`
+	FileID            pgtype.UUID        `json:"file_id"`
+	Token             string             `json:"token"`
+	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
+	AllowedTransforms []string           `json:"allowed_transforms"`
+	AccessCount       int32              `json:"access_count"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
 type FileVariant struct {
 	ID          pgtype.UUID        `json:"id"`
 	FileID      pgtype.UUID        `json:"file_id"`
@@ -367,17 +472,40 @@ type Session struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
-type User struct {
+type TransformCache struct {
 	ID              pgtype.UUID        `json:"id"`
-	Email           string             `json:"email"`
-	PasswordHash    *string            `json:"password_hash"`
-	Name            string             `json:"name"`
-	AvatarUrl       *string            `json:"avatar_url"`
-	Role            UserRole           `json:"role"`
-	EmailVerifiedAt pgtype.Timestamptz `json:"email_verified_at"`
+	FileID          pgtype.UUID        `json:"file_id"`
+	CacheKey        string             `json:"cache_key"`
+	TransformParams string             `json:"transform_params"`
+	StorageKey      string             `json:"storage_key"`
+	ContentType     string             `json:"content_type"`
+	SizeBytes       int64              `json:"size_bytes"`
+	Width           *int32             `json:"width"`
+	Height          *int32             `json:"height"`
+	RequestCount    int32              `json:"request_count"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
-	DeletedAt       pgtype.Timestamptz `json:"deleted_at"`
+	LastAccessedAt  pgtype.Timestamptz `json:"last_accessed_at"`
+}
+
+type User struct {
+	ID                    pgtype.UUID        `json:"id"`
+	Email                 string             `json:"email"`
+	PasswordHash          *string            `json:"password_hash"`
+	Name                  string             `json:"name"`
+	AvatarUrl             *string            `json:"avatar_url"`
+	Role                  UserRole           `json:"role"`
+	SubscriptionTier      SubscriptionTier   `json:"subscription_tier"`
+	StripeCustomerID      *string            `json:"stripe_customer_id"`
+	StripeSubscriptionID  *string            `json:"stripe_subscription_id"`
+	SubscriptionStatus    SubscriptionStatus `json:"subscription_status"`
+	SubscriptionPeriodEnd pgtype.Timestamptz `json:"subscription_period_end"`
+	TrialEndsAt           pgtype.Timestamptz `json:"trial_ends_at"`
+	FilesLimit            int32              `json:"files_limit"`
+	MaxFileSize           int64              `json:"max_file_size"`
+	EmailVerifiedAt       pgtype.Timestamptz `json:"email_verified_at"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt             pgtype.Timestamptz `json:"deleted_at"`
 }
 
 type UserSetting struct {

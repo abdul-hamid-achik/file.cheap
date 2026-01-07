@@ -1,0 +1,352 @@
+package pages
+
+import (
+	"fmt"
+	"github.com/abdul-hamid-achik/file-processor/internal/auth"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
+)
+
+type SubscriptionData struct {
+	Tier              string
+	Status            string
+	PeriodEnd         string
+	TrialEndsAt       string
+	FilesLimit        int
+	FilesUsed         int
+	MaxFileSize       int64
+	IsPro             bool
+	IsTrialing        bool
+	TrialDaysLeft     int
+	UsagePercent      int
+	CanUpgrade        bool
+	HasStripeCustomer bool
+}
+
+type BillingPageData struct {
+	Error            string
+	Success          string
+	Subscription     SubscriptionData
+	StripeConfigured bool
+}
+
+func formatFileSize(bytes int64) string {
+	if bytes >= 1024*1024*1024 {
+		return fmt.Sprintf("%.1f GB", float64(bytes)/(1024*1024*1024))
+	}
+	if bytes >= 1024*1024 {
+		return fmt.Sprintf("%.0f MB", float64(bytes)/(1024*1024))
+	}
+	if bytes >= 1024 {
+		return fmt.Sprintf("%.0f KB", float64(bytes)/1024)
+	}
+	return fmt.Sprintf("%d B", bytes)
+}
+
+templ Billing(user *auth.SessionUser, data BillingPageData) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Billing",
+		Description: "Manage your subscription and billing",
+	}, user) {
+		<div class="py-8">
+			<div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+				<div class="mb-8">
+					<h1 class="text-2xl font-bold text-nord-5">Billing & Subscription</h1>
+					<p class="text-nord-4 mt-1">Manage your plan and payment settings</p>
+				</div>
+
+				if data.Error != "" {
+					<div class="mb-6">
+						@components.Alert(components.AlertError, data.Error, true)
+					</div>
+				}
+
+				if data.Success != "" {
+					<div class="mb-6">
+						@components.Alert(components.AlertSuccess, data.Success, true)
+					</div>
+				}
+
+				<div class="grid gap-6 lg:grid-cols-2">
+					@currentPlanCard(data)
+					@usageCard(data)
+				</div>
+
+				if data.Subscription.CanUpgrade {
+					<div class="mt-8">
+						@pricingSection(data)
+					</div>
+				}
+
+				if data.Subscription.IsPro && data.StripeConfigured {
+					<div class="mt-8">
+						@components.Card("") {
+							@components.CardHeader() {
+								@components.CardTitle("Manage Subscription")
+								@components.CardDescription("Update payment method, view invoices, or cancel your subscription")
+							}
+							@components.CardBody() {
+								<form action="/billing/portal" method="POST">
+									@components.Button(components.ButtonProps{
+										Variant: components.ButtonSecondary,
+										Size:    components.ButtonMd,
+										Type:    "submit",
+									}) {
+										Open Billing Portal
+									}
+								</form>
+							}
+						}
+					</div>
+				}
+			</div>
+		</div>
+	}
+}
+
+templ currentPlanCard(data BillingPageData) {
+	@components.Card("") {
+		@components.CardHeader() {
+			<div class="flex items-center justify-between">
+				<div>
+					@components.CardTitle("Current Plan")
+					@components.CardDescription("Your active subscription")
+				</div>
+				if data.Subscription.IsPro {
+					<span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-nord-14/20 text-nord-14">
+						Pro
+					</span>
+				} else {
+					<span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-nord-3/20 text-nord-4">
+						Free
+					</span>
+				}
+			</div>
+		}
+		@components.CardBody() {
+			<div class="space-y-4">
+				if data.Subscription.IsTrialing {
+					<div class="p-4 bg-nord-8/10 border border-nord-8/30 rounded-lg">
+						<div class="flex items-center gap-2 text-nord-8 mb-1">
+							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+							</svg>
+							<span class="font-medium">Trial Active</span>
+						</div>
+						<p class="text-nord-4 text-sm">
+							{ fmt.Sprintf("%d days remaining", data.Subscription.TrialDaysLeft) } - Ends { data.Subscription.TrialEndsAt }
+						</p>
+					</div>
+				}
+
+				<div class="grid grid-cols-2 gap-4 text-sm">
+					<div>
+						<p class="text-nord-4">Status</p>
+						<p class="text-nord-5 font-medium capitalize">{ data.Subscription.Status }</p>
+					</div>
+					if data.Subscription.PeriodEnd != "" {
+						<div>
+							<p class="text-nord-4">Renews</p>
+							<p class="text-nord-5 font-medium">{ data.Subscription.PeriodEnd }</p>
+						</div>
+					}
+					<div>
+						<p class="text-nord-4">Files Limit</p>
+						<p class="text-nord-5 font-medium">{ fmt.Sprintf("%d files", data.Subscription.FilesLimit) }</p>
+					</div>
+					<div>
+						<p class="text-nord-4">Max File Size</p>
+						<p class="text-nord-5 font-medium">{ formatFileSize(data.Subscription.MaxFileSize) }</p>
+					</div>
+				</div>
+			</div>
+		}
+	}
+}
+
+templ usageCard(data BillingPageData) {
+	@components.Card("") {
+		@components.CardHeader() {
+			@components.CardTitle("Usage")
+			@components.CardDescription("Your current resource usage")
+		}
+		@components.CardBody() {
+			<div class="space-y-4">
+				<div>
+					<div class="flex items-center justify-between text-sm mb-2">
+						<span class="text-nord-4">Files</span>
+						<span class="text-nord-5 font-medium">
+							{ fmt.Sprintf("%d / %d", data.Subscription.FilesUsed, data.Subscription.FilesLimit) }
+						</span>
+					</div>
+					<div class="w-full h-2 bg-nord-2 rounded-full overflow-hidden">
+						<div 
+							class={ "h-full rounded-full transition-all", templ.KV("bg-nord-14", data.Subscription.UsagePercent < 80), templ.KV("bg-nord-13", data.Subscription.UsagePercent >= 80 && data.Subscription.UsagePercent < 95), templ.KV("bg-nord-11", data.Subscription.UsagePercent >= 95) }
+							style={ fmt.Sprintf("width: %d%%", min(data.Subscription.UsagePercent, 100)) }
+						></div>
+					</div>
+					<p class="text-nord-4 text-xs mt-1">
+						{ fmt.Sprintf("%d%% of your plan limit used", data.Subscription.UsagePercent) }
+					</p>
+				</div>
+
+				if data.Subscription.UsagePercent >= 80 && data.Subscription.CanUpgrade {
+					<div class="p-3 bg-nord-13/10 border border-nord-13/30 rounded-lg">
+						<p class="text-nord-13 text-sm">
+							You're running low on file storage. Consider upgrading to Pro for more capacity.
+						</p>
+					</div>
+				}
+			</div>
+		}
+	}
+}
+
+templ pricingSection(data BillingPageData) {
+	<div class="grid gap-6 lg:grid-cols-2">
+		@components.Card("border-2 border-nord-3") {
+			@components.CardHeader() {
+				@components.CardTitle("Free")
+				@components.CardDescription("For personal use")
+			}
+			@components.CardBody() {
+				<div class="mb-6">
+					<span class="text-3xl font-bold text-nord-5">$0</span>
+					<span class="text-nord-4">/month</span>
+				</div>
+				<ul class="space-y-3 text-sm mb-6">
+					<li class="flex items-center gap-2 text-nord-4">
+						<svg class="w-4 h-4 text-nord-14" fill="currentColor" viewBox="0 0 20 20">
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+						</svg>
+						100 files
+					</li>
+					<li class="flex items-center gap-2 text-nord-4">
+						<svg class="w-4 h-4 text-nord-14" fill="currentColor" viewBox="0 0 20 20">
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+						</svg>
+						10 MB max file size
+					</li>
+					<li class="flex items-center gap-2 text-nord-4">
+						<svg class="w-4 h-4 text-nord-14" fill="currentColor" viewBox="0 0 20 20">
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+						</svg>
+						Thumbnails only
+					</li>
+					<li class="flex items-center gap-2 text-nord-4">
+						<svg class="w-4 h-4 text-nord-14" fill="currentColor" viewBox="0 0 20 20">
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+						</svg>
+						7-day file retention
+					</li>
+					<li class="flex items-center gap-2 text-nord-4">
+						<svg class="w-4 h-4 text-nord-14" fill="currentColor" viewBox="0 0 20 20">
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+						</svg>
+						Read-only API access
+					</li>
+				</ul>
+				<div class="pt-4 border-t border-nord-2">
+					<span class="inline-flex items-center px-4 py-2 bg-nord-2 text-nord-4 rounded-lg text-sm font-medium">
+						Current Plan
+					</span>
+				</div>
+			}
+		}
+
+		@components.Card("border-2 border-nord-8") {
+			@components.CardHeader() {
+				<div class="flex items-center justify-between">
+					<div>
+						@components.CardTitle("Pro")
+						@components.CardDescription("For professionals")
+					</div>
+					<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-nord-8/20 text-nord-8">
+						Popular
+					</span>
+				</div>
+			}
+			@components.CardBody() {
+				<div class="mb-6">
+					<span class="text-3xl font-bold text-nord-5">$19</span>
+					<span class="text-nord-4">/month</span>
+				</div>
+				<ul class="space-y-3 text-sm mb-6">
+					<li class="flex items-center gap-2 text-nord-4">
+						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+						</svg>
+						<strong class="text-nord-5">2,000 files</strong>
+					</li>
+					<li class="flex items-center gap-2 text-nord-4">
+						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+						</svg>
+						<strong class="text-nord-5">100 MB</strong> max file size
+					</li>
+					<li class="flex items-center gap-2 text-nord-4">
+						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+						</svg>
+						All processing (resize, webp, watermark)
+					</li>
+					<li class="flex items-center gap-2 text-nord-4">
+						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+						</svg>
+						1-year file retention
+					</li>
+					<li class="flex items-center gap-2 text-nord-4">
+						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+						</svg>
+						Full API access
+					</li>
+					<li class="flex items-center gap-2 text-nord-4">
+						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+						</svg>
+						Custom watermarks
+					</li>
+					<li class="flex items-center gap-2 text-nord-4">
+						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+						</svg>
+						Priority processing
+					</li>
+				</ul>
+				<div class="pt-4 border-t border-nord-2 space-y-3">
+					<form action="/billing/trial" method="POST">
+						@components.Button(components.ButtonProps{
+							Variant: components.ButtonSecondary,
+							Size:    components.ButtonMd,
+							Type:    "submit",
+							Class:   "w-full",
+						}) {
+							Start 7-Day Free Trial
+						}
+					</form>
+					if data.StripeConfigured {
+						<form action="/billing/checkout" method="POST">
+							@components.Button(components.ButtonProps{
+								Variant: components.ButtonPrimary,
+								Size:    components.ButtonMd,
+								Type:    "submit",
+								Class:   "w-full",
+							}) {
+								Subscribe Now
+							}
+						</form>
+					}
+				</div>
+			}
+		}
+	</div>
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

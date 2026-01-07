@@ -81,6 +81,44 @@ func (q *Queries) DeleteVariantsByFile(ctx context.Context, fileID pgtype.UUID) 
 	return err
 }
 
+const getThumbnailsForFiles = `-- name: GetThumbnailsForFiles :many
+SELECT file_id, storage_key, content_type, size_bytes
+FROM file_variants
+WHERE file_id = ANY($1::uuid[]) AND variant_type = 'thumbnail'
+`
+
+type GetThumbnailsForFilesRow struct {
+	FileID      pgtype.UUID `json:"file_id"`
+	StorageKey  string      `json:"storage_key"`
+	ContentType string      `json:"content_type"`
+	SizeBytes   int64       `json:"size_bytes"`
+}
+
+func (q *Queries) GetThumbnailsForFiles(ctx context.Context, dollar_1 []pgtype.UUID) ([]GetThumbnailsForFilesRow, error) {
+	rows, err := q.db.Query(ctx, getThumbnailsForFiles, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetThumbnailsForFilesRow
+	for rows.Next() {
+		var i GetThumbnailsForFilesRow
+		if err := rows.Scan(
+			&i.FileID,
+			&i.StorageKey,
+			&i.ContentType,
+			&i.SizeBytes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getVariant = `-- name: GetVariant :one
 SELECT id, file_id, variant_type, content_type, size_bytes, storage_key, width, height, created_at FROM file_variants
 WHERE file_id = $1 AND variant_type = $2
@@ -106,6 +144,50 @@ func (q *Queries) GetVariant(ctx context.Context, arg GetVariantParams) (FileVar
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const getVariantTypes = `-- name: GetVariantTypes :many
+SELECT variant_type FROM file_variants
+WHERE file_id = $1
+`
+
+func (q *Queries) GetVariantTypes(ctx context.Context, fileID pgtype.UUID) ([]VariantType, error) {
+	rows, err := q.db.Query(ctx, getVariantTypes, fileID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []VariantType
+	for rows.Next() {
+		var variant_type VariantType
+		if err := rows.Scan(&variant_type); err != nil {
+			return nil, err
+		}
+		items = append(items, variant_type)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const hasVariant = `-- name: HasVariant :one
+SELECT EXISTS(
+    SELECT 1 FROM file_variants
+    WHERE file_id = $1 AND variant_type = $2
+) AS exists
+`
+
+type HasVariantParams struct {
+	FileID      pgtype.UUID `json:"file_id"`
+	VariantType VariantType `json:"variant_type"`
+}
+
+func (q *Queries) HasVariant(ctx context.Context, arg HasVariantParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasVariant, arg.FileID, arg.VariantType)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const listVariantsByFile = `-- name: ListVariantsByFile :many

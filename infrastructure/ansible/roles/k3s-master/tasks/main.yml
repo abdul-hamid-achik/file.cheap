@@ -1,0 +1,70 @@
+---
+- name: Check if K3s is installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary
+
+- name: Download K3s install script
+  ansible.builtin.get_url:
+    url: https://get.k3s.io
+    dest: /tmp/k3s-install.sh
+    mode: '0755'
+  when: not k3s_binary.stat.exists
+
+- name: Install K3s server
+  ansible.builtin.shell: |
+    INSTALL_K3S_VERSION="{{ k3s_version }}" \
+    K3S_TOKEN="{{ lookup('password', '/tmp/k3s_token chars=ascii_letters,digits length=32') }}" \
+    sh /tmp/k3s-install.sh server {{ k3s_server_args | join(' ') }} \
+    --tls-san {{ ansible_host }} \
+    --tls-san {{ private_ip }}
+  args:
+    creates: /etc/rancher/k3s/k3s.yaml
+  notify: Restart k3s
+
+- name: Wait for K3s to be ready
+  ansible.builtin.command: k3s kubectl get nodes
+  register: nodes_result
+  until: nodes_result.rc == 0
+  retries: 30
+  delay: 10
+  changed_when: false
+
+- name: Get K3s token
+  ansible.builtin.slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  register: k3s_token_raw
+
+- name: Set K3s token fact
+  ansible.builtin.set_fact:
+    k3s_token: "{{ k3s_token_raw.content | b64decode | trim }}"
+
+- name: Store token for workers
+  ansible.builtin.copy:
+    content: "{{ k3s_token }}"
+    dest: /tmp/k3s_cluster_token
+    mode: '0600'
+  delegate_to: localhost
+  become: false
+
+- name: Wait for all nodes to be ready
+  ansible.builtin.shell: |
+    k3s kubectl get nodes -o json | jq -r '.items[].status.conditions[] | select(.type=="Ready") | .status'
+  register: node_ready
+  until: node_ready.stdout_lines | select('equalto', 'True') | list | length >= 1
+  retries: 30
+  delay: 10
+  changed_when: false
+
+- name: Create kubeconfig directory
+  ansible.builtin.file:
+    path: /root/.kube
+    state: directory
+    mode: '0700'
+
+- name: Copy kubeconfig
+  ansible.builtin.copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: /root/.kube/config
+    remote_src: true
+    mode: '0600'

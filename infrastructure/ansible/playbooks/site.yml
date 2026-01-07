@@ -1,0 +1,12 @@
+---
+- name: Configure all nodes
+  import_playbook: 00-prerequisites.yml
+
+- name: Install K3s master
+  import_playbook: 01-k3s-master.yml
+
+- name: Install K3s workers
+  import_playbook: 02-k3s-workers.yml
+
+- name: Post-installation setup
+  import_playbook: 03-post-install.yml

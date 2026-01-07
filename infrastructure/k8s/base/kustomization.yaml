@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: file-processor
+
+resources:
+  - namespace.yaml
+  - api/deployment.yaml
+  - api/service.yaml
+  - api/hpa.yaml
+  - api/ingress.yaml
+  - worker/deployment.yaml
+  - worker/service.yaml
+  - worker/hpa.yaml
+  - postgres/statefulset.yaml
+  - postgres/service.yaml
+  - postgres/pvc.yaml
+  - postgres/configmap.yaml
+  - redis/statefulset.yaml
+  - redis/service.yaml
+  - redis/pvc.yaml
+  - redis/configmap.yaml
+  - minio/statefulset.yaml
+  - minio/service.yaml
+  - minio/pvc.yaml
+  - backup/cronjob.yaml
+  - cert-manager/cluster-issuer.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: file-processor
+  app.kubernetes.io/managed-by: kustomize

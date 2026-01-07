@@ -140,7 +140,7 @@ func (s *Service) SendWelcomeEmail(to, name string) error {
 		return err
 	}
 
-	return s.Send(to, "Welcome to File Processor!", html)
+	return s.Send(to, "Welcome to file.cheap!", html)
 }
 
 func (s *Service) renderTemplate(tmplStr string, data any) (string, error) {
@@ -172,7 +172,7 @@ const verificationEmailTemplate = `
                 <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #3B4252; border-radius: 8px; overflow: hidden;">
                     <tr>
                         <td style="padding: 40px; text-align: center; background-color: #434C5E;">
-                            <h1 style="margin: 0; color: #88C0D0; font-size: 24px;">File Processor</h1>
+                            <h1 style="margin: 0; color: #88C0D0; font-size: 24px;">file.cheap</h1>
                         </td>
                     </tr>
                     <tr>
@@ -201,7 +201,7 @@ const verificationEmailTemplate = `
                     <tr>
                         <td style="padding: 20px 40px; background-color: #434C5E; text-align: center;">
                             <p style="margin: 0; color: #4C566A; font-size: 12px;">
-                                &copy; {{.Year}} File Processor. All rights reserved.
+                                &copy; {{.Year}} file.cheap. All rights reserved.
                             </p>
                         </td>
                     </tr>
@@ -227,7 +227,7 @@ const passwordResetEmailTemplate = `
                 <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #3B4252; border-radius: 8px; overflow: hidden;">
                     <tr>
                         <td style="padding: 40px; text-align: center; background-color: #434C5E;">
-                            <h1 style="margin: 0; color: #88C0D0; font-size: 24px;">File Processor</h1>
+                            <h1 style="margin: 0; color: #88C0D0; font-size: 24px;">file.cheap</h1>
                         </td>
                     </tr>
                     <tr>
@@ -256,7 +256,7 @@ const passwordResetEmailTemplate = `
                     <tr>
                         <td style="padding: 20px 40px; background-color: #434C5E; text-align: center;">
                             <p style="margin: 0; color: #4C566A; font-size: 12px;">
-                                &copy; {{.Year}} File Processor. All rights reserved.
+                                &copy; {{.Year}} file.cheap. All rights reserved.
                             </p>
                         </td>
                     </tr>
@@ -282,7 +282,7 @@ const welcomeEmailTemplate = `
                 <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #3B4252; border-radius: 8px; overflow: hidden;">
                     <tr>
                         <td style="padding: 40px; text-align: center; background-color: #434C5E;">
-                            <h1 style="margin: 0; color: #88C0D0; font-size: 24px;">File Processor</h1>
+                            <h1 style="margin: 0; color: #88C0D0; font-size: 24px;">file.cheap</h1>
                         </td>
                     </tr>
                     <tr>
@@ -292,7 +292,7 @@ const welcomeEmailTemplate = `
                                 Hi {{.RecipientName}},
                             </p>
                             <p style="margin: 0 0 30px; color: #D8DEE9; line-height: 1.6;">
-                                Thanks for joining File Processor! You can now upload and process your files with ease.
+                                Thanks for joining file.cheap! You can now upload and process your files at prices that won't break the bank.
                             </p>
                             <table role="presentation" style="margin: 0 auto;">
                                 <tr>
@@ -308,7 +308,7 @@ const welcomeEmailTemplate = `
                     <tr>
                         <td style="padding: 20px 40px; background-color: #434C5E; text-align: center;">
                             <p style="margin: 0; color: #4C566A; font-size: 12px;">
-                                &copy; {{.Year}} File Processor. All rights reserved.
+                                &copy; {{.Year}} file.cheap. All rights reserved.
                             </p>
                         </td>
                     </tr>

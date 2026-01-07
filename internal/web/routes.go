@@ -8,14 +8,19 @@ import (
 	"github.com/abdul-hamid-achik/file-processor/internal/storage"
 )
 
+type Broker interface {
+	Enqueue(jobType string, payload interface{}) (string, error)
+}
+
 type Config struct {
 	Storage storage.Storage
 	Queries *db.Queries
+	Broker  Broker
 	BaseURL string
 	Secure  bool
 }
 
-func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oauthSvc *auth.OAuthService) http.Handler {
+func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oauthSvc *auth.OAuthService, billingHandlers *BillingHandlers) http.Handler {
 	mux := http.NewServeMux()
 	h := NewHandlers(cfg, sm, authSvc, oauthSvc)
 
@@ -45,10 +50,12 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 		mux.Handle("GET /dashboard", requireAuth(http.HandlerFunc(h.Dashboard)))
 		mux.Handle("GET /upload", requireAuth(http.HandlerFunc(h.UploadPage)))
 		mux.Handle("POST /upload", requireAuth(http.HandlerFunc(h.UploadFile)))
-		mux.Handle("POST /api/files", requireAuth(http.HandlerFunc(h.UploadFileAPI)))
+		mux.Handle("POST /files/upload", requireAuth(http.HandlerFunc(h.UploadFileAPI)))
 		mux.Handle("GET /files", requireAuth(http.HandlerFunc(h.FileList)))
 		mux.Handle("GET /files/{id}", requireAuth(http.HandlerFunc(h.FileDetail)))
+		mux.Handle("GET /files/{id}/download", requireAuth(http.HandlerFunc(h.DownloadFile)))
 		mux.Handle("POST /files/{id}/delete", requireAuth(http.HandlerFunc(h.DeleteFile)))
+		mux.Handle("POST /files/{id}/process", requireAuth(http.HandlerFunc(h.ProcessFile)))
 		mux.Handle("GET /profile", requireAuth(http.HandlerFunc(h.Profile)))
 		mux.Handle("POST /profile", requireAuth(http.HandlerFunc(h.ProfilePost)))
 		mux.Handle("POST /profile/avatar", requireAuth(http.HandlerFunc(h.ProfileAvatar)))
@@ -59,6 +66,14 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 		mux.Handle("POST /settings/files", requireAuth(http.HandlerFunc(h.SettingsFiles)))
 		mux.Handle("POST /settings/tokens", requireAuth(http.HandlerFunc(h.SettingsCreateToken)))
 		mux.Handle("POST /settings/tokens/{id}/delete", requireAuth(http.HandlerFunc(h.SettingsDeleteToken)))
+
+		// Billing routes
+		if billingHandlers != nil {
+			mux.Handle("GET /billing", requireAuth(http.HandlerFunc(billingHandlers.Billing)))
+			mux.Handle("POST /billing/trial", requireAuth(http.HandlerFunc(billingHandlers.StartTrial)))
+			mux.Handle("POST /billing/checkout", requireAuth(http.HandlerFunc(billingHandlers.CreateCheckout)))
+			mux.Handle("POST /billing/portal", requireAuth(http.HandlerFunc(billingHandlers.CreatePortal)))
+		}
 	} else {
 		redirectToLogin := func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/login", http.StatusFound)
@@ -68,7 +83,9 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 		mux.HandleFunc("POST /upload", redirectToLogin)
 		mux.HandleFunc("GET /files", redirectToLogin)
 		mux.HandleFunc("GET /files/{id}", redirectToLogin)
+		mux.HandleFunc("GET /files/{id}/download", redirectToLogin)
 		mux.HandleFunc("POST /files/{id}/delete", redirectToLogin)
+		mux.HandleFunc("POST /files/{id}/process", redirectToLogin)
 		mux.HandleFunc("GET /profile", redirectToLogin)
 		mux.HandleFunc("POST /profile", redirectToLogin)
 		mux.HandleFunc("POST /profile/avatar", redirectToLogin)
@@ -79,6 +96,15 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 		mux.HandleFunc("POST /settings/files", redirectToLogin)
 		mux.HandleFunc("POST /settings/tokens", redirectToLogin)
 		mux.HandleFunc("POST /settings/tokens/{id}/delete", redirectToLogin)
+		mux.HandleFunc("GET /billing", redirectToLogin)
+		mux.HandleFunc("POST /billing/trial", redirectToLogin)
+		mux.HandleFunc("POST /billing/checkout", redirectToLogin)
+		mux.HandleFunc("POST /billing/portal", redirectToLogin)
+	}
+
+	// Stripe webhook (no auth required - Stripe sends directly)
+	if billingHandlers != nil {
+		mux.HandleFunc("POST /billing/webhook", billingHandlers.Webhook)
 	}
 
 	mux.HandleFunc("GET /verify-email", h.VerifyEmail)

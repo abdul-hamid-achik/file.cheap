@@ -19,12 +19,12 @@ services:
       - JWT_SECRET=your-secret-key-change-in-production
       - SMTP_HOST=mailhog
       - SMTP_PORT=1025
-      - SMTP_FROM_ADDRESS=noreply@fileprocessor.local
-      - SMTP_FROM_NAME=File Processor
+      - SMTP_FROM_ADDRESS=noreply@file.cheap
+      - SMTP_FROM_NAME=file.cheap
       - BASE_URL=http://localhost:8080
       - ENVIRONMENT=development
       - LOG_LEVEL=info
-      - LOG_FORMAT=
+      - LOG_FORMAT=json
       - GOOGLE_CLIENT_ID=
       - GOOGLE_CLIENT_SECRET=
       - GITHUB_CLIENT_ID=
@@ -44,6 +44,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: worker
+    ports:
+      - "9091:9090"
     environment:
       - DATABASE_URL=postgres://postgres:postgres@db:5432/fileprocessor?sslmode=disable
       - REDIS_URL=redis://redis:6379
@@ -56,13 +58,12 @@ services:
       - JOB_TIMEOUT=5m
       - ENVIRONMENT=development
       - LOG_LEVEL=info
-      - LOG_FORMAT=
+      - LOG_FORMAT=json
+      - METRICS_PORT=9090
     depends_on:
       - db
       - redis
       - minio
-    deploy:
-      replicas: 2
 
   db:
     image: postgres:17-alpine
@@ -131,6 +132,21 @@ services:
     depends_on:
       - loki
 
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    depends_on:
+      - api
+
   grafana:
     image: grafana/grafana:10.2.0
     ports:
@@ -144,6 +160,7 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       - loki
+      - prometheus
 
 volumes:
   postgres_data:
@@ -151,3 +168,4 @@ volumes:
   minio_data:
   loki_data:
   grafana_data:
+  prometheus_data:

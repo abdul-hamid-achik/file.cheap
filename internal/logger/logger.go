@@ -18,26 +18,11 @@ const (
 
 var defaultLogger *slog.Logger
 
-func Init(level, format, environment string) {
-	var handler slog.Handler
+func Init(level string) {
 	opts := &slog.HandlerOptions{
 		Level: parseLevel(level),
 	}
-
-	if format == "" {
-		if environment == "production" {
-			format = "json"
-		} else {
-			format = "text"
-		}
-	}
-
-	if format == "json" {
-		handler = slog.NewJSONHandler(os.Stdout, opts)
-	} else {
-		handler = slog.NewTextHandler(os.Stdout, opts)
-	}
-
+	handler := slog.NewJSONHandler(os.Stdout, opts)
 	defaultLogger = slog.New(handler)
 	slog.SetDefault(defaultLogger)
 }
@@ -59,7 +44,7 @@ func parseLevel(level string) slog.Level {
 
 func Default() *slog.Logger {
 	if defaultLogger == nil {
-		Init("info", "", "development")
+		Init("info")
 	}
 	return defaultLogger
 }

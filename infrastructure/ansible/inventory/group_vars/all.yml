@@ -1,0 +1,19 @@
+---
+k3s_version: v1.30.0+k3s1
+
+system_packages:
+  - curl
+  - wget
+  - vim
+  - htop
+  - jq
+  - unzip
+  - open-iscsi
+  - nfs-common
+
+tailscale_authkey: "{{ lookup('env', 'TAILSCALE_AUTHKEY') }}"
+
+helm_version: v3.14.0
+
+cert_manager_version: v1.14.0
+nginx_ingress_version: 4.9.0

@@ -224,8 +224,8 @@ func TestHomeHandler(t *testing.T) {
 		if !strings.Contains(body, "<html") {
 			t.Error("response should contain HTML")
 		}
-		if !strings.Contains(body, "File Processor") {
-			t.Error("response should contain 'File Processor' title")
+		if !strings.Contains(body, "file.cheap") {
+			t.Error("response should contain 'file.cheap' title")
 		}
 	})
 

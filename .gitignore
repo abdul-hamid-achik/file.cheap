@@ -36,6 +36,23 @@ cookies2.txt
 .env
 .env.local
 .env.*.local
+.env.production
+
+# Terraform
+infrastructure/terraform.tfvars
+infrastructure/terraform/*.tfvars
+!infrastructure/terraform.tfvars.example
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Ansible
+infrastructure/ansible/inventory/hosts.yml
+/tmp/k3s_*
+
+# Kubeconfig
+.kube/
 
 # OS generated files
 .DS_Store

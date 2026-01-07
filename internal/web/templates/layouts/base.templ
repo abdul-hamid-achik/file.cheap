@@ -22,7 +22,7 @@ templ Base(meta PageMeta, user *auth.SessionUser) {
 			<meta charset="UTF-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 			<meta name="description" content={ meta.Description }/>
-			<title>{ meta.Title } | File Processor</title>
+			<title>{ meta.Title } | file.cheap</title>
 			<script src="https://cdn.tailwindcss.com"></script>
 			<script>
 				tailwind.config = {
@@ -119,11 +119,11 @@ templ Header(user *auth.SessionUser) {
 		<nav class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8" aria-label="Main navigation">
 			<div class="flex h-16 items-center justify-between">
 				<div class="flex items-center">
-					<a href="/" class="flex items-center gap-2 text-nord-8 font-bold text-xl hover:text-nord-7 transition-colors focus:outline-none focus:ring-2 focus:ring-nord-8 focus:ring-offset-2 focus:ring-offset-nord-1 rounded-lg" aria-label="File Processor Home">
+					<a href="/" class="flex items-center gap-2 text-nord-8 font-bold text-xl hover:text-nord-7 transition-colors focus:outline-none focus:ring-2 focus:ring-nord-8 focus:ring-offset-2 focus:ring-offset-nord-1 rounded-lg" aria-label="file.cheap Home">
 						<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
 						</svg>
-						<span>File Processor</span>
+						<span>file.cheap</span>
 					</a>
 				</div>
 				<div class="hidden md:flex md:items-center md:gap-6">
@@ -230,7 +230,7 @@ templ Footer() {
 		<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
 			<div class="flex flex-col md:flex-row justify-between items-center gap-4">
 				<div class="text-nord-4 text-sm">
-					&copy; { currentYear() } File Processor. All rights reserved.
+					&copy; { currentYear() } file.cheap. All rights reserved.
 				</div>
 				<nav class="flex gap-6" aria-label="Footer navigation">
 					<a href="/privacy" class="text-nord-4 hover:text-nord-5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-nord-8 rounded px-1">Privacy</a>

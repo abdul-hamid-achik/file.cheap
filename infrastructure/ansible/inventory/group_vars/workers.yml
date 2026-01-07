@@ -1,0 +1,6 @@
+---
+k3s_role: agent
+
+k3s_agent_args:
+  - --flannel-iface enp7s0
+  - --node-ip {{ private_ip }}

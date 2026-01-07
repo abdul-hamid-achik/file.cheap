@@ -275,11 +275,14 @@ func formatInt64(i int64) string {
 
 // FileDetailPageData contains data for the file detail page
 type FileDetailPageData struct {
-	File       FileDetail
-	Variants   []FileVariant
-	Jobs       []ProcessingJob
-	Error      string
-	Success    string
+	File             FileDetail
+	Variants         []FileVariant
+	Jobs             []ProcessingJob
+	ExistingTypes    map[string]bool
+	IsPremium        bool
+	SubscriptionTier string
+	Error            string
+	Success          string
 }
 
 // FileDetail contains detailed file information
@@ -521,6 +524,55 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 							}
 						}
 
+						<!-- Processing Actions -->
+						@components.Card("") {
+							@components.CardHeader() {
+								@components.CardTitle("Process File")
+								@components.CardDescription("Generate optimized variants")
+							}
+							@components.CardBody() {
+								<div class="space-y-4" id="process-actions">
+									<!-- Basic Processing -->
+									<div class="space-y-2">
+										<p class="text-nord-4 text-xs uppercase tracking-wide font-medium">Basic</p>
+										@processAction(data.File.ID, "thumbnail", "Thumbnail", "300x300 square crop", data.ExistingTypes["thumbnail"])
+									</div>
+
+									<!-- Responsive Sizes -->
+									<div class="space-y-2">
+										<p class="text-nord-4 text-xs uppercase tracking-wide font-medium">Responsive</p>
+										@processAction(data.File.ID, "sm", "Small (640w)", "Mobile devices", data.ExistingTypes["sm"])
+										@processAction(data.File.ID, "md", "Medium (1024w)", "Tablets", data.ExistingTypes["md"])
+										@processActionPro(data.File.ID, "lg", "Large (1920w)", "Desktop displays", data.ExistingTypes["lg"], data.IsPremium)
+										@processActionPro(data.File.ID, "xl", "Extra Large (2560w)", "2K displays", data.ExistingTypes["xl"], data.IsPremium)
+									</div>
+
+									<!-- Social Media Presets -->
+									<div class="space-y-2">
+										<p class="text-nord-4 text-xs uppercase tracking-wide font-medium flex items-center gap-2">
+											Social Media
+											if !data.IsPremium {
+												<span class="px-1.5 py-0.5 bg-nord-13/20 text-nord-13 text-xs rounded">PRO</span>
+											}
+										</p>
+										@processActionPro(data.File.ID, "og", "Open Graph", "1200x630 - Facebook, LinkedIn", data.ExistingTypes["og"], data.IsPremium)
+										@processActionPro(data.File.ID, "twitter", "Twitter Card", "1200x675 - Twitter/X", data.ExistingTypes["twitter"], data.IsPremium)
+										@processActionPro(data.File.ID, "instagram_square", "Instagram Square", "1080x1080 - Feed posts", data.ExistingTypes["instagram_square"], data.IsPremium)
+										@processActionPro(data.File.ID, "instagram_portrait", "Instagram Portrait", "1080x1350 - Portrait posts", data.ExistingTypes["instagram_portrait"], data.IsPremium)
+										@processActionPro(data.File.ID, "instagram_story", "Instagram Story", "1080x1920 - Stories", data.ExistingTypes["instagram_story"], data.IsPremium)
+									</div>
+
+									<!-- Format Conversion -->
+									<div class="space-y-2">
+										<p class="text-nord-4 text-xs uppercase tracking-wide font-medium">Format</p>
+										@processActionPro(data.File.ID, "webp", "WebP", "Convert to WebP format", data.ExistingTypes["webp"], data.IsPremium)
+										@processActionWatermark(data.File.ID, data.ExistingTypes["watermarked"], data.IsPremium)
+									</div>
+								</div>
+								<div id="process-result" class="mt-4"></div>
+							}
+						}
+
 						<!-- Actions -->
 						@components.Card("border-nord-11/30") {
 							@components.CardHeader() {
@@ -594,4 +646,135 @@ templ jobStatusBadge(status string) {
 			{ status }
 		</span>
 	}
+}
+
+templ processAction(fileID, action, label, description string, exists bool) {
+	<div class="flex items-center justify-between p-3 bg-nord-2 rounded-lg">
+		<div>
+			<p class="text-nord-5 font-medium text-sm">{ label }</p>
+			<p class="text-nord-4 text-xs">{ description }</p>
+		</div>
+		if exists {
+			<span class="text-nord-14 text-xs flex items-center gap-1">
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+				</svg>
+				Done
+			</span>
+		} else {
+			<button
+				type="button"
+				hx-post={ "/files/" + fileID + "/process" }
+				hx-vals={ `{"action": "` + action + `"}` }
+				hx-target="#process-result"
+				hx-swap="innerHTML"
+				class="px-3 py-1.5 bg-nord-8 text-nord-0 hover:bg-nord-7 rounded text-xs font-medium transition-colors"
+			>
+				Process
+			</button>
+		}
+	</div>
+}
+
+templ processActionPro(fileID, action, label, description string, exists bool, isPremium bool) {
+	<div class="flex items-center justify-between p-3 bg-nord-2 rounded-lg">
+		<div>
+			<p class="text-nord-5 font-medium text-sm">{ label }</p>
+			<p class="text-nord-4 text-xs">{ description }</p>
+		</div>
+		if exists {
+			<span class="text-nord-14 text-xs flex items-center gap-1">
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+				</svg>
+				Done
+			</span>
+		} else if !isPremium {
+			<a href="/billing" class="px-3 py-1.5 bg-nord-13/20 text-nord-13 hover:bg-nord-13/30 rounded text-xs font-medium transition-colors">
+				Upgrade
+			</a>
+		} else {
+			<button
+				type="button"
+				hx-post={ "/files/" + fileID + "/process" }
+				hx-vals={ `{"action": "` + action + `"}` }
+				hx-target="#process-result"
+				hx-swap="innerHTML"
+				class="px-3 py-1.5 bg-nord-8 text-nord-0 hover:bg-nord-7 rounded text-xs font-medium transition-colors"
+			>
+				Process
+			</button>
+		}
+	</div>
+}
+
+templ processActionWatermark(fileID string, exists bool, isPremium bool) {
+	<div class="p-3 bg-nord-2 rounded-lg space-y-3">
+		<div class="flex items-center justify-between">
+			<div>
+				<p class="text-nord-5 font-medium text-sm">
+					Watermark
+					if isPremium {
+						<span class="ml-1 px-1.5 py-0.5 bg-nord-14/20 text-nord-14 text-xs rounded">PRO</span>
+					}
+				</p>
+				<p class="text-nord-4 text-xs">Add text watermark to image</p>
+			</div>
+			if exists {
+				<span class="text-nord-14 text-xs flex items-center gap-1">
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+					</svg>
+					Done
+				</span>
+			}
+		</div>
+		if !exists {
+			if !isPremium {
+				<p class="p-2 bg-nord-13/10 border border-nord-13/20 rounded text-xs text-nord-13 mb-2">
+					Free tier: file.cheap branding will be added.
+					<a href="/settings#subscription" class="underline hover:text-nord-5 ml-1">Upgrade to Pro</a>
+				</p>
+			}
+			<form 
+				hx-post={ "/files/" + fileID + "/process" }
+				hx-target="#process-result"
+				hx-swap="innerHTML"
+				class="space-y-2"
+			>
+				<input type="hidden" name="action" value="watermark"/>
+				if isPremium {
+					<input 
+						type="text" 
+						name="watermark_text" 
+						placeholder="Enter your custom watermark text"
+						class="w-full px-3 py-1.5 bg-nord-1 border border-nord-3 rounded text-nord-5 text-xs placeholder-nord-4 focus:outline-none focus:ring-1 focus:ring-nord-8"
+					/>
+				} else {
+					<input 
+						type="text" 
+						name="watermark_text" 
+						placeholder="Your text (+ File Processor branding)"
+						class="w-full px-3 py-1.5 bg-nord-1 border border-nord-3 rounded text-nord-5 text-xs placeholder-nord-4 focus:outline-none focus:ring-1 focus:ring-nord-8"
+					/>
+				}
+				<select 
+					name="watermark_position"
+					class="w-full px-3 py-1.5 bg-nord-1 border border-nord-3 rounded text-nord-5 text-xs focus:outline-none focus:ring-1 focus:ring-nord-8"
+				>
+					<option value="bottom-right">Bottom Right</option>
+					<option value="bottom-left">Bottom Left</option>
+					<option value="top-right">Top Right</option>
+					<option value="top-left">Top Left</option>
+					<option value="center">Center</option>
+				</select>
+				<button
+					type="submit"
+					class="w-full px-3 py-1.5 bg-nord-8 text-nord-0 hover:bg-nord-7 rounded text-xs font-medium transition-colors"
+				>
+					Add Watermark
+				</button>
+			</form>
+		}
+	</div>
 }

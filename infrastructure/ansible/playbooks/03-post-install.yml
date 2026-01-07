@@ -1,0 +1,89 @@
+---
+- name: Post-installation setup
+  hosts: masters
+  become: true
+  tasks:
+    - name: Install Helm
+      ansible.builtin.shell: |
+        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        creates: /usr/local/bin/helm
+
+    - name: Add Helm repositories
+      kubernetes.core.helm_repository:
+        name: "{{ item.name }}"
+        repo_url: "{{ item.url }}"
+      loop:
+        - { name: jetstack, url: "https://charts.jetstack.io" }
+        - { name: ingress-nginx, url: "https://kubernetes.github.io/ingress-nginx" }
+        - { name: prometheus-community, url: "https://prometheus-community.github.io/helm-charts" }
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Update Helm repositories
+      ansible.builtin.command: helm repo update
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: false
+
+    - name: Install cert-manager CRDs
+      ansible.builtin.command: |
+        kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/{{ cert_manager_version }}/cert-manager.crds.yaml
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: false
+
+    - name: Install cert-manager
+      kubernetes.core.helm:
+        name: cert-manager
+        chart_ref: jetstack/cert-manager
+        chart_version: "{{ cert_manager_version }}"
+        release_namespace: cert-manager
+        create_namespace: true
+        wait: true
+        values:
+          installCRDs: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Install nginx-ingress
+      kubernetes.core.helm:
+        name: ingress-nginx
+        chart_ref: ingress-nginx/ingress-nginx
+        chart_version: "{{ nginx_ingress_version }}"
+        release_namespace: ingress-nginx
+        create_namespace: true
+        wait: true
+        values:
+          controller:
+            service:
+              type: ClusterIP
+            hostPort:
+              enabled: true
+              ports:
+                http: 80
+                https: 443
+            kind: DaemonSet
+            nodeSelector:
+              kubernetes.io/os: linux
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Verify all nodes are ready
+      ansible.builtin.command: kubectl get nodes
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: nodes_output
+      changed_when: false
+
+    - name: Display cluster nodes
+      ansible.builtin.debug:
+        msg: "{{ nodes_output.stdout_lines }}"
+
+- name: Setup Tailscale on all nodes
+  hosts: k3s_cluster
+  become: true
+  tags: tailscale
+  roles:
+    - role: tailscale
+      when: tailscale_authkey is defined and tailscale_authkey | length > 0

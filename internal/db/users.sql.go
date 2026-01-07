@@ -11,6 +11,45 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const cancelUserSubscription = `-- name: CancelUserSubscription :one
+UPDATE users
+SET 
+    stripe_subscription_id = NULL,
+    subscription_status = 'canceled',
+    subscription_tier = 'free',
+    files_limit = 100,
+    max_file_size = 10485760,
+    updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, email_verified_at, created_at, updated_at, deleted_at
+`
+
+func (q *Queries) CancelUserSubscription(ctx context.Context, id pgtype.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, cancelUserSubscription, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Name,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.SubscriptionTier,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionPeriodEnd,
+		&i.TrialEndsAt,
+		&i.FilesLimit,
+		&i.MaxFileSize,
+		&i.EmailVerifiedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const countUsers = `-- name: CountUsers :one
 SELECT COUNT(*) FROM users WHERE deleted_at IS NULL
 `
@@ -25,7 +64,7 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, name, avatar_url, role)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, email, password_hash, name, avatar_url, role, email_verified_at, created_at, updated_at, deleted_at
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, email_verified_at, created_at, updated_at, deleted_at
 `
 
 type CreateUserParams struct {
@@ -52,6 +91,14 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Name,
 		&i.AvatarUrl,
 		&i.Role,
+		&i.SubscriptionTier,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionPeriodEnd,
+		&i.TrialEndsAt,
+		&i.FilesLimit,
+		&i.MaxFileSize,
 		&i.EmailVerifiedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -71,8 +118,58 @@ func (q *Queries) DeleteUser(ctx context.Context, id pgtype.UUID) error {
 	return err
 }
 
+const getUserBillingInfo = `-- name: GetUserBillingInfo :one
+SELECT 
+    id,
+    email,
+    name,
+    subscription_tier,
+    stripe_customer_id,
+    stripe_subscription_id,
+    subscription_status,
+    subscription_period_end,
+    trial_ends_at,
+    files_limit,
+    max_file_size
+FROM users
+WHERE id = $1 AND deleted_at IS NULL
+`
+
+type GetUserBillingInfoRow struct {
+	ID                    pgtype.UUID        `json:"id"`
+	Email                 string             `json:"email"`
+	Name                  string             `json:"name"`
+	SubscriptionTier      SubscriptionTier   `json:"subscription_tier"`
+	StripeCustomerID      *string            `json:"stripe_customer_id"`
+	StripeSubscriptionID  *string            `json:"stripe_subscription_id"`
+	SubscriptionStatus    SubscriptionStatus `json:"subscription_status"`
+	SubscriptionPeriodEnd pgtype.Timestamptz `json:"subscription_period_end"`
+	TrialEndsAt           pgtype.Timestamptz `json:"trial_ends_at"`
+	FilesLimit            int32              `json:"files_limit"`
+	MaxFileSize           int64              `json:"max_file_size"`
+}
+
+func (q *Queries) GetUserBillingInfo(ctx context.Context, id pgtype.UUID) (GetUserBillingInfoRow, error) {
+	row := q.db.QueryRow(ctx, getUserBillingInfo, id)
+	var i GetUserBillingInfoRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Name,
+		&i.SubscriptionTier,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionPeriodEnd,
+		&i.TrialEndsAt,
+		&i.FilesLimit,
+		&i.MaxFileSize,
+	)
+	return i, err
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, name, avatar_url, role, email_verified_at, created_at, updated_at, deleted_at FROM users
+SELECT id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, email_verified_at, created_at, updated_at, deleted_at FROM users
 WHERE email = $1 AND deleted_at IS NULL
 `
 
@@ -86,6 +183,14 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Name,
 		&i.AvatarUrl,
 		&i.Role,
+		&i.SubscriptionTier,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionPeriodEnd,
+		&i.TrialEndsAt,
+		&i.FilesLimit,
+		&i.MaxFileSize,
 		&i.EmailVerifiedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -95,7 +200,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, name, avatar_url, role, email_verified_at, created_at, updated_at, deleted_at FROM users
+SELECT id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, email_verified_at, created_at, updated_at, deleted_at FROM users
 WHERE id = $1 AND deleted_at IS NULL
 `
 
@@ -109,6 +214,14 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.Name,
 		&i.AvatarUrl,
 		&i.Role,
+		&i.SubscriptionTier,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionPeriodEnd,
+		&i.TrialEndsAt,
+		&i.FilesLimit,
+		&i.MaxFileSize,
 		&i.EmailVerifiedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -117,8 +230,63 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	return i, err
 }
 
+const getUserByStripeCustomerID = `-- name: GetUserByStripeCustomerID :one
+SELECT id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, email_verified_at, created_at, updated_at, deleted_at FROM users
+WHERE stripe_customer_id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) GetUserByStripeCustomerID(ctx context.Context, stripeCustomerID *string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByStripeCustomerID, stripeCustomerID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Name,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.SubscriptionTier,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionPeriodEnd,
+		&i.TrialEndsAt,
+		&i.FilesLimit,
+		&i.MaxFileSize,
+		&i.EmailVerifiedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getUserFilesCount = `-- name: GetUserFilesCount :one
+SELECT COUNT(*) FROM files
+WHERE user_id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) GetUserFilesCount(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, getUserFilesCount, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const getUserSubscriptionTier = `-- name: GetUserSubscriptionTier :one
+SELECT subscription_tier FROM users
+WHERE id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) GetUserSubscriptionTier(ctx context.Context, id pgtype.UUID) (SubscriptionTier, error) {
+	row := q.db.QueryRow(ctx, getUserSubscriptionTier, id)
+	var subscription_tier SubscriptionTier
+	err := row.Scan(&subscription_tier)
+	return subscription_tier, err
+}
+
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, password_hash, name, avatar_url, role, email_verified_at, created_at, updated_at, deleted_at FROM users
+SELECT id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, email_verified_at, created_at, updated_at, deleted_at FROM users
 WHERE deleted_at IS NULL
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2
@@ -145,6 +313,14 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 			&i.Name,
 			&i.AvatarUrl,
 			&i.Role,
+			&i.SubscriptionTier,
+			&i.StripeCustomerID,
+			&i.StripeSubscriptionID,
+			&i.SubscriptionStatus,
+			&i.SubscriptionPeriodEnd,
+			&i.TrialEndsAt,
+			&i.FilesLimit,
+			&i.MaxFileSize,
 			&i.EmailVerifiedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -160,11 +336,55 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 	return items, nil
 }
 
+const startUserTrial = `-- name: StartUserTrial :one
+UPDATE users
+SET 
+    subscription_tier = 'pro',
+    subscription_status = 'trialing',
+    trial_ends_at = $2,
+    files_limit = 2000,
+    max_file_size = 104857600,
+    updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, email_verified_at, created_at, updated_at, deleted_at
+`
+
+type StartUserTrialParams struct {
+	ID          pgtype.UUID        `json:"id"`
+	TrialEndsAt pgtype.Timestamptz `json:"trial_ends_at"`
+}
+
+func (q *Queries) StartUserTrial(ctx context.Context, arg StartUserTrialParams) (User, error) {
+	row := q.db.QueryRow(ctx, startUserTrial, arg.ID, arg.TrialEndsAt)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Name,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.SubscriptionTier,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionPeriodEnd,
+		&i.TrialEndsAt,
+		&i.FilesLimit,
+		&i.MaxFileSize,
+		&i.EmailVerifiedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const updateUser = `-- name: UpdateUser :one
 UPDATE users
 SET name = $2, avatar_url = $3, updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, email, password_hash, name, avatar_url, role, email_verified_at, created_at, updated_at, deleted_at
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, email_verified_at, created_at, updated_at, deleted_at
 `
 
 type UpdateUserParams struct {
@@ -183,6 +403,14 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.Name,
 		&i.AvatarUrl,
 		&i.Role,
+		&i.SubscriptionTier,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionPeriodEnd,
+		&i.TrialEndsAt,
+		&i.FilesLimit,
+		&i.MaxFileSize,
 		&i.EmailVerifiedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -205,6 +433,185 @@ type UpdateUserPasswordParams struct {
 func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
 	_, err := q.db.Exec(ctx, updateUserPassword, arg.ID, arg.PasswordHash)
 	return err
+}
+
+const updateUserStripeCustomer = `-- name: UpdateUserStripeCustomer :one
+UPDATE users
+SET stripe_customer_id = $2, updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, email_verified_at, created_at, updated_at, deleted_at
+`
+
+type UpdateUserStripeCustomerParams struct {
+	ID               pgtype.UUID `json:"id"`
+	StripeCustomerID *string     `json:"stripe_customer_id"`
+}
+
+func (q *Queries) UpdateUserStripeCustomer(ctx context.Context, arg UpdateUserStripeCustomerParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserStripeCustomer, arg.ID, arg.StripeCustomerID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Name,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.SubscriptionTier,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionPeriodEnd,
+		&i.TrialEndsAt,
+		&i.FilesLimit,
+		&i.MaxFileSize,
+		&i.EmailVerifiedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateUserSubscription = `-- name: UpdateUserSubscription :one
+UPDATE users
+SET 
+    stripe_subscription_id = $2,
+    subscription_status = $3,
+    subscription_tier = $4,
+    subscription_period_end = $5,
+    trial_ends_at = $6,
+    files_limit = $7,
+    max_file_size = $8,
+    updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, email_verified_at, created_at, updated_at, deleted_at
+`
+
+type UpdateUserSubscriptionParams struct {
+	ID                    pgtype.UUID        `json:"id"`
+	StripeSubscriptionID  *string            `json:"stripe_subscription_id"`
+	SubscriptionStatus    SubscriptionStatus `json:"subscription_status"`
+	SubscriptionTier      SubscriptionTier   `json:"subscription_tier"`
+	SubscriptionPeriodEnd pgtype.Timestamptz `json:"subscription_period_end"`
+	TrialEndsAt           pgtype.Timestamptz `json:"trial_ends_at"`
+	FilesLimit            int32              `json:"files_limit"`
+	MaxFileSize           int64              `json:"max_file_size"`
+}
+
+func (q *Queries) UpdateUserSubscription(ctx context.Context, arg UpdateUserSubscriptionParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserSubscription,
+		arg.ID,
+		arg.StripeSubscriptionID,
+		arg.SubscriptionStatus,
+		arg.SubscriptionTier,
+		arg.SubscriptionPeriodEnd,
+		arg.TrialEndsAt,
+		arg.FilesLimit,
+		arg.MaxFileSize,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Name,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.SubscriptionTier,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionPeriodEnd,
+		&i.TrialEndsAt,
+		&i.FilesLimit,
+		&i.MaxFileSize,
+		&i.EmailVerifiedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateUserSubscriptionStatus = `-- name: UpdateUserSubscriptionStatus :one
+UPDATE users
+SET 
+    subscription_status = $2,
+    subscription_period_end = $3,
+    updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, email_verified_at, created_at, updated_at, deleted_at
+`
+
+type UpdateUserSubscriptionStatusParams struct {
+	ID                    pgtype.UUID        `json:"id"`
+	SubscriptionStatus    SubscriptionStatus `json:"subscription_status"`
+	SubscriptionPeriodEnd pgtype.Timestamptz `json:"subscription_period_end"`
+}
+
+func (q *Queries) UpdateUserSubscriptionStatus(ctx context.Context, arg UpdateUserSubscriptionStatusParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserSubscriptionStatus, arg.ID, arg.SubscriptionStatus, arg.SubscriptionPeriodEnd)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Name,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.SubscriptionTier,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionPeriodEnd,
+		&i.TrialEndsAt,
+		&i.FilesLimit,
+		&i.MaxFileSize,
+		&i.EmailVerifiedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateUserSubscriptionTier = `-- name: UpdateUserSubscriptionTier :one
+UPDATE users
+SET subscription_tier = $2, updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, email_verified_at, created_at, updated_at, deleted_at
+`
+
+type UpdateUserSubscriptionTierParams struct {
+	ID               pgtype.UUID      `json:"id"`
+	SubscriptionTier SubscriptionTier `json:"subscription_tier"`
+}
+
+func (q *Queries) UpdateUserSubscriptionTier(ctx context.Context, arg UpdateUserSubscriptionTierParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserSubscriptionTier, arg.ID, arg.SubscriptionTier)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Name,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.SubscriptionTier,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionPeriodEnd,
+		&i.TrialEndsAt,
+		&i.FilesLimit,
+		&i.MaxFileSize,
+		&i.EmailVerifiedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
 }
 
 const verifyUserEmail = `-- name: VerifyUserEmail :exec
