@@ -8,7 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: abdul-hamid-achik/file-processor
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   test:
