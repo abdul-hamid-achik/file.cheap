@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: ghcr.io/abdul-hamid-achik/file-processor/api:latest
+          image: ghcr.io/abdul-hamid-achik/file.cheap/api:latest
           imagePullPolicy: Always
           ports:
             - name: http

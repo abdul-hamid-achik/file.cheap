@@ -117,17 +117,17 @@ kubectl get secret ghcr-secret -n file-processor --kubeconfig ~/.kube/file-cheap
 
 ```bash
 # Build API
-docker build -t ghcr.io/abdul-hamid-achik/file-processor/api:latest --target api .
+docker build -t ghcr.io/abdul-hamid-achik/file.cheap/api:latest --target api .
 
 # Build Worker
-docker build -t ghcr.io/abdul-hamid-achik/file-processor/worker:latest --target worker .
+docker build -t ghcr.io/abdul-hamid-achik/file.cheap/worker:latest --target worker .
 ```
 
 ### 5. Push Images
 
 ```bash
-docker push ghcr.io/abdul-hamid-achik/file-processor/api:latest
-docker push ghcr.io/abdul-hamid-achik/file-processor/worker:latest
+docker push ghcr.io/abdul-hamid-achik/file.cheap/api:latest
+docker push ghcr.io/abdul-hamid-achik/file.cheap/worker:latest
 ```
 
 ### 6. Deploy to Kubernetes
