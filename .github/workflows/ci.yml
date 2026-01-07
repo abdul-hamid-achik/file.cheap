@@ -27,6 +27,12 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Install templ
+        run: go install github.com/a-h/templ/cmd/templ@latest
+
+      - name: Generate templ files
+        run: templ generate
+
       - name: Run tests
         run: go test -race -coverprofile=coverage.out ./...
 

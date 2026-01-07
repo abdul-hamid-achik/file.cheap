@@ -27,7 +27,7 @@ func TestEmailTemplates(t *testing.T) {
 		SMTPHost:    "localhost",
 		SMTPPort:    1025,
 		FromAddress: "test@example.com",
-		FromName:    "File Processor",
+		FromName:    "file.cheap",
 		BaseURL:     "http://localhost:8080",
 	}
 	svc := NewService(cfg)
@@ -52,7 +52,7 @@ func TestEmailTemplates(t *testing.T) {
 			"John Doe",
 			"Verify your email",
 			"http://localhost:8080/verify?token=abc123",
-			"File Processor",
+			"file.cheap",
 			"2024",
 		}
 		for _, check := range checks {
@@ -117,7 +117,7 @@ func TestEmailTemplates(t *testing.T) {
 			"New User",
 			"Welcome",
 			"http://localhost:8080/dashboard",
-			"File Processor",
+			"file.cheap",
 		}
 		for _, check := range checks {
 			if !strings.Contains(html, check) {

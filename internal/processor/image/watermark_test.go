@@ -207,7 +207,7 @@ func TestParseWatermarkOptions(t *testing.T) {
 		{
 			name:     "defaults",
 			opts:     &processor.Options{},
-			wantText: "File Processor",
+			wantText: "file.cheap",
 			wantPos:  "bottom-right",
 		},
 		{
@@ -219,7 +219,7 @@ func TestParseWatermarkOptions(t *testing.T) {
 		{
 			name:     "custom position via Fit",
 			opts:     &processor.Options{Fit: "center"},
-			wantText: "File Processor",
+			wantText: "file.cheap",
 			wantPos:  "center",
 		},
 	}

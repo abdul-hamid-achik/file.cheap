@@ -7,26 +7,31 @@ import (
 )
 
 const (
-	FreeFilesLimit    = 100
-	FreeMaxFileSize   = 10 * 1024 * 1024 // 10 MB
-	FreeRetentionDays = 7
+	FreeFilesLimit           = 100
+	FreeMaxFileSize          = 10 * 1024 * 1024 // 10 MB
+	FreeRetentionDays        = 7
+	FreeTransformationsLimit = 100
 
-	ProFilesLimit    = 2000
-	ProMaxFileSize   = 100 * 1024 * 1024 // 100 MB
-	ProRetentionDays = 365
+	ProFilesLimit           = 2000
+	ProMaxFileSize          = 100 * 1024 * 1024 // 100 MB
+	ProRetentionDays        = 365
+	ProTransformationsLimit = 10000
+
+	EnterpriseTransformationsLimit = -1 // unlimited
 
 	TrialDuration = 7 * 24 * time.Hour // 7 days
 	GracePeriod   = 3 * 24 * time.Hour // 3 days for past_due
 )
 
 type TierLimits struct {
-	FilesLimit        int
-	MaxFileSize       int64
-	MaxRetentionDays  int
-	AllowedProcessing []string
-	APIAccess         APIAccessLevel
-	PriorityQueue     bool
-	CustomWatermark   bool
+	FilesLimit           int
+	MaxFileSize          int64
+	MaxRetentionDays     int
+	TransformationsLimit int
+	AllowedProcessing    []string
+	APIAccess            APIAccessLevel
+	PriorityQueue        bool
+	CustomWatermark      bool
 }
 
 type APIAccessLevel string
@@ -39,11 +44,28 @@ const (
 
 func GetTierLimits(tier db.SubscriptionTier) TierLimits {
 	switch tier {
-	case db.SubscriptionTierPro, db.SubscriptionTierEnterprise:
+	case db.SubscriptionTierEnterprise:
 		return TierLimits{
-			FilesLimit:       ProFilesLimit,
-			MaxFileSize:      ProMaxFileSize,
-			MaxRetentionDays: ProRetentionDays,
+			FilesLimit:           ProFilesLimit,
+			MaxFileSize:          ProMaxFileSize,
+			MaxRetentionDays:     ProRetentionDays,
+			TransformationsLimit: EnterpriseTransformationsLimit,
+			AllowedProcessing: []string{
+				"thumbnail",
+				"sm", "md", "lg", "xl",
+				"og", "twitter", "instagram_square", "instagram_portrait", "instagram_story",
+				"webp", "watermark",
+			},
+			APIAccess:       APIAccessFull,
+			PriorityQueue:   true,
+			CustomWatermark: true,
+		}
+	case db.SubscriptionTierPro:
+		return TierLimits{
+			FilesLimit:           ProFilesLimit,
+			MaxFileSize:          ProMaxFileSize,
+			MaxRetentionDays:     ProRetentionDays,
+			TransformationsLimit: ProTransformationsLimit,
 			AllowedProcessing: []string{
 				"thumbnail",
 				"sm", "md", "lg", "xl",
@@ -56,25 +78,29 @@ func GetTierLimits(tier db.SubscriptionTier) TierLimits {
 		}
 	default:
 		return TierLimits{
-			FilesLimit:        FreeFilesLimit,
-			MaxFileSize:       FreeMaxFileSize,
-			MaxRetentionDays:  FreeRetentionDays,
-			AllowedProcessing: []string{"thumbnail", "sm"},
-			APIAccess:         APIAccessReadOnly,
-			PriorityQueue:     false,
-			CustomWatermark:   false,
+			FilesLimit:           FreeFilesLimit,
+			MaxFileSize:          FreeMaxFileSize,
+			MaxRetentionDays:     FreeRetentionDays,
+			TransformationsLimit: FreeTransformationsLimit,
+			AllowedProcessing:    []string{"thumbnail", "sm"},
+			APIAccess:            APIAccessReadOnly,
+			PriorityQueue:        false,
+			CustomWatermark:      false,
 		}
 	}
 }
 
 type SubscriptionInfo struct {
-	Tier        db.SubscriptionTier
-	Status      db.SubscriptionStatus
-	PeriodEnd   *time.Time
-	TrialEndsAt *time.Time
-	FilesLimit  int
-	MaxFileSize int64
-	FilesUsed   int64
+	Tier                   db.SubscriptionTier
+	Status                 db.SubscriptionStatus
+	PeriodEnd              *time.Time
+	TrialEndsAt            *time.Time
+	FilesLimit             int
+	MaxFileSize            int64
+	FilesUsed              int64
+	TransformationsLimit   int
+	TransformationsUsed    int
+	TransformationsResetAt *time.Time
 }
 
 func (s *SubscriptionInfo) IsActive() bool {
