@@ -54,12 +54,13 @@ jobs:
           patches:
             - path: patches/api-resources.yaml
             - path: patches/worker-resources.yaml
-            - path: patches/replicas.yaml
+            - path: patches/api-replicas.yaml
+            - path: patches/worker-replicas.yaml
           
           images:
-            - name: ghcr.io/abdul-hamid-achik/file-processor/api
+            - name: ghcr.io/abdul-hamid-achik/file.cheap/api
               newTag: ${TAG}
-            - name: ghcr.io/abdul-hamid-achik/file-processor/worker
+            - name: ghcr.io/abdul-hamid-achik/file.cheap/worker
               newTag: ${TAG}
           
           commonLabels:
