@@ -1,6 +1,6 @@
 module github.com/abdul-hamid-achik/file-processor
 
-go 1.25.5
+go 1.23
 
 require (
 	github.com/a-h/templ v0.3.977
