@@ -9,7 +9,8 @@ resources:
 patches:
   - path: patches/api-resources.yaml
   - path: patches/worker-resources.yaml
-  - path: patches/replicas.yaml
+  - path: patches/api-replicas.yaml
+  - path: patches/worker-replicas.yaml
 
 images:
   - name: ghcr.io/abdul-hamid-achik/file.cheap/api
