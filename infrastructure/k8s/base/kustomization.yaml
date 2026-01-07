@@ -26,6 +26,8 @@ resources:
   - backup/cronjob.yaml
   - cert-manager/cluster-issuer.yaml
 
-commonLabels:
-  app.kubernetes.io/part-of: file-processor
-  app.kubernetes.io/managed-by: kustomize
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: file-processor
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false
