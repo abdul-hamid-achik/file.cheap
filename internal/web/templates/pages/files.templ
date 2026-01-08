@@ -540,7 +540,10 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 
 									<!-- Responsive Sizes -->
 									<div class="space-y-2">
-										<p class="text-nord-4 text-xs uppercase tracking-wide font-medium">Responsive</p>
+										<div class="flex items-center justify-between">
+											<p class="text-nord-4 text-xs uppercase tracking-wide font-medium">Responsive</p>
+											@bundleButton(data.File.ID, "responsive", "All Sizes", data.IsPremium, hasAllResponsive(data.ExistingTypes))
+										</div>
 										@processAction(data.File.ID, "sm", "Small (640w)", "Mobile devices", data.ExistingTypes["sm"])
 										@processAction(data.File.ID, "md", "Medium (1024w)", "Tablets", data.ExistingTypes["md"])
 										@processActionPro(data.File.ID, "lg", "Large (1920w)", "Desktop displays", data.ExistingTypes["lg"], data.IsPremium)
@@ -549,12 +552,15 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 
 									<!-- Social Media Presets -->
 									<div class="space-y-2">
-										<p class="text-nord-4 text-xs uppercase tracking-wide font-medium flex items-center gap-2">
-											Social Media
-											if !data.IsPremium {
-												<span class="px-1.5 py-0.5 bg-nord-13/20 text-nord-13 text-xs rounded">PRO</span>
-											}
-										</p>
+										<div class="flex items-center justify-between">
+											<p class="text-nord-4 text-xs uppercase tracking-wide font-medium flex items-center gap-2">
+												Social Media
+												if !data.IsPremium {
+													<span class="px-1.5 py-0.5 bg-nord-13/20 text-nord-13 text-xs rounded">PRO</span>
+												}
+											</p>
+											@bundleButton(data.File.ID, "social", "All Social", data.IsPremium, hasAllSocial(data.ExistingTypes))
+										</div>
 										@processActionPro(data.File.ID, "og", "Open Graph", "1200x630 - Facebook, LinkedIn", data.ExistingTypes["og"], data.IsPremium)
 										@processActionPro(data.File.ID, "twitter", "Twitter Card", "1200x675 - Twitter/X", data.ExistingTypes["twitter"], data.IsPremium)
 										@processActionPro(data.File.ID, "instagram_square", "Instagram Square", "1080x1080 - Feed posts", data.ExistingTypes["instagram_square"], data.IsPremium)
@@ -777,4 +783,38 @@ templ processActionWatermark(fileID string, exists bool, isPremium bool) {
 			</form>
 		}
 	</div>
+}
+
+templ bundleButton(fileID, bundle, label string, isPremium bool, allDone bool) {
+	if allDone {
+		<span class="text-nord-14 text-xs flex items-center gap-1">
+			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+			</svg>
+			All Done
+		</span>
+	} else if !isPremium && bundle == "social" {
+		<a href="/billing" class="px-2 py-1 bg-nord-13/20 text-nord-13 hover:bg-nord-13/30 rounded text-xs font-medium transition-colors">
+			Upgrade
+		</a>
+	} else {
+		<button
+			type="button"
+			hx-post={ "/files/" + fileID + "/process-bundle" }
+			hx-vals={ `{"bundle": "` + bundle + `"}` }
+			hx-target="#process-result"
+			hx-swap="innerHTML"
+			class="px-2 py-1 bg-nord-10 text-nord-0 hover:bg-nord-9 rounded text-xs font-medium transition-colors"
+		>
+			{ label }
+		</button>
+	}
+}
+
+func hasAllResponsive(existingTypes map[string]bool) bool {
+	return existingTypes["sm"] && existingTypes["md"] && existingTypes["lg"] && existingTypes["xl"]
+}
+
+func hasAllSocial(existingTypes map[string]bool) bool {
+	return existingTypes["og"] && existingTypes["twitter"] && existingTypes["instagram_square"] && existingTypes["instagram_portrait"] && existingTypes["instagram_story"]
 }

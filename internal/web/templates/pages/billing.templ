@@ -8,19 +8,23 @@ import (
 )
 
 type SubscriptionData struct {
-	Tier              string
-	Status            string
-	PeriodEnd         string
-	TrialEndsAt       string
-	FilesLimit        int
-	FilesUsed         int
-	MaxFileSize       int64
-	IsPro             bool
-	IsTrialing        bool
-	TrialDaysLeft     int
-	UsagePercent      int
-	CanUpgrade        bool
-	HasStripeCustomer bool
+	Tier                    string
+	Status                  string
+	PeriodEnd               string
+	TrialEndsAt             string
+	FilesLimit              int
+	FilesUsed               int
+	MaxFileSize             int64
+	IsPro                   bool
+	IsTrialing              bool
+	TrialDaysLeft           int
+	UsagePercent            int
+	CanUpgrade              bool
+	HasStripeCustomer       bool
+	TransformationsUsed     int
+	TransformationsLimit    int
+	TransformationsPercent  int
+	TransformationsResetAt  string
 }
 
 type BillingPageData struct {
@@ -171,7 +175,7 @@ templ usageCard(data BillingPageData) {
 			@components.CardDescription("Your current resource usage")
 		}
 		@components.CardBody() {
-			<div class="space-y-4">
+			<div class="space-y-6">
 				<div>
 					<div class="flex items-center justify-between text-sm mb-2">
 						<span class="text-nord-4">Files</span>
@@ -190,10 +194,44 @@ templ usageCard(data BillingPageData) {
 					</p>
 				</div>
 
+				<div>
+					<div class="flex items-center justify-between text-sm mb-2">
+						<span class="text-nord-4">Transformations this month</span>
+						<span class="text-nord-5 font-medium">
+							if data.Subscription.TransformationsLimit == -1 {
+								{ fmt.Sprintf("%d / Unlimited", data.Subscription.TransformationsUsed) }
+							} else {
+								{ fmt.Sprintf("%d / %d", data.Subscription.TransformationsUsed, data.Subscription.TransformationsLimit) }
+							}
+						</span>
+					</div>
+					if data.Subscription.TransformationsLimit != -1 {
+						<div class="w-full h-2 bg-nord-2 rounded-full overflow-hidden">
+							<div 
+								class={ "h-full rounded-full transition-all", templ.KV("bg-nord-8", data.Subscription.TransformationsPercent < 80), templ.KV("bg-nord-13", data.Subscription.TransformationsPercent >= 80 && data.Subscription.TransformationsPercent < 95), templ.KV("bg-nord-11", data.Subscription.TransformationsPercent >= 95) }
+								style={ fmt.Sprintf("width: %d%%", min(data.Subscription.TransformationsPercent, 100)) }
+							></div>
+						</div>
+					}
+					<p class="text-nord-4 text-xs mt-1">
+						if data.Subscription.TransformationsResetAt != "" {
+							Resets { data.Subscription.TransformationsResetAt }
+						}
+					</p>
+				</div>
+
 				if data.Subscription.UsagePercent >= 80 && data.Subscription.CanUpgrade {
 					<div class="p-3 bg-nord-13/10 border border-nord-13/30 rounded-lg">
 						<p class="text-nord-13 text-sm">
 							You're running low on file storage. Consider upgrading to Pro for more capacity.
+						</p>
+					</div>
+				}
+
+				if data.Subscription.TransformationsPercent >= 80 && data.Subscription.CanUpgrade {
+					<div class="p-3 bg-nord-13/10 border border-nord-13/30 rounded-lg">
+						<p class="text-nord-13 text-sm">
+							You're running low on transformations. Upgrade to Pro for 10,000/month.
 						</p>
 					</div>
 				}
@@ -231,7 +269,13 @@ templ pricingSection(data BillingPageData) {
 						<svg class="w-4 h-4 text-nord-14" fill="currentColor" viewBox="0 0 20 20">
 							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
 						</svg>
-						Thumbnails only
+						100 transformations/month
+					</li>
+					<li class="flex items-center gap-2 text-nord-4">
+						<svg class="w-4 h-4 text-nord-14" fill="currentColor" viewBox="0 0 20 20">
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+						</svg>
+						Thumbnails + small sizes only
 					</li>
 					<li class="flex items-center gap-2 text-nord-4">
 						<svg class="w-4 h-4 text-nord-14" fill="currentColor" viewBox="0 0 20 20">
@@ -288,6 +332,12 @@ templ pricingSection(data BillingPageData) {
 						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
 							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
 						</svg>
+						<strong class="text-nord-5">10,000 transformations/month</strong>
+					</li>
+					<li class="flex items-center gap-2 text-nord-4">
+						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+						</svg>
 						All processing (resize, webp, watermark)
 					</li>
 					<li class="flex items-center gap-2 text-nord-4">
@@ -306,13 +356,13 @@ templ pricingSection(data BillingPageData) {
 						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
 							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
 						</svg>
-						Custom watermarks
+						Custom watermarks (no branding)
 					</li>
 					<li class="flex items-center gap-2 text-nord-4">
 						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
 							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
 						</svg>
-						Priority processing
+						Priority processing queue
 					</li>
 				</ul>
 				<div class="pt-4 border-t border-nord-2 space-y-3">
