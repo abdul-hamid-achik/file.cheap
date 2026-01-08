@@ -71,7 +71,7 @@ templ Upload(user *auth.SessionUser, data UploadPageData) {
 										</label>
 										or drag and drop
 									</p>
-									<p class="text-nord-4 text-sm">PNG, JPG, GIF, WebP or PDF up to 50MB</p>
+									<p class="text-nord-4 text-sm">PNG, JPG, GIF, WebP or PDF (10MB free, 100MB pro)</p>
 								</div>
 
 								<div x-show="uploading" class="py-4">
@@ -137,7 +137,7 @@ templ Upload(user *auth.SessionUser, data UploadPageData) {
 					}
 					@components.CardBody() {
 						<div class="space-y-4">
-							@components.Checkbox("generate_thumbnail", "generate_thumbnail", "Generate thumbnails (150x150)", true, false)
+							@components.Checkbox("generate_thumbnail", "generate_thumbnail", "Generate thumbnails (300x300)", true, false)
 							@components.Checkbox("generate_resize", "generate_resize", "Create resized versions (small, medium, large)", true, false)
 							@components.Checkbox("convert_webp", "convert_webp", "Convert to WebP format", false, false)
 							@components.Checkbox("extract_metadata", "extract_metadata", "Extract metadata (EXIF, document properties)", false, false)
@@ -170,7 +170,7 @@ templ Upload(user *auth.SessionUser, data UploadPageData) {
 						// Filter valid files
 						const validFiles = newFiles.filter(file => {
 							const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
-							const maxSize = 50 * 1024 * 1024; // 50MB
+							const maxSize = 100 * 1024 * 1024; // 100MB (server enforces actual limit based on plan)
 							return validTypes.includes(file.type) && file.size <= maxSize;
 						});
 						this.files = [...this.files, ...validFiles];

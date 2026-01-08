@@ -45,18 +45,14 @@ file-processor/
 
 ## Documentation
 
-Start with the [Learning Path](./docs/README.md) for a guided walkthrough.
-
-| Phase | Topic |
-|-------|-------|
-| 0 | [Getting Started](./docs/00-getting-started.md) |
-| 1 | [Storage Layer](./docs/01-phase1-storage.md) |
-| 2 | [Database Layer](./docs/02-phase2-database.md) |
-| 3 | [Queue Integration](./docs/03-phase3-queue.md) |
-| 4 | [Image Processing](./docs/04-phase4-processing.md) |
-| 5 | [Worker Layer](./docs/05-phase5-worker.md) |
-| 6 | [API Layer](./docs/06-phase6-api.md) |
-| 7 | [Frontend](./docs/07-phase7-frontend.md) |
+| Document | Description |
+|----------|-------------|
+| [ARCHITECTURE.md](./docs/ARCHITECTURE.md) | System architecture, components, and data flow |
+| [API.md](./docs/API.md) | REST API reference and endpoint documentation |
+| [DEVELOPMENT.md](./docs/DEVELOPMENT.md) | Development guide and common tasks |
+| [DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Production deployment with Kubernetes |
+| [MONITORING.md](./docs/MONITORING.md) | Prometheus, Grafana, and observability setup |
+| [AGENTS.md](./AGENTS.md) | Code style guidelines for AI agents |
 
 ## Tech Stack
 

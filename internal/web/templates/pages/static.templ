@@ -366,9 +366,10 @@ templ Docs(user *auth.SessionUser, activeSection string) {
 										@docsNavItem("api-reference", "API Reference", activeSection)
 										@docsNavItem("authentication", "Authentication", activeSection)
 										@docsNavItem("webhooks", "Webhooks", activeSection)
-										@docsNavItem("rate-limits", "Rate Limits", activeSection)
-										@docsNavItem("errors", "Error Handling", activeSection)
-										@docsNavItem("faq", "FAQ", activeSection)
+									@docsNavItem("rate-limits", "Rate Limits", activeSection)
+									@docsNavItem("errors", "Error Handling", activeSection)
+									@docsNavItem("cli", "CLI Reference", activeSection)
+									@docsNavItem("faq", "FAQ", activeSection)
 									</ul>
 								}
 							}
@@ -393,6 +394,7 @@ templ Docs(user *auth.SessionUser, activeSection string) {
 									<option value="webhooks" selected?={ activeSection == "webhooks" }>Webhooks</option>
 									<option value="rate-limits" selected?={ activeSection == "rate-limits" }>Rate Limits</option>
 									<option value="errors" selected?={ activeSection == "errors" }>Error Handling</option>
+									<option value="cli" selected?={ activeSection == "cli" }>CLI Reference</option>
 									<option value="faq" selected?={ activeSection == "faq" }>FAQ</option>
 								</select>
 							}
@@ -422,6 +424,8 @@ templ Docs(user *auth.SessionUser, activeSection string) {
 									@docsRateLimits()
 								case "errors":
 									@docsErrors()
+								case "cli":
+									@docsCli()
 								case "faq":
 									@docsFaq()
 								default:
@@ -493,12 +497,12 @@ templ docsGettingStarted() {
 			<tbody>
 				<tr class="border-b border-nord-2">
 					<td class="py-2">Free</td>
-					<td class="py-2">50 MB</td>
+					<td class="py-2">10 MB</td>
 					<td class="py-2">100</td>
 				</tr>
 				<tr class="border-b border-nord-2">
 					<td class="py-2">Pro</td>
-					<td class="py-2">500 MB</td>
+					<td class="py-2">100 MB</td>
 					<td class="py-2">10,000</td>
 				</tr>
 				<tr>
@@ -530,12 +534,51 @@ templ docsUploadingFiles() {
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">API Upload</h2>
 		<p class="text-nord-4 mb-4">For programmatic uploads, use the REST API:</p>
 		
-		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
+		<h3 class="text-lg font-medium text-nord-5 mb-2">cURL</h3>
+		<div class="bg-nord-2 rounded-lg p-4 mb-4 overflow-x-auto">
 			<pre class="text-nord-4 text-sm"><code>curl -X POST https://api.file.cheap/v1/files \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -F "file=@/path/to/image.jpg" \
   -F "generate_thumbnail=true" \
   -F "generate_resize=true"</code></pre>
+		</div>
+
+		<h3 class="text-lg font-medium text-nord-5 mb-2">JavaScript (fetch)</h3>
+		<div class="bg-nord-2 rounded-lg p-4 mb-4 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`const formData = new FormData();
+formData.append('file', fileInput.files[0]);
+formData.append('generate_thumbnail', 'true');
+formData.append('generate_resize', 'true');
+
+const response = await fetch('https://api.file.cheap/v1/files', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_API_TOKEN'
+  },
+  body: formData
+});
+
+const result = await response.json();
+console.log('File ID:', result.id);`)</code></pre>
+		</div>
+
+		<h3 class="text-lg font-medium text-nord-5 mb-2">Python (requests)</h3>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`import requests
+
+url = 'https://api.file.cheap/v1/files'
+headers = {'Authorization': 'Bearer YOUR_API_TOKEN'}
+
+with open('/path/to/image.jpg', 'rb') as f:
+    files = {'file': f}
+    data = {
+        'generate_thumbnail': 'true',
+        'generate_resize': 'true'
+    }
+    response = requests.post(url, headers=headers, files=files, data=data)
+
+result = response.json()
+print(f"File ID: {result['id']}")`)</code></pre>
 		</div>
 
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Processing Options</h2>
@@ -549,7 +592,7 @@ templ docsUploadingFiles() {
 			<tbody>
 				<tr class="border-b border-nord-2">
 					<td class="py-2"><code class="text-nord-8">generate_thumbnail</code></td>
-					<td class="py-2">Create 150x150 thumbnail</td>
+					<td class="py-2">Create 300x300 thumbnail</td>
 				</tr>
 				<tr class="border-b border-nord-2">
 					<td class="py-2"><code class="text-nord-8">generate_resize</code></td>
@@ -574,7 +617,7 @@ templ docsImageProcessing() {
 		
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Thumbnails</h2>
 		<p class="text-nord-4 mb-4">
-			Thumbnails are generated at 150x150 pixels by default, maintaining aspect ratio with smart cropping focused on the center of the image.
+			Thumbnails are generated at 300x300 pixels by default, maintaining aspect ratio with smart cropping focused on the center of the image.
 		</p>
 
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Resizing</h2>
@@ -658,6 +701,88 @@ templ docsApiReference() {
 		<div class="bg-nord-2 rounded-lg p-4 mb-6">
 			<code class="text-nord-8">GET</code> <code class="text-nord-4">/jobs/:id</code>
 		</div>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Code Examples</h2>
+		
+		<h3 class="text-lg font-medium text-nord-5 mb-2">JavaScript SDK</h3>
+		<div class="bg-nord-2 rounded-lg p-4 mb-4 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`// List files with pagination
+const response = await fetch('https://api.file.cheap/v1/files?page=1&limit=20', {
+  headers: { 'Authorization': 'Bearer YOUR_API_TOKEN' }
+});
+const { files, total, page } = await response.json();
+
+// Get a specific file
+const fileResponse = await fetch('https://api.file.cheap/v1/files/abc123', {
+  headers: { 'Authorization': 'Bearer YOUR_API_TOKEN' }
+});
+const file = await fileResponse.json();
+console.log('Variants:', file.variants);
+
+// Delete a file
+await fetch('https://api.file.cheap/v1/files/abc123', {
+  method: 'DELETE',
+  headers: { 'Authorization': 'Bearer YOUR_API_TOKEN' }
+});`)</code></pre>
+		</div>
+
+		<h3 class="text-lg font-medium text-nord-5 mb-2">Python SDK</h3>
+		<div class="bg-nord-2 rounded-lg p-4 mb-4 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`import requests
+
+API_BASE = 'https://api.file.cheap/v1'
+headers = {'Authorization': 'Bearer YOUR_API_TOKEN'}
+
+# List files
+response = requests.get(f'{API_BASE}/files', headers=headers, params={'page': 1, 'limit': 20})
+data = response.json()
+print(f"Total files: {data['total']}")
+
+# Get a specific file
+file = requests.get(f'{API_BASE}/files/abc123', headers=headers).json()
+for variant in file['variants']:
+    print(f"{variant['type']}: {variant['url']}")
+
+# Check processing status
+job = requests.get(f'{API_BASE}/jobs/job123', headers=headers).json()
+print(f"Status: {job['status']}")
+
+# Delete a file
+requests.delete(f'{API_BASE}/files/abc123', headers=headers)`)</code></pre>
+		</div>
+
+		<h3 class="text-lg font-medium text-nord-5 mb-2">Response Examples</h3>
+		<p class="text-nord-4 mb-2">Successful file upload response:</p>
+		<div class="bg-nord-2 rounded-lg p-4 mb-4 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`{
+  "id": "abc123",
+  "name": "photo.jpg",
+  "size": 1048576,
+  "content_type": "image/jpeg",
+  "created_at": "2026-01-08T12:00:00Z",
+  "variants": [],
+  "jobs": [
+    {"id": "job123", "type": "thumbnail", "status": "pending"},
+    {"id": "job124", "type": "resize", "status": "pending"}
+  ]
+}`)</code></pre>
+		</div>
+		<p class="text-nord-4 mb-2">File with completed processing:</p>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`{
+  "id": "abc123",
+  "name": "photo.jpg",
+  "size": 1048576,
+  "content_type": "image/jpeg",
+  "created_at": "2026-01-08T12:00:00Z",
+  "variants": [
+    {"type": "thumbnail", "url": "https://cdn.file.cheap/abc123/thumbnail.jpg", "size": 15360},
+    {"type": "small", "url": "https://cdn.file.cheap/abc123/small.jpg", "size": 51200},
+    {"type": "medium", "url": "https://cdn.file.cheap/abc123/medium.jpg", "size": 153600},
+    {"type": "large", "url": "https://cdn.file.cheap/abc123/large.jpg", "size": 512000}
+  ]
+}`)</code></pre>
+		</div>
 	</article>
 }
 
@@ -712,6 +837,84 @@ templ docsWebhooks() {
   }
 }`)</code></pre>
 		</div>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Signature Verification</h2>
+		<p class="text-nord-4 mb-4">
+			All webhook requests include a signature header to verify authenticity. Always verify signatures before processing webhooks.
+		</p>
+		<table class="w-full text-nord-4 mb-4">
+			<thead>
+				<tr class="border-b border-nord-3">
+					<th class="text-left py-2 text-nord-5">Header</th>
+					<th class="text-left py-2 text-nord-5">Description</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr class="border-b border-nord-2">
+					<td class="py-2"><code class="text-nord-8">X-Signature</code></td>
+					<td class="py-2">HMAC-SHA256 signature of the request body</td>
+				</tr>
+				<tr>
+					<td class="py-2"><code class="text-nord-8">X-Timestamp</code></td>
+					<td class="py-2">Unix timestamp when the webhook was sent</td>
+				</tr>
+			</tbody>
+		</table>
+
+		<h3 class="text-lg font-medium text-nord-5 mb-2">Verification Example (Node.js)</h3>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`const crypto = require('crypto');
+
+function verifyWebhook(payload, signature, secret) {
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('hex');
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expected)
+  );
+}
+
+// In your webhook handler:
+app.post('/webhook', (req, res) => {
+  const signature = req.headers['x-signature'];
+  const isValid = verifyWebhook(
+    JSON.stringify(req.body),
+    signature,
+    process.env.WEBHOOK_SECRET
+  );
+  
+  if (!isValid) {
+    return res.status(401).send('Invalid signature');
+  }
+  
+  // Process the webhook...
+});`)</code></pre>
+		</div>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Retry Behavior</h2>
+		<p class="text-nord-4 mb-4">
+			If your endpoint returns a non-2xx status code, we retry with exponential backoff:
+		</p>
+		<ul class="list-disc list-inside text-nord-4 mb-6 space-y-1">
+			<li>1st retry: 1 minute after initial attempt</li>
+			<li>2nd retry: 5 minutes after 1st retry</li>
+			<li>3rd retry: 30 minutes after 2nd retry</li>
+			<li>Final retry: 2 hours after 3rd retry</li>
+		</ul>
+		<p class="text-nord-4 mb-6">
+			After 4 failed attempts, the webhook is marked as failed. You can view failed webhooks and manually retry them from your dashboard.
+		</p>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Best Practices</h2>
+		<ul class="list-disc list-inside text-nord-4 space-y-1">
+			<li>Always verify the signature before processing</li>
+			<li>Respond with 200 quickly, then process asynchronously</li>
+			<li>Check the timestamp to prevent replay attacks (reject if older than 5 minutes)</li>
+			<li>Use idempotency keys to handle duplicate deliveries</li>
+			<li>Store webhook secrets securely (environment variables, not code)</li>
+		</ul>
 	</article>
 }
 
@@ -808,6 +1011,148 @@ templ docsErrors() {
 				</tr>
 			</tbody>
 		</table>
+	</article>
+}
+
+templ docsCli() {
+	<article class="prose prose-invert max-w-none">
+		<h1 class="text-3xl font-bold text-nord-5 mb-6">CLI Reference</h1>
+		
+		<p class="text-nord-4 mb-6">
+			The <code class="text-nord-8">fc</code> command-line tool lets you upload, transform, and manage files directly from your terminal.
+		</p>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Installation</h2>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code># macOS (Homebrew)
+brew install file-cheap/tap/fc
+
+# Linux / macOS (direct download)
+curl -fsSL https://file.cheap/install.sh | sh
+
+# Or download from GitHub releases
+# https://github.com/abdul-hamid-achik/file-processor/releases</code></pre>
+		</div>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Authentication</h2>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code># Interactive browser login
+fc auth login
+
+# Login with API key (non-interactive)
+fc auth login --api-key fp_your_api_key
+
+# Check authentication status
+fc auth status
+
+# Logout
+fc auth logout</code></pre>
+		</div>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Uploading Files</h2>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code># Upload a single file
+fc upload photo.jpg
+
+# Upload multiple files
+fc upload *.jpg
+
+# Upload a directory recursively
+fc upload photos/ --recursive
+
+# Upload with transformations
+fc upload hero.png --transform webp,thumbnail
+
+# Upload with custom name
+fc upload hero.png --name homepage-hero
+
+# Upload from stdin
+cat screenshot.png | fc upload --stdin --name screenshot.png
+
+# Wait for processing to complete
+fc upload photo.jpg --wait</code></pre>
+		</div>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Managing Files</h2>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code># List your files
+fc list
+
+# Download a file
+fc download &lt;file-id&gt;
+
+# Download a specific variant
+fc download &lt;file-id&gt; --variant thumbnail
+
+# Delete a file
+fc delete &lt;file-id&gt;
+
+# Check processing status
+fc status &lt;file-id&gt;</code></pre>
+		</div>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Transformations</h2>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code># Apply a single transform
+fc transform &lt;file-id&gt; webp
+
+# Apply multiple transforms
+fc transform &lt;file-id&gt; thumbnail,webp,watermark
+
+# Batch transforms (responsive sizes)
+fc batch &lt;file-id&gt; responsive
+
+# Generate social media sizes
+fc social &lt;file-id&gt;</code></pre>
+		</div>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Sharing</h2>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code># Create a share link
+fc share &lt;file-id&gt;
+
+# Create a share link with expiration
+fc share &lt;file-id&gt; --expires 24h</code></pre>
+		</div>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Global Flags</h2>
+		<table class="w-full text-nord-4 mb-6">
+			<thead>
+				<tr class="border-b border-nord-3">
+					<th class="text-left py-2 text-nord-5">Flag</th>
+					<th class="text-left py-2 text-nord-5">Description</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr class="border-b border-nord-2">
+					<td class="py-2"><code class="text-nord-8">--json</code></td>
+					<td class="py-2">Output as JSON (useful for scripting)</td>
+				</tr>
+				<tr class="border-b border-nord-2">
+					<td class="py-2"><code class="text-nord-8">--quiet</code></td>
+					<td class="py-2">Suppress non-error output</td>
+				</tr>
+				<tr>
+					<td class="py-2"><code class="text-nord-8">--help</code></td>
+					<td class="py-2">Show help for any command</td>
+				</tr>
+			</tbody>
+		</table>
+
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Configuration</h2>
+		<p class="text-nord-4 mb-4">
+			The CLI stores configuration in <code class="text-nord-8">~/.config/fc/config.json</code>. You can also set defaults:
+		</p>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
+			<pre class="text-nord-4 text-sm"><code># View current config
+fc config show
+
+# Set default transforms
+fc config set default_transforms thumbnail,webp
+
+# Set parallel upload count
+fc config set parallel 8</code></pre>
+		</div>
 	</article>
 }
 
