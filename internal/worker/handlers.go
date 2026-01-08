@@ -384,6 +384,107 @@ func WatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 	}
 }
 
+func PDFThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error {
+	return func(ctx context.Context, j *job.Job) error {
+		log := logger.FromContext(ctx).With("job_id", j.ID, "job_type", "pdf_thumbnail")
+		log.Info("job started")
+		start := time.Now()
+
+		var payload PDFThumbnailPayload
+		if err := j.UnmarshalPayload(&payload); err != nil {
+			log.Error("invalid payload", "error", err)
+			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
+		}
+
+		log = log.With("file_id", payload.FileID.String(), "page", payload.Page)
+
+		fileID := pgtype.UUID{
+			Bytes: payload.FileID,
+			Valid: true,
+		}
+
+		file, err := deps.Queries.GetFile(ctx, fileID)
+		if err != nil {
+			log.Error("failed to retrieve file", "error", err)
+			return fmt.Errorf("failed to retrieve file: %w", err)
+		}
+
+		if file.ContentType != "application/pdf" {
+			log.Error("file is not a PDF", "content_type", file.ContentType)
+			return middleware.Permanent(fmt.Errorf("file is not a PDF: %s", file.ContentType))
+		}
+
+		log.Debug("downloading file from storage", "storage_key", file.StorageKey)
+		downloadStart := time.Now()
+		reader, err := deps.Storage.Download(ctx, file.StorageKey)
+		if err != nil {
+			log.Error("failed to download file", "storage_key", file.StorageKey, "error", err)
+			return fmt.Errorf("failed to download file %s: %w", file.StorageKey, err)
+		}
+		defer closeSafely(reader, "original file reader")
+		log.Debug("file downloaded", "duration_ms", time.Since(downloadStart).Milliseconds())
+
+		proc := deps.Registry.MustGet("pdf_thumbnail")
+
+		opts := &processor.Options{
+			Width:   payload.Width,
+			Height:  payload.Height,
+			Quality: payload.Quality,
+			Format:  payload.Format,
+			Page:    payload.Page,
+		}
+
+		log.Debug("processing pdf thumbnail", "width", payload.Width, "height", payload.Height, "page", payload.Page, "format", payload.Format)
+		processStart := time.Now()
+		result, err := proc.Process(ctx, opts, reader)
+		if err != nil {
+			log.Error("failed to process pdf thumbnail", "error", err)
+			return middleware.Permanent(fmt.Errorf("failed to process pdf thumbnail: %w", err))
+		}
+		log.Debug("pdf thumbnail processed", "duration_ms", time.Since(processStart).Milliseconds(), "output_size", result.Size)
+
+		ext := "png"
+		if payload.Format == "jpeg" || payload.Format == "jpg" {
+			ext = "jpg"
+		}
+		variantKey := buildVariantKey(payload.FileID, "pdf_preview", fmt.Sprintf("preview.%s", ext))
+		log.Debug("uploading variant", "storage_key", variantKey)
+		uploadStart := time.Now()
+		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
+			log.Error("failed to upload variant", "storage_key", variantKey, "error", err)
+			return fmt.Errorf("failed to upload variant: %w", err)
+		}
+		log.Debug("variant uploaded", "duration_ms", time.Since(uploadStart).Milliseconds())
+
+		width := int32(result.Metadata.Width)
+		height := int32(result.Metadata.Height)
+		_, err = deps.Queries.CreateVariant(ctx, db.CreateVariantParams{
+			FileID:      file.ID,
+			VariantType: db.VariantTypePdfPreview,
+			ContentType: result.ContentType,
+			SizeBytes:   result.Size,
+			StorageKey:  variantKey,
+			Width:       &width,
+			Height:      &height,
+		})
+		if err != nil {
+			log.Error("failed to save variant record", "error", err)
+			return fmt.Errorf("failed to save variant record: %w", err)
+		}
+
+		if err := deps.Queries.UpdateFileStatus(ctx, db.UpdateFileStatusParams{
+			ID:     file.ID,
+			Status: db.FileStatusCompleted,
+		}); err != nil {
+			log.Error("failed to update file status", "error", err)
+			return fmt.Errorf("failed to update file status: %w", err)
+		}
+
+		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "output_width", width, "output_height", height)
+		return nil
+	}
+}
+
 func buildVariantKey(fileID uuid.UUID, variantType, filename string) string {
 	return fmt.Sprintf("processed/%s/%s/%s", fileID, variantType, filename)
 }

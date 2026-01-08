@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/abdul-hamid-achik/file-processor/internal/apperror"
 	"github.com/abdul-hamid-achik/file-processor/internal/billing"
@@ -207,12 +208,26 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 			if cfg.Broker != nil {
 				var fileUUID uuid.UUID
 				copy(fileUUID[:], dbFile.ID.Bytes[:])
-				payload := worker.NewThumbnailPayload(fileUUID)
-				jobID, err := cfg.Broker.Enqueue("thumbnail", payload)
-				if err != nil {
-					log.Error("failed to enqueue thumbnail job", "error", err)
-				} else {
-					log.Info("thumbnail job enqueued", "job_id", jobID)
+
+				switch {
+				case strings.HasPrefix(contentType, "image/"):
+					payload := worker.NewThumbnailPayload(fileUUID)
+					jobID, err := cfg.Broker.Enqueue("thumbnail", payload)
+					if err != nil {
+						log.Error("failed to enqueue thumbnail job", "error", err)
+					} else {
+						log.Info("thumbnail job enqueued", "job_id", jobID)
+					}
+				case contentType == "application/pdf":
+					payload := worker.NewPDFThumbnailPayload(fileUUID)
+					jobID, err := cfg.Broker.Enqueue("pdf_thumbnail", payload)
+					if err != nil {
+						log.Error("failed to enqueue pdf_thumbnail job", "error", err)
+					} else {
+						log.Info("pdf_thumbnail job enqueued", "job_id", jobID)
+					}
+				default:
+					log.Debug("no automatic processing for content type", "content_type", contentType)
 				}
 			}
 

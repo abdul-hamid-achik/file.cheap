@@ -372,3 +372,169 @@ Response includes:
 ```
 
 Calculate pages: `total / limit`
+
+## CDN Transform API
+
+The CDN provides on-demand image and PDF transformations via shareable URLs.
+
+### CDN URL Format
+
+```
+GET /cdn/{share_token}/{transforms}/{filename}
+```
+
+**Path Parameters:**
+- `share_token` - File share token (obtained via share creation endpoint)
+- `transforms` - Comma-separated transformation parameters (use `_` or `original` for no transforms)
+- `filename` - Original filename
+
+### Transform Parameters
+
+| Key | Description | Range | Example |
+|-----|-------------|-------|---------|
+| `w` | Width in pixels | 1-10000 | `w_800` |
+| `h` | Height in pixels | 1-10000 | `h_600` |
+| `q` | Quality (JPEG) | 1-100 | `q_85` |
+| `f` | Format | webp, jpg, png, gif | `f_webp` |
+| `c` | Crop mode | thumb, fit, fill, cover, contain | `c_cover` |
+| `wm` | Watermark text | max 100 chars | `wm_copyright` |
+| `p` | Page (PDF only) | 1-9999 | `p_1` |
+
+### Examples
+
+**Original file:**
+```
+GET /cdn/abc123/_/document.pdf
+GET /cdn/abc123/original/image.jpg
+```
+
+**Resize image:**
+```
+GET /cdn/abc123/w_800,h_600/image.jpg
+GET /cdn/abc123/w_1200/photo.png
+```
+
+**Convert to WebP:**
+```
+GET /cdn/abc123/f_webp,q_80/image.jpg
+```
+
+**PDF page to image:**
+```
+GET /cdn/abc123/p_1/document.pdf           # First page as PNG
+GET /cdn/abc123/p_3,w_800/document.pdf     # Page 3, 800px wide
+GET /cdn/abc123/p_1,f_jpeg,q_90/doc.pdf    # First page as JPEG
+```
+
+**Combination:**
+```
+GET /cdn/abc123/w_300,h_300,c_thumb,q_85/image.jpg
+```
+
+### Create Share Link
+
+**POST** `/api/v1/files/{id}/share`
+
+Authentication: JWT required
+
+**Query Parameters:**
+- `expires` (duration, optional): Expiration time (e.g., `24h`, `7d`)
+
+**Response:** `201 Created`
+```json
+{
+  "id": "share_uuid",
+  "token": "abc123...",
+  "share_url": "https://example.com/cdn/abc123/_/filename.jpg",
+  "expires_at": "2026-01-07T12:00:00Z"
+}
+```
+
+### List Shares
+
+**GET** `/api/v1/files/{id}/shares`
+
+Authentication: JWT required
+
+**Response:** `200 OK`
+```json
+{
+  "shares": [
+    {
+      "id": "share_uuid",
+      "token": "abc123...",
+      "access_count": 42,
+      "created_at": "2026-01-06T12:00:00Z",
+      "expires_at": "2026-01-13T12:00:00Z"
+    }
+  ]
+}
+```
+
+### Delete Share
+
+**DELETE** `/api/v1/files/{id}/shares/{shareId}`
+
+Authentication: JWT required
+
+**Response:** `204 No Content`
+
+## PDF Processing
+
+PDF files are automatically processed when uploaded:
+- A thumbnail of the first page is generated (300x300 PNG)
+- The thumbnail is stored as a `pdf_preview` variant
+
+### PDF-Specific Features
+
+**Automatic Processing:**
+- When a PDF is uploaded, a `pdf_thumbnail` job is enqueued
+- First page is rendered as a 300x300 PNG thumbnail
+- Result is stored in the `pdf_preview` variant
+
+**On-Demand Page Rendering:**
+- Use CDN transform API with `p_X` parameter
+- Render any page as PNG or JPEG
+- Combine with resize transforms
+
+**Manual Processing:**
+- Use `pdf_preview` action via web UI file detail page
+- Or enqueue `pdf_thumbnail` job via API
+
+### PDF Error Handling
+
+| Error | Description |
+|-------|-------------|
+| `ErrPDFEncrypted` | PDF is password-protected |
+| `ErrPDFEmpty` | PDF has no pages |
+| `ErrPageOutOfRange` | Requested page doesn't exist |
+
+Encrypted and corrupted PDFs return permanent errors (no retry).
+
+### PDF Presets
+
+| Preset | Dimensions | Quality | Description |
+|--------|------------|---------|-------------|
+| `pdf_thumbnail` | 300x300 | 85 | Default thumbnail |
+| `pdf_sm` | 640xauto | 85 | Small preview |
+| `pdf_md` | 1024xauto | 85 | Medium preview |
+| `pdf_lg` | 1920xauto | 85 | Large preview |
+
+## Processing Jobs
+
+### Job Types
+
+| Type | Description | Supported Files |
+|------|-------------|-----------------|
+| `thumbnail` | 300x300 thumbnail | Images |
+| `resize` | Custom dimensions | Images |
+| `webp` | WebP conversion | Images |
+| `watermark` | Add text watermark | Images |
+| `pdf_thumbnail` | First page thumbnail | PDFs |
+
+### Automatic Processing
+
+On upload:
+- **Images**: `thumbnail` job enqueued
+- **PDFs**: `pdf_thumbnail` job enqueued
+- **Other**: No automatic processing

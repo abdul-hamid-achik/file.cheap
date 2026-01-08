@@ -17,6 +17,7 @@ type TransformOptions struct {
 	Format    string
 	Crop      string
 	Watermark string
+	Page      int
 }
 
 func (t *TransformOptions) ToProcessorOptions() *processor.Options {
@@ -27,19 +28,20 @@ func (t *TransformOptions) ToProcessorOptions() *processor.Options {
 		Format:      t.Format,
 		Fit:         t.Crop,
 		VariantType: t.Watermark,
+		Page:        t.Page,
 	}
 }
 
 func (t *TransformOptions) CacheKey() string {
 	h := sha256.New()
-	_, _ = fmt.Fprintf(h, "w=%d,h=%d,q=%d,f=%s,c=%s,wm=%s",
-		t.Width, t.Height, t.Quality, t.Format, t.Crop, t.Watermark)
+	_, _ = fmt.Fprintf(h, "w=%d,h=%d,q=%d,f=%s,c=%s,wm=%s,p=%d",
+		t.Width, t.Height, t.Quality, t.Format, t.Crop, t.Watermark, t.Page)
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 func (t *TransformOptions) RequiresProcessing() bool {
 	return t.Width > 0 || t.Height > 0 || t.Quality > 0 ||
-		t.Format != "" || t.Crop != "" || t.Watermark != ""
+		t.Format != "" || t.Crop != "" || t.Watermark != "" || t.Page > 0
 }
 
 func (t *TransformOptions) ProcessorName() string {
@@ -56,6 +58,13 @@ func (t *TransformOptions) ProcessorName() string {
 		return "resize"
 	}
 	return ""
+}
+
+func (t *TransformOptions) ProcessorNameForContentType(contentType string) string {
+	if contentType == "application/pdf" {
+		return "pdf_thumbnail"
+	}
+	return t.ProcessorName()
 }
 
 func ParseTransforms(s string) (*TransformOptions, error) {
@@ -133,6 +142,16 @@ func ParseTransforms(s string) (*TransformOptions, error) {
 				return nil, fmt.Errorf("watermark text too long (max 100 characters)")
 			}
 			opts.Watermark = value
+
+		case "p":
+			p, err := strconv.Atoi(value)
+			if err != nil {
+				return nil, fmt.Errorf("invalid page value: %s", value)
+			}
+			if p < 1 || p > 9999 {
+				return nil, fmt.Errorf("page must be between 1 and 9999, got %d", p)
+			}
+			opts.Page = p
 
 		default:
 			return nil, fmt.Errorf("unknown transform key: %s", key)

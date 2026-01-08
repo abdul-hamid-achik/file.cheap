@@ -16,6 +16,7 @@ import (
 	"github.com/abdul-hamid-achik/file-processor/internal/metrics"
 	"github.com/abdul-hamid-achik/file-processor/internal/processor"
 	"github.com/abdul-hamid-achik/file-processor/internal/processor/image"
+	"github.com/abdul-hamid-achik/file-processor/internal/processor/pdf"
 	"github.com/abdul-hamid-achik/file-processor/internal/storage"
 	fpworker "github.com/abdul-hamid-achik/file-processor/internal/worker"
 	"github.com/abdul-hamid-achik/job-queue/pkg/broker"
@@ -107,7 +108,8 @@ func run() error {
 	procRegistry.Register("resize", image.NewResizeProcessor(processor.DefaultConfig()))
 	procRegistry.Register("webp", image.NewWebPProcessor(processor.DefaultConfig()))
 	procRegistry.Register("watermark", image.NewWatermarkProcessor(processor.DefaultConfig()))
-	log.Info("processor registry ready", "count", 4)
+	procRegistry.Register("pdf_thumbnail", pdf.NewThumbnailProcessor(processor.DefaultConfig()))
+	log.Info("processor registry ready", "count", 5)
 
 	deps := &fpworker.Dependencies{
 		Storage:  instrumentedStore,
@@ -121,6 +123,7 @@ func run() error {
 	_ = registry.Register("resize", fpworker.ResizeHandler(deps))
 	_ = registry.Register("webp", fpworker.WebPHandler(deps))
 	_ = registry.Register("watermark", fpworker.WatermarkHandler(deps))
+	_ = registry.Register("pdf_thumbnail", fpworker.PDFThumbnailHandler(deps))
 
 	log.Info("handlers registered", "count", len(registry.Types()))
 

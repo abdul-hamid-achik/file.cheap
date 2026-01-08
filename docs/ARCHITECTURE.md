@@ -122,18 +122,22 @@ Tables:
 Pattern: Strategy pattern for pluggable processors
 
 Available processors:
-- `thumbnail` - 200x200 thumbnails
+- `thumbnail` - 300x300 image thumbnails
 - `resize` - Multiple size variants
 - `webp` - WebP conversion
 - `watermark` - Image watermarking
-- `metadata` - EXIF extraction
+- `pdf_thumbnail` - PDF first page thumbnail
 
 Interface:
 ```go
 type Processor interface {
-    Process(ctx context.Context, input io.Reader, output io.Writer, params map[string]interface{}) error
+    Process(ctx context.Context, opts *Options, input io.Reader) (*Result, error)
+    SupportedTypes() []string
+    Name() string
 }
 ```
+
+PDF processor uses `poppler-utils` (pdftoppm, pdfinfo) for rendering.
 
 ### Job Queue (`github.com/abdul-hamid-achik/job-queue`)
 Architecture: Redis Streams with consumer groups
@@ -159,6 +163,15 @@ type ResizePayload struct {
     Height      int
     Quality     int
     VariantType string
+}
+
+type PDFThumbnailPayload struct {
+    FileID  uuid.UUID
+    Page    int       // 1-based page number
+    Width   int
+    Height  int
+    Quality int
+    Format  string    // "png" or "jpeg"
 }
 ```
 

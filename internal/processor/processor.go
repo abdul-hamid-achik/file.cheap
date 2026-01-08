@@ -27,6 +27,7 @@ type Options struct {
 	Fit         string
 	Format      string
 	VariantType string
+	Page        int
 }
 
 type Result struct {

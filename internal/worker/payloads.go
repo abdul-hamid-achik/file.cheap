@@ -130,3 +130,40 @@ func NewConvertPayload(fileID uuid.UUID, format string, quality int) ConvertPayl
 		Quality: quality,
 	}
 }
+
+type PDFThumbnailPayload struct {
+	FileID  uuid.UUID `json:"file_id"`
+	Page    int       `json:"page"`
+	Width   int       `json:"width"`
+	Height  int       `json:"height"`
+	Quality int       `json:"quality"`
+	Format  string    `json:"format"`
+}
+
+func NewPDFThumbnailPayload(fileID uuid.UUID) PDFThumbnailPayload {
+	return PDFThumbnailPayload{
+		FileID:  fileID,
+		Page:    1,
+		Width:   presets.PDFThumbnail.Width,
+		Height:  presets.PDFThumbnail.Height,
+		Quality: presets.PDFThumbnail.Quality,
+		Format:  "png",
+	}
+}
+
+func NewPDFThumbnailPayloadWithOptions(fileID uuid.UUID, page int, format string, width, height int) PDFThumbnailPayload {
+	p := NewPDFThumbnailPayload(fileID)
+	if page > 0 {
+		p.Page = page
+	}
+	if format == "jpeg" || format == "jpg" {
+		p.Format = "jpeg"
+	}
+	if width > 0 {
+		p.Width = width
+	}
+	if height > 0 {
+		p.Height = height
+	}
+	return p
+}

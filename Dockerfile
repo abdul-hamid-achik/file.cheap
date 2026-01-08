@@ -17,7 +17,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /worker ./cmd/worker
 
 FROM alpine:latest AS api
 
-RUN apk --no-cache add ca-certificates libwebp-tools
+RUN apk --no-cache add ca-certificates libwebp-tools poppler-utils
 RUN adduser -D -g '' appuser
 
 WORKDIR /app
@@ -35,7 +35,7 @@ CMD ["./api"]
 
 FROM alpine:latest AS worker
 
-RUN apk --no-cache add ca-certificates libwebp-tools
+RUN apk --no-cache add ca-certificates libwebp-tools poppler-utils
 RUN adduser -D -g '' appuser
 
 WORKDIR /app

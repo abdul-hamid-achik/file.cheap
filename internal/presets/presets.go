@@ -9,6 +9,14 @@ type Preset struct {
 
 var Thumbnail = Preset{Width: 300, Height: 300, Quality: 85, Crop: true}
 
+var PDFThumbnail = Preset{Width: 300, Height: 300, Quality: 85, Crop: false}
+
+var PDFResponsive = map[string]Preset{
+	"pdf_sm": {Width: 640, Height: 0, Quality: 85, Crop: false},
+	"pdf_md": {Width: 1024, Height: 0, Quality: 85, Crop: false},
+	"pdf_lg": {Width: 1920, Height: 0, Quality: 85, Crop: false},
+}
+
 var Responsive = map[string]Preset{
 	"sm": {Width: 640, Height: 0, Quality: 85, Crop: false},
 	"md": {Width: 1024, Height: 0, Quality: 85, Crop: false},
@@ -35,6 +43,10 @@ var All = map[string]Preset{
 	"instagram_square":   Social["instagram_square"],
 	"instagram_portrait": Social["instagram_portrait"],
 	"instagram_story":    Social["instagram_story"],
+	"pdf_thumbnail":      PDFThumbnail,
+	"pdf_sm":             PDFResponsive["pdf_sm"],
+	"pdf_md":             PDFResponsive["pdf_md"],
+	"pdf_lg":             PDFResponsive["pdf_lg"],
 }
 
 func Get(name string) (Preset, bool) {

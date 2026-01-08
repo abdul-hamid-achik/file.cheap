@@ -136,7 +136,7 @@ func CDNHandler(cfg *CDNConfig) http.HandlerFunc {
 
 		shouldCache := requestCount >= cacheThreshold
 
-		result, err := processTransform(r.Context(), cfg, share.StorageKey, opts)
+		result, err := processTransform(r.Context(), cfg, share.StorageKey, share.ContentType, opts)
 		if err != nil {
 			log.Error("transform failed", "error", err)
 			http.Error(w, `{"error":{"code":"processing_error","message":"failed to process image"}}`, http.StatusInternalServerError)
@@ -187,14 +187,14 @@ func serveCached(w http.ResponseWriter, r *http.Request, cfg *CDNConfig, storage
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
-func processTransform(ctx context.Context, cfg *CDNConfig, storageKey string, opts *TransformOptions) (*processor.Result, error) {
+func processTransform(ctx context.Context, cfg *CDNConfig, storageKey, contentType string, opts *TransformOptions) (*processor.Result, error) {
 	reader, err := cfg.Storage.Download(ctx, storageKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download file: %w", err)
 	}
 	defer func() { _ = reader.Close() }()
 
-	procName := opts.ProcessorName()
+	procName := opts.ProcessorNameForContentType(contentType)
 	if procName == "" {
 		procName = "resize"
 	}

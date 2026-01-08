@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/abdul-hamid-achik/file-processor/internal/apperror"
 	"github.com/abdul-hamid-achik/file-processor/internal/auth"
@@ -371,12 +372,25 @@ func (h *Handlers) UploadFileAPI(w http.ResponseWriter, r *http.Request) {
 			log.Info("file created", "file_id", dbFileID.String())
 
 			if h.cfg.Broker != nil {
-				payload := worker.NewThumbnailPayload(dbFileID)
-				jobID, err := h.cfg.Broker.Enqueue("thumbnail", payload)
-				if err != nil {
-					log.Error("failed to enqueue thumbnail job", "error", err)
-				} else {
-					log.Info("thumbnail job enqueued", "job_id", jobID, "file_id", dbFileID.String())
+				switch {
+				case strings.HasPrefix(contentType, "image/"):
+					payload := worker.NewThumbnailPayload(dbFileID)
+					jobID, err := h.cfg.Broker.Enqueue("thumbnail", payload)
+					if err != nil {
+						log.Error("failed to enqueue thumbnail job", "error", err)
+					} else {
+						log.Info("thumbnail job enqueued", "job_id", jobID, "file_id", dbFileID.String())
+					}
+				case contentType == "application/pdf":
+					payload := worker.NewPDFThumbnailPayload(dbFileID)
+					jobID, err := h.cfg.Broker.Enqueue("pdf_thumbnail", payload)
+					if err != nil {
+						log.Error("failed to enqueue pdf_thumbnail job", "error", err)
+					} else {
+						log.Info("pdf_thumbnail job enqueued", "job_id", jobID, "file_id", dbFileID.String())
+					}
+				default:
+					log.Debug("no automatic processing for content type", "content_type", contentType)
 				}
 			}
 		} else {
@@ -756,6 +770,16 @@ func (h *Handlers) ProcessFile(w http.ResponseWriter, r *http.Request) {
 		}
 		isPremium := user.SubscriptionTier == db.SubscriptionTierPro || user.SubscriptionTier == db.SubscriptionTierEnterprise
 		payload = worker.NewWatermarkPayload(fileID, text, position, 0.5, isPremium)
+	case "pdf_preview":
+		if file.ContentType != "application/pdf" {
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprintf(w, `<div class="p-4 bg-nord-11/20 text-nord-11 rounded-lg text-sm">This action is only available for PDF files.</div>`)
+			return
+		}
+		variantType = db.VariantTypePdfPreview
+		jobType = "pdf_thumbnail"
+		payload = worker.NewPDFThumbnailPayload(fileID)
 	default:
 		http.Error(w, "Invalid action", http.StatusBadRequest)
 		return
