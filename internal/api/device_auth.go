@@ -153,7 +153,7 @@ func DeviceAuthHandler(cfg *DeviceAuthConfig) http.HandlerFunc {
 		verificationURI := cfg.BaseURL + "/auth/device"
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(DeviceAuthResponse{
+		_ = json.NewEncoder(w).Encode(DeviceAuthResponse{
 			DeviceCode:      code.DeviceCode,
 			UserCode:        code.UserCode,
 			VerificationURI: verificationURI,
@@ -168,7 +168,7 @@ func DeviceTokenHandler(cfg *DeviceAuthConfig) http.HandlerFunc {
 		var req DeviceTokenRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(DeviceTokenResponse{
+			_ = json.NewEncoder(w).Encode(DeviceTokenResponse{
 				Error:            "invalid_request",
 				ErrorDescription: "Invalid request body",
 			})
@@ -178,7 +178,7 @@ func DeviceTokenHandler(cfg *DeviceAuthConfig) http.HandlerFunc {
 		code := deviceAuthStore.Get(req.DeviceCode)
 		if code == nil {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(DeviceTokenResponse{
+			_ = json.NewEncoder(w).Encode(DeviceTokenResponse{
 				Error:            "invalid_grant",
 				ErrorDescription: "Device code not found or expired",
 			})
@@ -188,7 +188,7 @@ func DeviceTokenHandler(cfg *DeviceAuthConfig) http.HandlerFunc {
 		if time.Now().After(code.ExpiresAt) {
 			deviceAuthStore.Delete(req.DeviceCode)
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(DeviceTokenResponse{
+			_ = json.NewEncoder(w).Encode(DeviceTokenResponse{
 				Error:            "expired_token",
 				ErrorDescription: "Device code has expired",
 			})
@@ -197,7 +197,7 @@ func DeviceTokenHandler(cfg *DeviceAuthConfig) http.HandlerFunc {
 
 		if !code.Approved {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(DeviceTokenResponse{
+			_ = json.NewEncoder(w).Encode(DeviceTokenResponse{
 				Error:            "authorization_pending",
 				ErrorDescription: "User has not yet authorized this device",
 			})
@@ -208,7 +208,7 @@ func DeviceTokenHandler(cfg *DeviceAuthConfig) http.HandlerFunc {
 		deviceAuthStore.Delete(req.DeviceCode)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(DeviceTokenResponse{
+		_ = json.NewEncoder(w).Encode(DeviceTokenResponse{
 			APIKey: apiKey,
 		})
 	}
@@ -269,7 +269,7 @@ func DeviceApproveHandler(cfg *DeviceAuthConfig) http.HandlerFunc {
 		deviceAuthStore.Approve(code.DeviceCode, userID, apiKey)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"status":  "approved",
 			"message": "Device authorized successfully",
 		})

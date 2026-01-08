@@ -370,5 +370,9 @@ docker compose build api && docker compose up -d api  # Rebuild and restart
 - Create feature branches from main
 - Keep commits focused and atomic
 - Write clear commit messages describing the "why"
-- Run `task test` before committing
-- Use `task fmt` to format code before committing
+- **CRITICAL: Before committing, ALWAYS run these checks locally:**
+  1. `task test` - Run all tests
+  2. `task fmt` - Format Go and templ files
+  3. `golangci-lint run` - Run linter and fix ALL errors
+- Do NOT commit or push code that fails the linter
+- CI will reject PRs with lint errors, so verify locally first

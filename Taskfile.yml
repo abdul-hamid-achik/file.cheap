@@ -140,7 +140,7 @@ tasks:
     cmds:
       - go build -o bin/fc ./cmd/fc
 
-  fc:
+  "fc":
     desc: Run fc CLI (usage: task fc -- upload photo.jpg)
     cmds:
       - go run ./cmd/fc {{.CLI_ARGS}}

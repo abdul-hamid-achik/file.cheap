@@ -11,12 +11,11 @@ import (
 )
 
 var (
-	colorPrimary   = drawing.ColorFromHex("81A1C1") // nord9 - blue
-	colorSecondary = drawing.ColorFromHex("A3BE8C") // nord14 - green
-	colorMuted     = drawing.ColorFromHex("4C566A") // nord3 - muted
-	colorBg        = drawing.ColorFromHex("2E3440") // nord0 - dark bg
-	colorGrid      = drawing.ColorFromHex("3B4252") // nord1 - slightly lighter
-	colorText      = drawing.ColorFromHex("D8DEE9") // nord4 - text
+	colorPrimary   = drawing.ColorFromHex("81A1C1")
+	colorSecondary = drawing.ColorFromHex("A3BE8C")
+	colorBg        = drawing.ColorFromHex("2E3440")
+	colorGrid      = drawing.ColorFromHex("3B4252")
+	colorText      = drawing.ColorFromHex("D8DEE9")
 )
 
 func (s *Service) GenerateUsageChart(data []DailyUsage, width, height int) ([]byte, error) {
