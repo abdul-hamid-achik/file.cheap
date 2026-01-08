@@ -398,6 +398,20 @@ func (m *MockQuerier) CountBatchItemsByStatus(ctx context.Context, batchID pgtyp
 	}, nil
 }
 
+func (m *MockQuerier) CreateAPIToken(ctx context.Context, arg db.CreateAPITokenParams) (db.ApiToken, error) {
+	id := uuid.New()
+	pgID := pgtype.UUID{Bytes: id, Valid: true}
+	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+
+	return db.ApiToken{
+		ID:        pgID,
+		UserID:    arg.UserID,
+		Name:      arg.Name,
+		TokenHash: arg.TokenHash,
+		CreatedAt: now,
+	}, nil
+}
+
 func (m *MockQuerier) GetAllFiles() []db.File {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

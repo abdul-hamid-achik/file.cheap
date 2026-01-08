@@ -121,6 +121,7 @@ tasks:
     cmds:
       - go build -o bin/api ./cmd/api
       - go build -o bin/worker ./cmd/worker
+      - go build -o bin/fc ./cmd/fc
 
   "build:api":
     desc: Build API binary only
@@ -133,6 +134,21 @@ tasks:
     deps: [gen]
     cmds:
       - go build -o bin/worker ./cmd/worker
+
+  "build:fc":
+    desc: Build fc CLI binary
+    cmds:
+      - go build -o bin/fc ./cmd/fc
+
+  fc:
+    desc: Run fc CLI (usage: task fc -- upload photo.jpg)
+    cmds:
+      - go run ./cmd/fc {{.CLI_ARGS}}
+
+  "test:fc":
+    desc: Run fc CLI tests
+    cmds:
+      - go test ./internal/fc/...
 
   run:
     desc: Run the API server

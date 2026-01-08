@@ -1,0 +1,90 @@
+version: 2
+
+project_name: fc
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: fc
+    main: ./cmd/fc
+    binary: fc
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/abdul-hamid-achik/file-processor/internal/fc/version.Version={{.Version}}
+      - -X github.com/abdul-hamid-achik/file-processor/internal/fc/version.Commit={{.ShortCommit}}
+      - -X github.com/abdul-hamid-achik/file-processor/internal/fc/version.Date={{.Date}}
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+brews:
+  - name: fc
+    repository:
+      owner: abdul-hamid-achik
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://file.cheap"
+    description: "CLI for file.cheap - upload, transform, and deliver images"
+    license: "MIT"
+    install: |
+      bin.install "fc"
+    test: |
+      system "#{bin}/fc", "--version"
+
+nfpms:
+  - id: packages
+    package_name: fc
+    vendor: file.cheap
+    homepage: https://file.cheap
+    maintainer: Abdul Hamid Achik <abdul.achik@gmail.com>
+    description: "CLI for file.cheap - upload, transform, and deliver images"
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+
+release:
+  github:
+    owner: abdul-hamid-achik
+    name: file.cheap
+  draft: false
+  prerelease: auto
+  name_template: "v{{.Version}}"

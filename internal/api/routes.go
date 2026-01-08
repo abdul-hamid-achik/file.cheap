@@ -45,6 +45,7 @@ type Querier interface {
 	CreateBatchItem(ctx context.Context, arg db.CreateBatchItemParams) (db.BatchItem, error)
 	ListBatchItems(ctx context.Context, batchID pgtype.UUID) ([]db.BatchItem, error)
 	CountBatchItemsByStatus(ctx context.Context, batchID pgtype.UUID) (db.CountBatchItemsByStatusRow, error)
+	CreateAPIToken(ctx context.Context, arg db.CreateAPITokenParams) (db.ApiToken, error)
 }
 
 type Broker interface {
@@ -93,6 +94,15 @@ func NewRouter(cfg *Config) http.Handler {
 
 	apiMux.HandleFunc("POST /api/v1/batch/transform", batchTransformHandler(cfg))
 	apiMux.HandleFunc("GET /api/v1/batch/{id}", getBatchHandler(cfg))
+
+	deviceAuthCfg := &DeviceAuthConfig{
+		Queries: cfg.Queries,
+		BaseURL: cfg.BaseURL,
+	}
+	mux.HandleFunc("POST /api/v1/auth/device", DeviceAuthHandler(deviceAuthCfg))
+	mux.HandleFunc("POST /api/v1/auth/device/token", DeviceTokenHandler(deviceAuthCfg))
+
+	apiMux.HandleFunc("POST /api/v1/auth/device/approve", DeviceApproveHandler(deviceAuthCfg))
 
 	rateLimit := cfg.RateLimit
 	if rateLimit <= 0 {
