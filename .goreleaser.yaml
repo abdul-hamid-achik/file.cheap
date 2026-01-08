@@ -35,7 +35,6 @@ archives:
           - zip
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
-      - LICENSE
       - README.md
 
 checksum:
@@ -66,6 +65,7 @@ brews:
       bin.install "fc"
     test: |
       system "#{bin}/fc", "--version"
+    skip_upload: "{{ if .Env.HOMEBREW_TAP_TOKEN }}false{{ else }}true{{ end }}"
 
 nfpms:
   - id: packages
