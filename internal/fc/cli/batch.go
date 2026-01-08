@@ -89,7 +89,7 @@ func readFileIDs(filename string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var ids []string
 	scanner := bufio.NewScanner(file)
@@ -178,11 +178,12 @@ func waitForBatch(ctx context.Context, batchID string) error {
 				}
 
 				printer.Println()
-				if status.Status == "completed" {
+				switch status.Status {
+				case "completed":
 					printer.Success("Batch completed: %d files processed", status.CompletedFiles)
-				} else if status.Status == "partial" {
+				case "partial":
 					printer.Warn("Batch partially completed: %d succeeded, %d failed", status.CompletedFiles, status.FailedFiles)
-				} else {
+				default:
 					printer.Error("Batch failed: %d files failed", status.FailedFiles)
 				}
 

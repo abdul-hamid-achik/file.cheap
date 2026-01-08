@@ -1,0 +1,378 @@
+package pages
+
+import (
+	"fmt"
+	"github.com/abdul-hamid-achik/file-processor/internal/analytics"
+	"github.com/abdul-hamid-achik/file-processor/internal/auth"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
+)
+
+templ AdminDashboard(user *auth.SessionUser, data *analytics.AdminDashboard) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Admin Dashboard",
+		Description: "Platform administration and metrics",
+	}, user) {
+		<div class="py-8">
+			<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+				<div class="mb-8 flex items-center justify-between">
+					<div>
+						<h1 class="text-2xl font-bold text-nord-5">Admin Dashboard</h1>
+						<p class="text-nord-4 mt-1">Platform metrics and operations</p>
+					</div>
+					<span class="px-3 py-1 bg-nord-11/20 text-nord-11 rounded-full text-sm font-medium">
+						Admin
+					</span>
+				</div>
+
+				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+					@adminMetricCard("MRR", fmt.Sprintf("$%.0f", data.MRR), mrrIcon(), 
+						fmt.Sprintf("%.1f%% growth", data.MRRGrowth), data.MRRGrowth >= 0)
+					@adminMetricCard("Users", fmt.Sprintf("%d", data.TotalUsers), usersIcon(),
+						fmt.Sprintf("+%d this week", data.NewUsersThisWeek), true)
+					@adminMetricCard("Total Files", formatLargeNumber(data.TotalFiles), adminFilesIcon(),
+						formatBytesShort(data.TotalStorageBytes) + " stored", true)
+					@adminMetricCard("Jobs (24h)", formatLargeNumber(int64(data.JobsLast24h)), jobsIcon(),
+						fmt.Sprintf("%.1f%% success", data.JobSuccessRate), data.JobSuccessRate >= 95)
+				</div>
+
+				<div class="mb-8">
+					@components.Card("") {
+						@components.CardHeader() {
+							<div class="flex items-center justify-between">
+								@components.CardTitle("Revenue & Users")
+								<select class="text-sm bg-nord-2 border-nord-3 text-nord-5 rounded-md focus:ring-nord-8 focus:border-nord-8">
+									<option>Last 30 days</option>
+									<option>Last 90 days</option>
+									<option>This year</option>
+								</select>
+							</div>
+						}
+						@components.CardBody() {
+							<div class="h-72 flex items-center justify-center">
+								<img 
+									src="/admin/chart/revenue" 
+									alt="Revenue chart"
+									class="max-w-full max-h-full object-contain rounded"
+									hx-get="/admin/chart/revenue"
+									hx-trigger="every 60s"
+									hx-swap="outerHTML"
+								/>
+							</div>
+						}
+					}
+				</div>
+
+				<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+					@components.Card("") {
+						@components.CardHeader() {
+							@components.CardTitle("Users by Plan")
+						}
+						@components.CardBody() {
+							<div class="space-y-3">
+								for _, p := range data.UsersByPlan {
+									@adminPlanRow(p, data.TotalUsers)
+								}
+							</div>
+							<div class="mt-4 pt-4 border-t border-nord-2">
+								<div class="flex justify-between text-sm">
+									<span class="text-nord-4">Conversion Rate</span>
+									<span class="font-medium text-nord-5">
+										{ fmt.Sprintf("%.1f%%", calculateConversionRate(data.UsersByPlan)) }
+									</span>
+								</div>
+							</div>
+						}
+					}
+
+					@components.Card("") {
+						@components.CardHeader() {
+							<div class="flex items-center justify-between">
+								@components.CardTitle("System Health")
+								if data.Health.AllHealthy {
+									<span class="px-2 py-1 bg-nord-14/20 text-nord-14 text-xs rounded-full">
+										All Systems Operational
+									</span>
+								} else {
+									<span class="px-2 py-1 bg-nord-13/20 text-nord-13 text-xs rounded-full">
+										Attention Needed
+									</span>
+								}
+							</div>
+						}
+						@components.CardBody() {
+							<div 
+								class="space-y-3"
+								hx-get="/admin/health"
+								hx-trigger="every 10s"
+								hx-swap="innerHTML"
+							>
+								@AdminHealthRows(data.Health)
+							</div>
+						}
+					}
+				</div>
+
+				<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+					@components.Card("") {
+						@components.CardHeader() {
+							@components.CardTitle("Top Users by Usage")
+						}
+						@components.CardBody() {
+							<div class="space-y-3">
+								if len(data.TopUsers) == 0 {
+									<p class="text-nord-4 text-sm text-center py-4">No usage data</p>
+								} else {
+									for _, u := range data.TopUsers {
+										@adminTopUserRow(u)
+									}
+								}
+							</div>
+						}
+					}
+
+					@components.Card("") {
+						@components.CardHeader() {
+							@components.CardTitle("Recent Signups")
+						}
+						@components.CardBody() {
+							<div 
+								class="space-y-3"
+								hx-get="/admin/signups"
+								hx-trigger="every 30s"
+								hx-swap="innerHTML"
+							>
+								@AdminSignupRows(data.RecentSignups)
+							</div>
+						}
+					}
+				</div>
+
+				@components.Card("") {
+					@components.CardHeader() {
+						<div class="flex items-center justify-between">
+							@components.CardTitle("Failed Jobs (Last 24h)")
+							<a href="/admin/jobs?status=failed" class="text-sm text-nord-9 hover:text-nord-8">
+								View All
+							</a>
+						</div>
+					}
+					@components.CardBody() {
+						<div class="space-y-2">
+							if len(data.FailedJobs) == 0 {
+								<p class="text-nord-4 text-sm text-center py-4">
+									No failed jobs in the last 24 hours
+								</p>
+							} else {
+								for _, j := range data.FailedJobs {
+									@adminFailedJobRow(j)
+								}
+							}
+						</div>
+					}
+				}
+			</div>
+		</div>
+	}
+}
+
+templ AdminHealthRows(health analytics.SystemHealth) {
+	@adminHealthRow("API Latency (p95)", fmt.Sprintf("%dms", health.APILatencyP95), health.APILatencyP95 < 100)
+	@adminHealthRow("Worker Queue", fmt.Sprintf("%d", health.WorkerQueueSize), health.WorkerQueueSize < 500)
+	@adminHealthRow("Failed Jobs (1h)", fmt.Sprintf("%d", health.FailedJobsHour), health.FailedJobsHour < 5)
+	@adminHealthRow("Storage Used", formatBytesShort(health.StorageUsed), true)
+	@adminHealthRow("DB Connections", fmt.Sprintf("%d", health.DBConnections), health.DBConnections < 50)
+	@adminHealthRow("Redis Memory", formatBytesShort(health.RedisMemory), health.RedisMemory < 1073741824)
+}
+
+templ AdminSignupRows(signups []analytics.RecentSignup) {
+	if len(signups) == 0 {
+		<p class="text-nord-4 text-sm text-center py-4">No recent signups</p>
+	} else {
+		for _, s := range signups {
+			@adminSignupRow(s)
+		}
+	}
+}
+
+templ adminMetricCard(label string, value string, icon templ.Component, subtext string, positive bool) {
+	@components.Card("") {
+		@components.CardBody() {
+			<div class="flex items-center gap-3 mb-2">
+				<div class="p-2 bg-nord-2 rounded-lg">
+					@icon
+				</div>
+				<span class="text-sm font-medium text-nord-4">{ label }</span>
+			</div>
+			<div class="text-3xl font-bold text-nord-5 mb-1">{ value }</div>
+			<div class={ "text-sm", templ.KV("text-nord-14", positive), templ.KV("text-nord-11", !positive) }>
+				{ subtext }
+			</div>
+		}
+	}
+}
+
+templ adminPlanRow(p analytics.PlanStats, totalUsers int) {
+	<div>
+		<div class="flex justify-between text-sm mb-1">
+			<span class="text-nord-5 capitalize">{ p.Plan }</span>
+			<span class="text-nord-4">{ fmt.Sprintf("%d", p.Count) }</span>
+		</div>
+		<div class="w-full bg-nord-2 rounded-full h-2">
+			<div 
+				class={ "h-2 rounded-full", adminPlanColor(p.Plan) }
+				style={ fmt.Sprintf("width: %.1f%%", p.Percentage) }
+			></div>
+		</div>
+	</div>
+}
+
+templ adminHealthRow(label string, value string, healthy bool) {
+	<div class="flex items-center justify-between py-2 border-b border-nord-2 last:border-0">
+		<span class="text-sm text-nord-4">{ label }</span>
+		<div class="flex items-center gap-2">
+			<span class="text-sm font-medium text-nord-5">{ value }</span>
+			if healthy {
+				<span class="w-2 h-2 rounded-full bg-nord-14"></span>
+			} else {
+				<span class="w-2 h-2 rounded-full bg-nord-13"></span>
+			}
+		</div>
+	</div>
+}
+
+templ adminTopUserRow(u analytics.TopUser) {
+	<div class="flex items-center justify-between py-2 border-b border-nord-2 last:border-0">
+		<div>
+			<p class="text-sm font-medium text-nord-5">{ u.Email }</p>
+			<p class="text-xs text-nord-4">
+				{ fmt.Sprintf("%d transforms", u.Transforms) }
+			</p>
+		</div>
+		<div class="text-right">
+			<span class={ "text-xs px-2 py-0.5 rounded", planBadgeClass(u.Plan) }>
+				{ u.Plan }
+			</span>
+			<p class="text-xs text-nord-4 mt-1">
+				{ fmt.Sprintf("$%.0f/mo", u.MonthlyRate) }
+			</p>
+		</div>
+	</div>
+}
+
+templ adminSignupRow(s analytics.RecentSignup) {
+	<div class="flex items-start gap-3 py-2 border-b border-nord-2 last:border-0">
+		<span class="w-2 h-2 rounded-full bg-nord-14 mt-2 flex-shrink-0"></span>
+		<div class="flex-1">
+			<p class="text-sm font-medium text-nord-5">{ s.Email }</p>
+			<p class="text-xs text-nord-4">
+				{ s.TimeAgo } - 
+				<span class="capitalize">{ s.Plan }</span>
+				if s.Plan == "pro" {
+					{ " trial started" }
+				} else {
+					{ " signup" }
+				}
+			</p>
+		</div>
+	</div>
+}
+
+templ adminFailedJobRow(j analytics.FailedJob) {
+	<div class="flex items-center justify-between py-2 px-3 bg-nord-11/10 rounded-lg">
+		<div class="flex items-center gap-3">
+			<span class="w-2 h-2 rounded-full bg-nord-11 flex-shrink-0"></span>
+			<div>
+				<p class="text-sm font-medium text-nord-5">
+					{ truncateID(j.FileID.String()) } - { j.JobType }
+				</p>
+				<p class="text-xs text-nord-11">{ truncateError(j.Error) }</p>
+			</div>
+		</div>
+		if j.CanRetry {
+			<button 
+				class="text-xs px-2 py-1 bg-nord-1 border border-nord-3 rounded hover:bg-nord-2 text-nord-5"
+				hx-post={ fmt.Sprintf("/admin/jobs/%s/retry", j.ID) }
+				hx-swap="outerHTML"
+				hx-target="closest div"
+			>
+				Retry
+			</button>
+		}
+	</div>
+}
+
+templ mrrIcon() {
+	<svg class="w-5 h-5 text-nord-14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+	</svg>
+}
+
+templ usersIcon() {
+	<svg class="w-5 h-5 text-nord-9" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"/>
+	</svg>
+}
+
+templ adminFilesIcon() {
+	<svg class="w-5 h-5 text-nord-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"/>
+	</svg>
+}
+
+templ jobsIcon() {
+	<svg class="w-5 h-5 text-nord-13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+	</svg>
+}
+
+func formatLargeNumber(n int64) string {
+	if n >= 1000000 {
+		return fmt.Sprintf("%.1fM", float64(n)/1000000)
+	}
+	if n >= 1000 {
+		return fmt.Sprintf("%.1fK", float64(n)/1000)
+	}
+	return fmt.Sprintf("%d", n)
+}
+
+func calculateConversionRate(plans []analytics.PlanStats) float64 {
+	var free, paid int
+	for _, p := range plans {
+		if p.Plan == "free" {
+			free = p.Count
+		} else {
+			paid += p.Count
+		}
+	}
+	total := free + paid
+	if total == 0 {
+		return 0
+	}
+	return float64(paid) / float64(total) * 100
+}
+
+func adminPlanColor(plan string) string {
+	switch plan {
+	case "pro":
+		return "bg-nord-9"
+	case "enterprise":
+		return "bg-nord-15"
+	default:
+		return "bg-nord-4"
+	}
+}
+
+func truncateID(id string) string {
+	if len(id) > 8 {
+		return id[:8]
+	}
+	return id
+}
+
+func truncateError(err string) string {
+	if len(err) > 50 {
+		return err[:50] + "..."
+	}
+	return err
+}

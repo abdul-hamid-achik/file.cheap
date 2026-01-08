@@ -20,7 +20,7 @@ type Config struct {
 	Secure  bool
 }
 
-func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oauthSvc *auth.OAuthService, billingHandlers *BillingHandlers) http.Handler {
+func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oauthSvc *auth.OAuthService, billingHandlers *BillingHandlers, analyticsHandlers *AnalyticsHandlers, adminHandlers *AdminHandlers) http.Handler {
 	mux := http.NewServeMux()
 	h := NewHandlers(cfg, sm, authSvc, oauthSvc)
 
@@ -74,6 +74,27 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 			mux.Handle("POST /billing/checkout", requireAuth(http.HandlerFunc(billingHandlers.CreateCheckout)))
 			mux.Handle("POST /billing/portal", requireAuth(http.HandlerFunc(billingHandlers.CreatePortal)))
 		}
+
+		// Analytics routes
+		if analyticsHandlers != nil {
+			mux.Handle("GET /dashboard/analytics", requireAuth(http.HandlerFunc(analyticsHandlers.Dashboard)))
+			mux.Handle("GET /dashboard/analytics/chart", requireAuth(http.HandlerFunc(analyticsHandlers.ChartPartial)))
+			mux.Handle("GET /dashboard/analytics/chart/usage", requireAuth(http.HandlerFunc(analyticsHandlers.UsageChart)))
+			mux.Handle("GET /dashboard/analytics/chart/transforms", requireAuth(http.HandlerFunc(analyticsHandlers.TransformsChart)))
+			mux.Handle("GET /dashboard/analytics/activity", requireAuth(http.HandlerFunc(analyticsHandlers.ActivityFeed)))
+		}
+
+		// Admin routes
+		if adminHandlers != nil {
+			requireAdmin := func(next http.Handler) http.Handler {
+				return requireAuth(auth.RequireAdmin(next))
+			}
+			mux.Handle("GET /admin", requireAdmin(http.HandlerFunc(adminHandlers.Dashboard)))
+			mux.Handle("GET /admin/chart/revenue", requireAdmin(http.HandlerFunc(adminHandlers.RevenueChart)))
+			mux.Handle("GET /admin/health", requireAdmin(http.HandlerFunc(adminHandlers.HealthStatus)))
+			mux.Handle("GET /admin/signups", requireAdmin(http.HandlerFunc(adminHandlers.RecentSignups)))
+			mux.Handle("POST /admin/jobs/{id}/retry", requireAdmin(http.HandlerFunc(adminHandlers.RetryJob)))
+		}
 	} else {
 		redirectToLogin := func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/login", http.StatusFound)
@@ -100,6 +121,16 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 		mux.HandleFunc("POST /billing/trial", redirectToLogin)
 		mux.HandleFunc("POST /billing/checkout", redirectToLogin)
 		mux.HandleFunc("POST /billing/portal", redirectToLogin)
+		mux.HandleFunc("GET /dashboard/analytics", redirectToLogin)
+		mux.HandleFunc("GET /dashboard/analytics/chart", redirectToLogin)
+		mux.HandleFunc("GET /dashboard/analytics/chart/usage", redirectToLogin)
+		mux.HandleFunc("GET /dashboard/analytics/chart/transforms", redirectToLogin)
+		mux.HandleFunc("GET /dashboard/analytics/activity", redirectToLogin)
+		mux.HandleFunc("GET /admin", redirectToLogin)
+		mux.HandleFunc("GET /admin/chart/revenue", redirectToLogin)
+		mux.HandleFunc("GET /admin/health", redirectToLogin)
+		mux.HandleFunc("GET /admin/signups", redirectToLogin)
+		mux.HandleFunc("POST /admin/jobs/{id}/retry", redirectToLogin)
 	}
 
 	// Stripe webhook (no auth required - Stripe sends directly)

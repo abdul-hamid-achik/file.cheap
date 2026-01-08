@@ -202,11 +202,12 @@ func watchBatchStatus(ctx context.Context, batchID string) error {
 					return printer.JSON(fullStatus)
 				}
 
-				if status.Status == "completed" {
+				switch status.Status {
+				case "completed":
 					printer.Success("Batch completed: %d files", status.CompletedFiles)
-				} else if status.Status == "partial" {
+				case "partial":
 					printer.Warn("Batch partial: %d succeeded, %d failed", status.CompletedFiles, status.FailedFiles)
-				} else {
+				default:
 					printer.Error("Batch failed: %d files failed", status.FailedFiles)
 				}
 				return nil

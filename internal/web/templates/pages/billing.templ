@@ -186,7 +186,7 @@ templ usageCard(data BillingPageData) {
 					<div class="w-full h-2 bg-nord-2 rounded-full overflow-hidden">
 						<div 
 							class={ "h-full rounded-full transition-all", templ.KV("bg-nord-14", data.Subscription.UsagePercent < 80), templ.KV("bg-nord-13", data.Subscription.UsagePercent >= 80 && data.Subscription.UsagePercent < 95), templ.KV("bg-nord-11", data.Subscription.UsagePercent >= 95) }
-							style={ fmt.Sprintf("width: %d%%", min(data.Subscription.UsagePercent, 100)) }
+							style={ fmt.Sprintf("width: %d%%", minInt(data.Subscription.UsagePercent, 100)) }
 						></div>
 					</div>
 					<p class="text-nord-4 text-xs mt-1">
@@ -209,7 +209,7 @@ templ usageCard(data BillingPageData) {
 						<div class="w-full h-2 bg-nord-2 rounded-full overflow-hidden">
 							<div 
 								class={ "h-full rounded-full transition-all", templ.KV("bg-nord-8", data.Subscription.TransformationsPercent < 80), templ.KV("bg-nord-13", data.Subscription.TransformationsPercent >= 80 && data.Subscription.TransformationsPercent < 95), templ.KV("bg-nord-11", data.Subscription.TransformationsPercent >= 95) }
-								style={ fmt.Sprintf("width: %d%%", min(data.Subscription.TransformationsPercent, 100)) }
+								style={ fmt.Sprintf("width: %d%%", minInt(data.Subscription.TransformationsPercent, 100)) }
 							></div>
 						</div>
 					}
@@ -394,7 +394,7 @@ templ pricingSection(data BillingPageData) {
 	</div>
 }
 
-func min(a, b int) int {
+func minInt(a, b int) int {
 	if a < b {
 		return a
 	}

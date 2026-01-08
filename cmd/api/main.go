@@ -180,7 +180,12 @@ func run() error {
 		log.Info("stripe billing configured")
 	}
 
-	webRouter := web.NewRouter(webCfg, sessionManager, authService, oauthService, billingHandlers)
+	analyticsService := web.NewAnalyticsService(webCfg, redisClient)
+	analyticsHandlers := web.NewAnalyticsHandlers(analyticsService)
+	adminHandlers := web.NewAdminHandlers(analyticsService)
+	log.Info("analytics services configured")
+
+	webRouter := web.NewRouter(webCfg, sessionManager, authService, oauthService, billingHandlers, analyticsHandlers, adminHandlers)
 	mux.Handle("/", webRouter)
 
 	handler := metrics.HTTPMetricsMiddleware(web.Recovery(web.RequestID(web.RequestLogger(mux))))

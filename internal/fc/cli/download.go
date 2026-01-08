@@ -81,7 +81,7 @@ func downloadSingleFile(ctx context.Context, fileID, variant string) error {
 	if err != nil {
 		return err
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	if filename == "" {
 		file, err := apiClient.GetFile(ctx, fileID)
@@ -114,7 +114,7 @@ func downloadSingleFile(ctx context.Context, fileID, variant string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	_, err = io.Copy(outFile, body)
 	if err != nil {

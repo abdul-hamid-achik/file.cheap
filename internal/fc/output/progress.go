@@ -52,7 +52,7 @@ func NewProgress(total int, description string, opts ...ProgressOption) *Progres
 		progressbar.OptionThrottle(65*time.Millisecond),
 		progressbar.OptionShowCount(),
 		progressbar.OptionOnCompletion(func() {
-			fmt.Fprint(p.out, "\n")
+			_, _ = fmt.Fprint(p.out, "\n")
 		}),
 		progressbar.OptionSpinnerType(14),
 		progressbar.OptionFullWidth(),
@@ -71,13 +71,13 @@ func NewProgress(total int, description string, opts ...ProgressOption) *Progres
 
 func (p *Progress) Increment() {
 	if p.bar != nil {
-		p.bar.Add(1)
+		_ = p.bar.Add(1)
 	}
 }
 
 func (p *Progress) Finish() {
 	if p.bar != nil {
-		p.bar.Finish()
+		_ = p.bar.Finish()
 	}
 }
 
@@ -109,7 +109,7 @@ func NewSpinner(description string, quiet bool) *Spinner {
 		progressbar.OptionSpinnerType(14),
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionOnCompletion(func() {
-			fmt.Fprint(s.out, "\n")
+			_, _ = fmt.Fprint(s.out, "\n")
 		}),
 	)
 
@@ -119,13 +119,13 @@ func NewSpinner(description string, quiet bool) *Spinner {
 func (s *Spinner) Update(description string) {
 	if s.bar != nil {
 		s.bar.Describe(description)
-		s.bar.Add(1)
+		_ = s.bar.Add(1)
 	}
 }
 
 func (s *Spinner) Finish() {
 	if s.bar != nil {
-		s.bar.Finish()
+		_ = s.bar.Finish()
 	}
 }
 
@@ -159,7 +159,7 @@ func NewByteProgress(total int64, description string, quiet bool) *ByteProgress 
 		progressbar.OptionSetWidth(30),
 		progressbar.OptionThrottle(65*time.Millisecond),
 		progressbar.OptionOnCompletion(func() {
-			fmt.Fprint(p.out, "\n")
+			_, _ = fmt.Fprint(p.out, "\n")
 		}),
 		progressbar.OptionFullWidth(),
 		progressbar.OptionSetTheme(progressbar.Theme{
@@ -177,13 +177,13 @@ func NewByteProgress(total int64, description string, quiet bool) *ByteProgress 
 func (p *ByteProgress) Write(b []byte) (int, error) {
 	n := len(b)
 	if p.bar != nil {
-		p.bar.Add(n)
+		_ = p.bar.Add(n)
 	}
 	return n, nil
 }
 
 func (p *ByteProgress) Finish() {
 	if p.bar != nil {
-		p.bar.Finish()
+		_ = p.bar.Finish()
 	}
 }

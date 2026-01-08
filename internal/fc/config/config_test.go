@@ -23,8 +23,8 @@ func TestLoadDefault(t *testing.T) {
 func TestSaveAndLoad(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	cfg := &Config{
 		APIKey:            "fp_test123",

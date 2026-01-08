@@ -100,8 +100,8 @@ func uploadFromStdin(transforms []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	defer tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	defer func() { _ = tmpFile.Close() }()
 
 	size, err := io.Copy(tmpFile, os.Stdin)
 	if err != nil {

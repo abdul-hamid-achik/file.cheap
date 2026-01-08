@@ -54,6 +54,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
+	github.com/wcharczuk/go-chart/v2 v2.1.2 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/image v0.34.0 // indirect
 	golang.org/x/net v0.47.0 // indirect

@@ -50,9 +50,7 @@ func runTransform(cmd *cobra.Command, args []string) error {
 	}
 
 	presets := transformPresets
-	for _, t := range transformTransform {
-		presets = append(presets, t)
-	}
+	presets = append(presets, transformTransform...)
 
 	if len(presets) == 0 && transformWatermark == "" {
 		return fmt.Errorf("no transforms specified (use -t or -p)")

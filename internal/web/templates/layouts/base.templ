@@ -163,8 +163,15 @@ templ Header(user *auth.SessionUser) {
 								class="absolute right-0 mt-2 w-48 origin-top-right rounded-md bg-nord-2 shadow-lg ring-1 ring-nord-3 focus:outline-none"
 							>
 								<div class="py-1">
+									<a href="/dashboard/analytics" class="block px-4 py-2 text-sm text-nord-4 hover:bg-nord-3 hover:text-nord-6">Analytics</a>
+									<a href="/billing" class="block px-4 py-2 text-sm text-nord-4 hover:bg-nord-3 hover:text-nord-6">Billing</a>
+									<hr class="border-nord-3 my-1"/>
 									<a href="/profile" class="block px-4 py-2 text-sm text-nord-4 hover:bg-nord-3 hover:text-nord-6">Profile</a>
 									<a href="/settings" class="block px-4 py-2 text-sm text-nord-4 hover:bg-nord-3 hover:text-nord-6">Settings</a>
+									if user.Role == "admin" {
+										<hr class="border-nord-3 my-1"/>
+										<a href="/admin" class="block px-4 py-2 text-sm text-nord-15 hover:bg-nord-3 hover:text-nord-6">Admin</a>
+									}
 									<hr class="border-nord-3 my-1"/>
 									<form action="/logout" method="POST">
 										<button type="submit" class="block w-full text-left px-4 py-2 text-sm text-nord-11 hover:bg-nord-3">
@@ -211,7 +218,14 @@ templ Header(user *auth.SessionUser) {
 					<a href="/dashboard" class="block py-2 text-nord-4 hover:text-nord-6">Dashboard</a>
 					<a href="/files" class="block py-2 text-nord-4 hover:text-nord-6">Files</a>
 					<a href="/upload" class="block py-2 text-nord-4 hover:text-nord-6">Upload</a>
+					<a href="/dashboard/analytics" class="block py-2 text-nord-4 hover:text-nord-6">Analytics</a>
+					<a href="/billing" class="block py-2 text-nord-4 hover:text-nord-6">Billing</a>
+					<hr class="border-nord-3 my-2"/>
 					<a href="/profile" class="block py-2 text-nord-4 hover:text-nord-6">Profile</a>
+					<a href="/settings" class="block py-2 text-nord-4 hover:text-nord-6">Settings</a>
+					if user.Role == "admin" {
+						<a href="/admin" class="block py-2 text-nord-15 hover:text-nord-6">Admin</a>
+					}
 					<hr class="border-nord-3 my-2"/>
 					<form action="/logout" method="POST">
 						<button type="submit" class="block w-full text-left py-2 text-nord-11">Sign out</button>

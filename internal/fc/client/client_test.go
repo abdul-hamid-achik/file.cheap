@@ -37,7 +37,7 @@ func TestClient_ListFiles(t *testing.T) {
 			t.Errorf("unexpected auth header: %s", r.Header.Get("Authorization"))
 		}
 
-		json.NewEncoder(w).Encode(ListFilesResponse{
+		_ = json.NewEncoder(w).Encode(ListFilesResponse{
 			Files: []File{
 				{ID: "abc123", Filename: "test.jpg", Status: "completed"},
 			},
@@ -67,7 +67,7 @@ func TestClient_GetFile(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 
-		json.NewEncoder(w).Encode(File{
+		_ = json.NewEncoder(w).Encode(File{
 			ID:       "abc123",
 			Filename: "test.jpg",
 			Status:   "completed",
@@ -121,13 +121,13 @@ func TestClient_Transform(t *testing.T) {
 		}
 
 		var req TransformRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		if len(req.Presets) == 0 || req.Presets[0] != "thumbnail" {
 			t.Errorf("unexpected presets: %v", req.Presets)
 		}
 
 		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(TransformResponse{
+		_ = json.NewEncoder(w).Encode(TransformResponse{
 			FileID: "abc123",
 			Jobs:   []string{"job1", "job2"},
 		})
@@ -157,7 +157,7 @@ func TestClient_BatchTransform(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(BatchTransformResponse{
+		_ = json.NewEncoder(w).Encode(BatchTransformResponse{
 			BatchID:    "batch123",
 			TotalFiles: 3,
 			TotalJobs:  9,
@@ -198,14 +198,14 @@ func TestClient_Upload(t *testing.T) {
 		if err != nil {
 			t.Errorf("failed to get file: %v", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		if header.Filename != "test.txt" {
 			t.Errorf("filename = %s, want test.txt", header.Filename)
 		}
 
 		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(UploadResponse{
+		_ = json.NewEncoder(w).Encode(UploadResponse{
 			ID:       "uploaded123",
 			Filename: "test.txt",
 			Status:   "pending",
@@ -215,7 +215,7 @@ func TestClient_Upload(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "test.txt")
-	os.WriteFile(testFile, []byte("test content"), 0644)
+	_ = os.WriteFile(testFile, []byte("test content"), 0644)
 
 	c := New(server.URL, "fp_test123")
 	resp, err := c.Upload(context.Background(), testFile, nil, false)
@@ -234,7 +234,7 @@ func TestClient_DeviceAuth(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 
-		json.NewEncoder(w).Encode(DeviceAuthResponse{
+		_ = json.NewEncoder(w).Encode(DeviceAuthResponse{
 			DeviceCode:      "dev123",
 			UserCode:        "ABCD-1234",
 			VerificationURI: "https://file.cheap/auth/device",
@@ -263,7 +263,7 @@ func TestClient_WaitForFile(t *testing.T) {
 		if calls >= 3 {
 			status = "completed"
 		}
-		json.NewEncoder(w).Encode(File{
+		_ = json.NewEncoder(w).Encode(File{
 			ID:     "abc123",
 			Status: status,
 		})
@@ -287,7 +287,7 @@ func TestClient_WaitForFile(t *testing.T) {
 func TestClient_ErrorParsing(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(ErrorResponse{
+		_ = json.NewEncoder(w).Encode(ErrorResponse{
 			Error: APIError{
 				Code:    "not_found",
 				Message: "File not found",

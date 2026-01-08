@@ -57,7 +57,7 @@ func (t *Table) Render() {
 				parts[i] = cell
 			}
 		}
-		fmt.Fprintln(t.out, strings.Join(parts, "  "))
+		_, _ = fmt.Fprintln(t.out, strings.Join(parts, "  "))
 	}
 
 	printRow(t.headers)

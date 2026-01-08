@@ -69,7 +69,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, reqBody, respB
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		return c.parseError(resp)
@@ -95,7 +95,7 @@ func (c *Client) Upload(ctx context.Context, filePath string, transforms []strin
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	stat, err := file.Stat()
 	if err != nil {
@@ -134,7 +134,7 @@ func (c *Client) Upload(ctx context.Context, filePath string, transforms []strin
 	if err != nil {
 		return nil, fmt.Errorf("upload failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
 		return nil, c.parseError(resp)
@@ -186,7 +186,7 @@ func (c *Client) UploadReader(ctx context.Context, r io.Reader, filename string,
 	if err != nil {
 		return nil, fmt.Errorf("upload failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
 		return nil, c.parseError(resp)
@@ -255,7 +255,7 @@ func (c *Client) Download(ctx context.Context, fileID, variant string) (io.ReadC
 	}
 
 	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		return nil, "", c.parseError(resp)
 	}
 
