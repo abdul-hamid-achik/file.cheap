@@ -113,3 +113,26 @@ type FailedJob struct {
 	FailedAt time.Time `json:"failed_at"`
 	CanRetry bool      `json:"can_retry"`
 }
+
+type JobListItem struct {
+	ID           string     `json:"id"`
+	FileID       string     `json:"file_id"`
+	Filename     string     `json:"filename"`
+	JobType      string     `json:"job_type"`
+	Status       string     `json:"status"`
+	Priority     int        `json:"priority"`
+	Attempts     int        `json:"attempts"`
+	ErrorMessage string     `json:"error_message"`
+	CreatedAt    time.Time  `json:"created_at"`
+	StartedAt    *time.Time `json:"started_at"`
+	CompletedAt  *time.Time `json:"completed_at"`
+}
+
+type JobsListPage struct {
+	Jobs       []JobListItem `json:"jobs"`
+	Total      int64         `json:"total"`
+	Page       int           `json:"page"`
+	PageSize   int           `json:"page_size"`
+	TotalPages int           `json:"total_pages"`
+	Status     string        `json:"status"`
+}

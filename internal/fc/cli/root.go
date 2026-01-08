@@ -73,6 +73,7 @@ func init() {
 	rootCmd.AddCommand(socialCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(configCmd)
+	rootCmd.AddCommand(shareCmd)
 }
 
 func requireAuth() error {

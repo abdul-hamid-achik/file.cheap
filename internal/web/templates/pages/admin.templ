@@ -376,3 +376,165 @@ func truncateError(err string) string {
 	}
 	return err
 }
+
+templ AdminJobs(user *auth.SessionUser, data *analytics.JobsListPage) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Jobs - Admin",
+		Description: "View and manage processing jobs",
+	}, user) {
+		<div class="py-8">
+			<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+				<div class="mb-8 flex items-center justify-between">
+					<div>
+						<h1 class="text-2xl font-bold text-nord-5">Processing Jobs</h1>
+						<p class="text-nord-4 mt-1">{ fmt.Sprintf("%d total jobs", data.Total) }</p>
+					</div>
+					<a href="/admin" class="text-nord-8 hover:text-nord-9 text-sm">
+						Back to Dashboard
+					</a>
+				</div>
+
+				<div class="mb-6 flex gap-2">
+					@jobStatusFilter("all", "All", data.Status)
+					@jobStatusFilter("pending", "Pending", data.Status)
+					@jobStatusFilter("running", "Running", data.Status)
+					@jobStatusFilter("completed", "Completed", data.Status)
+					@jobStatusFilter("failed", "Failed", data.Status)
+				</div>
+
+				@components.Card("") {
+					<div class="overflow-x-auto">
+						<table class="w-full">
+							<thead>
+								<tr class="border-b border-nord-2">
+									<th class="text-left py-3 px-4 text-xs font-medium text-nord-4 uppercase">Job ID</th>
+									<th class="text-left py-3 px-4 text-xs font-medium text-nord-4 uppercase">Type</th>
+									<th class="text-left py-3 px-4 text-xs font-medium text-nord-4 uppercase">File</th>
+									<th class="text-left py-3 px-4 text-xs font-medium text-nord-4 uppercase">Status</th>
+									<th class="text-left py-3 px-4 text-xs font-medium text-nord-4 uppercase">Attempts</th>
+									<th class="text-left py-3 px-4 text-xs font-medium text-nord-4 uppercase">Created</th>
+									<th class="text-left py-3 px-4 text-xs font-medium text-nord-4 uppercase">Actions</th>
+								</tr>
+							</thead>
+							<tbody class="divide-y divide-nord-2">
+								if len(data.Jobs) == 0 {
+									<tr>
+										<td colspan="7" class="py-8 text-center text-nord-4">
+											No jobs found
+										</td>
+									</tr>
+								} else {
+									for _, job := range data.Jobs {
+										@adminJobRow(job)
+									}
+								}
+							</tbody>
+						</table>
+					</div>
+					
+					if data.TotalPages > 1 {
+						<div class="flex items-center justify-between border-t border-nord-2 px-4 py-3">
+							<div class="text-sm text-nord-4">
+								Page { fmt.Sprintf("%d", data.Page) } of { fmt.Sprintf("%d", data.TotalPages) }
+							</div>
+							<div class="flex gap-2">
+								if data.Page > 1 {
+									<a 
+										href={ templ.SafeURL(fmt.Sprintf("/admin/jobs?status=%s&page=%d", data.Status, data.Page-1)) }
+										class="px-3 py-1 bg-nord-2 hover:bg-nord-3 text-nord-5 rounded text-sm"
+									>
+										Previous
+									</a>
+								}
+								if data.Page < data.TotalPages {
+									<a 
+										href={ templ.SafeURL(fmt.Sprintf("/admin/jobs?status=%s&page=%d", data.Status, data.Page+1)) }
+										class="px-3 py-1 bg-nord-2 hover:bg-nord-3 text-nord-5 rounded text-sm"
+									>
+										Next
+									</a>
+								}
+							</div>
+						</div>
+					}
+				}
+			</div>
+		</div>
+	}
+}
+
+templ jobStatusFilter(value, label, current string) {
+	if current == value || (current == "" && value == "all") {
+		<span class="px-3 py-1 bg-nord-8 text-nord-0 rounded-full text-sm font-medium">
+			{ label }
+		</span>
+	} else {
+		<a 
+			href={ templ.SafeURL(fmt.Sprintf("/admin/jobs?status=%s", value)) }
+			class="px-3 py-1 bg-nord-2 hover:bg-nord-3 text-nord-4 rounded-full text-sm"
+		>
+			{ label }
+		</a>
+	}
+}
+
+templ adminJobRow(job analytics.JobListItem) {
+	<tr class="hover:bg-nord-1/50">
+		<td class="py-3 px-4">
+			<span class="text-xs font-mono text-nord-4">{ truncateID(job.ID) }</span>
+		</td>
+		<td class="py-3 px-4">
+			<span class="text-sm text-nord-5">{ job.JobType }</span>
+		</td>
+		<td class="py-3 px-4">
+			if job.Filename != "" {
+				<span class="text-sm text-nord-5">{ truncateFilename(job.Filename) }</span>
+			} else {
+				<span class="text-xs text-nord-4 font-mono">{ truncateID(job.FileID) }</span>
+			}
+		</td>
+		<td class="py-3 px-4">
+			@adminJobStatusBadge(job.Status)
+		</td>
+		<td class="py-3 px-4">
+			<span class="text-sm text-nord-4">{ fmt.Sprintf("%d", job.Attempts) }</span>
+		</td>
+		<td class="py-3 px-4">
+			<span class="text-sm text-nord-4">{ analytics.TimeAgo(job.CreatedAt) }</span>
+		</td>
+		<td class="py-3 px-4">
+			if job.Status == "failed" && job.Attempts < 3 {
+				<button 
+					class="text-xs px-2 py-1 bg-nord-1 border border-nord-3 rounded hover:bg-nord-2 text-nord-5"
+					hx-post={ fmt.Sprintf("/admin/jobs/%s/retry", job.ID) }
+					hx-swap="outerHTML"
+					hx-target="closest tr"
+				>
+					Retry
+				</button>
+			}
+		</td>
+	</tr>
+}
+
+templ adminJobStatusBadge(status string) {
+	switch status {
+		case "pending":
+			<span class="px-2 py-1 bg-nord-13/20 text-nord-13 rounded text-xs">Pending</span>
+		case "running":
+			<span class="px-2 py-1 bg-nord-8/20 text-nord-8 rounded text-xs">Running</span>
+		case "completed":
+			<span class="px-2 py-1 bg-nord-14/20 text-nord-14 rounded text-xs">Completed</span>
+		case "failed":
+			<span class="px-2 py-1 bg-nord-11/20 text-nord-11 rounded text-xs">Failed</span>
+		default:
+			<span class="px-2 py-1 bg-nord-3 text-nord-4 rounded text-xs">{ status }</span>
+	}
+}
+
+func truncateFilename(name string) string {
+	if len(name) > 30 {
+		return name[:27] + "..."
+	}
+	return name
+}

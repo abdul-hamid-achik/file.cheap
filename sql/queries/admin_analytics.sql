@@ -113,3 +113,27 @@ WHERE status = 'failed'
 UPDATE processing_jobs
 SET status = 'pending', error_message = NULL, attempts = 0
 WHERE id = $1 AND status = 'failed';
+
+-- name: ListJobsAdmin :many
+SELECT 
+    pj.id,
+    pj.file_id,
+    pj.job_type::text as job_type,
+    pj.status::text as status,
+    pj.priority,
+    pj.attempts,
+    COALESCE(pj.error_message, '') as error_message,
+    pj.created_at,
+    pj.started_at,
+    pj.completed_at,
+    f.filename
+FROM processing_jobs pj
+LEFT JOIN files f ON f.id = pj.file_id
+WHERE (sqlc.narg('status')::text IS NULL OR pj.status::text = sqlc.narg('status'))
+ORDER BY pj.created_at DESC
+LIMIT $1 OFFSET $2;
+
+-- name: CountJobsAdmin :one
+SELECT COUNT(*)::bigint as total
+FROM processing_jobs
+WHERE (sqlc.narg('status')::text IS NULL OR status::text = sqlc.narg('status'));

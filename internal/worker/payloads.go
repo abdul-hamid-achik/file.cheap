@@ -167,3 +167,23 @@ func NewPDFThumbnailPayloadWithOptions(fileID uuid.UUID, page int, format string
 	}
 	return p
 }
+
+type MetadataPayload struct {
+	FileID uuid.UUID `json:"file_id"`
+}
+
+func NewMetadataPayload(fileID uuid.UUID) MetadataPayload {
+	return MetadataPayload{FileID: fileID}
+}
+
+type OptimizePayload struct {
+	FileID  uuid.UUID `json:"file_id"`
+	Quality int       `json:"quality"`
+}
+
+func NewOptimizePayload(fileID uuid.UUID, quality int) OptimizePayload {
+	if quality <= 0 {
+		quality = 85
+	}
+	return OptimizePayload{FileID: fileID, Quality: quality}
+}

@@ -109,7 +109,10 @@ func run() error {
 	procRegistry.Register("webp", image.NewWebPProcessor(processor.DefaultConfig()))
 	procRegistry.Register("watermark", image.NewWatermarkProcessor(processor.DefaultConfig()))
 	procRegistry.Register("pdf_thumbnail", pdf.NewThumbnailProcessor(processor.DefaultConfig()))
-	log.Info("processor registry ready", "count", 5)
+	procRegistry.Register("metadata", image.NewMetadataProcessor(processor.DefaultConfig()))
+	procRegistry.Register("optimize", image.NewOptimizeProcessor(processor.DefaultConfig()))
+	procRegistry.Register("convert", image.NewConvertProcessor(processor.DefaultConfig()))
+	log.Info("processor registry ready", "count", 8)
 
 	deps := &fpworker.Dependencies{
 		Storage:  instrumentedStore,
@@ -124,6 +127,9 @@ func run() error {
 	_ = registry.Register("webp", fpworker.WebPHandler(deps))
 	_ = registry.Register("watermark", fpworker.WatermarkHandler(deps))
 	_ = registry.Register("pdf_thumbnail", fpworker.PDFThumbnailHandler(deps))
+	_ = registry.Register("metadata", fpworker.MetadataHandler(deps))
+	_ = registry.Register("optimize", fpworker.OptimizeHandler(deps))
+	_ = registry.Register("convert", fpworker.ConvertHandler(deps))
 
 	log.Info("handlers registered", "count", len(registry.Types()))
 

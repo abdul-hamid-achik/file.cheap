@@ -1,9 +1,18 @@
 package metrics
 
 import (
+	"context"
 	"net/http"
+	"sort"
 	"strconv"
+	"sync"
 	"time"
+)
+
+var (
+	latencyWindow     []int64
+	latencyMu         sync.Mutex
+	maxLatencyRecords = 1000
 )
 
 type responseWriter struct {
@@ -44,10 +53,52 @@ func HTTPMetricsMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(rw, r)
 
 		duration := time.Since(start).Seconds()
+		durationMs := time.Since(start).Milliseconds()
 		status := strconv.Itoa(rw.statusCode)
 
 		HTTPRequestsTotal.WithLabelValues(r.Method, path, status).Inc()
 		HTTPRequestDuration.WithLabelValues(r.Method, path, status).Observe(duration)
 		HTTPResponseSize.WithLabelValues(r.Method, path, status).Observe(float64(rw.size))
+
+		recordLatency(durationMs)
 	})
+}
+
+func recordLatency(ms int64) {
+	latencyMu.Lock()
+	defer latencyMu.Unlock()
+
+	latencyWindow = append(latencyWindow, ms)
+	if len(latencyWindow) > maxLatencyRecords {
+		latencyWindow = latencyWindow[len(latencyWindow)-maxLatencyRecords:]
+	}
+}
+
+func GetLatencyP95() int64 {
+	latencyMu.Lock()
+	defer latencyMu.Unlock()
+
+	if len(latencyWindow) == 0 {
+		return 0
+	}
+
+	sorted := make([]int64, len(latencyWindow))
+	copy(sorted, latencyWindow)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+
+	p95Index := int(float64(len(sorted)) * 0.95)
+	if p95Index >= len(sorted) {
+		p95Index = len(sorted) - 1
+	}
+	return sorted[p95Index]
+}
+
+type RedisSetFunc func(ctx context.Context, key string, value interface{}, expiration time.Duration) error
+
+func UpdateLatencyMetrics(ctx context.Context, setFunc RedisSetFunc) {
+	if setFunc == nil {
+		return
+	}
+	p95 := GetLatencyP95()
+	_ = setFunc(ctx, "metrics:api_latency_p95", strconv.FormatInt(p95, 10), 5*time.Minute)
 }

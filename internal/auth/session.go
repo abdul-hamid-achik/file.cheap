@@ -14,10 +14,9 @@ import (
 )
 
 const (
-	// SessionCookieName is the name of the session cookie
 	SessionCookieName = "session"
-	// SessionDuration is how long a session lasts
-	SessionDuration = 30 * 24 * time.Hour // 30 days
+	FlashCookieName   = "flash"
+	SessionDuration   = 30 * 24 * time.Hour // 30 days
 )
 
 // SessionManager handles user sessions.
@@ -166,6 +165,39 @@ func (sm *SessionManager) DeleteAllUserSessions(ctx context.Context, userID uuid
 // CleanupExpiredSessions removes all expired sessions from the database.
 func (sm *SessionManager) CleanupExpiredSessions(ctx context.Context) error {
 	return sm.queries.DeleteExpiredSessions(ctx)
+}
+
+// SetFlash sets a flash message cookie that will be cleared on the next read.
+func (sm *SessionManager) SetFlash(w http.ResponseWriter, key, value string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     FlashCookieName + "_" + key,
+		Value:    value,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   sm.secure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   300, // 5 minutes
+	})
+}
+
+// GetFlash retrieves and clears a flash message.
+func (sm *SessionManager) GetFlash(w http.ResponseWriter, r *http.Request, key string) string {
+	cookie, err := r.Cookie(FlashCookieName + "_" + key)
+	if err != nil {
+		return ""
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     FlashCookieName + "_" + key,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   sm.secure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+
+	return cookie.Value
 }
 
 // getClientIP extracts the client IP from the request.

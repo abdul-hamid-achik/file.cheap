@@ -11,6 +11,19 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countJobsAdmin = `-- name: CountJobsAdmin :one
+SELECT COUNT(*)::bigint as total
+FROM processing_jobs
+WHERE ($1::text IS NULL OR status::text = $1)
+`
+
+func (q *Queries) CountJobsAdmin(ctx context.Context, status *string) (int64, error) {
+	row := q.db.QueryRow(ctx, countJobsAdmin, status)
+	var total int64
+	err := row.Scan(&total)
+	return total, err
+}
+
 const getAdminMetrics = `-- name: GetAdminMetrics :one
 SELECT
     COALESCE(
@@ -327,6 +340,78 @@ func (q *Queries) GetWorkerQueueSize(ctx context.Context) (int64, error) {
 	var size int64
 	err := row.Scan(&size)
 	return size, err
+}
+
+const listJobsAdmin = `-- name: ListJobsAdmin :many
+SELECT 
+    pj.id,
+    pj.file_id,
+    pj.job_type::text as job_type,
+    pj.status::text as status,
+    pj.priority,
+    pj.attempts,
+    COALESCE(pj.error_message, '') as error_message,
+    pj.created_at,
+    pj.started_at,
+    pj.completed_at,
+    f.filename
+FROM processing_jobs pj
+LEFT JOIN files f ON f.id = pj.file_id
+WHERE ($3::text IS NULL OR pj.status::text = $3)
+ORDER BY pj.created_at DESC
+LIMIT $1 OFFSET $2
+`
+
+type ListJobsAdminParams struct {
+	Limit  int32   `json:"limit"`
+	Offset int32   `json:"offset"`
+	Status *string `json:"status"`
+}
+
+type ListJobsAdminRow struct {
+	ID           pgtype.UUID        `json:"id"`
+	FileID       pgtype.UUID        `json:"file_id"`
+	JobType      string             `json:"job_type"`
+	Status       string             `json:"status"`
+	Priority     int32              `json:"priority"`
+	Attempts     int32              `json:"attempts"`
+	ErrorMessage string             `json:"error_message"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	StartedAt    pgtype.Timestamptz `json:"started_at"`
+	CompletedAt  pgtype.Timestamptz `json:"completed_at"`
+	Filename     *string            `json:"filename"`
+}
+
+func (q *Queries) ListJobsAdmin(ctx context.Context, arg ListJobsAdminParams) ([]ListJobsAdminRow, error) {
+	rows, err := q.db.Query(ctx, listJobsAdmin, arg.Limit, arg.Offset, arg.Status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListJobsAdminRow
+	for rows.Next() {
+		var i ListJobsAdminRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.FileID,
+			&i.JobType,
+			&i.Status,
+			&i.Priority,
+			&i.Attempts,
+			&i.ErrorMessage,
+			&i.CreatedAt,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.Filename,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const retryFailedJob = `-- name: RetryFailedJob :exec

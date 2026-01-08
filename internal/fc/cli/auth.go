@@ -141,7 +141,7 @@ func runAuthStatus(cmd *cobra.Command, args []string) error {
 	printer.Section("Authentication Status")
 	if cfg.IsAuthenticated() {
 		printer.KeyValue("Status", "Authenticated")
-		maskedKey := cfg.APIKey[:6] + "..." + cfg.APIKey[len(cfg.APIKey)-4:]
+		maskedKey := maskAPIKey(cfg.APIKey)
 		printer.KeyValue("API Key", maskedKey)
 	} else {
 		printer.KeyValue("Status", "Not authenticated")
@@ -164,4 +164,14 @@ func runAuthLogout(cmd *cobra.Command, args []string) error {
 
 	printer.Success("Logged out successfully")
 	return nil
+}
+
+func maskAPIKey(key string) string {
+	if len(key) <= 10 {
+		if len(key) <= 4 {
+			return "****"
+		}
+		return key[:2] + "..." + key[len(key)-2:]
+	}
+	return key[:6] + "..." + key[len(key)-4:]
 }

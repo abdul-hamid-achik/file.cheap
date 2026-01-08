@@ -3,6 +3,8 @@ package analytics
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/abdul-hamid-achik/file-processor/internal/db"
@@ -17,13 +19,41 @@ const (
 	StorageLimitEnterprise = 50 * 1024 * 1024 * 1024 // 50 GB
 )
 
+type PoolStats interface {
+	AcquiredConns() int32
+	TotalConns() int32
+}
+
+type PoolStatsFunc func() PoolStats
+
+type poolStatsFuncAdapter struct {
+	fn PoolStatsFunc
+}
+
+func (p *poolStatsFuncAdapter) AcquiredConns() int32 {
+	return p.fn().AcquiredConns()
+}
+
+func (p *poolStatsFuncAdapter) TotalConns() int32 {
+	return p.fn().TotalConns()
+}
+
+func NewPoolStatsFunc(fn PoolStatsFunc) PoolStats {
+	return &poolStatsFuncAdapter{fn: fn}
+}
+
 type Service struct {
-	queries *db.Queries
-	redis   *redis.Client
+	queries   *db.Queries
+	redis     *redis.Client
+	poolStats PoolStats
 }
 
 func NewService(queries *db.Queries, redis *redis.Client) *Service {
 	return &Service{queries: queries, redis: redis}
+}
+
+func (s *Service) SetPoolStats(ps PoolStats) {
+	s.poolStats = ps
 }
 
 func (s *Service) GetUserAnalytics(ctx context.Context, userID uuid.UUID) (*UserAnalytics, error) {
@@ -293,14 +323,27 @@ func (s *Service) getSystemHealth(ctx context.Context, storageUsed int64) (*Syst
 		}
 	}
 
-	dbConns := 12
+	var dbConns int
+	if s.poolStats != nil {
+		dbConns = int(s.poolStats.AcquiredConns())
+	}
+
+	var apiLatency int64 = 0
+	if s.redis != nil {
+		if latencyStr, err := s.redis.Get(ctx, "metrics:api_latency_p95").Result(); err == nil {
+			if latency, err := strconv.ParseInt(latencyStr, 10, 64); err == nil {
+				apiLatency = latency
+			}
+		}
+	}
 
 	allHealthy := queueSize < 1000 &&
 		failedHour < 10 &&
-		dbConns < 50
+		dbConns < 50 &&
+		apiLatency < 200
 
 	return &SystemHealth{
-		APILatencyP95:   47,
+		APILatencyP95:   apiLatency,
 		WorkerQueueSize: int(queueSize),
 		FailedJobsHour:  int(failedHour),
 		StorageUsed:     storageUsed,
@@ -359,5 +402,84 @@ func uuidToString(id pgtype.UUID) string {
 }
 
 func parseRedisMemory(info string) int64 {
+	lines := strings.Split(info, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "used_memory:") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				if val, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64); err == nil {
+					return val
+				}
+			}
+		}
+	}
 	return 0
+}
+
+func (s *Service) GetJobsList(ctx context.Context, status string, page, pageSize int) (*JobsListPage, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 50
+	}
+
+	var statusPtr *string
+	if status != "" && status != "all" {
+		statusPtr = &status
+	}
+
+	total, err := s.queries.CountJobsAdmin(ctx, statusPtr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count jobs: %w", err)
+	}
+
+	offset := (page - 1) * pageSize
+	rows, err := s.queries.ListJobsAdmin(ctx, db.ListJobsAdminParams{
+		Status: statusPtr,
+		Limit:  int32(pageSize),
+		Offset: int32(offset),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list jobs: %w", err)
+	}
+
+	jobs := make([]JobListItem, len(rows))
+	for i, r := range rows {
+		job := JobListItem{
+			ID:           uuidToString(r.ID),
+			FileID:       uuidToString(r.FileID),
+			JobType:      r.JobType,
+			Status:       r.Status,
+			Priority:     int(r.Priority),
+			Attempts:     int(r.Attempts),
+			ErrorMessage: r.ErrorMessage,
+			CreatedAt:    r.CreatedAt.Time,
+		}
+		if r.Filename != nil {
+			job.Filename = *r.Filename
+		}
+		if r.StartedAt.Valid {
+			job.StartedAt = &r.StartedAt.Time
+		}
+		if r.CompletedAt.Valid {
+			job.CompletedAt = &r.CompletedAt.Time
+		}
+		jobs[i] = job
+	}
+
+	totalPages := int(total) / pageSize
+	if int(total)%pageSize > 0 {
+		totalPages++
+	}
+
+	return &JobsListPage{
+		Jobs:       jobs,
+		Total:      total,
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: totalPages,
+		Status:     status,
+	}, nil
 }

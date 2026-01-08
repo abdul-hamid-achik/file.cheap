@@ -1,12 +1,25 @@
 package web
 
 import (
+	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"net/http"
 	"time"
 
 	"github.com/abdul-hamid-achik/file-processor/internal/auth"
 	"github.com/abdul-hamid-achik/file-processor/internal/logger"
 	"github.com/google/uuid"
+)
+
+type csrfContextKey struct{}
+
+const (
+	csrfCookieName = "csrf_token"
+	csrfFormField  = "csrf_token"
+	csrfHeaderName = "X-CSRF-Token"
+	csrfTokenLen   = 32
 )
 
 type responseWriter struct {
@@ -89,4 +102,69 @@ func InjectUserID(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func generateCSRFToken() (string, error) {
+	b := make([]byte, csrfTokenLen)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b), nil
+}
+
+func CSRFMiddleware(secure bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var token string
+
+			cookie, err := r.Cookie(csrfCookieName)
+			if err != nil || cookie.Value == "" {
+				token, err = generateCSRFToken()
+				if err != nil {
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+					return
+				}
+				http.SetCookie(w, &http.Cookie{
+					Name:     csrfCookieName,
+					Value:    token,
+					Path:     "/",
+					HttpOnly: true,
+					Secure:   secure,
+					SameSite: http.SameSiteStrictMode,
+					MaxAge:   86400,
+				})
+			} else {
+				token = cookie.Value
+			}
+
+			ctx := context.WithValue(r.Context(), csrfContextKey{}, token)
+			r = r.WithContext(ctx)
+
+			if r.Method == http.MethodPost || r.Method == http.MethodPut ||
+				r.Method == http.MethodPatch || r.Method == http.MethodDelete {
+				formToken := r.FormValue(csrfFormField)
+				if formToken == "" {
+					formToken = r.Header.Get(csrfHeaderName)
+				}
+				if subtle.ConstantTimeCompare([]byte(token), []byte(formToken)) != 1 {
+					log := logger.FromContext(r.Context())
+					log.Warn("csrf token mismatch",
+						"method", r.Method,
+						"path", r.URL.Path,
+					)
+					http.Error(w, "forbidden", http.StatusForbidden)
+					return
+				}
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func GetCSRFToken(ctx context.Context) string {
+	if token, ok := ctx.Value(csrfContextKey{}).(string); ok {
+		return token
+	}
+	return ""
 }

@@ -86,6 +86,10 @@ func runSocial(cmd *cobra.Command, args []string) error {
 		Presets: platforms,
 	}
 
+	if socialTitle != "" {
+		printer.Info("Title overlay: %s (feature coming soon)", socialTitle)
+	}
+
 	resp, err := apiClient.Transform(ctx, fileID, req)
 	if err != nil {
 		return fmt.Errorf("failed to create social variants: %w", err)

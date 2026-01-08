@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/abdul-hamid-achik/file-processor/internal/analytics"
 	"github.com/abdul-hamid-achik/file-processor/internal/auth"
@@ -19,8 +20,12 @@ func NewAnalyticsHandlers(service *analytics.Service) *AnalyticsHandlers {
 	return &AnalyticsHandlers{service: service}
 }
 
-func NewAnalyticsService(cfg *Config, redis *redis.Client) *analytics.Service {
-	return analytics.NewService(cfg.Queries, redis)
+func NewAnalyticsService(cfg *Config, redis *redis.Client, poolStats analytics.PoolStats) *analytics.Service {
+	svc := analytics.NewService(cfg.Queries, redis)
+	if poolStats != nil {
+		svc.SetPoolStats(poolStats)
+	}
+	return svc
 }
 
 func (h *AnalyticsHandlers) Dashboard(w http.ResponseWriter, r *http.Request) {
@@ -212,4 +217,31 @@ func (h *AdminHandlers) RetryJob(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html")
 	_, _ = w.Write([]byte(`<div class="flex items-center justify-center py-2 px-3 bg-nord-14/10 rounded-lg text-nord-14 text-sm">Job queued for retry</div>`))
+}
+
+func (h *AdminHandlers) Jobs(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
+	user := auth.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	status := r.URL.Query().Get("status")
+	pageStr := r.URL.Query().Get("page")
+	page := 1
+	if pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	data, err := h.service.GetJobsList(r.Context(), status, page, 50)
+	if err != nil {
+		log.Error("failed to get jobs list", "error", err)
+		http.Error(w, "Failed to load jobs", http.StatusInternalServerError)
+		return
+	}
+
+	_ = pages.AdminJobs(user, data).Render(r.Context(), w)
 }

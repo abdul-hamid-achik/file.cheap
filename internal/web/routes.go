@@ -45,6 +45,8 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 	mux.HandleFunc("POST /register", h.RegisterPost)
 	mux.HandleFunc("POST /logout", h.Logout)
 	mux.HandleFunc("POST /forgot-password", h.ForgotPasswordPost)
+	mux.HandleFunc("GET /reset-password", h.ResetPassword)
+	mux.HandleFunc("POST /reset-password", h.ResetPasswordPost)
 
 	if sm != nil {
 		requireAuth := auth.RequireAuth(sm)
@@ -57,6 +59,7 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 		mux.Handle("GET /files/{id}/download", requireAuth(http.HandlerFunc(h.DownloadFile)))
 		mux.Handle("POST /files/{id}/delete", requireAuth(http.HandlerFunc(h.DeleteFile)))
 		mux.Handle("POST /files/{id}/process", requireAuth(http.HandlerFunc(h.ProcessFile)))
+		mux.Handle("POST /files/{id}/process-bundle", requireAuth(http.HandlerFunc(h.ProcessBundle)))
 		mux.Handle("GET /profile", requireAuth(http.HandlerFunc(h.Profile)))
 		mux.Handle("POST /profile", requireAuth(http.HandlerFunc(h.ProfilePost)))
 		mux.Handle("POST /profile/avatar", requireAuth(http.HandlerFunc(h.ProfileAvatar)))
@@ -97,6 +100,7 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 			mux.Handle("GET /admin/chart/revenue", requireAdmin(http.HandlerFunc(adminHandlers.RevenueChart)))
 			mux.Handle("GET /admin/health", requireAdmin(http.HandlerFunc(adminHandlers.HealthStatus)))
 			mux.Handle("GET /admin/signups", requireAdmin(http.HandlerFunc(adminHandlers.RecentSignups)))
+			mux.Handle("GET /admin/jobs", requireAdmin(http.HandlerFunc(adminHandlers.Jobs)))
 			mux.Handle("POST /admin/jobs/{id}/retry", requireAdmin(http.HandlerFunc(adminHandlers.RetryJob)))
 		}
 	} else {
@@ -111,6 +115,7 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 		mux.HandleFunc("GET /files/{id}/download", redirectToLogin)
 		mux.HandleFunc("POST /files/{id}/delete", redirectToLogin)
 		mux.HandleFunc("POST /files/{id}/process", redirectToLogin)
+		mux.HandleFunc("POST /files/{id}/process-bundle", redirectToLogin)
 		mux.HandleFunc("GET /profile", redirectToLogin)
 		mux.HandleFunc("POST /profile", redirectToLogin)
 		mux.HandleFunc("POST /profile/avatar", redirectToLogin)
@@ -137,6 +142,7 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 		mux.HandleFunc("GET /admin/chart/revenue", redirectToLogin)
 		mux.HandleFunc("GET /admin/health", redirectToLogin)
 		mux.HandleFunc("GET /admin/signups", redirectToLogin)
+		mux.HandleFunc("GET /admin/jobs", redirectToLogin)
 		mux.HandleFunc("POST /admin/jobs/{id}/retry", redirectToLogin)
 	}
 

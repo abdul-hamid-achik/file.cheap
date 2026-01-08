@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/abdul-hamid-achik/file-processor/internal/analytics"
 	"github.com/abdul-hamid-achik/file-processor/internal/api"
 	"github.com/abdul-hamid-achik/file-processor/internal/auth"
 	"github.com/abdul-hamid-achik/file-processor/internal/billing"
@@ -146,6 +147,9 @@ func run() error {
 	registry.Register("thumbnail", imgproc.NewThumbnailProcessor(nil))
 	registry.Register("webp", imgproc.NewWebPProcessor(nil))
 	registry.Register("watermark", imgproc.NewWatermarkProcessor(nil))
+	registry.Register("metadata", imgproc.NewMetadataProcessor(nil))
+	registry.Register("optimize", imgproc.NewOptimizeProcessor(nil))
+	registry.Register("convert", imgproc.NewConvertProcessor(nil))
 
 	apiCfg := &api.Config{
 		Storage:       instrumentedStore,
@@ -181,7 +185,8 @@ func run() error {
 		log.Info("stripe billing configured")
 	}
 
-	analyticsService := web.NewAnalyticsService(webCfg, redisClient)
+	poolStats := analytics.NewPoolStatsFunc(func() analytics.PoolStats { return pool.Stat() })
+	analyticsService := web.NewAnalyticsService(webCfg, redisClient, poolStats)
 	analyticsHandlers := web.NewAnalyticsHandlers(analyticsService)
 	adminHandlers := web.NewAdminHandlers(analyticsService)
 	log.Info("analytics services configured")
@@ -214,6 +219,22 @@ func run() error {
 	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 
 	serverErr := make(chan error, 1)
+
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		redisSetFunc := func(ctx context.Context, key string, value interface{}, exp time.Duration) error {
+			return redisClient.Set(ctx, key, value, exp).Err()
+		}
+		for {
+			select {
+			case <-ticker.C:
+				metrics.UpdateLatencyMetrics(context.Background(), redisSetFunc)
+			case <-shutdown:
+				return
+			}
+		}
+	}()
 
 	go func() {
 		log.Info("server starting", "port", cfg.Port, "url", fmt.Sprintf("http://localhost:%d", cfg.Port))

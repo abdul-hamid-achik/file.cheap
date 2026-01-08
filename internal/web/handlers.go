@@ -187,6 +187,60 @@ func (h *Handlers) ForgotPasswordPost(w http.ResponseWriter, r *http.Request) {
 	_ = pages.ForgotPassword(data).Render(r.Context(), w)
 }
 
+func (h *Handlers) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Redirect(w, r, "/forgot-password?error=invalid_token", http.StatusSeeOther)
+		return
+	}
+
+	valid, _ := h.authService.ValidatePasswordResetToken(r.Context(), token)
+	if !valid {
+		http.Redirect(w, r, "/forgot-password?error=expired_token", http.StatusSeeOther)
+		return
+	}
+
+	data := pages.ResetPasswordPageData{Token: token}
+	_ = pages.ResetPassword(data).Render(r.Context(), w)
+}
+
+func (h *Handlers) ResetPasswordPost(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		data := pages.ResetPasswordPageData{Error: "Invalid form data"}
+		_ = pages.ResetPassword(data).Render(r.Context(), w)
+		return
+	}
+
+	token := r.FormValue("token")
+	password := r.FormValue("password")
+	confirmPassword := r.FormValue("confirm_password")
+
+	if password != confirmPassword {
+		data := pages.ResetPasswordPageData{
+			Token: token,
+			Error: "Passwords do not match",
+		}
+		_ = pages.ResetPassword(data).Render(r.Context(), w)
+		return
+	}
+
+	err := h.authService.ResetPassword(r.Context(), token, password)
+	if err != nil {
+		errMsg := "Failed to reset password. The link may have expired."
+		if strings.Contains(err.Error(), "weak") || strings.Contains(err.Error(), "password") {
+			errMsg = "Password must be at least 8 characters long."
+		}
+		data := pages.ResetPasswordPageData{
+			Token: token,
+			Error: errMsg,
+		}
+		_ = pages.ResetPassword(data).Render(r.Context(), w)
+		return
+	}
+
+	http.Redirect(w, r, "/login?success=password_reset", http.StatusSeeOther)
+}
+
 func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 	log := logger.FromContext(r.Context())
 	user := auth.GetUserFromContext(r.Context())
@@ -826,6 +880,129 @@ func (h *Handlers) ProcessFile(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, `<div class="p-4 bg-nord-14/20 text-nord-14 rounded-lg text-sm">Processing started! Refresh the page to see the result.</div>`)
 }
 
+func (h *Handlers) ProcessBundle(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
+	user := auth.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	fileIDStr := r.PathValue("id")
+	fileID, err := uuid.Parse(fileIDStr)
+	if err != nil {
+		log.Error("invalid file ID", "file_id", fileIDStr, "error", err)
+		http.Error(w, "Invalid file ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	bundle := r.FormValue("bundle")
+	if bundle == "" {
+		http.Error(w, "Bundle type is required", http.StatusBadRequest)
+		return
+	}
+
+	var actions []string
+	switch bundle {
+	case "responsive":
+		actions = []string{"sm", "md", "lg", "xl"}
+	case "social":
+		if !billing.CanUseFeature(user.SubscriptionTier, "social") {
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = fmt.Fprintf(w, `<div class="p-4 bg-nord-11/20 text-nord-11 rounded-lg text-sm">Social presets require a Pro subscription. <a href="/billing" class="underline">Upgrade now</a></div>`)
+			return
+		}
+		actions = []string{"og", "twitter", "instagram_square", "instagram_portrait", "instagram_story"}
+	default:
+		http.Error(w, "Invalid bundle type", http.StatusBadRequest)
+		return
+	}
+
+	if h.cfg.Queries == nil || h.cfg.Broker == nil {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	pgFileID := pgtype.UUID{Bytes: fileID, Valid: true}
+	pgUserID := pgtype.UUID{Bytes: user.ID, Valid: true}
+
+	file, err := h.cfg.Queries.GetFile(r.Context(), pgFileID)
+	if err != nil {
+		log.Error("file not found", "file_id", fileIDStr, "error", err)
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+
+	if file.UserID.Bytes != pgUserID.Bytes {
+		log.Warn("unauthorized process attempt", "file_id", fileIDStr, "user_id", user.ID.String())
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+
+	enqueuedCount := 0
+	for _, action := range actions {
+		var variantType db.VariantType
+		var jobType string
+		var payload interface{}
+
+		switch action {
+		case "sm", "md", "lg", "xl":
+			variantType = db.VariantType(action)
+			jobType = "resize"
+			payload = worker.NewResponsivePayload(fileID, action)
+		case "og", "twitter", "instagram_square", "instagram_portrait", "instagram_story":
+			variantType = db.VariantType(action)
+			jobType = "resize"
+			payload = worker.NewSocialPayload(fileID, action)
+		}
+
+		hasVariant, err := h.cfg.Queries.HasVariant(r.Context(), db.HasVariantParams{
+			FileID:      pgFileID,
+			VariantType: variantType,
+		})
+		if err != nil {
+			log.Error("failed to check variant", "error", err)
+			continue
+		}
+
+		if hasVariant {
+			continue
+		}
+
+		if _, err := h.cfg.Broker.Enqueue(jobType, payload); err != nil {
+			log.Error("failed to enqueue job", "job_type", jobType, "action", action, "error", err)
+			continue
+		}
+		enqueuedCount++
+	}
+
+	if enqueuedCount == 0 {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(w, `<div class="p-4 bg-nord-13/20 text-nord-13 rounded-lg text-sm">All variants in this bundle already exist.</div>`)
+		return
+	}
+
+	if err := h.cfg.Queries.UpdateFileStatus(r.Context(), db.UpdateFileStatusParams{
+		ID:     pgFileID,
+		Status: db.FileStatusProcessing,
+	}); err != nil {
+		log.Warn("failed to update file status", "error", err)
+	}
+
+	log.Info("bundle processing started", "file_id", fileIDStr, "bundle", bundle, "jobs_enqueued", enqueuedCount)
+
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusAccepted)
+	_, _ = fmt.Fprintf(w, `<div class="p-4 bg-nord-14/20 text-nord-14 rounded-lg text-sm">Processing %d variants! Refresh the page to see results.</div>`, enqueuedCount)
+}
+
 func (h *Handlers) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	log := logger.FromContext(r.Context())
 	user := auth.GetUserFromContext(r.Context())
@@ -1037,17 +1214,78 @@ func (h *Handlers) ProfilePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/profile?success=1", http.StatusFound)
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		http.Redirect(w, r, "/profile?error=name_required", http.StatusFound)
+		return
+	}
+
+	_, err := h.authService.UpdateUser(r.Context(), user.ID, auth.UpdateUserInput{
+		Name:      name,
+		AvatarURL: user.AvatarURL,
+	})
+	if err != nil {
+		http.Redirect(w, r, "/profile?error=update_failed", http.StatusFound)
+		return
+	}
+
+	http.Redirect(w, r, "/profile?success=profile_updated", http.StatusFound)
 }
 
 func (h *Handlers) ProfileAvatar(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
 	user := auth.GetUserFromContext(r.Context())
 	if user == nil {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
 
-	http.Redirect(w, r, "/profile", http.StatusFound)
+	if err := r.ParseMultipartForm(2 << 20); err != nil {
+		http.Redirect(w, r, "/profile?error=file_too_large", http.StatusFound)
+		return
+	}
+
+	file, header, err := r.FormFile("avatar")
+	if err != nil {
+		http.Redirect(w, r, "/profile?error=no_file", http.StatusFound)
+		return
+	}
+	defer func() { _ = file.Close() }()
+
+	contentType := header.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "image/") {
+		http.Redirect(w, r, "/profile?error=invalid_type", http.StatusFound)
+		return
+	}
+
+	ext := ".jpg"
+	if strings.Contains(contentType, "png") {
+		ext = ".png"
+	} else if strings.Contains(contentType, "gif") {
+		ext = ".gif"
+	} else if strings.Contains(contentType, "webp") {
+		ext = ".webp"
+	}
+
+	key := fmt.Sprintf("avatars/%s/avatar%s", user.ID.String(), ext)
+	if err := h.cfg.Storage.Upload(r.Context(), key, file, contentType, header.Size); err != nil {
+		log.Error("failed to upload avatar", "error", err)
+		http.Redirect(w, r, "/profile?error=upload_failed", http.StatusFound)
+		return
+	}
+
+	avatarURL := "/" + key
+	_, err = h.authService.UpdateUser(r.Context(), user.ID, auth.UpdateUserInput{
+		Name:      user.Name,
+		AvatarURL: &avatarURL,
+	})
+	if err != nil {
+		log.Error("failed to update user avatar", "error", err)
+		http.Redirect(w, r, "/profile?error=update_failed", http.StatusFound)
+		return
+	}
+
+	http.Redirect(w, r, "/profile?success=avatar_updated", http.StatusFound)
 }
 
 func (h *Handlers) ProfileDelete(w http.ResponseWriter, r *http.Request) {
@@ -1143,7 +1381,7 @@ func (h *Handlers) Settings(w http.ResponseWriter, r *http.Request) {
 		data.Success = "Settings saved successfully."
 	}
 	if r.URL.Query().Get("token_created") == "1" {
-		if newToken := r.URL.Query().Get("new_token"); newToken != "" {
+		if newToken := h.sessionManager.GetFlash(w, r, "new_token"); newToken != "" {
 			data.NewToken = newToken
 		}
 	}
@@ -1264,7 +1502,8 @@ func (h *Handlers) SettingsCreateToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/settings?token_created=1&new_token="+rawToken+"&tab=api", http.StatusFound)
+	h.sessionManager.SetFlash(w, "new_token", rawToken)
+	http.Redirect(w, r, "/settings?token_created=1&tab=api", http.StatusFound)
 }
 
 func (h *Handlers) SettingsDeleteToken(w http.ResponseWriter, r *http.Request) {
@@ -1299,6 +1538,15 @@ func (h *Handlers) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	err := h.authService.VerifyEmail(r.Context(), token)
+	if err != nil {
+		data := pages.VerifyEmailPageData{
+			Error: "This verification link is invalid or has expired. Please request a new one.",
+		}
+		_ = pages.VerifyEmail(data).Render(r.Context(), w)
+		return
+	}
+
 	data := pages.VerifyEmailPageData{
 		Success: true,
 	}
@@ -1314,6 +1562,18 @@ func (h *Handlers) ResendVerificationPost(w http.ResponseWriter, r *http.Request
 		data := pages.ResendVerificationPageData{Error: "Invalid form data"}
 		_ = pages.ResendVerification(data).Render(r.Context(), w)
 		return
+	}
+
+	email := r.FormValue("email")
+	if email == "" {
+		data := pages.ResendVerificationPageData{Error: "Email is required"}
+		_ = pages.ResendVerification(data).Render(r.Context(), w)
+		return
+	}
+
+	result, err := h.authService.CreateVerificationToken(r.Context(), email)
+	if err == nil && result != nil {
+		_ = h.emailService.SendVerificationEmail(result.Email, result.Name, result.Token)
 	}
 
 	data := pages.ResendVerificationPageData{

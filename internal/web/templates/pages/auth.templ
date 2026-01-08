@@ -321,3 +321,73 @@ templ ForgotPassword(data ForgotPasswordPageData) {
 		</div>
 	}
 }
+
+// ResetPasswordPageData contains data for the reset password page
+type ResetPasswordPageData struct {
+	Error string
+	Token string
+}
+
+// ResetPassword renders the reset password page
+templ ResetPassword(data ResetPasswordPageData) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Reset Password",
+		Description: "Set a new password for your account",
+	}, nil) {
+		<div class="min-h-[calc(100vh-200px)] flex items-center justify-center py-12 px-4">
+			<div class="w-full max-w-md animate-slide-up">
+				@components.Card("") {
+					@components.CardBody() {
+						<div class="text-center mb-8">
+							<h1 class="text-2xl font-bold text-nord-5">Reset Your Password</h1>
+							<p class="text-nord-4 mt-2">Enter your new password below</p>
+						</div>
+
+						if data.Error != "" {
+							<div class="mb-6">
+								@components.Alert(components.AlertError, data.Error, true)
+							</div>
+						}
+
+						<form action="/reset-password" method="POST" class="space-y-4">
+							<input type="hidden" name="token" value={ data.Token }/>
+
+							@components.FormField("New Password", components.InputProps{
+								Type:         "password",
+								Name:         "password",
+								ID:           "password",
+								Placeholder:  "At least 8 characters",
+								Required:     true,
+								AutoComplete: "new-password",
+							})
+
+							@components.FormField("Confirm Password", components.InputProps{
+								Type:         "password",
+								Name:         "confirm_password",
+								ID:           "confirm_password",
+								Placeholder:  "Confirm your new password",
+								Required:     true,
+								AutoComplete: "new-password",
+							})
+
+							@components.Button(components.ButtonProps{
+								Variant:   components.ButtonPrimary,
+								Size:      components.ButtonMd,
+								Type:      "submit",
+								FullWidth: true,
+							}) {
+								Reset Password
+							}
+						</form>
+
+						<p class="mt-6 text-center text-sm text-nord-4">
+							<a href="/login" class="text-nord-8 hover:text-nord-7 font-medium">
+								Back to sign in
+							</a>
+						</p>
+					}
+				}
+			</div>
+		</div>
+	}
+}

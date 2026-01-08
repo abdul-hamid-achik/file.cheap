@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/smtp"
+	"time"
 
 	"github.com/abdul-hamid-achik/file-processor/internal/logger"
 )
@@ -92,7 +93,7 @@ func (s *Service) SendVerificationEmail(to, name, token string) error {
 		EmailData: EmailData{
 			RecipientName: name,
 			BaseURL:       s.cfg.BaseURL,
-			Year:          2024,
+			Year:          time.Now().Year(),
 		},
 		VerificationURL: fmt.Sprintf("%s/verify-email?token=%s", s.cfg.BaseURL, token),
 	}
@@ -111,7 +112,7 @@ func (s *Service) SendPasswordResetEmail(to, name, token string) error {
 		EmailData: EmailData{
 			RecipientName: name,
 			BaseURL:       s.cfg.BaseURL,
-			Year:          2024,
+			Year:          time.Now().Year(),
 		},
 		ResetURL: fmt.Sprintf("%s/reset-password?token=%s", s.cfg.BaseURL, token),
 	}
@@ -130,7 +131,7 @@ func (s *Service) SendWelcomeEmail(to, name string) error {
 		EmailData: EmailData{
 			RecipientName: name,
 			BaseURL:       s.cfg.BaseURL,
-			Year:          2024,
+			Year:          time.Now().Year(),
 		},
 		DashboardURL: fmt.Sprintf("%s/dashboard", s.cfg.BaseURL),
 	}
@@ -157,7 +158,7 @@ func (s *Service) SendOAuthLinkedEmail(to, name, provider, providerEmail string)
 		EmailData: EmailData{
 			RecipientName: name,
 			BaseURL:       s.cfg.BaseURL,
-			Year:          2024,
+			Year:          time.Now().Year(),
 		},
 		Provider:      provider,
 		ProviderEmail: providerEmail,

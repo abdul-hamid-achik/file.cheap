@@ -224,6 +224,57 @@ func (s *Service) ResetPassword(ctx context.Context, token, newPassword string) 
 	return nil
 }
 
+// ValidatePasswordResetToken checks if a password reset token is valid.
+func (s *Service) ValidatePasswordResetToken(ctx context.Context, token string) (bool, error) {
+	tokenHash := HashToken(token)
+	_, err := s.queries.GetPasswordResetByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+// CreateVerificationTokenResult contains the result of creating a verification token.
+type CreateVerificationTokenResult struct {
+	Token string
+	Email string
+	Name  string
+}
+
+// CreateVerificationToken creates a new email verification token for a user by email.
+func (s *Service) CreateVerificationToken(ctx context.Context, email string) (*CreateVerificationTokenResult, error) {
+	log := logger.FromContext(ctx)
+
+	user, err := s.queries.GetUserByEmail(ctx, email)
+	if err != nil {
+		log.Debug("verification token requested for unknown email", "email", email)
+		return nil, nil
+	}
+
+	pgID := pgtype.UUID{Bytes: user.ID.Bytes, Valid: true}
+	_ = s.queries.DeleteUserEmailVerifications(ctx, pgID)
+
+	token, tokenHash, err := GenerateToken()
+	if err != nil {
+		return nil, apperror.Wrap(err, apperror.ErrInternal)
+	}
+
+	_, err = s.queries.CreateEmailVerification(ctx, db.CreateEmailVerificationParams{
+		UserID:    user.ID,
+		TokenHash: tokenHash,
+		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(EmailVerificationExpiry), Valid: true},
+	})
+	if err != nil {
+		return nil, apperror.Wrap(err, apperror.ErrInternal)
+	}
+
+	return &CreateVerificationTokenResult{
+		Token: token,
+		Email: user.Email,
+		Name:  user.Name,
+	}, nil
+}
+
 // GetUserByID retrieves a user by their ID.
 func (s *Service) GetUserByID(ctx context.Context, id uuid.UUID) (*db.User, error) {
 	pgID := pgtype.UUID{Bytes: id, Valid: true}

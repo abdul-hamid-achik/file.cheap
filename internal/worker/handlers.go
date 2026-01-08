@@ -485,6 +485,197 @@ func PDFThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) err
 	}
 }
 
+func MetadataHandler(deps *Dependencies) func(context.Context, *job.Job) error {
+	return func(ctx context.Context, j *job.Job) error {
+		log := logger.FromContext(ctx).With("job_id", j.ID, "job_type", "metadata")
+		log.Info("job started")
+		start := time.Now()
+
+		var payload MetadataPayload
+		if err := j.UnmarshalPayload(&payload); err != nil {
+			log.Error("invalid payload", "error", err)
+			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
+		}
+
+		log = log.With("file_id", payload.FileID.String())
+
+		fileID := pgtype.UUID{Bytes: payload.FileID, Valid: true}
+
+		file, err := deps.Queries.GetFile(ctx, fileID)
+		if err != nil {
+			log.Error("failed to retrieve file", "error", err)
+			return fmt.Errorf("failed to retrieve file: %w", err)
+		}
+
+		reader, err := deps.Storage.Download(ctx, file.StorageKey)
+		if err != nil {
+			log.Error("failed to download file", "error", err)
+			return fmt.Errorf("failed to download file: %w", err)
+		}
+		defer closeSafely(reader, "file reader")
+
+		proc := deps.Registry.MustGet("metadata")
+		result, err := proc.Process(ctx, nil, reader)
+		if err != nil {
+			log.Error("failed to extract metadata", "error", err)
+			return middleware.Permanent(fmt.Errorf("failed to extract metadata: %w", err))
+		}
+
+		variantKey := buildVariantKey(payload.FileID, "metadata", "metadata.json")
+		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
+			log.Error("failed to upload metadata", "error", err)
+			return fmt.Errorf("failed to upload metadata: %w", err)
+		}
+
+		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds())
+		return nil
+	}
+}
+
+func OptimizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
+	return func(ctx context.Context, j *job.Job) error {
+		log := logger.FromContext(ctx).With("job_id", j.ID, "job_type", "optimize")
+		log.Info("job started")
+		start := time.Now()
+
+		var payload OptimizePayload
+		if err := j.UnmarshalPayload(&payload); err != nil {
+			log.Error("invalid payload", "error", err)
+			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
+		}
+
+		log = log.With("file_id", payload.FileID.String())
+
+		fileID := pgtype.UUID{Bytes: payload.FileID, Valid: true}
+
+		file, err := deps.Queries.GetFile(ctx, fileID)
+		if err != nil {
+			log.Error("failed to retrieve file", "error", err)
+			return fmt.Errorf("failed to retrieve file: %w", err)
+		}
+
+		reader, err := deps.Storage.Download(ctx, file.StorageKey)
+		if err != nil {
+			log.Error("failed to download file", "error", err)
+			return fmt.Errorf("failed to download file: %w", err)
+		}
+		defer closeSafely(reader, "file reader")
+
+		proc := deps.Registry.MustGet("optimize")
+		opts := &processor.Options{Quality: payload.Quality}
+		result, err := proc.Process(ctx, opts, reader)
+		if err != nil {
+			log.Error("failed to optimize file", "error", err)
+			return middleware.Permanent(fmt.Errorf("failed to optimize: %w", err))
+		}
+
+		variantKey := buildVariantKey(payload.FileID, "optimized", "optimized.jpg")
+		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
+			log.Error("failed to upload optimized file", "error", err)
+			return fmt.Errorf("failed to upload: %w", err)
+		}
+
+		width := int32(result.Metadata.Width)
+		height := int32(result.Metadata.Height)
+		_, err = deps.Queries.CreateVariant(ctx, db.CreateVariantParams{
+			FileID:      file.ID,
+			VariantType: db.VariantTypeOptimized,
+			ContentType: result.ContentType,
+			SizeBytes:   result.Size,
+			StorageKey:  variantKey,
+			Width:       &width,
+			Height:      &height,
+		})
+		if err != nil {
+			log.Error("failed to save variant record", "error", err)
+			return fmt.Errorf("failed to save variant: %w", err)
+		}
+
+		if err := deps.Queries.UpdateFileStatus(ctx, db.UpdateFileStatusParams{
+			ID:     file.ID,
+			Status: db.FileStatusCompleted,
+		}); err != nil {
+			log.Error("failed to update file status", "error", err)
+			return fmt.Errorf("failed to update file status: %w", err)
+		}
+
+		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds())
+		return nil
+	}
+}
+
+func ConvertHandler(deps *Dependencies) func(context.Context, *job.Job) error {
+	return func(ctx context.Context, j *job.Job) error {
+		log := logger.FromContext(ctx).With("job_id", j.ID, "job_type", "convert")
+		log.Info("job started")
+		start := time.Now()
+
+		var payload ConvertPayload
+		if err := j.UnmarshalPayload(&payload); err != nil {
+			log.Error("invalid payload", "error", err)
+			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
+		}
+
+		log = log.With("file_id", payload.FileID.String(), "format", payload.Format)
+
+		fileID := pgtype.UUID{Bytes: payload.FileID, Valid: true}
+
+		file, err := deps.Queries.GetFile(ctx, fileID)
+		if err != nil {
+			log.Error("failed to retrieve file", "error", err)
+			return fmt.Errorf("failed to retrieve file: %w", err)
+		}
+
+		reader, err := deps.Storage.Download(ctx, file.StorageKey)
+		if err != nil {
+			log.Error("failed to download file", "error", err)
+			return fmt.Errorf("failed to download file: %w", err)
+		}
+		defer closeSafely(reader, "file reader")
+
+		proc := deps.Registry.MustGet("convert")
+		opts := &processor.Options{
+			Format:  payload.Format,
+			Quality: payload.Quality,
+		}
+
+		result, err := proc.Process(ctx, opts, reader)
+		if err != nil {
+			log.Error("failed to convert file", "error", err)
+			return middleware.Permanent(fmt.Errorf("failed to convert: %w", err))
+		}
+
+		variantKey := buildVariantKey(payload.FileID, "converted", fmt.Sprintf("converted.%s", payload.Format))
+		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
+			log.Error("failed to upload converted file", "error", err)
+			return fmt.Errorf("failed to upload: %w", err)
+		}
+
+		width := int32(result.Metadata.Width)
+		height := int32(result.Metadata.Height)
+		variantType := db.VariantType(payload.Format)
+		if payload.Format == "webp" {
+			variantType = db.VariantTypeWebp
+		}
+		_, err = deps.Queries.CreateVariant(ctx, db.CreateVariantParams{
+			FileID:      file.ID,
+			VariantType: variantType,
+			ContentType: result.ContentType,
+			SizeBytes:   result.Size,
+			StorageKey:  variantKey,
+			Width:       &width,
+			Height:      &height,
+		})
+		if err != nil {
+			log.Error("failed to save variant record", "error", err)
+			return fmt.Errorf("failed to save variant: %w", err)
+		}
+
+		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds())
+		return nil
+	}
+}
+
 func buildVariantKey(fileID uuid.UUID, variantType, filename string) string {
 	return fmt.Sprintf("processed/%s/%s/%s", fileID, variantType, filename)
 }
