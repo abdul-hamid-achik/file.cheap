@@ -219,7 +219,6 @@ func TestRegistry_GetForContentType(t *testing.T) {
 				t.Errorf("GetForContentType(%q) returned %d, want %d", tt.contentType, len(procs), tt.wantCount)
 			}
 
-			// Verify names if expected
 			if len(tt.wantNames) > 0 {
 				names := make(map[string]bool)
 				for _, p := range procs {

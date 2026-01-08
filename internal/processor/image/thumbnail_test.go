@@ -204,12 +204,10 @@ func TestThumbnailProcessor_Process(t *testing.T) {
 				t.Fatalf("Process() unexpected error: %v", err)
 			}
 
-			// Verify result
 			if result == nil {
 				t.Fatal("Process() returned nil result")
 			}
 
-			// Decode result to verify dimensions
 			resultData, _ := io.ReadAll(result.Data)
 			img, _, err := image.Decode(bytes.NewReader(resultData))
 			if err != nil {
@@ -224,17 +222,14 @@ func TestThumbnailProcessor_Process(t *testing.T) {
 				t.Errorf("Result height = %d, want %d", bounds.Dy(), tt.wantHeight)
 			}
 
-			// Verify content type
 			if result.ContentType != "image/jpeg" {
 				t.Errorf("Result ContentType = %q, want %q", result.ContentType, "image/jpeg")
 			}
 
-			// Verify size is positive
 			if result.Size <= 0 {
 				t.Errorf("Result Size = %d, want > 0", result.Size)
 			}
 
-			// Verify metadata
 			if result.Metadata.Width != tt.wantWidth {
 				t.Errorf("Result Metadata.Width = %d, want %d", result.Metadata.Width, tt.wantWidth)
 			}

@@ -112,7 +112,6 @@ func (s *MemoryStorage) GetPresignedURL(ctx context.Context, key string, expiryS
 		return "", ErrNotFound
 	}
 
-	// Return a fake URL for testing
 	return fmt.Sprintf("http://test-storage/%s?expires=%d", key, expirySeconds), nil
 }
 

@@ -19,7 +19,7 @@ This document contains guidelines for AI agents working on this codebase.
 - Error messages should be lowercase without punctuation
 
 ### Templ Style
-- No HTML comments in templ files
+- HTML comments for section labels are acceptable (e.g., `<!-- Header -->`)
 - Keep templates focused and composable
 - Use consistent indentation
 - Extract repeated patterns into components

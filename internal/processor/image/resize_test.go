@@ -129,7 +129,6 @@ func TestResizeProcessor_Process_Fit(t *testing.T) {
 				t.Errorf("Height = %d, exceeds max %d", bounds.Dy(), tt.wantMaxHeight)
 			}
 
-			// Check aspect ratio is preserved
 			if tt.wantRatioKept {
 				inputRatio := float64(tt.inputWidth) / float64(tt.inputHeight)
 				outputRatio := float64(bounds.Dx()) / float64(bounds.Dy())

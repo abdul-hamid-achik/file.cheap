@@ -70,7 +70,6 @@ func TestMemoryStorage_Upload(t *testing.T) {
 			}
 
 			if tt.wantErr == nil {
-				// Verify data was stored
 				data, exists := storage.GetData(tt.key)
 				if !exists {
 					t.Error("Upload() file not stored")
@@ -80,7 +79,6 @@ func TestMemoryStorage_Upload(t *testing.T) {
 					t.Errorf("Upload() stored content = %q, want %q", string(data), tt.content)
 				}
 
-				// Verify content type
 				ct, _ := storage.GetContentType(tt.key)
 				if ct != tt.contentType {
 					t.Errorf("Upload() content type = %q, want %q", ct, tt.contentType)
@@ -219,7 +217,6 @@ func TestMemoryStorage_Delete(t *testing.T) {
 				return
 			}
 
-			// Verify file is gone
 			exists, _ := storage.Exists(ctx, tt.key)
 			if exists {
 				t.Error("Delete() file still exists")
@@ -438,7 +435,6 @@ func TestMinIOStorage_Upload(t *testing.T) {
 				return
 			}
 
-			// Verify by downloading
 			if !tt.wantErr {
 				defer func() { _ = storage.Delete(ctx, tt.key) }() // Cleanup
 
@@ -542,13 +538,11 @@ func TestMinIOStorage_Delete(t *testing.T) {
 		// Upload first
 		_ = storage.Upload(ctx, key, strings.NewReader("content"), "text/plain", 7)
 
-		// Delete
 		err := storage.Delete(ctx, key)
 		if err != nil {
 			t.Errorf("Delete() error = %v", err)
 		}
 
-		// Verify gone
 		exists, _ := storage.Exists(ctx, key)
 		if exists {
 			t.Error("Delete() file still exists")

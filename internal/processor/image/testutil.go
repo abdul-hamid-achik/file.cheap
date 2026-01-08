@@ -16,7 +16,6 @@ func createTestImage(width, height int) image.Image {
 
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
-			// Create a gradient pattern
 			r := uint8(255 * x / width)
 			g := uint8(255 * y / height)
 			b := uint8(128)

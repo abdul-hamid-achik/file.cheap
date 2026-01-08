@@ -34,16 +34,12 @@ func CheckPassword(password, hash string) error {
 // GenerateToken generates a cryptographically secure random token.
 // Returns the raw token (for sending to user) and its hash (for storage).
 func GenerateToken() (token string, hash string, err error) {
-	// Generate random bytes
 	bytes := make([]byte, tokenLength)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", "", fmt.Errorf("failed to generate random token: %w", err)
 	}
 
-	// Encode as URL-safe base64 (no padding)
 	token = base64.RawURLEncoding.EncodeToString(bytes)
-
-	// Hash the token for storage
 	hash = HashToken(token)
 
 	return token, hash, nil

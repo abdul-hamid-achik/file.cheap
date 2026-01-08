@@ -202,22 +202,18 @@ func (sm *SessionManager) GetFlash(w http.ResponseWriter, r *http.Request, key s
 
 // getClientIP extracts the client IP from the request.
 func getClientIP(r *http.Request) *netip.Addr {
-	// Check X-Forwarded-For header first (for proxies)
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// Take the first IP in the chain
 		if ip, err := netip.ParseAddr(xff); err == nil {
 			return &ip
 		}
 	}
 
-	// Check X-Real-IP header
 	if xri := r.Header.Get("X-Real-IP"); xri != "" {
 		if ip, err := netip.ParseAddr(xri); err == nil {
 			return &ip
 		}
 	}
 
-	// Fall back to RemoteAddr
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return nil
