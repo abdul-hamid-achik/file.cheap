@@ -4,7 +4,7 @@ VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: GetSessionByTokenHash :one
-SELECT s.*, u.email, u.name, u.avatar_url, u.role, u.subscription_tier, u.email_verified_at
+SELECT s.*, u.email, u.name, u.avatar_url, u.role, u.subscription_tier, u.email_verified_at, (u.password_hash IS NOT NULL)::boolean AS has_password
 FROM sessions s
 JOIN users u ON s.user_id = u.id
 WHERE s.token_hash = $1 

@@ -364,3 +364,73 @@ func (s *OAuthService) IsGoogleConfigured() bool {
 func (s *OAuthService) IsGitHubConfigured() bool {
 	return s.githubConfig != nil
 }
+
+var (
+	ErrOAuthAlreadyLinked = apperror.New("already_linked", "This account is already connected", http.StatusConflict)
+	ErrOAuthLinkedToOther = apperror.New("linked_to_other", "This account is linked to another user", http.StatusConflict)
+	ErrLastAuthMethod     = apperror.New("last_auth_method", "Cannot disconnect your only sign-in method", http.StatusBadRequest)
+)
+
+// LinkOAuthAccount links an OAuth provider to an existing user.
+func (s *OAuthService) LinkOAuthAccount(ctx context.Context, userID pgtype.UUID, info *OAuthUserInfo, token *oauth2.Token) error {
+	existing, err := s.queries.GetOAuthAccount(ctx, db.GetOAuthAccountParams{
+		Provider:       info.Provider,
+		ProviderUserID: info.ProviderID,
+	})
+	if err == nil {
+		if existing.UserID == userID {
+			return ErrOAuthAlreadyLinked
+		}
+		return ErrOAuthLinkedToOther
+	}
+
+	var expiresAt pgtype.Timestamptz
+	if !token.Expiry.IsZero() {
+		expiresAt = pgtype.Timestamptz{Time: token.Expiry, Valid: true}
+	}
+
+	_, err = s.queries.CreateOAuthAccount(ctx, db.CreateOAuthAccountParams{
+		UserID:         userID,
+		Provider:       info.Provider,
+		ProviderUserID: info.ProviderID,
+		AccessToken:    &token.AccessToken,
+		RefreshToken:   &token.RefreshToken,
+		ExpiresAt:      expiresAt,
+	})
+	if err != nil {
+		return apperror.Wrap(err, apperror.ErrInternal)
+	}
+
+	return nil
+}
+
+// ListUserOAuthAccounts returns all OAuth accounts linked to a user.
+func (s *OAuthService) ListUserOAuthAccounts(ctx context.Context, userID pgtype.UUID) ([]db.OauthAccount, error) {
+	accounts, err := s.queries.ListUserOAuthAccounts(ctx, userID)
+	if err != nil {
+		return nil, apperror.Wrap(err, apperror.ErrInternal)
+	}
+	return accounts, nil
+}
+
+// DeleteOAuthAccount removes an OAuth account link from a user.
+func (s *OAuthService) DeleteOAuthAccount(ctx context.Context, userID pgtype.UUID, provider db.OauthProvider) error {
+	return s.queries.DeleteOAuthAccount(ctx, db.DeleteOAuthAccountParams{
+		UserID:   userID,
+		Provider: provider,
+	})
+}
+
+// CanDisconnectOAuth checks if a user can disconnect an OAuth provider.
+func (s *OAuthService) CanDisconnectOAuth(ctx context.Context, userID pgtype.UUID, hasPassword bool) (bool, error) {
+	if hasPassword {
+		return true, nil
+	}
+
+	accounts, err := s.ListUserOAuthAccounts(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+
+	return len(accounts) > 1, nil
+}

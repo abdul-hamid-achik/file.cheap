@@ -234,6 +234,25 @@ func (s *Service) GetUserByID(ctx context.Context, id uuid.UUID) (*db.User, erro
 	return &user, nil
 }
 
+// VerifyPassword verifies a user's password by user ID.
+func (s *Service) VerifyPassword(ctx context.Context, userID uuid.UUID, password string) error {
+	pgID := pgtype.UUID{Bytes: userID, Valid: true}
+	user, err := s.queries.GetUserByID(ctx, pgID)
+	if err != nil {
+		return apperror.Wrap(err, apperror.ErrNotFound)
+	}
+
+	if user.PasswordHash == nil {
+		return apperror.ErrOAuthOnly
+	}
+
+	if err := CheckPassword(password, *user.PasswordHash); err != nil {
+		return apperror.ErrInvalidCredentials
+	}
+
+	return nil
+}
+
 // UpdateUserInput contains the data for updating a user.
 type UpdateUserInput struct {
 	Name      string

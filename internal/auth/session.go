@@ -44,6 +44,7 @@ type SessionUser struct {
 	SubscriptionTier db.SubscriptionTier
 	EmailVerifiedAt  *time.Time
 	SessionID        uuid.UUID
+	HasPassword      bool
 }
 
 // CreateSession creates a new session for a user and sets the cookie.
@@ -120,6 +121,7 @@ func (sm *SessionManager) GetSession(ctx context.Context, r *http.Request) (*Ses
 		Role:             row.Role,
 		SubscriptionTier: row.SubscriptionTier,
 		SessionID:        sessionID,
+		HasPassword:      row.HasPassword,
 	}
 
 	if row.EmailVerifiedAt.Valid {

@@ -176,7 +176,7 @@ func createTestHandlers() (*Handlers, *MockStorage, *MockQuerier) {
 		Secure:  false,
 	}
 
-	h := NewHandlers(cfg, nil, nil, nil)
+	h := NewHandlers(cfg, nil, nil, nil, nil)
 	return h, stor, queries
 }
 

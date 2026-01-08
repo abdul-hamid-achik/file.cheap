@@ -12,6 +12,7 @@ import (
 	"github.com/abdul-hamid-achik/file-processor/internal/auth"
 	"github.com/abdul-hamid-achik/file-processor/internal/billing"
 	"github.com/abdul-hamid-achik/file-processor/internal/db"
+	"github.com/abdul-hamid-achik/file-processor/internal/email"
 	"github.com/abdul-hamid-achik/file-processor/internal/logger"
 	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/pages"
 	"github.com/abdul-hamid-achik/file-processor/internal/worker"
@@ -24,14 +25,16 @@ type Handlers struct {
 	sessionManager *auth.SessionManager
 	authService    *auth.Service
 	oauthService   *auth.OAuthService
+	emailService   *email.Service
 }
 
-func NewHandlers(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oauthSvc *auth.OAuthService) *Handlers {
+func NewHandlers(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oauthSvc *auth.OAuthService, emailSvc *email.Service) *Handlers {
 	return &Handlers{
 		cfg:            cfg,
 		sessionManager: sm,
 		authService:    authSvc,
 		oauthService:   oauthSvc,
+		emailService:   emailSvc,
 	}
 }
 
@@ -914,13 +917,37 @@ func (h *Handlers) Profile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var oauthAccounts []pages.OAuthAccountInfo
+	if h.oauthService != nil {
+		userID := pgtype.UUID{Bytes: user.ID, Valid: true}
+		accounts, err := h.oauthService.ListUserOAuthAccounts(r.Context(), userID)
+		if err == nil {
+			for _, acc := range accounts {
+				oauthAccounts = append(oauthAccounts, pages.OAuthAccountInfo{
+					Provider:    string(acc.Provider),
+					ConnectedAt: acc.CreatedAt.Time.Format("January 2006"),
+				})
+			}
+		}
+	}
+
 	data := pages.ProfilePageData{
 		Name:          user.Name,
 		Email:         user.Email,
 		AvatarURL:     "",
 		EmailVerified: false,
 		CreatedAt:     "January 2026",
-		OAuthAccounts: []pages.OAuthAccountInfo{},
+		OAuthAccounts: oauthAccounts,
+		GoogleEnabled: h.oauthService != nil && h.oauthService.IsGoogleConfigured(),
+		GitHubEnabled: h.oauthService != nil && h.oauthService.IsGitHubConfigured(),
+		HasPassword:   user.HasPassword,
+	}
+
+	if errParam := r.URL.Query().Get("error"); errParam != "" {
+		data.Error = getOAuthErrorMessage(errParam)
+	}
+	if successParam := r.URL.Query().Get("success"); successParam != "" {
+		data.Success = getOAuthSuccessMessage(successParam)
 	}
 
 	if user.AvatarURL != nil {
@@ -928,6 +955,74 @@ func (h *Handlers) Profile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = pages.Profile(user, data).Render(r.Context(), w)
+}
+
+func getOAuthErrorMessage(code string) string {
+	switch code {
+	case "already_linked":
+		return "This account is already connected."
+	case "linked_to_other":
+		return "This account is linked to another user."
+	case "last_auth_method":
+		return "Cannot disconnect your only sign-in method."
+	case "invalid_password":
+		return "Incorrect password."
+	case "oauth_not_configured":
+		return "OAuth provider is not configured."
+	case "invalid_state", "session_expired":
+		return "Your session expired. Please try again."
+	default:
+		return "An error occurred. Please try again."
+	}
+}
+
+func getOAuthSuccessMessage(code string) string {
+	switch code {
+	case "google_linked":
+		return "Google account connected successfully."
+	case "github_linked":
+		return "GitHub account connected successfully."
+	case "disconnected":
+		return "Account disconnected successfully."
+	default:
+		return "Operation completed successfully."
+	}
+}
+
+func (h *Handlers) DisconnectOAuth(w http.ResponseWriter, r *http.Request) {
+	user := auth.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	provider := r.PathValue("provider")
+	if provider != "github" && provider != "google" {
+		http.Redirect(w, r, "/profile?error=invalid_provider", http.StatusFound)
+		return
+	}
+
+	userID := pgtype.UUID{Bytes: user.ID, Valid: true}
+
+	canDisconnect, err := h.oauthService.CanDisconnectOAuth(r.Context(), userID, user.HasPassword)
+	if err != nil || !canDisconnect {
+		http.Redirect(w, r, "/profile?error=last_auth_method", http.StatusFound)
+		return
+	}
+
+	var dbProvider db.OauthProvider
+	if provider == "github" {
+		dbProvider = db.OauthProviderGithub
+	} else {
+		dbProvider = db.OauthProviderGoogle
+	}
+
+	if err := h.oauthService.DeleteOAuthAccount(r.Context(), userID, dbProvider); err != nil {
+		http.Redirect(w, r, "/profile?error=internal", http.StatusFound)
+		return
+	}
+
+	http.Redirect(w, r, "/profile?success=disconnected", http.StatusFound)
 }
 
 func (h *Handlers) ProfilePost(w http.ResponseWriter, r *http.Request) {

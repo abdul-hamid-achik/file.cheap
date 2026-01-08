@@ -18,7 +18,7 @@ import (
 func createTestRouter(cfg *Config) http.Handler {
 	// Create a mock session manager that doesn't require DB
 	// For tests, we'll pass nil and handlers will handle gracefully
-	return NewRouter(cfg, nil, nil, nil, nil, nil, nil)
+	return NewRouter(cfg, nil, nil, nil, nil, nil, nil, nil)
 }
 
 func TestRouterRoutes(t *testing.T) {

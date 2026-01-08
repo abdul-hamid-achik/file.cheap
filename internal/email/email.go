@@ -143,6 +143,35 @@ func (s *Service) SendWelcomeEmail(to, name string) error {
 	return s.Send(to, "Welcome to file.cheap!", html)
 }
 
+// OAuthLinkedEmailData contains data for the OAuth linked notification email.
+type OAuthLinkedEmailData struct {
+	EmailData
+	Provider      string
+	ProviderEmail string
+	ProfileURL    string
+}
+
+// SendOAuthLinkedEmail sends a notification when an OAuth provider is linked.
+func (s *Service) SendOAuthLinkedEmail(to, name, provider, providerEmail string) error {
+	data := OAuthLinkedEmailData{
+		EmailData: EmailData{
+			RecipientName: name,
+			BaseURL:       s.cfg.BaseURL,
+			Year:          2024,
+		},
+		Provider:      provider,
+		ProviderEmail: providerEmail,
+		ProfileURL:    fmt.Sprintf("%s/profile", s.cfg.BaseURL),
+	}
+
+	html, err := s.renderTemplate(oauthLinkedEmailTemplate, data)
+	if err != nil {
+		return err
+	}
+
+	return s.Send(to, fmt.Sprintf("%s account connected to your file.cheap account", provider), html)
+}
+
 func (s *Service) renderTemplate(tmplStr string, data any) (string, error) {
 	tmpl, err := template.New("email").Parse(tmplStr)
 	if err != nil {
@@ -303,6 +332,64 @@ const welcomeEmailTemplate = `
                                     </td>
                                 </tr>
                             </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 20px 40px; background-color: #434C5E; text-align: center;">
+                            <p style="margin: 0; color: #4C566A; font-size: 12px;">
+                                &copy; {{.Year}} file.cheap. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+`
+
+const oauthLinkedEmailTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #2E3440;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #3B4252; border-radius: 8px; overflow: hidden;">
+                    <tr>
+                        <td style="padding: 40px; text-align: center; background-color: #434C5E;">
+                            <h1 style="margin: 0; color: #88C0D0; font-size: 24px;">file.cheap</h1>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 40px;">
+                            <h2 style="margin: 0 0 20px; color: #ECEFF4; font-size: 20px;">{{.Provider}} account connected</h2>
+                            <p style="margin: 0 0 20px; color: #D8DEE9; line-height: 1.6;">
+                                Hi {{.RecipientName}},
+                            </p>
+                            <p style="margin: 0 0 20px; color: #D8DEE9; line-height: 1.6;">
+                                A {{.Provider}} account (<strong style="color: #88C0D0;">{{.ProviderEmail}}</strong>) has been connected to your file.cheap account.
+                            </p>
+                            <p style="margin: 0 0 30px; color: #D8DEE9; line-height: 1.6;">
+                                You can now sign in using {{.Provider}}. If you did not authorize this connection, please visit your profile immediately to disconnect it and secure your account.
+                            </p>
+                            <table role="presentation" style="margin: 0 auto;">
+                                <tr>
+                                    <td style="border-radius: 4px; background-color: #88C0D0;">
+                                        <a href="{{.ProfileURL}}" style="display: inline-block; padding: 14px 28px; color: #2E3440; text-decoration: none; font-weight: 600;">
+                                            View Profile
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                            <p style="margin: 30px 0 0; color: #4C566A; font-size: 14px; line-height: 1.6;">
+                                If you authorized this connection, you can safely ignore this email.
+                            </p>
                         </td>
                     </tr>
                     <tr>

@@ -84,7 +84,7 @@ func (q *Queries) DeleteUserSessions(ctx context.Context, userID pgtype.UUID) er
 }
 
 const getSessionByTokenHash = `-- name: GetSessionByTokenHash :one
-SELECT s.id, s.user_id, s.token_hash, s.user_agent, s.ip_address, s.expires_at, s.created_at, u.email, u.name, u.avatar_url, u.role, u.subscription_tier, u.email_verified_at
+SELECT s.id, s.user_id, s.token_hash, s.user_agent, s.ip_address, s.expires_at, s.created_at, u.email, u.name, u.avatar_url, u.role, u.subscription_tier, u.email_verified_at, (u.password_hash IS NOT NULL)::boolean AS has_password
 FROM sessions s
 JOIN users u ON s.user_id = u.id
 WHERE s.token_hash = $1 
@@ -106,6 +106,7 @@ type GetSessionByTokenHashRow struct {
 	Role             UserRole           `json:"role"`
 	SubscriptionTier SubscriptionTier   `json:"subscription_tier"`
 	EmailVerifiedAt  pgtype.Timestamptz `json:"email_verified_at"`
+	HasPassword      bool               `json:"has_password"`
 }
 
 func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash string) (GetSessionByTokenHashRow, error) {
@@ -125,6 +126,7 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash string) (
 		&i.Role,
 		&i.SubscriptionTier,
 		&i.EmailVerifiedAt,
+		&i.HasPassword,
 	)
 	return i, err
 }

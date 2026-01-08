@@ -5,6 +5,7 @@ import (
 
 	"github.com/abdul-hamid-achik/file-processor/internal/auth"
 	"github.com/abdul-hamid-achik/file-processor/internal/db"
+	"github.com/abdul-hamid-achik/file-processor/internal/email"
 	"github.com/abdul-hamid-achik/file-processor/internal/storage"
 )
 
@@ -20,9 +21,9 @@ type Config struct {
 	Secure  bool
 }
 
-func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oauthSvc *auth.OAuthService, billingHandlers *BillingHandlers, analyticsHandlers *AnalyticsHandlers, adminHandlers *AdminHandlers) http.Handler {
+func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oauthSvc *auth.OAuthService, emailSvc *email.Service, billingHandlers *BillingHandlers, analyticsHandlers *AnalyticsHandlers, adminHandlers *AdminHandlers) http.Handler {
 	mux := http.NewServeMux()
-	h := NewHandlers(cfg, sm, authSvc, oauthSvc)
+	h := NewHandlers(cfg, sm, authSvc, oauthSvc, emailSvc)
 
 	if sm != nil {
 		mux.Handle("GET /", auth.OptionalAuth(sm)(http.HandlerFunc(h.Home)))
@@ -60,6 +61,9 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 		mux.Handle("POST /profile", requireAuth(http.HandlerFunc(h.ProfilePost)))
 		mux.Handle("POST /profile/avatar", requireAuth(http.HandlerFunc(h.ProfileAvatar)))
 		mux.Handle("POST /profile/delete", requireAuth(http.HandlerFunc(h.ProfileDelete)))
+		mux.Handle("POST /profile/link/google", requireAuth(http.HandlerFunc(h.LinkOAuthGoogleStart)))
+		mux.Handle("POST /profile/link/github", requireAuth(http.HandlerFunc(h.LinkOAuthGitHubStart)))
+		mux.Handle("POST /profile/disconnect/{provider}", requireAuth(http.HandlerFunc(h.DisconnectOAuth)))
 		mux.Handle("GET /settings", requireAuth(http.HandlerFunc(h.Settings)))
 		mux.Handle("POST /settings/password", requireAuth(http.HandlerFunc(h.SettingsPassword)))
 		mux.Handle("POST /settings/notifications", requireAuth(http.HandlerFunc(h.SettingsNotifications)))
@@ -111,6 +115,9 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 		mux.HandleFunc("POST /profile", redirectToLogin)
 		mux.HandleFunc("POST /profile/avatar", redirectToLogin)
 		mux.HandleFunc("POST /profile/delete", redirectToLogin)
+		mux.HandleFunc("POST /profile/link/google", redirectToLogin)
+		mux.HandleFunc("POST /profile/link/github", redirectToLogin)
+		mux.HandleFunc("POST /profile/disconnect/{provider}", redirectToLogin)
 		mux.HandleFunc("GET /settings", redirectToLogin)
 		mux.HandleFunc("POST /settings/password", redirectToLogin)
 		mux.HandleFunc("POST /settings/notifications", redirectToLogin)

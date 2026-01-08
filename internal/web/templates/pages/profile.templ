@@ -16,6 +16,9 @@ type ProfilePageData struct {
 	EmailVerified bool
 	CreatedAt     string
 	OAuthAccounts []OAuthAccountInfo
+	GoogleEnabled bool
+	GitHubEnabled bool
+	HasPassword   bool
 }
 
 // OAuthAccountInfo contains OAuth account information
@@ -196,7 +199,7 @@ templ Profile(user *auth.SessionUser, data ProfilePageData) {
 										@connectedAccountStatus("google", data.OAuthAccounts)
 									</div>
 								</div>
-								@connectButton("google", data.OAuthAccounts)
+								@connectButton("google", data.OAuthAccounts, data.HasPassword)
 							</div>
 
 							<!-- GitHub -->
@@ -210,7 +213,7 @@ templ Profile(user *auth.SessionUser, data ProfilePageData) {
 										@connectedAccountStatus("github", data.OAuthAccounts)
 									</div>
 								</div>
-								@connectButton("github", data.OAuthAccounts)
+								@connectButton("github", data.OAuthAccounts, data.HasPassword)
 							</div>
 						</div>
 					}
@@ -291,7 +294,7 @@ templ Profile(user *auth.SessionUser, data ProfilePageData) {
 templ connectedAccountStatus(provider string, accounts []OAuthAccountInfo) {
 	for _, acc := range accounts {
 		if acc.Provider == provider {
-			<p class="text-nord-4 text-sm">Connected as { acc.Email }</p>
+			<p class="text-nord-4 text-sm">Connected since { acc.ConnectedAt }</p>
 		}
 	}
 	if !isConnected(provider, accounts) {
@@ -299,7 +302,7 @@ templ connectedAccountStatus(provider string, accounts []OAuthAccountInfo) {
 	}
 }
 
-templ connectButton(provider string, accounts []OAuthAccountInfo) {
+templ connectButton(provider string, accounts []OAuthAccountInfo, hasPassword bool) {
 	if isConnected(provider, accounts) {
 		<form action={ templ.SafeURL("/profile/disconnect/" + provider) } method="POST">
 			<button type="submit" class="text-sm text-nord-4 hover:text-nord-11 transition-colors">
@@ -307,9 +310,26 @@ templ connectButton(provider string, accounts []OAuthAccountInfo) {
 			</button>
 		</form>
 	} else {
-		<a href={ templ.SafeURL("/auth/" + provider) } class="text-sm text-nord-8 hover:text-nord-7 transition-colors">
-			Connect
-		</a>
+		if hasPassword {
+			<form action={ templ.SafeURL("/profile/link/" + provider) } method="POST" class="flex items-center gap-2">
+				<input 
+					type="password" 
+					name="password" 
+					placeholder="Password"
+					required
+					class="w-32 px-3 py-1 text-sm bg-nord-2 border border-nord-3 rounded text-nord-5 placeholder-nord-4 focus:outline-none focus:ring-1 focus:ring-nord-8"
+				/>
+				<button type="submit" class="text-sm text-nord-8 hover:text-nord-7 transition-colors">
+					Connect
+				</button>
+			</form>
+		} else {
+			<form action={ templ.SafeURL("/profile/link/" + provider) } method="POST">
+				<button type="submit" class="text-sm text-nord-8 hover:text-nord-7 transition-colors">
+					Connect
+				</button>
+			</form>
+		}
 	}
 }
 

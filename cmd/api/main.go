@@ -15,6 +15,7 @@ import (
 	"github.com/abdul-hamid-achik/file-processor/internal/billing"
 	"github.com/abdul-hamid-achik/file-processor/internal/config"
 	"github.com/abdul-hamid-achik/file-processor/internal/db"
+	"github.com/abdul-hamid-achik/file-processor/internal/email"
 	"github.com/abdul-hamid-achik/file-processor/internal/logger"
 	"github.com/abdul-hamid-achik/file-processor/internal/metrics"
 	"github.com/abdul-hamid-achik/file-processor/internal/processor"
@@ -185,7 +186,18 @@ func run() error {
 	adminHandlers := web.NewAdminHandlers(analyticsService)
 	log.Info("analytics services configured")
 
-	webRouter := web.NewRouter(webCfg, sessionManager, authService, oauthService, billingHandlers, analyticsHandlers, adminHandlers)
+	emailService := email.NewService(email.Config{
+		SMTPHost:     cfg.SMTPHost,
+		SMTPPort:     cfg.SMTPPort,
+		SMTPUsername: cfg.SMTPUsername,
+		SMTPPassword: cfg.SMTPPassword,
+		FromAddress:  cfg.SMTPFromAddress,
+		FromName:     cfg.SMTPFromName,
+		BaseURL:      cfg.BaseURL,
+	})
+	log.Info("email service configured")
+
+	webRouter := web.NewRouter(webCfg, sessionManager, authService, oauthService, emailService, billingHandlers, analyticsHandlers, adminHandlers)
 	mux.Handle("/", webRouter)
 
 	handler := metrics.HTTPMetricsMiddleware(web.Recovery(web.RequestID(web.RequestLogger(mux))))
