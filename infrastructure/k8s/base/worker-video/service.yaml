@@ -10,7 +10,7 @@ metadata:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9090"
     prometheus.io/path: "/metrics"
-  spec:
+spec:
   type: ClusterIP
   ports:
     - name: metrics

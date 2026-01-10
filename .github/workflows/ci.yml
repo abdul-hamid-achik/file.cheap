@@ -78,22 +78,24 @@ jobs:
           version: v2.7.2
 
   build:
-    name: Build Images
-    runs-on: ubuntu-latest
+    name: Build ${{ matrix.target }}
+    runs-on: ubuntu-24.04-arm
     needs: [test, lint]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
-    outputs:
-      api_image: ${{ steps.meta-api.outputs.tags }}
-      worker_image_image: ${{ steps.meta-worker-image.outputs.tags }}
-      worker_video_image: ${{ steps.meta-worker-video.outputs.tags }}
+    strategy:
+      matrix:
+        include:
+          - target: api
+            image_suffix: api
+          - target: worker-image
+            image_suffix: worker-image
+          - target: worker-video
+            image_suffix: worker-video
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -105,65 +107,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (API)
-        id: meta-api
+      - name: Extract metadata
+        id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image_suffix }}
           tags: |
             type=sha
             type=raw,value=latest
 
-      - name: Build and push API
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
-          target: api
+          target: ${{ matrix.target }}
           push: true
           platforms: linux/arm64
-          tags: ${{ steps.meta-api.outputs.tags }}
-          labels: ${{ steps.meta-api.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Extract metadata (Worker Image)
-        id: meta-worker-image
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker-image
-          tags: |
-            type=sha
-            type=raw,value=latest
-
-      - name: Build and push Worker Image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          target: worker-image
-          push: true
-          platforms: linux/arm64
-          tags: ${{ steps.meta-worker-image.outputs.tags }}
-          labels: ${{ steps.meta-worker-image.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Extract metadata (Worker Video)
-        id: meta-worker-video
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker-video
-          tags: |
-            type=sha
-            type=raw,value=latest
-
-      - name: Build and push Worker Video
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          target: worker-video
-          push: true
-          platforms: linux/arm64
-          tags: ${{ steps.meta-worker-video.outputs.tags }}
-          labels: ${{ steps.meta-worker-video.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
