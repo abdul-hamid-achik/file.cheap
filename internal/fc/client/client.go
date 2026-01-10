@@ -106,7 +106,7 @@ func (c *Client) Upload(ctx context.Context, filePath string, transforms []strin
 
 	// Write the multipart form in a separate goroutine
 	go func() {
-		defer pw.Close()
+		defer func() { _ = pw.Close() }()
 
 		part, err := writer.CreateFormFile("file", filepath.Base(filePath))
 		if err != nil {
