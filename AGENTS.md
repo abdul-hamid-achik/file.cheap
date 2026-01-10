@@ -37,8 +37,9 @@ internal/
   config/       # Configuration loading
   db/           # Database queries (sqlc generated)
   email/        # Email templates and sending
+  fc/           # CLI client (fc command)
   logger/       # Logging utilities (slog)
-  processor/    # File processing (image, pdf)
+  processor/    # File processing (image, pdf, video)
   storage/      # Object storage (MinIO/S3)
   web/          # Web UI handlers and templates
   worker/       # Background job handlers
@@ -398,6 +399,18 @@ Processors registered in `internal/processor/registry.go`.
 - `webp` - Converts images to WebP format
 - `watermark` - Adds text/image watermarks
 - `metadata` - Extracts EXIF/document properties
+- `video_thumbnail` - Extracts video frames as thumbnails (FFmpeg)
+- `video_transcode` - Transcodes videos to different resolutions/formats (FFmpeg)
+- `video_hls` - Generates HLS streaming packages (FFmpeg)
+- `video_watermark` - Adds text watermark overlay to videos (FFmpeg)
+
+### Video Processing
+Video processing requires FFmpeg to be installed:
+- Processors in `internal/processor/video/`
+- FFmpegProcessor handles transcoding and HLS generation
+- ThumbnailProcessor extracts frames at configurable timestamps
+- Supports MP4, WebM, MOV, AVI, MKV input formats
+- Output formats: MP4 (H.264), WebM (VP9), HLS (adaptive streaming)
 
 ### Storage Structure
 - Original files: `{user_id}/{file_id}/original.{ext}`

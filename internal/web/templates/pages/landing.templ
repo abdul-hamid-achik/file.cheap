@@ -22,7 +22,7 @@ templ Landing(user *auth.SessionUser) {
 						<span class="text-nord-8">that doesn't cost a fortune</span>
 					</h1>
 					<p class="mt-6 text-lg sm:text-xl text-nord-4 max-w-2xl mx-auto">
-						Resize images, generate thumbnails, and convert formats — 
+						Resize images, transcode videos, generate thumbnails, and convert formats —
 						all at prices that won't break the bank.
 					</p>
 					<div class="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
@@ -76,14 +76,14 @@ templ Landing(user *auth.SessionUser) {
 						watermarkIcon(),
 					)
 					@components.FeatureCard(
+						"Video Transcoding",
+						"Transcode videos to multiple resolutions and formats with HLS streaming.",
+						videoIcon(),
+					)
+					@components.FeatureCard(
 						"PDF Thumbnails",
 						"Generate preview thumbnails from PDF documents.",
 						pdfIcon(),
-					)
-					@components.FeatureCard(
-						"Metadata Extraction",
-						"Extract EXIF data, document properties, and more from your files.",
-						metadataIcon(),
 					)
 				</div>
 			</div>
@@ -104,8 +104,8 @@ templ Landing(user *auth.SessionUser) {
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
 							</svg>
 						</div>
-						<div class="text-lg font-semibold text-nord-5">6 Processing Types</div>
-						<div class="mt-2 text-nord-4 text-sm">Thumbnails, resize, WebP, watermark, PDF, metadata</div>
+						<div class="text-lg font-semibold text-nord-5">10 Processing Types</div>
+						<div class="mt-2 text-nord-4 text-sm">Images, video transcoding, HLS streaming, PDF, and more</div>
 					</div>
 					<div class="text-center p-6 rounded-xl bg-nord-1/50">
 						<div class="w-12 h-12 mx-auto mb-4 bg-nord-14/10 rounded-lg flex items-center justify-center">
@@ -181,6 +181,12 @@ templ convertIcon() {
 templ watermarkIcon() {
 	<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"></path>
+	</svg>
+}
+
+templ videoIcon() {
+	<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
 	</svg>
 }
 

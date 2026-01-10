@@ -836,8 +836,187 @@ Images:
 - GIF (image/gif)
 - WebP (image/webp)
 
+Videos:
+- MP4 (video/mp4)
+- WebM (video/webm)
+- MOV (video/quicktime)
+- AVI (video/x-msvideo)
+- MKV (video/x-matroska)
+
 PDFs:
 - PDF (application/pdf)
+
+## Video Processing
+
+### Transcode Video
+
+**POST** `/v1/files/{id}/video/transcode`
+
+Authentication: API key or JWT required (Pro tier)
+
+Transcode a video file to different resolutions and formats.
+
+**Path Parameters:**
+- `id` (uuid): Video file ID
+
+**Request Body:**
+```json
+{
+  "resolutions": [360, 720, 1080],
+  "format": "mp4",
+  "thumbnail": true
+}
+```
+
+**Request Parameters:**
+- `resolutions` (array[int], required): Target resolutions (height in pixels)
+- `format` (string, optional): Output format (`mp4` or `webm`, default: `mp4`)
+- `thumbnail` (boolean, optional): Generate video thumbnail (default: false)
+
+**Response:** `202 Accepted`
+```json
+{
+  "file_id": "123e4567-e89b-12d3-a456-426614174000",
+  "jobs": ["job_001", "job_002", "job_003", "job_004"]
+}
+```
+
+**Error Responses:**
+- `400 Bad Request` - Invalid request, not a video file, or invalid format
+- `401 Unauthorized` - Missing or invalid token
+- `403 Forbidden` - Feature requires Pro tier or resolution limit exceeded
+- `404 Not Found` - File not found
+
+### Generate HLS Stream
+
+**POST** `/v1/files/{id}/video/hls`
+
+Authentication: API key or JWT required (Pro tier)
+
+Generate HLS (HTTP Live Streaming) package for adaptive streaming.
+
+**Path Parameters:**
+- `id` (uuid): Video file ID
+
+**Request Body:**
+```json
+{
+  "segment_duration": 10,
+  "resolutions": [360, 720, 1080]
+}
+```
+
+**Request Parameters:**
+- `segment_duration` (int, optional): Segment length in seconds (default: 10)
+- `resolutions` (array[int], optional): Rendition resolutions (default: [360, 720])
+
+**Response:** `202 Accepted`
+```json
+{
+  "file_id": "123e4567-e89b-12d3-a456-426614174000",
+  "jobs": ["job_001"]
+}
+```
+
+**Error Responses:**
+- `400 Bad Request` - Not a video file
+- `401 Unauthorized` - Missing or invalid token
+- `403 Forbidden` - HLS requires Pro tier
+
+### Stream HLS Content
+
+**GET** `/v1/files/{id}/hls/{segment}`
+
+Authentication: API key or JWT required
+
+Stream HLS manifest or segment files.
+
+**Path Parameters:**
+- `id` (uuid): Video file ID
+- `segment` (string): Segment filename (e.g., `master.m3u8`, `720p.m3u8`, `segment001.ts`)
+
+**Response:** `307 Temporary Redirect`
+
+Redirects to presigned storage URL valid for 1 hour.
+
+### Chunked Upload
+
+For large video files, use chunked upload to upload in parts.
+
+#### Initialize Chunked Upload
+
+**POST** `/v1/upload/chunked/init`
+
+Authentication: API key or JWT required
+
+**Request Body:**
+```json
+{
+  "filename": "video.mp4",
+  "content_type": "video/mp4",
+  "total_size": 104857600
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "upload_id": "abc123def456",
+  "chunk_size": 5242880,
+  "chunks_total": 20
+}
+```
+
+#### Upload Chunk
+
+**POST** `/v1/upload/chunked/{uploadId}/chunk?chunk={index}`
+
+Authentication: API key or JWT required
+
+**Path Parameters:**
+- `uploadId` (string): Upload session ID
+
+**Query Parameters:**
+- `chunk` (int): Chunk index (0-based)
+
+**Request:** Binary chunk data
+
+**Response:** `200 OK`
+```json
+{
+  "chunk_index": 0,
+  "chunks_loaded": 1,
+  "chunks_total": 20
+}
+```
+
+#### Complete Chunked Upload
+
+**POST** `/v1/upload/chunked/{uploadId}/complete`
+
+Authentication: API key or JWT required
+
+**Response:** `200 OK`
+```json
+{
+  "file_id": "123e4567-e89b-12d3-a456-426614174000",
+  "filename": "video.mp4",
+  "status": "pending"
+}
+```
+
+### Video Embed
+
+**GET** `/embed/{id}`
+
+No authentication required (public).
+
+Embeddable video player page for sharing videos.
+
+**Path Parameters:**
+- `id` (uuid): Video file ID
+
+**Response:** HTML page with video player
 
 ## Job Processing
 
@@ -921,10 +1100,15 @@ Encrypted and corrupted PDFs return permanent errors (no retry).
 | `webp` | WebP conversion | Images |
 | `watermark` | Add text watermark | Images |
 | `pdf_thumbnail` | First page thumbnail | PDFs |
+| `video_thumbnail` | Extract frame as thumbnail | Videos |
+| `video_transcode` | Transcode to different resolution/format | Videos |
+| `video_hls` | Generate HLS streaming package | Videos |
+| `video_watermark` | Add text watermark overlay | Videos |
 
 ### Automatic Processing
 
 On upload:
 - **Images**: `thumbnail` job enqueued
 - **PDFs**: `pdf_thumbnail` job enqueued
+- **Videos**: `video_thumbnail` job enqueued (extracts frame at 10%)
 - **Other**: No automatic processing
