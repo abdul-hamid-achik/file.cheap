@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/logger"
+	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
 )
 
 type ErrorResponse struct {

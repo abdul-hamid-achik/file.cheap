@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/apperror"
-	"github.com/abdul-hamid-achik/file-processor/internal/auth"
+	"github.com/abdul-hamid-achik/file.cheap/internal/apperror"
+	"github.com/abdul-hamid-achik/file.cheap/internal/auth"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 

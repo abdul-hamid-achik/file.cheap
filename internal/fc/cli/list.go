@@ -1,11 +1,10 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"time"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/fc/output"
+	"github.com/abdul-hamid-achik/file.cheap/internal/fc/output"
 	"github.com/spf13/cobra"
 )
 
@@ -43,7 +42,7 @@ func runList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ctx := context.Background()
+	ctx := GetContext()
 	resp, err := apiClient.ListFiles(ctx, listLimit, listOffset, listStatus, listSearch)
 	if err != nil {
 		return fmt.Errorf("failed to list files: %w", err)

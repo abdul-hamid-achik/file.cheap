@@ -42,7 +42,7 @@ The production environment runs on Hetzner Cloud with the following architecture
 task infra:setup
 
 # Or manually:
-brew install terraform ansible kubectl helm k9s tailscale
+brew install terraform ansible kubectl helm k9s
 ```
 
 ### Required Credentials

@@ -31,6 +31,16 @@ SET status = $2, updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL;
 
 -- name: SoftDeleteFile :exec
-UPDATE files 
+UPDATE files
 SET deleted_at = NOW(), updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: GetFilesByIDs :many
+SELECT * FROM files
+WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL;
+
+-- name: ListFilesByUserWithCount :many
+SELECT *, COUNT(*) OVER() AS total_count FROM files
+WHERE user_id = $1 AND deleted_at IS NULL
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3;

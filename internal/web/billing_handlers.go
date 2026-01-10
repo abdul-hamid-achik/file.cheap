@@ -3,10 +3,10 @@ package web
 import (
 	"net/http"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/auth"
-	"github.com/abdul-hamid-achik/file-processor/internal/billing"
-	"github.com/abdul-hamid-achik/file-processor/internal/logger"
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/pages"
+	"github.com/abdul-hamid-achik/file.cheap/internal/auth"
+	"github.com/abdul-hamid-achik/file.cheap/internal/billing"
+	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
+	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/pages"
 )
 
 type BillingHandlers struct {

@@ -7,7 +7,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/processor"
+	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
 )
 
 func TestConvertProcessor_Name(t *testing.T) {

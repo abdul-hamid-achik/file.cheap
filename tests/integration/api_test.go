@@ -17,9 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/api"
-	"github.com/abdul-hamid-achik/file-processor/internal/db"
-	"github.com/abdul-hamid-achik/file-processor/internal/storage"
+	"github.com/abdul-hamid-achik/file.cheap/internal/api"
+	"github.com/abdul-hamid-achik/file.cheap/internal/db"
+	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -517,4 +517,246 @@ type mockJob struct {
 func (b *mockBroker) Enqueue(jobType string, payload interface{}) (string, error) {
 	b.jobs = append(b.jobs, mockJob{jobType: jobType, payload: payload})
 	return uuid.New().String(), nil
+}
+
+// TestCDNShareFlow tests the complete CDN share workflow:
+// 1. Upload a file
+// 2. Create a share
+// 3. Access via CDN
+// 4. List shares
+// 5. Delete share
+func TestCDNShareFlow(t *testing.T) {
+	queries := db.New(testPool)
+
+	testUser, err := createTestUser(t, queries)
+	if err != nil {
+		t.Fatalf("Failed to create test user: %v", err)
+	}
+	defer cleanupTestUser(t, queries, testUser.ID)
+
+	broker := &mockBroker{}
+	cfg := &api.Config{
+		Storage:       testStorage,
+		Queries:       queries,
+		Broker:        broker,
+		JWTSecret:     testSecret,
+		BaseURL:       "https://api.file.cheap",
+		MaxUploadSize: 10 * 1024 * 1024,
+	}
+	router := api.NewRouter(cfg)
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	var userUUID uuid.UUID
+	copy(userUUID[:], testUser.ID.Bytes[:])
+	token := generateTestToken(t, userUUID, time.Hour)
+
+	// Step 1: Upload a file
+	body, contentType := createTestImageForm(t)
+	req, err := http.NewRequest("POST", server.URL+"/v1/upload", body)
+	if err != nil {
+		t.Fatalf("Failed to create upload request: %v", err)
+	}
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Upload request failed: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusAccepted {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		t.Fatalf("Expected status 202, got %d. Body: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var uploadResp map[string]interface{}
+	_ = json.NewDecoder(resp.Body).Decode(&uploadResp)
+	_ = resp.Body.Close()
+
+	fileID, ok := uploadResp["id"].(string)
+	if !ok {
+		t.Fatalf("Upload response missing 'id' field")
+	}
+
+	// Step 2: Create a share
+	req, err = http.NewRequest("POST", server.URL+"/v1/files/"+fileID+"/share?expires=1h", nil)
+	if err != nil {
+		t.Fatalf("Failed to create share request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Create share request failed: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		t.Fatalf("Expected status 201, got %d. Body: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var shareResp map[string]interface{}
+	_ = json.NewDecoder(resp.Body).Decode(&shareResp)
+	_ = resp.Body.Close()
+
+	shareID, ok := shareResp["id"].(string)
+	if !ok {
+		t.Fatalf("Share response missing 'id' field")
+	}
+	shareToken, ok := shareResp["token"].(string)
+	if !ok {
+		t.Fatalf("Share response missing 'token' field")
+	}
+	shareURL, ok := shareResp["share_url"].(string)
+	if !ok {
+		t.Fatalf("Share response missing 'share_url' field")
+	}
+	if _, ok := shareResp["expires_at"]; !ok {
+		t.Error("Share response missing 'expires_at' field")
+	}
+
+	t.Logf("Created share: id=%s, token=%s, url=%s", shareID, shareToken, shareURL)
+
+	// Step 3: Access via CDN (original file)
+	cdnPath := fmt.Sprintf("/cdn/%s/_/test.jpg", shareToken)
+	req, err = http.NewRequest("GET", server.URL+cdnPath, nil)
+	if err != nil {
+		t.Fatalf("Failed to create CDN request: %v", err)
+	}
+
+	// Don't follow redirects automatically
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatalf("CDN request failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		t.Errorf("Expected CDN redirect (307), got %d", resp.StatusCode)
+	}
+
+	location := resp.Header.Get("Location")
+	if location == "" {
+		t.Error("CDN response missing Location header")
+	}
+
+	// Step 4: List shares
+	req, err = http.NewRequest("GET", server.URL+"/v1/files/"+fileID+"/shares", nil)
+	if err != nil {
+		t.Fatalf("Failed to create list shares request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("List shares request failed: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		t.Fatalf("Expected status 200, got %d. Body: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var listResp map[string]interface{}
+	_ = json.NewDecoder(resp.Body).Decode(&listResp)
+	_ = resp.Body.Close()
+
+	shares, ok := listResp["shares"].([]interface{})
+	if !ok {
+		t.Fatalf("List shares response missing 'shares' array")
+	}
+	if len(shares) != 1 {
+		t.Errorf("Expected 1 share, got %d", len(shares))
+	}
+
+	// Step 5: Delete share
+	req, err = http.NewRequest("DELETE", server.URL+"/v1/shares/"+shareID, nil)
+	if err != nil {
+		t.Fatalf("Failed to create delete share request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Delete share request failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		t.Errorf("Expected status 204, got %d", resp.StatusCode)
+	}
+
+	// Verify share was deleted - CDN access should fail
+	req, err = http.NewRequest("GET", server.URL+cdnPath, nil)
+	if err != nil {
+		t.Fatalf("Failed to create CDN verification request: %v", err)
+	}
+
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatalf("CDN verification request failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("Expected CDN to return 404 after share deletion, got %d", resp.StatusCode)
+	}
+}
+
+// TestCDNInvalidToken tests CDN access with invalid/missing tokens
+func TestCDNInvalidToken(t *testing.T) {
+	cfg := &api.Config{
+		Storage:   testStorage,
+		Queries:   db.New(testPool),
+		JWTSecret: testSecret,
+		BaseURL:   "https://api.file.cheap",
+	}
+	router := api.NewRouter(cfg)
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	tests := []struct {
+		name           string
+		path           string
+		expectedStatus int
+	}{
+		{
+			name:           "missing token",
+			path:           "/cdn//_/test.jpg",
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "invalid token",
+			path:           "/cdn/nonexistent-token/_/test.jpg",
+			expectedStatus: http.StatusNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest("GET", server.URL+tt.path, nil)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("Request failed: %v", err)
+			}
+			_ = resp.Body.Close()
+
+			if resp.StatusCode != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d", tt.expectedStatus, resp.StatusCode)
+			}
+		})
+	}
 }

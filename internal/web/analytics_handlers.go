@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/analytics"
-	"github.com/abdul-hamid-achik/file-processor/internal/auth"
-	"github.com/abdul-hamid-achik/file-processor/internal/logger"
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/pages"
+	"github.com/abdul-hamid-achik/file.cheap/internal/analytics"
+	"github.com/abdul-hamid-achik/file.cheap/internal/auth"
+	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
+	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/pages"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )

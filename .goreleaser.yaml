@@ -21,9 +21,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/abdul-hamid-achik/file-processor/internal/fc/version.Version={{.Version}}
-      - -X github.com/abdul-hamid-achik/file-processor/internal/fc/version.Commit={{.ShortCommit}}
-      - -X github.com/abdul-hamid-achik/file-processor/internal/fc/version.Date={{.Date}}
+      - -X github.com/abdul-hamid-achik/file.cheap/internal/fc/version.Version={{.Version}}
+      - -X github.com/abdul-hamid-achik/file.cheap/internal/fc/version.Commit={{.ShortCommit}}
+      - -X github.com/abdul-hamid-achik/file.cheap/internal/fc/version.Date={{.Date}}
 
 archives:
   - id: default

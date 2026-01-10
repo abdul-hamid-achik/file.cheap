@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/processor"
+	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
 )
 
 func skipIfNoPopplerUtils(t *testing.T) {

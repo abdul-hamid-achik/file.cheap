@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/db"
-	"github.com/abdul-hamid-achik/file-processor/internal/storage"
+	"github.com/abdul-hamid-achik/file.cheap/internal/db"
+	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -71,6 +71,12 @@ type MockQuerier struct {
 	files    map[string]db.File
 	variants map[string]db.FileVariant
 
+	// Share-related storage
+	shares         map[string]db.FileShare
+	sharesByToken  map[string]db.GetFileShareByTokenRow
+	caches         map[string]db.TransformCache
+	requestCounts  map[string]int32
+
 	GetFileErr        error
 	ListFilesErr      error
 	CreateFileErr     error
@@ -78,14 +84,26 @@ type MockQuerier struct {
 	ListVariantsErr   error
 	CountFilesResult  int64
 
+	// Share-related errors
+	GetFileShareByTokenErr    error
+	CreateFileShareErr        error
+	ListFileSharesByFileErr   error
+	DeleteFileShareErr        error
+	GetTransformCacheErr      error
+	CreateTransformCacheErr   error
+
 	BillingTier db.SubscriptionTier
 }
 
 func NewMockQuerier() *MockQuerier {
 	return &MockQuerier{
-		files:       make(map[string]db.File),
-		variants:    make(map[string]db.FileVariant),
-		BillingTier: db.SubscriptionTierPro, // Default to Pro for existing tests
+		files:         make(map[string]db.File),
+		variants:      make(map[string]db.FileVariant),
+		shares:        make(map[string]db.FileShare),
+		sharesByToken: make(map[string]db.GetFileShareByTokenRow),
+		caches:        make(map[string]db.TransformCache),
+		requestCounts: make(map[string]int32),
+		BillingTier:   db.SubscriptionTierPro, // Default to Pro for existing tests
 	}
 }
 
@@ -119,6 +137,25 @@ func (m *MockQuerier) GetFile(ctx context.Context, id pgtype.UUID) (db.File, err
 	return f, nil
 }
 
+func (m *MockQuerier) GetFilesByIDs(ctx context.Context, ids []pgtype.UUID) ([]db.File, error) {
+	if m.GetFileErr != nil {
+		return nil, m.GetFileErr
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var result []db.File
+	for _, id := range ids {
+		key := uuidToString(id)
+		f, ok := m.files[key]
+		if ok && !f.DeletedAt.Valid {
+			result = append(result, f)
+		}
+	}
+	return result, nil
+}
+
 func (m *MockQuerier) ListFilesByUser(ctx context.Context, arg db.ListFilesByUserParams) ([]db.File, error) {
 	if m.ListFilesErr != nil {
 		return nil, m.ListFilesErr
@@ -144,6 +181,53 @@ func (m *MockQuerier) ListFilesByUser(ctx context.Context, arg db.ListFilesByUse
 		end = len(result)
 	}
 	return result[start:end], nil
+}
+
+func (m *MockQuerier) ListFilesByUserWithCount(ctx context.Context, arg db.ListFilesByUserWithCountParams) ([]db.ListFilesByUserWithCountRow, error) {
+	if m.ListFilesErr != nil {
+		return nil, m.ListFilesErr
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var allFiles []db.File
+	userKey := uuidToString(arg.UserID)
+	for _, f := range m.files {
+		if uuidToString(f.UserID) == userKey && !f.DeletedAt.Valid {
+			allFiles = append(allFiles, f)
+		}
+	}
+
+	totalCount := int64(len(allFiles))
+
+	start := int(arg.Offset)
+	if start >= len(allFiles) {
+		return []db.ListFilesByUserWithCountRow{}, nil
+	}
+	end := start + int(arg.Limit)
+	if end > len(allFiles) {
+		end = len(allFiles)
+	}
+
+	paginated := allFiles[start:end]
+	result := make([]db.ListFilesByUserWithCountRow, len(paginated))
+	for i, f := range paginated {
+		result[i] = db.ListFilesByUserWithCountRow{
+			ID:          f.ID,
+			UserID:      f.UserID,
+			Filename:    f.Filename,
+			ContentType: f.ContentType,
+			SizeBytes:   f.SizeBytes,
+			StorageKey:  f.StorageKey,
+			Status:      f.Status,
+			CreatedAt:   f.CreatedAt,
+			UpdatedAt:   f.UpdatedAt,
+			DeletedAt:   f.DeletedAt,
+			TotalCount:  totalCount,
+		}
+	}
+	return result, nil
 }
 
 func (m *MockQuerier) CountFilesByUser(ctx context.Context, userID pgtype.UUID) (int64, error) {
@@ -231,6 +315,23 @@ func (m *MockQuerier) ListVariantsByFile(ctx context.Context, fileID pgtype.UUID
 	return result, nil
 }
 
+func (m *MockQuerier) GetVariant(ctx context.Context, arg db.GetVariantParams) (db.FileVariant, error) {
+	if m.ListVariantsErr != nil {
+		return db.FileVariant{}, m.ListVariantsErr
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	fileKey := uuidToString(arg.FileID)
+	for _, v := range m.variants {
+		if uuidToString(v.FileID) == fileKey && v.VariantType == arg.VariantType {
+			return v, nil
+		}
+	}
+	return db.FileVariant{}, errors.New("variant not found")
+}
+
 func (m *MockQuerier) GetAPITokenByHash(ctx context.Context, tokenHash string) (db.GetAPITokenByHashRow, error) {
 	return db.GetAPITokenByHashRow{}, errors.New("not implemented in mock")
 }
@@ -240,7 +341,31 @@ func (m *MockQuerier) UpdateAPITokenLastUsed(ctx context.Context, id pgtype.UUID
 }
 
 func (m *MockQuerier) GetFileShareByToken(ctx context.Context, token string) (db.GetFileShareByTokenRow, error) {
-	return db.GetFileShareByTokenRow{}, errors.New("not implemented in mock")
+	if m.GetFileShareByTokenErr != nil {
+		return db.GetFileShareByTokenRow{}, m.GetFileShareByTokenErr
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	share, ok := m.sharesByToken[token]
+	if !ok {
+		return db.GetFileShareByTokenRow{}, errors.New("share not found")
+	}
+
+	// Check expiration
+	if share.ExpiresAt.Valid && share.ExpiresAt.Time.Before(time.Now()) {
+		return db.GetFileShareByTokenRow{}, errors.New("share expired")
+	}
+
+	return share, nil
+}
+
+// AddShareByToken adds a share to the mock for testing CDN handler
+func (m *MockQuerier) AddShareByToken(token string, share db.GetFileShareByTokenRow) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sharesByToken[token] = share
 }
 
 func (m *MockQuerier) IncrementShareAccessCount(ctx context.Context, id pgtype.UUID) error {
@@ -248,11 +373,67 @@ func (m *MockQuerier) IncrementShareAccessCount(ctx context.Context, id pgtype.U
 }
 
 func (m *MockQuerier) GetTransformCache(ctx context.Context, arg db.GetTransformCacheParams) (db.TransformCache, error) {
-	return db.TransformCache{}, errors.New("not implemented in mock")
+	if m.GetTransformCacheErr != nil {
+		return db.TransformCache{}, m.GetTransformCacheErr
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	key := uuidToString(arg.FileID) + ":" + arg.CacheKey
+	cache, ok := m.caches[key]
+	if !ok {
+		return db.TransformCache{}, errors.New("cache not found")
+	}
+	return cache, nil
 }
 
 func (m *MockQuerier) CreateTransformCache(ctx context.Context, arg db.CreateTransformCacheParams) (db.TransformCache, error) {
-	return db.TransformCache{}, errors.New("not implemented in mock")
+	if m.CreateTransformCacheErr != nil {
+		return db.TransformCache{}, m.CreateTransformCacheErr
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	id := uuid.New()
+	pgID := pgtype.UUID{Bytes: id, Valid: true}
+	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+
+	cache := db.TransformCache{
+		ID:              pgID,
+		FileID:          arg.FileID,
+		CacheKey:        arg.CacheKey,
+		TransformParams: arg.TransformParams,
+		StorageKey:      arg.StorageKey,
+		ContentType:     arg.ContentType,
+		SizeBytes:       arg.SizeBytes,
+		Width:           arg.Width,
+		Height:          arg.Height,
+		RequestCount:    1,
+		CreatedAt:       now,
+		LastAccessedAt:  now,
+	}
+
+	key := uuidToString(arg.FileID) + ":" + arg.CacheKey
+	m.caches[key] = cache
+	return cache, nil
+}
+
+// AddTransformCache adds a cache entry for testing
+func (m *MockQuerier) AddTransformCache(cache db.TransformCache) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := uuidToString(cache.FileID) + ":" + cache.CacheKey
+	m.caches[key] = cache
+}
+
+// SetTransformRequestCount sets the request count for testing cache threshold
+func (m *MockQuerier) SetTransformRequestCount(fileID pgtype.UUID, cacheKey string, count int32) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := uuidToString(fileID) + ":" + cacheKey
+	m.requestCounts[key] = count
 }
 
 func (m *MockQuerier) IncrementTransformCacheCount(ctx context.Context, arg db.IncrementTransformCacheCountParams) error {
@@ -260,19 +441,92 @@ func (m *MockQuerier) IncrementTransformCacheCount(ctx context.Context, arg db.I
 }
 
 func (m *MockQuerier) GetTransformRequestCount(ctx context.Context, arg db.GetTransformRequestCountParams) (int32, error) {
-	return 0, nil
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	key := uuidToString(arg.FileID) + ":" + arg.CacheKey
+	return m.requestCounts[key], nil
 }
 
 func (m *MockQuerier) CreateFileShare(ctx context.Context, arg db.CreateFileShareParams) (db.FileShare, error) {
-	return db.FileShare{}, errors.New("not implemented in mock")
+	if m.CreateFileShareErr != nil {
+		return db.FileShare{}, m.CreateFileShareErr
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	id := uuid.New()
+	pgID := pgtype.UUID{Bytes: id, Valid: true}
+	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+
+	share := db.FileShare{
+		ID:                pgID,
+		FileID:            arg.FileID,
+		Token:             arg.Token,
+		ExpiresAt:         arg.ExpiresAt,
+		AllowedTransforms: arg.AllowedTransforms,
+		AccessCount:       0,
+		CreatedAt:         now,
+	}
+
+	m.shares[id.String()] = share
+	return share, nil
 }
 
 func (m *MockQuerier) ListFileSharesByFile(ctx context.Context, fileID pgtype.UUID) ([]db.FileShare, error) {
-	return nil, errors.New("not implemented in mock")
+	if m.ListFileSharesByFileErr != nil {
+		return nil, m.ListFileSharesByFileErr
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	fileKey := uuidToString(fileID)
+	var result []db.FileShare
+	for _, s := range m.shares {
+		if uuidToString(s.FileID) == fileKey {
+			result = append(result, s)
+		}
+	}
+	return result, nil
 }
 
 func (m *MockQuerier) DeleteFileShare(ctx context.Context, arg db.DeleteFileShareParams) error {
-	return errors.New("not implemented in mock")
+	if m.DeleteFileShareErr != nil {
+		return m.DeleteFileShareErr
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	shareKey := uuidToString(arg.ID)
+	share, ok := m.shares[shareKey]
+	if !ok {
+		return errors.New("share not found")
+	}
+
+	// Verify ownership via file
+	fileKey := uuidToString(share.FileID)
+	file, ok := m.files[fileKey]
+	if !ok {
+		return errors.New("file not found")
+	}
+
+	if uuidToString(file.UserID) != uuidToString(arg.UserID) {
+		return errors.New("not authorized")
+	}
+
+	delete(m.shares, shareKey)
+	return nil
+}
+
+// AddShare adds a share to the mock for testing
+func (m *MockQuerier) AddShare(share db.FileShare) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := uuidToString(share.ID)
+	m.shares[key] = share
 }
 
 func (m *MockQuerier) GetUserBillingInfo(ctx context.Context, id pgtype.UUID) (db.GetUserBillingInfoRow, error) {

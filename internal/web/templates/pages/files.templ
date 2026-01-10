@@ -1,9 +1,9 @@
 package pages
 
 import (
-	"github.com/abdul-hamid-achik/file-processor/internal/auth"
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
+	"github.com/abdul-hamid-achik/file.cheap/internal/auth"
+	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/components"
+	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/layouts"
 )
 
 // FileListPageData contains data for the file list page
@@ -35,7 +35,36 @@ templ FileList(user *auth.SessionUser, data FileListPageData) {
 		Title:       "Files",
 		Description: "View and manage your files",
 	}, user) {
-		<div class="py-8">
+		<div
+			class="py-8"
+			x-data="{
+				selectedFiles: [],
+				viewMode: localStorage.getItem('filesViewMode') || 'grid',
+				selectMode: false,
+				setViewMode(mode) {
+					this.viewMode = mode;
+					localStorage.setItem('filesViewMode', mode);
+				},
+				toggleSelect(id) {
+					const idx = this.selectedFiles.indexOf(id);
+					if (idx > -1) {
+						this.selectedFiles.splice(idx, 1);
+					} else {
+						this.selectedFiles.push(id);
+					}
+				},
+				selectAll() {
+					const checkboxes = document.querySelectorAll('[data-file-checkbox]');
+					this.selectedFiles = Array.from(checkboxes).map(cb => cb.value);
+				},
+				deselectAll() {
+					this.selectedFiles = [];
+				},
+				isSelected(id) {
+					return this.selectedFiles.includes(id);
+				}
+			}"
+		>
 			<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 				<!-- Header -->
 				<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
@@ -43,15 +72,54 @@ templ FileList(user *auth.SessionUser, data FileListPageData) {
 						<h1 class="text-2xl font-bold text-nord-5">Files</h1>
 						<p class="text-nord-4 mt-1">{ formatFileCount(data.TotalCount) } total</p>
 					</div>
-					@components.ButtonLink("/upload", components.ButtonProps{
-						Variant: components.ButtonPrimary,
-						Size:    components.ButtonMd,
-					}) {
-						<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-						</svg>
-						Upload Files
-					}
+					<div class="flex items-center gap-3 mt-4 sm:mt-0">
+						<!-- View Toggle -->
+						<div class="flex bg-nord-2 rounded-lg p-1">
+							<button
+								type="button"
+								@click="setViewMode('grid')"
+								:class="viewMode === 'grid' ? 'bg-nord-8 text-nord-0' : 'text-nord-4 hover:text-nord-5'"
+								class="p-2 rounded transition-colors"
+								title="Grid view"
+							>
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
+								</svg>
+							</button>
+							<button
+								type="button"
+								@click="setViewMode('list')"
+								:class="viewMode === 'list' ? 'bg-nord-8 text-nord-0' : 'text-nord-4 hover:text-nord-5'"
+								class="p-2 rounded transition-colors"
+								title="List view"
+							>
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path>
+								</svg>
+							</button>
+						</div>
+						<!-- Select Mode Toggle -->
+						<button
+							type="button"
+							@click="selectMode = !selectMode; if (!selectMode) deselectAll()"
+							:class="selectMode ? 'bg-nord-10 text-nord-0' : 'bg-nord-2 text-nord-4 hover:text-nord-5'"
+							class="p-2 rounded-lg transition-colors"
+							title="Toggle selection mode"
+						>
+							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+							</svg>
+						</button>
+						@components.ButtonLink("/upload", components.ButtonProps{
+							Variant: components.ButtonPrimary,
+							Size:    components.ButtonMd,
+						}) {
+							<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+							</svg>
+							Upload Files
+						}
+					</div>
 				</div>
 				<!-- Search and Filters -->
 				<div class="mb-6">
@@ -80,6 +148,19 @@ templ FileList(user *auth.SessionUser, data FileListPageData) {
 										<option value="failed" selected?={ data.Filter == "failed" }>Failed</option>
 									</select>
 								</div>
+								<div>
+									<select
+										name="sort"
+										class="w-full sm:w-auto px-4 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 focus:outline-none focus:ring-2 focus:ring-nord-8"
+									>
+										<option value="created_desc">Newest first</option>
+										<option value="created_asc">Oldest first</option>
+										<option value="name_asc">Name A-Z</option>
+										<option value="name_desc">Name Z-A</option>
+										<option value="size_desc">Largest first</option>
+										<option value="size_asc">Smallest first</option>
+									</select>
+								</div>
 								@components.Button(components.ButtonProps{
 									Variant: components.ButtonSecondary,
 									Size:    components.ButtonMd,
@@ -90,6 +171,12 @@ templ FileList(user *auth.SessionUser, data FileListPageData) {
 							</form>
 						}
 					}
+				</div>
+				<!-- Selection Controls -->
+				<div x-show="selectMode" x-cloak class="mb-4 flex items-center gap-3">
+					<span class="text-nord-4 text-sm" x-text="selectedFiles.length + ' selected'"></span>
+					<button type="button" @click="selectAll()" class="text-nord-8 text-sm hover:text-nord-7 transition-colors">Select All</button>
+					<button type="button" @click="deselectAll()" class="text-nord-4 text-sm hover:text-nord-5 transition-colors">Clear</button>
 				</div>
 				<!-- File Grid/List -->
 				if len(data.Files) == 0 {
@@ -114,9 +201,20 @@ templ FileList(user *auth.SessionUser, data FileListPageData) {
 						</div>
 					}
 				} else {
-					<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+					<!-- Grid View -->
+					<div x-show="viewMode === 'grid'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
 						for _, file := range data.Files {
-							@fileCard(file)
+							@fileCardSelectable(file)
+						}
+					</div>
+					<!-- List View -->
+					<div x-show="viewMode === 'list'" x-cloak>
+						@components.Card("overflow-hidden") {
+							<div class="divide-y divide-nord-2">
+								for _, file := range data.Files {
+									@fileListRow(file)
+								}
+							</div>
 						}
 					</div>
 					<!-- Pagination -->
@@ -160,6 +258,49 @@ templ FileList(user *auth.SessionUser, data FileListPageData) {
 					}
 				}
 			</div>
+			<!-- Floating Action Bar -->
+			<div
+				x-show="selectedFiles.length > 0"
+				x-cloak
+				x-transition:enter="transition ease-out duration-200"
+				x-transition:enter-start="opacity-0 translate-y-4"
+				x-transition:enter-end="opacity-100 translate-y-0"
+				x-transition:leave="transition ease-in duration-150"
+				x-transition:leave-start="opacity-100 translate-y-0"
+				x-transition:leave-end="opacity-0 translate-y-4"
+				class="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40"
+			>
+				<div class="bg-nord-1 border border-nord-3 rounded-xl shadow-xl px-6 py-3 flex items-center gap-4">
+					<span class="text-nord-5 text-sm font-medium" x-text="selectedFiles.length + ' file' + (selectedFiles.length === 1 ? '' : 's') + ' selected'"></span>
+					<div class="h-5 w-px bg-nord-3"></div>
+					<form method="POST" action="/files/batch/process" class="inline">
+						<template x-for="id in selectedFiles" :key="id">
+							<input type="hidden" name="file_ids" :value="id"/>
+						</template>
+						<input type="hidden" name="action" value="thumbnail"/>
+						<button type="submit" class="px-3 py-1.5 bg-nord-8 text-nord-0 rounded-lg text-sm font-medium hover:bg-nord-7 transition-colors">
+							Process
+						</button>
+					</form>
+					<form method="POST" action="/files/batch/delete" class="inline" onsubmit="return confirm('Are you sure you want to delete ' + document.querySelectorAll('[name=file_ids]').length + ' files?')">
+						<template x-for="id in selectedFiles" :key="id">
+							<input type="hidden" name="file_ids" :value="id"/>
+						</template>
+						<button type="submit" class="px-3 py-1.5 bg-nord-11 text-nord-6 rounded-lg text-sm font-medium hover:bg-nord-11/80 transition-colors">
+							Delete
+						</button>
+					</form>
+					<button
+						type="button"
+						@click="deselectAll()"
+						class="p-1.5 text-nord-4 hover:text-nord-5 transition-colors"
+					>
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+						</svg>
+					</button>
+				</div>
+			</div>
 		</div>
 	}
 }
@@ -198,6 +339,165 @@ templ fileCard(file FileItem) {
 			}
 		}
 	</a>
+}
+
+// fileCardSelectable renders a file card with selection checkbox for batch operations
+templ fileCardSelectable(file FileItem) {
+	<div class="group relative">
+		<!-- Checkbox overlay -->
+		<div
+			x-show="selectMode"
+			class="absolute top-2 left-2 z-10"
+			@click.prevent.stop="toggleSelect($el.querySelector('input').value)"
+		>
+			<input
+				type="checkbox"
+				data-file-checkbox
+				:checked={ "isSelected('" + file.ID + "')" }
+				value={ file.ID }
+				class="w-5 h-5 rounded border-2 border-nord-3 bg-nord-2 text-nord-8 focus:ring-nord-8 cursor-pointer"
+			/>
+		</div>
+		<!-- Hover actions overlay -->
+		<div
+			x-show="!selectMode"
+			class="absolute inset-0 bg-gradient-to-t from-nord-0/90 to-transparent opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none rounded-xl"
+		>
+			<div class="absolute bottom-0 left-0 right-0 p-4 flex justify-center gap-2 pointer-events-auto">
+				<a
+					href={ templ.SafeURL("/files/" + file.ID) }
+					class="px-3 py-1.5 bg-nord-8 text-nord-0 rounded text-xs font-medium hover:bg-nord-7 transition-colors"
+				>
+					View
+				</a>
+				<a
+					href={ templ.SafeURL("/files/" + file.ID + "/download") }
+					download
+					class="px-3 py-1.5 bg-nord-3 text-nord-5 rounded text-xs font-medium hover:bg-nord-2 transition-colors"
+				>
+					Download
+				</a>
+			</div>
+		</div>
+		<a
+			href={ templ.SafeURL("/files/" + file.ID) }
+			:class={ "selectMode ? 'pointer-events-none' : ''" }
+		>
+			@components.Card("hover:border-nord-8 transition-colors h-full") {
+				<div class="aspect-video bg-nord-2 relative overflow-hidden">
+					if file.ThumbnailURL != "" {
+						<img
+							src={ file.ThumbnailURL }
+							alt={ file.Name }
+							class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+						/>
+					} else {
+						<div class="w-full h-full flex items-center justify-center">
+							@fileTypeIconLarge(file.ContentType)
+						</div>
+					}
+					<div class="absolute top-2 right-2">
+						@fileStatusBadge(file.Status)
+					</div>
+				</div>
+				@components.CardBody() {
+					<div class="space-y-2">
+						<h3 class="text-nord-5 font-medium truncate group-hover:text-nord-8 transition-colors">
+							{ file.Name }
+						</h3>
+						<div class="flex items-center justify-between text-sm text-nord-4">
+							<span>{ file.Size }</span>
+							<span>{ file.CreatedAt }</span>
+						</div>
+					</div>
+				}
+			}
+		</a>
+	</div>
+}
+
+// fileListRow renders a compact list view row for a file
+templ fileListRow(file FileItem) {
+	<div
+		class="flex items-center gap-4 p-4 hover:bg-nord-2/50 transition-colors group"
+		:class={ "isSelected('" + file.ID + "') ? 'bg-nord-8/10' : ''" }
+	>
+		<!-- Checkbox -->
+		<div x-show="selectMode" @click.prevent.stop="toggleSelect($el.querySelector('input').value)">
+			<input
+				type="checkbox"
+				data-file-checkbox
+				:checked={ "isSelected('" + file.ID + "')" }
+				value={ file.ID }
+				class="w-4 h-4 rounded border-2 border-nord-3 bg-nord-2 text-nord-8 focus:ring-nord-8 cursor-pointer"
+			/>
+		</div>
+		<!-- Thumbnail -->
+		<div class="w-12 h-12 bg-nord-2 rounded-lg overflow-hidden flex-shrink-0">
+			if file.ThumbnailURL != "" {
+				<img src={ file.ThumbnailURL } alt={ file.Name } class="w-full h-full object-cover"/>
+			} else {
+				<div class="w-full h-full flex items-center justify-center">
+					@fileTypeIconSmall(file.ContentType)
+				</div>
+			}
+		</div>
+		<!-- File info -->
+		<div class="flex-1 min-w-0">
+			<a href={ templ.SafeURL("/files/" + file.ID) } class="text-nord-5 font-medium truncate block hover:text-nord-8 transition-colors">
+				{ file.Name }
+			</a>
+			<p class="text-nord-4 text-sm">{ file.ContentType }</p>
+		</div>
+		<!-- Size -->
+		<div class="text-nord-4 text-sm hidden sm:block w-20 text-right">
+			{ file.Size }
+		</div>
+		<!-- Status -->
+		<div class="hidden md:block">
+			@fileStatusBadge(file.Status)
+		</div>
+		<!-- Date -->
+		<div class="text-nord-4 text-sm hidden lg:block w-28 text-right">
+			{ file.CreatedAt }
+		</div>
+		<!-- Actions -->
+		<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" x-show="!selectMode">
+			<a
+				href={ templ.SafeURL("/files/" + file.ID) }
+				class="p-1.5 text-nord-4 hover:text-nord-8 transition-colors rounded"
+				title="View"
+			>
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+				</svg>
+			</a>
+			<a
+				href={ templ.SafeURL("/files/" + file.ID + "/download") }
+				download
+				class="p-1.5 text-nord-4 hover:text-nord-8 transition-colors rounded"
+				title="Download"
+			>
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+				</svg>
+			</a>
+		</div>
+	</div>
+}
+
+templ fileTypeIconSmall(contentType string) {
+	switch {
+		case contentType == "application/pdf":
+			<svg class="w-6 h-6 text-nord-11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+			</svg>
+		default:
+			<svg class="w-6 h-6 text-nord-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+			</svg>
+	}
 }
 
 templ fileTypeIconLarge(contentType string) {
@@ -314,7 +614,61 @@ type ProcessingJob struct {
 	UpdatedAt string
 }
 
-// FileDetailPage renders the file detail page
+// Helper functions for variant grouping
+func groupVariantsByCategory(variants []FileVariant) map[string][]FileVariant {
+	groups := map[string][]FileVariant{
+		"basic":      {},
+		"responsive": {},
+		"social":     {},
+		"format":     {},
+	}
+	for _, v := range variants {
+		switch v.Type {
+		case "thumbnail":
+			groups["basic"] = append(groups["basic"], v)
+		case "sm", "md", "lg", "xl":
+			groups["responsive"] = append(groups["responsive"], v)
+		case "og", "twitter", "instagram_square", "instagram_portrait", "instagram_story":
+			groups["social"] = append(groups["social"], v)
+		case "webp", "watermarked":
+			groups["format"] = append(groups["format"], v)
+		default:
+			groups["format"] = append(groups["format"], v)
+		}
+	}
+	return groups
+}
+
+func hasAnyProcessingJobs(jobs []ProcessingJob) bool {
+	for _, j := range jobs {
+		if j.Status == "pending" || j.Status == "running" || j.Status == "processing" {
+			return true
+		}
+	}
+	return false
+}
+
+func countResponsiveDone(existingTypes map[string]bool) int {
+	count := 0
+	for _, t := range []string{"sm", "md", "lg", "xl"} {
+		if existingTypes[t] {
+			count++
+		}
+	}
+	return count
+}
+
+func countSocialDone(existingTypes map[string]bool) int {
+	count := 0
+	for _, t := range []string{"og", "twitter", "instagram_square", "instagram_portrait", "instagram_story"} {
+		if existingTypes[t] {
+			count++
+		}
+	}
+	return count
+}
+
+// FileDetailPage renders the file detail page with improved UX
 templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 	@layouts.Base(layouts.PageMeta{
 		Title:       data.File.Name,
@@ -325,9 +679,9 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 				<!-- Breadcrumb -->
 				<nav class="mb-6 text-sm">
 					<ol class="flex items-center gap-2">
-						<li><a href="/files" class="text-nord-4 hover:text-nord-5">Files</a></li>
+						<li><a href="/files" class="text-nord-4 hover:text-nord-5 transition-colors">Files</a></li>
 						<li class="text-nord-4">/</li>
-						<li class="text-nord-5">{ data.File.Name }</li>
+						<li class="text-nord-5 truncate max-w-[200px]">{ data.File.Name }</li>
 					</ol>
 				</nav>
 				if data.Error != "" {
@@ -340,247 +694,435 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 						@components.Alert(components.AlertSuccess, data.Success, true)
 					</div>
 				}
-				<div class="grid lg:grid-cols-3 gap-8">
-					<!-- Main Content -->
-					<div class="lg:col-span-2 space-y-6">
-						<!-- Preview -->
-						@components.Card("") {
-							<div class="aspect-video bg-nord-2 relative overflow-hidden rounded-t-xl">
-								if data.File.ThumbnailURL != "" {
-									<img
-										src={ data.File.ThumbnailURL }
-										alt={ data.File.Name }
-										class="w-full h-full object-contain"
-									/>
-								} else {
-									<div class="w-full h-full flex items-center justify-center">
-										@fileTypeIconLarge(data.File.ContentType)
+				<!-- Status polling container -->
+				<div
+					id="file-status-container"
+					if hasAnyProcessingJobs(data.Jobs) {
+						hx-get={ "/files/" + data.File.ID + "/status" }
+						hx-trigger="every 5s"
+						hx-swap="outerHTML"
+					}
+				>
+					<div class="grid lg:grid-cols-3 gap-8">
+						<!-- Main Content -->
+						<div class="lg:col-span-2 space-y-6">
+							<!-- Preview Card with Lightbox -->
+							@components.Card("") {
+								<div class="aspect-video bg-nord-2 relative overflow-hidden rounded-t-xl">
+									if data.File.ThumbnailURL != "" {
+										@components.Lightbox(data.File.ThumbnailURL, data.File.URL, data.File.Name)
+									} else {
+										<div class="w-full h-full flex items-center justify-center">
+											@fileTypeIconLarge(data.File.ContentType)
+										</div>
+									}
+								</div>
+								@components.CardBody() {
+									<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+										<div class="min-w-0">
+											<h1 class="text-xl font-bold text-nord-5 truncate">{ data.File.Name }</h1>
+											<p class="text-nord-4 text-sm mt-1">
+												{ data.File.ContentType } • { data.File.Size }
+											</p>
+										</div>
+										<div class="flex gap-2 flex-shrink-0">
+											@components.CopyButton(data.File.URL, "URL")
+											<a
+												href={ templ.SafeURL(data.File.URL) }
+												download
+												class="inline-flex items-center px-4 py-2 bg-nord-8 text-nord-0 rounded-lg font-medium hover:bg-nord-7 transition-colors"
+											>
+												<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+												</svg>
+												Download
+											</a>
+										</div>
 									</div>
+								}
+							}
+							<!-- Quick Actions Card (Mobile-friendly) -->
+							<div class="lg:hidden">
+								@components.Card("") {
+									@components.CardBody() {
+										<div class="flex flex-wrap gap-2">
+											if !data.ExistingTypes["thumbnail"] {
+												<button
+													type="button"
+													hx-post={ "/files/" + data.File.ID + "/process" }
+													hx-vals='{"action": "thumbnail"}'
+													hx-target="#process-result"
+													hx-swap="innerHTML"
+													class="flex-1 min-w-[120px] px-4 py-2 bg-nord-8 text-nord-0 rounded-lg text-sm font-medium hover:bg-nord-7 transition-colors"
+												>
+													Generate Thumbnail
+												</button>
+											}
+											if !hasAllResponsive(data.ExistingTypes) {
+												<button
+													type="button"
+													hx-post={ "/files/" + data.File.ID + "/process-bundle" }
+													hx-vals='{"bundle": "responsive"}'
+													hx-target="#process-result"
+													hx-swap="innerHTML"
+													class="flex-1 min-w-[120px] px-4 py-2 bg-nord-10 text-nord-0 rounded-lg text-sm font-medium hover:bg-nord-9 transition-colors"
+												>
+													All Sizes
+												</button>
+											}
+										</div>
+									}
 								}
 							</div>
-							@components.CardBody() {
-								<div class="flex items-center justify-between">
-									<div>
-										<h1 class="text-xl font-bold text-nord-5">{ data.File.Name }</h1>
-										<p class="text-nord-4 text-sm mt-1">
-											{ data.File.ContentType } • { data.File.Size }
-										</p>
-									</div>
-									<div class="flex gap-2">
-										<a
-											href={ templ.SafeURL(data.File.URL) }
-											download
-											class="inline-flex items-center px-4 py-2 bg-nord-8 text-nord-0 rounded-lg font-medium hover:bg-nord-7 transition-colors"
-										>
-											<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
-											</svg>
-											Download
-										</a>
-									</div>
-								</div>
+							<!-- Grouped Variants -->
+							if len(data.Variants) > 0 {
+								@variantsGroupedCard(data.File.ID, data.Variants)
 							}
-						}
-						<!-- Variants -->
-						if len(data.Variants) > 0 {
-							@components.Card("") {
-								@components.CardHeader() {
-									@components.CardTitle("Processed Versions")
-									@components.CardDescription("Download different sizes and formats")
-								}
-								@components.CardBody() {
-									<div class="grid sm:grid-cols-2 gap-4">
-										for _, variant := range data.Variants {
-											<div class="flex items-center justify-between p-4 bg-nord-2 rounded-lg">
-												<div>
-													<p class="text-nord-5 font-medium capitalize">{ variant.Type }</p>
-													<p class="text-nord-4 text-sm">{ variant.Size } • { variant.ContentType }</p>
-												</div>
-												<a
-													href={ templ.SafeURL(variant.URL) }
-													download
-													class="p-2 text-nord-4 hover:text-nord-8 transition-colors"
-													title="Download"
-												>
-													<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+							<!-- Processing History -->
+							if len(data.Jobs) > 0 {
+								@components.Card("") {
+									@components.CardHeader() {
+										<div class="flex items-center justify-between">
+											@components.CardTitle("Processing History")
+											if hasAnyProcessingJobs(data.Jobs) {
+												<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-nord-8/10 text-nord-8">
+													<svg class="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
+														<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+														<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 													</svg>
-												</a>
-											</div>
-										}
-									</div>
-								}
-							}
-						}
-						<!-- Processing Jobs -->
-						if len(data.Jobs) > 0 {
-							@components.Card("") {
-								@components.CardHeader() {
-									@components.CardTitle("Processing History")
-								}
-								@components.CardBody() {
-									<div class="space-y-4">
-										for _, job := range data.Jobs {
-											<div class="flex items-center justify-between p-4 bg-nord-2 rounded-lg">
-												<div class="flex items-center gap-4">
-													@jobStatusIcon(job.Status)
-													<div>
-														<p class="text-nord-5 font-medium capitalize">{ job.Type }</p>
-														<p class="text-nord-4 text-sm">{ job.CreatedAt }</p>
+													In Progress
+												</span>
+											}
+										</div>
+									}
+									@components.CardBody() {
+										<div class="space-y-3">
+											for _, job := range data.Jobs {
+												<div class="flex items-center justify-between p-3 bg-nord-2 rounded-lg">
+													<div class="flex items-center gap-3">
+														@jobStatusIconSmall(job.Status)
+														<div>
+															<p class="text-nord-5 font-medium text-sm capitalize">{ job.Type }</p>
+															<p class="text-nord-4 text-xs">{ job.CreatedAt }</p>
+														</div>
+													</div>
+													<div class="text-right">
+														@jobStatusBadge(job.Status)
+														if job.Error != "" {
+															<p class="text-nord-11 text-xs mt-1 max-w-[150px] truncate" title={ job.Error }>{ job.Error }</p>
+														}
 													</div>
 												</div>
-												<div class="text-right">
-													@jobStatusBadge(job.Status)
-													if job.Error != "" {
-														<p class="text-nord-11 text-xs mt-1">{ job.Error }</p>
-													}
-												</div>
-											</div>
-										}
+											}
+										</div>
+									}
+								}
+							}
+						</div>
+						<!-- Sidebar -->
+						<div class="space-y-6">
+							<!-- Status Card with Real-time Update -->
+							@components.Card("") {
+								@components.CardHeader() {
+									@components.CardTitle("Status")
+								}
+								@components.CardBody() {
+									<div class="flex items-center gap-3">
+										@fileStatusBadge(data.File.Status)
+										<span class="text-nord-4 text-sm">
+											switch data.File.Status {
+												case "completed":
+													All processing complete
+												case "processing":
+													Processing in progress...
+												case "pending":
+													Waiting to process
+												case "failed":
+													Processing failed
+												default:
+													{ data.File.Status }
+											}
+										</span>
 									</div>
 								}
 							}
-						}
-					</div>
-					<!-- Sidebar -->
-					<div class="space-y-6">
-						<!-- Status -->
-						@components.Card("") {
-							@components.CardHeader() {
-								@components.CardTitle("Status")
-							}
-							@components.CardBody() {
-								<div class="flex items-center gap-3">
-									@fileStatusBadge(data.File.Status)
-									<span class="text-nord-4 text-sm">
-										switch data.File.Status {
-											case "completed":
-												All processing complete
-											case "processing":
-												Processing in progress...
-											case "pending":
-												Waiting to process
-											case "failed":
-												Processing failed
-											default:
-												{ data.File.Status }
-										}
-									</span>
-								</div>
-							}
-						}
-						<!-- Metadata -->
-						if len(data.File.Metadata) > 0 {
+							<!-- File Details with Copy -->
 							@components.Card("") {
 								@components.CardHeader() {
-									@components.CardTitle("Metadata")
+									@components.CardTitle("Details")
 								}
 								@components.CardBody() {
 									<dl class="space-y-3">
-										for key, value := range data.File.Metadata {
-											<div>
-												<dt class="text-nord-4 text-sm">{ key }</dt>
-												<dd class="text-nord-5">{ value }</dd>
-											</div>
-										}
+										<div>
+											<dt class="text-nord-4 text-sm">Uploaded</dt>
+											<dd class="text-nord-5">{ data.File.CreatedAt }</dd>
+										</div>
+										<div>
+											<dt class="text-nord-4 text-sm">Last modified</dt>
+											<dd class="text-nord-5">{ data.File.UpdatedAt }</dd>
+										</div>
+										<div>
+											<dt class="text-nord-4 text-sm">File ID</dt>
+											<dd class="flex items-center gap-2">
+												<code class="text-nord-4 font-mono text-xs break-all flex-1">{ data.File.ID }</code>
+												@components.CopyButton(data.File.ID, "ID")
+											</dd>
+										</div>
 									</dl>
 								}
 							}
-						}
-						<!-- File Info -->
-						@components.Card("") {
-							@components.CardHeader() {
-								@components.CardTitle("Details")
+							<!-- Processing Actions with Accordion -->
+							@components.Card("") {
+								@components.CardHeader() {
+									@components.CardTitle("Process File")
+									@components.CardDescription("Generate optimized variants")
+								}
+								@components.CardBody() {
+									<div class="space-y-2" id="process-actions" x-data="{ openSection: 'basic' }">
+										<!-- Basic Processing (Always visible) -->
+										@processingAccordion("basic", "Basic", "", data.ExistingTypes["thumbnail"], false) {
+											@processAction(data.File.ID, "thumbnail", "Thumbnail", "300x300 square crop", data.ExistingTypes["thumbnail"])
+										}
+										<!-- Responsive Sizes -->
+										@processingAccordion("responsive", "Responsive Sizes", formatProgress(countResponsiveDone(data.ExistingTypes), 4), hasAllResponsive(data.ExistingTypes), false) {
+											<div class="flex items-center justify-end mb-2">
+												@bundleButton(data.File.ID, "responsive", "Process All", data.IsPremium, hasAllResponsive(data.ExistingTypes))
+											</div>
+											<div class="space-y-2">
+												@processAction(data.File.ID, "sm", "Small (640w)", "Mobile devices", data.ExistingTypes["sm"])
+												@processAction(data.File.ID, "md", "Medium (1024w)", "Tablets", data.ExistingTypes["md"])
+												@processActionPro(data.File.ID, "lg", "Large (1920w)", "Desktop", data.ExistingTypes["lg"], data.IsPremium)
+												@processActionPro(data.File.ID, "xl", "Extra Large (2560w)", "2K displays", data.ExistingTypes["xl"], data.IsPremium)
+											</div>
+										}
+										<!-- Social Media Presets -->
+										@processingAccordion("social", "Social Media", formatProgress(countSocialDone(data.ExistingTypes), 5), hasAllSocial(data.ExistingTypes), !data.IsPremium) {
+											if !data.IsPremium {
+												<p class="p-2 bg-nord-13/10 border border-nord-13/20 rounded text-xs text-nord-13 mb-3">
+													Social presets require Pro.
+													<a href="/billing" class="underline hover:text-nord-5 ml-1">Upgrade</a>
+												</p>
+											} else {
+												<div class="flex items-center justify-end mb-2">
+													@bundleButton(data.File.ID, "social", "Process All", data.IsPremium, hasAllSocial(data.ExistingTypes))
+												</div>
+											}
+											<div class="space-y-2">
+												@processActionPro(data.File.ID, "og", "Open Graph", "1200x630", data.ExistingTypes["og"], data.IsPremium)
+												@processActionPro(data.File.ID, "twitter", "Twitter Card", "1200x675", data.ExistingTypes["twitter"], data.IsPremium)
+												@processActionPro(data.File.ID, "instagram_square", "Instagram Square", "1080x1080", data.ExistingTypes["instagram_square"], data.IsPremium)
+												@processActionPro(data.File.ID, "instagram_portrait", "Instagram Portrait", "1080x1350", data.ExistingTypes["instagram_portrait"], data.IsPremium)
+												@processActionPro(data.File.ID, "instagram_story", "Instagram Story", "1080x1920", data.ExistingTypes["instagram_story"], data.IsPremium)
+											</div>
+										}
+										<!-- Format & Effects -->
+										@processingAccordion("format", "Format & Effects", "", data.ExistingTypes["webp"] && data.ExistingTypes["watermarked"], false) {
+											<div class="space-y-2">
+												@processActionPro(data.File.ID, "webp", "WebP", "Optimized format", data.ExistingTypes["webp"], data.IsPremium)
+												@processActionWatermark(data.File.ID, data.ExistingTypes["watermarked"], data.IsPremium)
+											</div>
+										}
+									</div>
+									<div id="process-result" class="mt-4"></div>
+								}
 							}
-							@components.CardBody() {
-								<dl class="space-y-3">
-									<div>
-										<dt class="text-nord-4 text-sm">Uploaded</dt>
-										<dd class="text-nord-5">{ data.File.CreatedAt }</dd>
-									</div>
-									<div>
-										<dt class="text-nord-4 text-sm">Last modified</dt>
-										<dd class="text-nord-5">{ data.File.UpdatedAt }</dd>
-									</div>
-									<div>
-										<dt class="text-nord-4 text-sm">File ID</dt>
-										<dd class="text-nord-4 font-mono text-sm break-all">{ data.File.ID }</dd>
-									</div>
-								</dl>
-							}
-						}
-						<!-- Processing Actions -->
-						@components.Card("") {
-							@components.CardHeader() {
-								@components.CardTitle("Process File")
-								@components.CardDescription("Generate optimized variants")
-							}
-							@components.CardBody() {
-								<div class="space-y-4" id="process-actions">
-									<!-- Basic Processing -->
-									<div class="space-y-2">
-										<p class="text-nord-4 text-xs uppercase tracking-wide font-medium">Basic</p>
-										@processAction(data.File.ID, "thumbnail", "Thumbnail", "300x300 square crop", data.ExistingTypes["thumbnail"])
-									</div>
-									<!-- Responsive Sizes -->
-									<div class="space-y-2">
-										<div class="flex items-center justify-between">
-											<p class="text-nord-4 text-xs uppercase tracking-wide font-medium">Responsive</p>
-											@bundleButton(data.File.ID, "responsive", "All Sizes", data.IsPremium, hasAllResponsive(data.ExistingTypes))
-										</div>
-										@processAction(data.File.ID, "sm", "Small (640w)", "Mobile devices", data.ExistingTypes["sm"])
-										@processAction(data.File.ID, "md", "Medium (1024w)", "Tablets", data.ExistingTypes["md"])
-										@processActionPro(data.File.ID, "lg", "Large (1920w)", "Desktop displays", data.ExistingTypes["lg"], data.IsPremium)
-										@processActionPro(data.File.ID, "xl", "Extra Large (2560w)", "2K displays", data.ExistingTypes["xl"], data.IsPremium)
-									</div>
-									<!-- Social Media Presets -->
-									<div class="space-y-2">
-										<div class="flex items-center justify-between">
-											<p class="text-nord-4 text-xs uppercase tracking-wide font-medium flex items-center gap-2">
-												Social Media
-												if !data.IsPremium {
-													<span class="px-1.5 py-0.5 bg-nord-13/20 text-nord-13 text-xs rounded">PRO</span>
-												}
-											</p>
-											@bundleButton(data.File.ID, "social", "All Social", data.IsPremium, hasAllSocial(data.ExistingTypes))
-										</div>
-										@processActionPro(data.File.ID, "og", "Open Graph", "1200x630 - Facebook, LinkedIn", data.ExistingTypes["og"], data.IsPremium)
-										@processActionPro(data.File.ID, "twitter", "Twitter Card", "1200x675 - Twitter/X", data.ExistingTypes["twitter"], data.IsPremium)
-										@processActionPro(data.File.ID, "instagram_square", "Instagram Square", "1080x1080 - Feed posts", data.ExistingTypes["instagram_square"], data.IsPremium)
-										@processActionPro(data.File.ID, "instagram_portrait", "Instagram Portrait", "1080x1350 - Portrait posts", data.ExistingTypes["instagram_portrait"], data.IsPremium)
-										@processActionPro(data.File.ID, "instagram_story", "Instagram Story", "1080x1920 - Stories", data.ExistingTypes["instagram_story"], data.IsPremium)
-									</div>
-									<!-- Format Conversion -->
-									<div class="space-y-2">
-										<p class="text-nord-4 text-xs uppercase tracking-wide font-medium">Format</p>
-										@processActionPro(data.File.ID, "webp", "WebP", "Convert to WebP format", data.ExistingTypes["webp"], data.IsPremium)
-										@processActionWatermark(data.File.ID, data.ExistingTypes["watermarked"], data.IsPremium)
-									</div>
-								</div>
-								<div id="process-result" class="mt-4"></div>
-							}
-						}
-						<!-- Actions -->
-						@components.Card("border-nord-11/30") {
-							@components.CardHeader() {
-								<h3 class="text-lg font-semibold text-nord-11">Danger Zone</h3>
-							}
-							@components.CardBody() {
-								<form action={ templ.SafeURL("/files/" + data.File.ID + "/delete") } method="POST">
+							<!-- Danger Zone -->
+							@components.Card("border-nord-11/30") {
+								@components.CardHeader() {
+									<h3 class="text-lg font-semibold text-nord-11">Danger Zone</h3>
+								}
+								@components.CardBody() {
 									<button
-										type="submit"
-										onclick="return confirm('Are you sure you want to delete this file? This action cannot be undone.')"
+										type="button"
+										@click={ "$dispatch('confirm-action', { id: 'delete-file', action: '/files/" + data.File.ID + "/delete', name: '" + data.File.Name + "' })" }
 										class="w-full px-4 py-2 bg-nord-11/10 text-nord-11 hover:bg-nord-11/20 rounded-lg font-medium transition-colors text-sm"
 									>
 										Delete File
 									</button>
-								</form>
+								}
 							}
-						}
+						</div>
 					</div>
 				</div>
+				<!-- Delete Confirmation Modal -->
+				@components.ConfirmModal("delete-file", "Delete File", "Are you sure you want to delete ", "Delete", components.ConfirmModalDanger)
 			</div>
 		</div>
+	}
+}
+
+// Grouped variants display
+templ variantsGroupedCard(fileID string, variants []FileVariant) {
+	{{ groups := groupVariantsByCategory(variants) }}
+	@components.Card("") {
+		@components.CardHeader() {
+			@components.CardTitle("Processed Versions")
+			@components.CardDescription("Download different sizes and formats")
+		}
+		@components.CardBody() {
+			<div x-data="{ openGroup: 'all' }" class="space-y-4">
+				if len(groups["responsive"]) > 0 {
+					<div>
+						<button
+							@click="openGroup = openGroup === 'responsive' ? 'all' : 'responsive'"
+							class="w-full flex items-center justify-between text-left py-2 text-nord-4 hover:text-nord-5 transition-colors"
+						>
+							<span class="text-xs uppercase tracking-wide font-medium">Responsive Sizes ({ formatInt(len(groups["responsive"])) })</span>
+							<svg class="w-4 h-4 transition-transform" :class="openGroup === 'responsive' || openGroup === 'all' ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+							</svg>
+						</button>
+						<div x-show="openGroup === 'responsive' || openGroup === 'all'" x-collapse class="grid sm:grid-cols-2 gap-2 mt-2">
+							for _, variant := range groups["responsive"] {
+								@variantItem(fileID, variant)
+							}
+						</div>
+					</div>
+				}
+				if len(groups["social"]) > 0 {
+					<div>
+						<button
+							@click="openGroup = openGroup === 'social' ? 'all' : 'social'"
+							class="w-full flex items-center justify-between text-left py-2 text-nord-4 hover:text-nord-5 transition-colors"
+						>
+							<span class="text-xs uppercase tracking-wide font-medium">Social Media ({ formatInt(len(groups["social"])) })</span>
+							<svg class="w-4 h-4 transition-transform" :class="openGroup === 'social' || openGroup === 'all' ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+							</svg>
+						</button>
+						<div x-show="openGroup === 'social' || openGroup === 'all'" x-collapse class="grid sm:grid-cols-2 gap-2 mt-2">
+							for _, variant := range groups["social"] {
+								@variantItem(fileID, variant)
+							}
+						</div>
+					</div>
+				}
+				if len(groups["format"]) > 0 || len(groups["basic"]) > 0 {
+					<div>
+						<button
+							@click="openGroup = openGroup === 'other' ? 'all' : 'other'"
+							class="w-full flex items-center justify-between text-left py-2 text-nord-4 hover:text-nord-5 transition-colors"
+						>
+							<span class="text-xs uppercase tracking-wide font-medium">Other ({ formatInt(len(groups["format"]) + len(groups["basic"])) })</span>
+							<svg class="w-4 h-4 transition-transform" :class="openGroup === 'other' || openGroup === 'all' ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+							</svg>
+						</button>
+						<div x-show="openGroup === 'other' || openGroup === 'all'" x-collapse class="grid sm:grid-cols-2 gap-2 mt-2">
+							for _, variant := range groups["basic"] {
+								@variantItem(fileID, variant)
+							}
+							for _, variant := range groups["format"] {
+								@variantItem(fileID, variant)
+							}
+						</div>
+					</div>
+				}
+			</div>
+		}
+	}
+}
+
+templ variantItem(fileID string, variant FileVariant) {
+	<div class="flex items-center justify-between p-3 bg-nord-2 rounded-lg group">
+		<div class="min-w-0">
+			<p class="text-nord-5 font-medium text-sm capitalize truncate">{ variant.Type }</p>
+			<p class="text-nord-4 text-xs">{ variant.Size }</p>
+		</div>
+		<div class="flex items-center gap-1 opacity-70 group-hover:opacity-100 transition-opacity">
+			@components.CopyButton(variant.URL, "URL")
+			<a
+				href={ templ.SafeURL(variant.URL) }
+				download
+				class="p-1.5 text-nord-4 hover:text-nord-8 transition-colors rounded"
+				title="Download"
+			>
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+				</svg>
+			</a>
+		</div>
+	</div>
+}
+
+// Processing accordion section
+templ processingAccordion(id, title, progress string, allDone, isPro bool) {
+	<div class="border-b border-nord-2 last:border-0">
+		<button
+			type="button"
+			@click={ "openSection = openSection === '" + id + "' ? '' : '" + id + "'" }
+			class="w-full flex items-center justify-between py-3 text-left group"
+		>
+			<div class="flex items-center gap-2">
+				<span class="text-nord-4 text-xs uppercase tracking-wide font-medium group-hover:text-nord-5 transition-colors">{ title }</span>
+				if isPro {
+					<span class="px-1.5 py-0.5 bg-nord-13/20 text-nord-13 text-xs rounded">PRO</span>
+				}
+				if progress != "" {
+					<span class="text-nord-4 text-xs">{ progress }</span>
+				}
+			</div>
+			<div class="flex items-center gap-2">
+				if allDone {
+					<span class="text-nord-14 text-xs flex items-center gap-1">
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+						</svg>
+						Done
+					</span>
+				}
+				<svg
+					class="w-4 h-4 text-nord-4 transition-transform"
+					:class={ "openSection === '" + id + "' ? 'rotate-180' : ''" }
+					fill="none"
+					stroke="currentColor"
+					viewBox="0 0 24 24"
+				>
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+				</svg>
+			</div>
+		</button>
+		<div
+			x-show={ "openSection === '" + id + "'" }
+			x-collapse
+			class="pb-4"
+		>
+			{ children... }
+		</div>
+	</div>
+}
+
+func formatProgress(done, total int) string {
+	return formatInt(done) + "/" + formatInt(total)
+}
+
+templ jobStatusIconSmall(status string) {
+	switch status {
+		case "completed":
+			<div class="w-8 h-8 rounded-full bg-nord-14/10 flex items-center justify-center flex-shrink-0">
+				<svg class="w-4 h-4 text-nord-14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+				</svg>
+			</div>
+		case "processing", "running":
+			<div class="w-8 h-8 rounded-full bg-nord-8/10 flex items-center justify-center flex-shrink-0">
+				<svg class="w-4 h-4 text-nord-8 animate-spin" fill="none" viewBox="0 0 24 24">
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+				</svg>
+			</div>
+		case "failed":
+			<div class="w-8 h-8 rounded-full bg-nord-11/10 flex items-center justify-center flex-shrink-0">
+				<svg class="w-4 h-4 text-nord-11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+				</svg>
+			</div>
+		default:
+			<div class="w-8 h-8 rounded-full bg-nord-3/20 flex items-center justify-center flex-shrink-0">
+				<svg class="w-4 h-4 text-nord-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+				</svg>
+			</div>
 	}
 }
 
@@ -798,4 +1340,92 @@ func hasAllResponsive(existingTypes map[string]bool) bool {
 
 func hasAllSocial(existingTypes map[string]bool) bool {
 	return existingTypes["og"] && existingTypes["twitter"] && existingTypes["instagram_square"] && existingTypes["instagram_portrait"] && existingTypes["instagram_story"]
+}
+
+// FileStatusPartial renders just the status section for HTMX polling updates
+// This is a lightweight partial that returns current processing status
+templ FileStatusPartial(data FileDetailPageData) {
+	{{ groups := groupVariantsByCategory(data.Variants) }}
+	{{ hasProcessing := hasAnyProcessingJobs(data.Jobs) }}
+	<div
+		id="file-status-container"
+		if hasProcessing {
+			hx-get={ "/files/" + data.File.ID + "/status" }
+			hx-trigger="every 5s"
+			hx-swap="outerHTML"
+		}
+	>
+		<!-- Status Summary -->
+		<div class="mb-4 p-3 bg-nord-2 rounded-lg">
+			<div class="flex items-center justify-between">
+				<div class="flex items-center gap-2">
+					if hasProcessing {
+						<svg class="w-4 h-4 text-nord-8 animate-spin" fill="none" viewBox="0 0 24 24">
+							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+						</svg>
+						<span class="text-nord-8 text-sm font-medium">Processing...</span>
+					} else {
+						<svg class="w-4 h-4 text-nord-14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+						</svg>
+						<span class="text-nord-14 text-sm font-medium">Ready</span>
+					}
+				</div>
+				<span class="text-nord-4 text-xs">{ formatInt(len(data.Variants)) } variants</span>
+			</div>
+		</div>
+		<!-- Recent Jobs -->
+		if len(data.Jobs) > 0 {
+			<div class="space-y-2">
+				<p class="text-nord-4 text-xs uppercase tracking-wide">Recent Activity</p>
+				for i, job := range data.Jobs {
+					if i < 3 {
+						<div class="flex items-center gap-3 p-2 bg-nord-2 rounded-lg">
+							@jobStatusIconSmall(job.Status)
+							<div class="flex-1 min-w-0">
+								<p class="text-nord-5 text-sm font-medium capitalize truncate">{ job.Type }</p>
+								<p class="text-nord-4 text-xs">{ job.CreatedAt }</p>
+							</div>
+							@jobStatusBadge(job.Status)
+						</div>
+					}
+				}
+			</div>
+		}
+		<!-- Variants by Category -->
+		if len(data.Variants) > 0 {
+			<div class="mt-4 pt-4 border-t border-nord-2">
+				<p class="text-nord-4 text-xs uppercase tracking-wide mb-3">Variants</p>
+				<div x-data="{ openGroup: 'all' }" class="space-y-3">
+					if len(groups["responsive"]) > 0 {
+						<div class="flex flex-wrap gap-2">
+							for _, v := range groups["responsive"] {
+								<a
+									href={ templ.SafeURL(v.URL) }
+									download
+									class="px-2 py-1 bg-nord-3 text-nord-5 rounded text-xs hover:bg-nord-8 hover:text-nord-0 transition-colors"
+								>
+									{ v.Type }
+								</a>
+							}
+						</div>
+					}
+					if len(groups["social"]) > 0 {
+						<div class="flex flex-wrap gap-2">
+							for _, v := range groups["social"] {
+								<a
+									href={ templ.SafeURL(v.URL) }
+									download
+									class="px-2 py-1 bg-nord-3 text-nord-5 rounded text-xs hover:bg-nord-10 hover:text-nord-0 transition-colors"
+								>
+									{ v.Type }
+								</a>
+							}
+						</div>
+					}
+				</div>
+			</div>
+		}
+	</div>
 }

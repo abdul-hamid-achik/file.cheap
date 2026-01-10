@@ -2,9 +2,9 @@ package pages
 
 import (
 	"fmt"
-	"github.com/abdul-hamid-achik/file-processor/internal/auth"
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
+	"github.com/abdul-hamid-achik/file.cheap/internal/auth"
+	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/components"
+	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/layouts"
 )
 
 // DashboardStats contains dashboard statistics
@@ -118,7 +118,33 @@ templ Dashboard(user *auth.SessionUser, data DashboardPageData) {
 								}
 							</div>
 						} else {
-							<div class="overflow-x-auto">
+							<!-- Mobile: Card Layout -->
+							<div class="md:hidden divide-y divide-nord-2">
+								for _, file := range data.RecentFiles {
+									<a href={ templ.SafeURL("/files/" + file.ID) } class="flex items-center gap-4 p-4 hover:bg-nord-2/50 transition-colors">
+										<div class="w-12 h-12 bg-nord-2 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
+											if file.ThumbnailURL != "" {
+												<img src={ file.ThumbnailURL } alt={ file.Name } class="w-12 h-12 object-cover"/>
+											} else {
+												@fileTypeIcon(file.ContentType)
+											}
+										</div>
+										<div class="flex-1 min-w-0">
+											<p class="text-nord-5 font-medium truncate">{ file.Name }</p>
+											<div class="flex items-center gap-2 mt-1">
+												<span class="text-nord-4 text-sm">{ file.Size }</span>
+												<span class="text-nord-3">•</span>
+												@statusBadge(file.Status)
+											</div>
+										</div>
+										<svg class="w-5 h-5 text-nord-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+										</svg>
+									</a>
+								}
+							</div>
+							<!-- Desktop: Table Layout -->
+							<div class="hidden md:block overflow-x-auto">
 								<table class="w-full">
 									<thead>
 										<tr class="text-left text-sm text-nord-4 border-b border-nord-2">
@@ -134,9 +160,9 @@ templ Dashboard(user *auth.SessionUser, data DashboardPageData) {
 											<tr class="border-b border-nord-2 hover:bg-nord-2/50 transition-colors">
 												<td class="px-6 py-4">
 													<div class="flex items-center gap-3">
-														<div class="w-10 h-10 bg-nord-2 rounded-lg flex items-center justify-center">
+														<div class="w-10 h-10 bg-nord-2 rounded-lg flex items-center justify-center overflow-hidden">
 															if file.ThumbnailURL != "" {
-																<img src={ file.ThumbnailURL } alt={ file.Name } class="w-10 h-10 object-cover rounded-lg"/>
+																<img src={ file.ThumbnailURL } alt={ file.Name } class="w-10 h-10 object-cover"/>
 															} else {
 																@fileTypeIcon(file.ContentType)
 															}
@@ -162,6 +188,15 @@ templ Dashboard(user *auth.SessionUser, data DashboardPageData) {
 															<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 																<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
 																<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+															</svg>
+														</a>
+														<a
+															href={ templ.SafeURL("/files/" + file.ID + "/download") }
+															class="p-2 text-nord-4 hover:text-nord-8 transition-colors"
+															title="Download"
+														>
+															<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+																<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
 															</svg>
 														</a>
 													</div>

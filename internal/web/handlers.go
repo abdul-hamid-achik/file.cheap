@@ -8,15 +8,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/apperror"
-	"github.com/abdul-hamid-achik/file-processor/internal/auth"
-	"github.com/abdul-hamid-achik/file-processor/internal/billing"
-	"github.com/abdul-hamid-achik/file-processor/internal/db"
-	"github.com/abdul-hamid-achik/file-processor/internal/email"
-	"github.com/abdul-hamid-achik/file-processor/internal/logger"
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/pages"
-	"github.com/abdul-hamid-achik/file-processor/internal/worker"
+	"github.com/abdul-hamid-achik/file.cheap/internal/apperror"
+	"github.com/abdul-hamid-achik/file.cheap/internal/auth"
+	"github.com/abdul-hamid-achik/file.cheap/internal/billing"
+	"github.com/abdul-hamid-achik/file.cheap/internal/db"
+	"github.com/abdul-hamid-achik/file.cheap/internal/email"
+	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
+	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/components"
+	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/pages"
+	"github.com/abdul-hamid-achik/file.cheap/internal/worker"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -674,6 +674,27 @@ func (h *Handlers) FileDetail(w http.ResponseWriter, r *http.Request) {
 					thumbnailURL = variantURL
 				}
 				data.ExistingTypes[string(v.VariantType)] = true
+			}
+		}
+
+		// Populate processing jobs history
+		jobs, err := h.cfg.Queries.ListJobsByFileID(r.Context(), pgFileID)
+		if err != nil {
+			log.Error("failed to list jobs", "file_id", fileIDStr, "error", err)
+		} else if len(jobs) > 0 {
+			data.Jobs = make([]pages.ProcessingJob, len(jobs))
+			for i, j := range jobs {
+				errorMsg := ""
+				if j.ErrorMessage != nil {
+					errorMsg = *j.ErrorMessage
+				}
+				data.Jobs[i] = pages.ProcessingJob{
+					ID:        uuidToString(j.ID),
+					Type:      string(j.JobType),
+					Status:    string(j.Status),
+					Error:     errorMsg,
+					CreatedAt: j.CreatedAt.Time.Format("Jan 2, 2006 3:04 PM"),
+				}
 			}
 		}
 
@@ -1645,6 +1666,284 @@ func (h *Handlers) ServerError(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUserFromContext(r.Context())
 	w.WriteHeader(http.StatusInternalServerError)
 	_ = pages.ServerError(user).Render(r.Context(), w)
+}
+
+// FileStatus returns a partial HTML snippet for HTMX polling
+// This provides real-time status updates for file processing
+func (h *Handlers) FileStatus(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
+	user := auth.GetUserFromContext(r.Context())
+	if user == nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	fileIDStr := r.PathValue("id")
+	fileID, err := uuid.Parse(fileIDStr)
+	if err != nil {
+		log.Error("invalid file ID", "file_id", fileIDStr, "error", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if h.cfg.Queries == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	pgFileID := pgtype.UUID{
+		Bytes: fileID,
+		Valid: true,
+	}
+
+	file, err := h.cfg.Queries.GetFile(r.Context(), pgFileID)
+	if err != nil {
+		log.Error("file not found", "file_id", fileIDStr, "error", err)
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	pgUserID := pgtype.UUID{
+		Bytes: user.ID,
+		Valid: true,
+	}
+
+	if file.UserID.Bytes != pgUserID.Bytes {
+		log.Warn("unauthorized file access", "file_id", fileIDStr, "user_id", user.ID.String())
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	isPremium := user.SubscriptionTier == db.SubscriptionTierPro || user.SubscriptionTier == db.SubscriptionTierEnterprise
+	data := pages.FileDetailPageData{
+		File: pages.FileDetail{
+			ID:          fileIDStr,
+			Name:        file.Filename,
+			Size:        formatBytes(file.SizeBytes),
+			ContentType: file.ContentType,
+			Status:      string(file.Status),
+			URL:         "/files/" + fileIDStr + "/download",
+			CreatedAt:   file.CreatedAt.Time.Format("Jan 2, 2006 3:04 PM"),
+			UpdatedAt:   file.UpdatedAt.Time.Format("Jan 2, 2006 3:04 PM"),
+		},
+		Variants:         []pages.FileVariant{},
+		Jobs:             []pages.ProcessingJob{},
+		ExistingTypes:    make(map[string]bool),
+		IsPremium:        isPremium,
+		SubscriptionTier: string(user.SubscriptionTier),
+	}
+
+	// Populate variants
+	variants, err := h.cfg.Queries.ListVariantsByFile(r.Context(), pgFileID)
+	if err == nil && len(variants) > 0 {
+		data.Variants = make([]pages.FileVariant, len(variants))
+		for i, v := range variants {
+			variantURL := "/files/" + fileIDStr + "/download?variant=" + string(v.VariantType)
+			data.Variants[i] = pages.FileVariant{
+				ID:          uuidToString(v.ID),
+				Type:        string(v.VariantType),
+				Size:        formatBytes(v.SizeBytes),
+				URL:         variantURL,
+				ContentType: v.ContentType,
+				CreatedAt:   v.CreatedAt.Time.Format("Jan 2, 2006 3:04 PM"),
+			}
+			data.ExistingTypes[string(v.VariantType)] = true
+		}
+	}
+
+	// Populate jobs
+	jobs, err := h.cfg.Queries.ListJobsByFileID(r.Context(), pgFileID)
+	if err == nil && len(jobs) > 0 {
+		data.Jobs = make([]pages.ProcessingJob, len(jobs))
+		for i, j := range jobs {
+			errorMsg := ""
+			if j.ErrorMessage != nil {
+				errorMsg = *j.ErrorMessage
+			}
+			data.Jobs[i] = pages.ProcessingJob{
+				ID:        uuidToString(j.ID),
+				Type:      string(j.JobType),
+				Status:    string(j.Status),
+				Error:     errorMsg,
+				CreatedAt: j.CreatedAt.Time.Format("Jan 2, 2006 3:04 PM"),
+			}
+		}
+	}
+
+	_ = pages.FileStatusPartial(data).Render(r.Context(), w)
+}
+
+// BatchDeleteFiles handles deleting multiple files at once
+func (h *Handlers) BatchDeleteFiles(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
+	user := auth.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/files?error=invalid_form", http.StatusFound)
+		return
+	}
+
+	fileIDs := r.Form["file_ids"]
+	if len(fileIDs) == 0 {
+		http.Redirect(w, r, "/files?error=no_files_selected", http.StatusFound)
+		return
+	}
+
+	if h.cfg.Queries == nil {
+		http.Redirect(w, r, "/files?error=server_error", http.StatusFound)
+		return
+	}
+
+	pgUserID := pgtype.UUID{
+		Bytes: user.ID,
+		Valid: true,
+	}
+
+	deletedCount := 0
+	for _, fileIDStr := range fileIDs {
+		fileID, err := uuid.Parse(fileIDStr)
+		if err != nil {
+			log.Warn("invalid file ID in batch delete", "file_id", fileIDStr, "error", err)
+			continue
+		}
+
+		pgFileID := pgtype.UUID{
+			Bytes: fileID,
+			Valid: true,
+		}
+
+		// Verify ownership
+		file, err := h.cfg.Queries.GetFile(r.Context(), pgFileID)
+		if err != nil {
+			log.Warn("file not found in batch delete", "file_id", fileIDStr, "error", err)
+			continue
+		}
+
+		if file.UserID.Bytes != pgUserID.Bytes {
+			log.Warn("unauthorized batch delete attempt", "file_id", fileIDStr, "user_id", user.ID.String())
+			continue
+		}
+
+		// Delete variants from storage
+		variants, _ := h.cfg.Queries.ListVariantsByFile(r.Context(), pgFileID)
+		for _, v := range variants {
+			if h.cfg.Storage != nil {
+				_ = h.cfg.Storage.Delete(r.Context(), v.StorageKey)
+			}
+		}
+		_ = h.cfg.Queries.DeleteVariantsByFile(r.Context(), pgFileID)
+
+		// Delete file from storage
+		if h.cfg.Storage != nil {
+			_ = h.cfg.Storage.Delete(r.Context(), file.StorageKey)
+		}
+
+		// Soft delete file record
+		if err := h.cfg.Queries.SoftDeleteFile(r.Context(), pgFileID); err != nil {
+			log.Error("failed to delete file in batch", "file_id", fileIDStr, "error", err)
+			continue
+		}
+
+		deletedCount++
+	}
+
+	log.Info("batch delete completed", "deleted_count", deletedCount, "requested_count", len(fileIDs))
+	http.Redirect(w, r, fmt.Sprintf("/files?success=Deleted %d files", deletedCount), http.StatusFound)
+}
+
+// BatchProcessFiles handles processing multiple files at once
+func (h *Handlers) BatchProcessFiles(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
+	user := auth.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/files?error=invalid_form", http.StatusFound)
+		return
+	}
+
+	fileIDs := r.Form["file_ids"]
+	action := r.FormValue("action")
+
+	if len(fileIDs) == 0 {
+		http.Redirect(w, r, "/files?error=no_files_selected", http.StatusFound)
+		return
+	}
+
+	if action == "" {
+		http.Redirect(w, r, "/files?error=no_action_specified", http.StatusFound)
+		return
+	}
+
+	if h.cfg.Queries == nil || h.cfg.Broker == nil {
+		http.Redirect(w, r, "/files?error=server_error", http.StatusFound)
+		return
+	}
+
+	pgUserID := pgtype.UUID{
+		Bytes: user.ID,
+		Valid: true,
+	}
+
+	queuedCount := 0
+	for _, fileIDStr := range fileIDs {
+		fileID, err := uuid.Parse(fileIDStr)
+		if err != nil {
+			log.Warn("invalid file ID in batch process", "file_id", fileIDStr, "error", err)
+			continue
+		}
+
+		pgFileID := pgtype.UUID{
+			Bytes: fileID,
+			Valid: true,
+		}
+
+		// Verify ownership
+		file, err := h.cfg.Queries.GetFile(r.Context(), pgFileID)
+		if err != nil {
+			log.Warn("file not found in batch process", "file_id", fileIDStr, "error", err)
+			continue
+		}
+
+		if file.UserID.Bytes != pgUserID.Bytes {
+			log.Warn("unauthorized batch process attempt", "file_id", fileIDStr, "user_id", user.ID.String())
+			continue
+		}
+
+		// Create job
+		_, err = h.cfg.Queries.CreateJob(r.Context(), db.CreateJobParams{
+			FileID:   pgFileID,
+			JobType:  db.JobType(action),
+			Priority: 0,
+		})
+		if err != nil {
+			log.Error("failed to create job in batch process", "file_id", fileIDStr, "action", action, "error", err)
+			continue
+		}
+
+		// Enqueue job
+		payload := map[string]interface{}{
+			"file_id": fileIDStr,
+			"user_id": user.ID.String(),
+		}
+		_, err = h.cfg.Broker.Enqueue(action, payload)
+		if err != nil {
+			log.Error("failed to enqueue job in batch process", "file_id", fileIDStr, "action", action, "error", err)
+			continue
+		}
+
+		queuedCount++
+	}
+
+	log.Info("batch process completed", "queued_count", queuedCount, "requested_count", len(fileIDs), "action", action)
+	http.Redirect(w, r, fmt.Sprintf("/files?success=Processing %d files", queuedCount), http.StatusFound)
 }
 
 func uuidToString(id pgtype.UUID) string {

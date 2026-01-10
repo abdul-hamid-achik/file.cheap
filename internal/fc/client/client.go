@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/fc/version"
+	"github.com/abdul-hamid-achik/file.cheap/internal/fc/version"
 )
 
 type Client struct {
@@ -97,44 +97,55 @@ func (c *Client) Upload(ctx context.Context, filePath string, transforms []strin
 	}
 	defer func() { _ = file.Close() }()
 
-	stat, err := file.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat file: %w", err)
-	}
+	// Use io.Pipe for streaming - avoids buffering entire file in memory
+	pr, pw := io.Pipe()
+	writer := multipart.NewWriter(pw)
 
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
+	// Channel to collect any errors from the writing goroutine
+	errCh := make(chan error, 1)
 
-	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
-	if err != nil {
-		return nil, err
-	}
+	// Write the multipart form in a separate goroutine
+	go func() {
+		defer func() { _ = pw.Close() }()
 
-	if _, err := io.Copy(part, file); err != nil {
-		return nil, err
-	}
-
-	for _, t := range transforms {
-		if err := writer.WriteField("transforms", t); err != nil {
-			return nil, err
+		part, err := writer.CreateFormFile("file", filepath.Base(filePath))
+		if err != nil {
+			errCh <- err
+			return
 		}
-	}
 
-	if wait {
-		if err := writer.WriteField("wait", "true"); err != nil {
-			return nil, err
+		if _, err := io.Copy(part, file); err != nil {
+			errCh <- err
+			return
 		}
-	}
 
-	if err := writer.Close(); err != nil {
-		return nil, err
-	}
+		for _, t := range transforms {
+			if err := writer.WriteField("transforms", t); err != nil {
+				errCh <- err
+				return
+			}
+		}
 
-	resp, err := c.doRequest(ctx, http.MethodPost, "/api/v1/upload", &buf, writer.FormDataContentType())
+		if wait {
+			if err := writer.WriteField("wait", "true"); err != nil {
+				errCh <- err
+				return
+			}
+		}
+
+		errCh <- writer.Close()
+	}()
+
+	resp, err := c.doRequest(ctx, http.MethodPost, "/api/v1/upload", pr, writer.FormDataContentType())
 	if err != nil {
 		return nil, fmt.Errorf("upload failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	// Check for write errors from the goroutine
+	if writeErr := <-errCh; writeErr != nil {
+		return nil, fmt.Errorf("failed to write multipart form: %w", writeErr)
+	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
 		return nil, c.parseError(resp)
@@ -149,7 +160,6 @@ func (c *Client) Upload(ctx context.Context, filePath string, transforms []strin
 		result.URL = fmt.Sprintf("%s/cdn/%s/_/%s", c.baseURL, result.ID, filepath.Base(filePath))
 	}
 
-	_ = stat
 	return &result, nil
 }
 

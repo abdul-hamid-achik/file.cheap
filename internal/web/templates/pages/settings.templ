@@ -1,9 +1,9 @@
 package pages
 
 import (
-	"github.com/abdul-hamid-achik/file-processor/internal/auth"
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
+	"github.com/abdul-hamid-achik/file.cheap/internal/auth"
+	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/components"
+	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/layouts"
 )
 
 // SettingsPageData contains data for the settings page
@@ -38,13 +38,21 @@ func getTabInitScript(activeTab string) string {
 	if activeTab == "" {
 		activeTab = "security"
 	}
-	return "{ activeTab: '" + activeTab + "' }"
-}
-
-script copyToClipboard(token string) {
-	navigator.clipboard.writeText(token).then(() => {
-		alert('Token copied to clipboard!');
-	});
+	return `{
+		activeTab: window.location.hash ? window.location.hash.substring(1) : '` + activeTab + `',
+		init() {
+			window.addEventListener('hashchange', () => {
+				const hash = window.location.hash.substring(1);
+				if (['security', 'notifications', 'files', 'api'].includes(hash)) {
+					this.activeTab = hash;
+				}
+			});
+		},
+		setTab(tab) {
+			this.activeTab = tab;
+			window.location.hash = tab;
+		}
+	}`
 }
 
 // Settings renders the user settings page
@@ -76,51 +84,45 @@ templ Settings(user *auth.SessionUser, data SettingsPageData) {
 						<p class="text-nord-4 text-sm mb-3">Copy this token now. You won't be able to see it again!</p>
 						<div class="flex items-center gap-2">
 							<code class="flex-1 px-3 py-2 bg-nord-2 rounded text-nord-5 font-mono text-sm break-all">{ data.NewToken }</code>
-							<button
-								type="button"
-								onclick={ copyToClipboard(data.NewToken) }
-								class="px-3 py-2 bg-nord-8 text-nord-0 rounded text-sm font-medium hover:bg-nord-7 transition-colors"
-							>
-								Copy
-							</button>
+							@components.CopyButton(data.NewToken, "Copy Token")
 						</div>
 					</div>
 				}
 				<div x-data={ getTabInitScript(data.ActiveTab) }>
 					<!-- Tab Navigation -->
-					<div class="mb-6 border-b border-nord-2">
-						<nav class="flex gap-8">
+					<div class="mb-6 border-b border-nord-2 overflow-x-auto">
+						<nav class="flex gap-4 sm:gap-8 min-w-max">
 							<button
-								@click="activeTab = 'security'"
+								@click="setTab('security')"
 								:class="activeTab === 'security' ? 'border-nord-8 text-nord-8' : 'border-transparent text-nord-4 hover:text-nord-5'"
-								class="pb-4 border-b-2 font-medium transition-colors"
+								class="pb-4 border-b-2 font-medium transition-colors whitespace-nowrap"
 							>
 								Security
 							</button>
 							<button
-								@click="activeTab = 'notifications'"
+								@click="setTab('notifications')"
 								:class="activeTab === 'notifications' ? 'border-nord-8 text-nord-8' : 'border-transparent text-nord-4 hover:text-nord-5'"
-								class="pb-4 border-b-2 font-medium transition-colors"
+								class="pb-4 border-b-2 font-medium transition-colors whitespace-nowrap"
 							>
 								Notifications
 							</button>
 							<button
-								@click="activeTab = 'files'"
+								@click="setTab('files')"
 								:class="activeTab === 'files' ? 'border-nord-8 text-nord-8' : 'border-transparent text-nord-4 hover:text-nord-5'"
-								class="pb-4 border-b-2 font-medium transition-colors"
+								class="pb-4 border-b-2 font-medium transition-colors whitespace-nowrap"
 							>
 								Files
 							</button>
 							<button
-								@click="activeTab = 'api'"
+								@click="setTab('api')"
 								:class="activeTab === 'api' ? 'border-nord-8 text-nord-8' : 'border-transparent text-nord-4 hover:text-nord-5'"
-								class="pb-4 border-b-2 font-medium transition-colors"
+								class="pb-4 border-b-2 font-medium transition-colors whitespace-nowrap"
 							>
 								API
 							</button>
 							<a
 								href="/billing"
-								class="pb-4 border-b-2 font-medium transition-colors border-transparent text-nord-4 hover:text-nord-5"
+								class="pb-4 border-b-2 font-medium transition-colors border-transparent text-nord-4 hover:text-nord-5 whitespace-nowrap"
 							>
 								Billing
 							</a>
@@ -192,8 +194,8 @@ templ Settings(user *auth.SessionUser, data SettingsPageData) {
 										<p class="text-nord-5 font-medium">Authenticator App</p>
 										<p class="text-nord-4 text-sm">Use an authenticator app to generate one-time codes</p>
 									</div>
-									<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-nord-3/20 text-nord-4">
-										Coming Soon
+									<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-nord-10/20 text-nord-10">
+										Planned
 									</span>
 								</div>
 							}
@@ -324,7 +326,7 @@ templ Settings(user *auth.SessionUser, data SettingsPageData) {
 									</div>
 									<button
 										type="button"
-										onclick="document.getElementById('new-token-modal').classList.remove('hidden')"
+										@click="$dispatch('open-modal', 'new-token-modal')"
 										class="inline-flex items-center px-3 py-1.5 bg-nord-8 text-nord-0 rounded-lg text-sm font-medium hover:bg-nord-7 transition-colors"
 									>
 										<svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -347,25 +349,24 @@ templ Settings(user *auth.SessionUser, data SettingsPageData) {
 									<div class="space-y-4">
 										for _, token := range data.APITokens {
 											<div class="flex items-center justify-between p-4 bg-nord-2 rounded-lg">
-												<div>
-													<p class="text-nord-5 font-medium">{ token.Name }</p>
-													<div class="flex items-center gap-4 text-nord-4 text-sm mt-1">
+												<div class="min-w-0 flex-1">
+													<p class="text-nord-5 font-medium truncate">{ token.Name }</p>
+													<div class="flex flex-wrap items-center gap-2 sm:gap-4 text-nord-4 text-sm mt-1">
 														<span class="font-mono">{ token.Prefix }...</span>
-														<span>Last used: { token.LastUsed }</span>
+														<span class="hidden sm:inline">Last used: { token.LastUsed }</span>
 														<span>Created: { token.CreatedAt }</span>
 													</div>
 												</div>
-												<form action={ templ.SafeURL("/settings/tokens/" + token.ID + "/delete") } method="POST">
-													<button
-														type="submit"
-														class="text-nord-4 hover:text-nord-11 transition-colors"
-														title="Delete token"
-													>
-														<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-														</svg>
-													</button>
-												</form>
+												<button
+													type="button"
+													@click={ "$dispatch('confirm-action', { id: 'delete-token', action: '/settings/tokens/" + token.ID + "/delete', name: '" + token.Name + "' })" }
+													class="text-nord-4 hover:text-nord-11 transition-colors p-2 flex-shrink-0"
+													title="Delete token"
+												>
+													<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+													</svg>
+												</button>
 											</div>
 										}
 									</div>
@@ -390,43 +391,35 @@ templ Settings(user *auth.SessionUser, data SettingsPageData) {
 						}
 					</div>
 				</div>
-				<!-- New Token Modal -->
-				<div id="new-token-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
-					<div class="flex items-center justify-center min-h-screen px-4">
-						<div class="fixed inset-0 bg-nord-0/80" onclick="document.getElementById('new-token-modal').classList.add('hidden')"></div>
-						<div class="relative bg-nord-1 rounded-xl p-6 max-w-md w-full border border-nord-2">
-							<h3 class="text-xl font-bold text-nord-5 mb-2">Create API Token</h3>
-							<p class="text-nord-4 mb-4">
-								Give your token a name to help you remember what it's used { "for" }.
-							</p>
-							<form action="/settings/tokens" method="POST" class="space-y-4">
-								@components.FormField("Token Name", components.InputProps{
-									Type:        "text",
-									Name:        "name",
-									ID:          "token_name",
-									Placeholder: "e.g., Production Server",
-									Required:    true,
-								})
-								<div class="flex gap-3 justify-end">
-									<button
-										type="button"
-										onclick="document.getElementById('new-token-modal').classList.add('hidden')"
-										class="px-4 py-2 bg-nord-2 text-nord-4 hover:text-nord-5 rounded-lg font-medium transition-colors"
-									>
-										Cancel
-									</button>
-									@components.Button(components.ButtonProps{
-										Variant: components.ButtonPrimary,
-										Size:    components.ButtonMd,
-										Type:    "submit",
-									}) {
-										Create Token
-									}
-								</div>
-							</form>
-						</div>
-					</div>
-				</div>
+				<!-- New Token Modal (Alpine.js) -->
+				@components.Modal(components.ModalProps{
+					ID:          "new-token-modal",
+					Title:       "Create API Token",
+					Description: "Give your token a name to help you remember what it's used for.",
+					Size:        "md",
+				}) {
+					<form action="/settings/tokens" method="POST" class="space-y-4">
+						@components.FormField("Token Name", components.InputProps{
+							Type:        "text",
+							Name:        "name",
+							ID:          "token_name",
+							Placeholder: "e.g., Production Server",
+							Required:    true,
+						})
+						@components.ModalFooter() {
+							@components.ModalCancelButton("new-token-modal")
+							@components.Button(components.ButtonProps{
+								Variant: components.ButtonPrimary,
+								Size:    components.ButtonMd,
+								Type:    "submit",
+							}) {
+								Create Token
+							}
+						}
+					</form>
+				}
+				<!-- Delete Token Confirmation -->
+				@components.ConfirmModal("delete-token", "Delete API Token", "Are you sure you want to delete this token? Any applications using it will lose access.", "Delete Token", components.ConfirmModalDanger)
 			</div>
 		</div>
 	}

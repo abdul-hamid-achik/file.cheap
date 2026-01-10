@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/db"
-	"github.com/abdul-hamid-achik/file-processor/internal/processor"
-	"github.com/abdul-hamid-achik/file-processor/internal/storage"
+	"github.com/abdul-hamid-achik/file.cheap/internal/db"
+	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
+	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )

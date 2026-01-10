@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/storage"
+	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
 )
 
 type InstrumentedStorage struct {

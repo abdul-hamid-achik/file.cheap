@@ -1,7 +1,7 @@
 package worker
 
 import (
-	"github.com/abdul-hamid-achik/file-processor/internal/presets"
+	"github.com/abdul-hamid-achik/file.cheap/internal/presets"
 	"github.com/google/uuid"
 )
 
