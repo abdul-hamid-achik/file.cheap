@@ -181,5 +181,8 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 	fs := http.FileServer(http.Dir("static"))
 	mux.Handle("GET /static/", http.StripPrefix("/static/", fs))
 
+	// Public embed route (no auth required)
+	mux.HandleFunc("GET /embed/{id}", h.VideoEmbed)
+
 	return mux
 }

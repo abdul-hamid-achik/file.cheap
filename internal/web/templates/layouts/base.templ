@@ -2,6 +2,7 @@ package layouts
 
 import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/auth"
+	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/components"
 	"strconv"
 	"time"
 )
@@ -54,6 +55,7 @@ templ Base(meta PageMeta, user *auth.SessionUser) {
 			</script>
 			<script src="https://unpkg.com/htmx.org@2.0.4"></script>
 			<script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+			@components.VideoPlayerScript()
 			<style>
 				.htmx-request .htmx-indicator { opacity: 1; }
 				.htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }

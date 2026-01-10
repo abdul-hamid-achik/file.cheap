@@ -142,3 +142,47 @@ type UploadSummary struct {
 	Total      int            `json:"total"`
 	Successful int            `json:"successful"`
 }
+
+// Video types
+
+type VideoTranscodeRequest struct {
+	Resolutions []int  `json:"resolutions,omitempty"` // e.g., [360, 720, 1080]
+	Format      string `json:"format,omitempty"`      // mp4, webm
+	Preset      string `json:"preset,omitempty"`      // ultrafast, fast, medium, slow
+	Thumbnail   bool   `json:"thumbnail,omitempty"`   // extract thumbnail
+}
+
+type VideoTranscodeResponse struct {
+	FileID string   `json:"file_id"`
+	Jobs   []string `json:"jobs"`
+}
+
+type ChunkedUploadInitRequest struct {
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	TotalSize   int64  `json:"total_size"`
+}
+
+type ChunkedUploadInitResponse struct {
+	UploadID    string `json:"upload_id"`
+	ChunkSize   int64  `json:"chunk_size"`
+	ChunksTotal int    `json:"chunks_total"`
+}
+
+type ChunkedUploadStatusResponse struct {
+	UploadID     string `json:"upload_id"`
+	Filename     string `json:"filename"`
+	TotalSize    int64  `json:"total_size"`
+	ChunksTotal  int    `json:"chunks_total"`
+	ChunksLoaded int    `json:"chunks_loaded"`
+	Complete     bool   `json:"complete"`
+}
+
+type ChunkedUploadChunkResponse struct {
+	UploadID     string `json:"upload_id"`
+	ChunkIndex   int    `json:"chunk_index"`
+	ChunksLoaded int    `json:"chunks_loaded"`
+	ChunksTotal  int    `json:"chunks_total"`
+	Complete     bool   `json:"complete"`
+	FileID       string `json:"file_id,omitempty"`
+}

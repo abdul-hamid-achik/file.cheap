@@ -1,0 +1,88 @@
+package pages
+
+import "github.com/abdul-hamid-achik/file.cheap/internal/web/templates/components"
+
+type VideoEmbedData struct {
+	VideoID   string
+	StreamURL string
+	PosterURL string
+	Title     string
+	Error     string
+}
+
+templ VideoEmbedPage(data VideoEmbedData) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>{ data.Title } - file.cheap</title>
+			<script src="https://cdn.tailwindcss.com"></script>
+			<script>
+				tailwind.config = {
+					theme: {
+						extend: {
+							colors: {
+								nord: {
+									0: '#2E3440',
+									1: '#3B4252',
+									2: '#434C5E',
+									3: '#4C566A',
+									4: '#D8DEE9',
+									5: '#E5E9F0',
+									6: '#ECEFF4',
+									7: '#8FBCBB',
+									8: '#88C0D0',
+									9: '#81A1C1',
+									10: '#5E81AC',
+									11: '#BF616A',
+									12: '#D08770',
+									13: '#EBCB8B',
+									14: '#A3BE8C',
+									15: '#B48EAD',
+								}
+							}
+						}
+					}
+				}
+			</script>
+			@components.VideoPlayerScript()
+			<style>
+				html, body {
+					margin: 0;
+					padding: 0;
+					height: 100%;
+					background: #2E3440;
+				}
+				.video-container {
+					width: 100%;
+					height: 100%;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+				}
+			</style>
+		</head>
+		<body>
+			<div class="video-container">
+				if data.Error != "" {
+					<div class="text-center p-8">
+						<svg class="w-16 h-16 mx-auto text-nord-11 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+						</svg>
+						<p class="text-nord-4">{ data.Error }</p>
+					</div>
+				} else {
+					@components.VideoPlayer(components.VideoPlayerProps{
+						VideoID:      data.VideoID,
+						StreamURL:    data.StreamURL,
+						PosterURL:    data.PosterURL,
+						Title:        data.Title,
+						ShowControls: true,
+						AspectRatio:  "16:9",
+					})
+				}
+			</div>
+		</body>
+	</html>
+}

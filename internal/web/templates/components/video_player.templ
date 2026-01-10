@@ -1,0 +1,418 @@
+package components
+
+import "fmt"
+
+// VideoPlayerProps contains all the configuration for the video player
+type VideoPlayerProps struct {
+	VideoID      string   // Unique ID for the video element
+	StreamURL    string   // HLS manifest URL (.m3u8) or MP4 URL
+	PosterURL    string   // Thumbnail image URL
+	Title        string   // Video title for accessibility
+	Autoplay     bool     // Auto-play on load
+	Muted        bool     // Start muted
+	Loop         bool     // Loop video
+	Qualities    []int    // Available quality options (e.g., 360, 720, 1080)
+	ShowControls bool     // Show player controls
+	AspectRatio  string   // "16:9", "4:3", "1:1", etc.
+}
+
+// DefaultVideoPlayerProps returns sensible defaults
+func DefaultVideoPlayerProps() VideoPlayerProps {
+	return VideoPlayerProps{
+		ShowControls: true,
+		AspectRatio:  "16:9",
+		Qualities:    []int{360, 720, 1080},
+	}
+}
+
+// VideoPlayer renders a Plyr video player with HLS.js support
+templ VideoPlayer(props VideoPlayerProps) {
+	<div
+		class="video-player-container relative rounded-lg overflow-hidden bg-nord-0"
+		x-data={ fmt.Sprintf("videoPlayer('%s', '%s')", props.VideoID, props.StreamURL) }
+		x-init="init()"
+	>
+		<!-- Video element -->
+		<video
+			id={ props.VideoID }
+			class="w-full"
+			if props.PosterURL != "" {
+				poster={ props.PosterURL }
+			}
+			if props.Autoplay {
+				autoplay
+			}
+			if props.Muted {
+				muted
+			}
+			if props.Loop {
+				loop
+			}
+			playsinline
+			crossorigin
+			aria-label={ props.Title }
+		>
+			<!-- Fallback for browsers that don't support HLS natively -->
+			<source src={ props.StreamURL } type="video/mp4"/>
+			Your browser does not support the video tag.
+		</video>
+
+		<!-- Loading overlay -->
+		<div
+			x-show="loading"
+			class="absolute inset-0 flex items-center justify-center bg-nord-0/80"
+		>
+			<div class="flex flex-col items-center gap-2">
+				<svg class="animate-spin h-10 w-10 text-nord-8" fill="none" viewBox="0 0 24 24">
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+				</svg>
+				<span class="text-nord-4 text-sm">Loading video...</span>
+			</div>
+		</div>
+
+		<!-- Error overlay -->
+		<div
+			x-show="error"
+			class="absolute inset-0 flex items-center justify-center bg-nord-0/90"
+		>
+			<div class="flex flex-col items-center gap-3 text-center p-4">
+				<svg class="h-12 w-12 text-nord-11" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.072 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+				</svg>
+				<span class="text-nord-4" x-text="errorMessage || 'Failed to load video'"></span>
+				<button
+					@click="retry()"
+					class="px-4 py-2 bg-nord-8 text-nord-0 rounded-lg hover:bg-nord-7 transition-colors"
+				>
+					Retry
+				</button>
+			</div>
+		</div>
+	</div>
+}
+
+// VideoPlayerLightbox wraps the video player in a lightbox modal
+templ VideoPlayerLightbox(props VideoPlayerProps, thumbnailURL string) {
+	<div x-data="{ open: false }" class="relative">
+		<!-- Thumbnail trigger -->
+		<button
+			type="button"
+			@click="open = true"
+			class="relative cursor-pointer group focus:outline-none focus:ring-2 focus:ring-nord-8 rounded-lg overflow-hidden w-full"
+		>
+			<div class="relative">
+				<img
+					src={ thumbnailURL }
+					alt={ props.Title }
+					class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+				/>
+				<!-- Play button overlay -->
+				<div class="absolute inset-0 flex items-center justify-center bg-nord-0/40 group-hover:bg-nord-0/50 transition-colors">
+					<div class="w-16 h-16 rounded-full bg-nord-8/90 flex items-center justify-center group-hover:bg-nord-7 transition-colors shadow-lg">
+						<svg class="w-8 h-8 text-nord-0 ml-1" fill="currentColor" viewBox="0 0 24 24">
+							<path d="M8 5v14l11-7z"/>
+						</svg>
+					</div>
+				</div>
+				<!-- Video indicator badge -->
+				<div class="absolute bottom-2 right-2 bg-nord-0/80 px-2 py-1 rounded text-xs text-nord-4 flex items-center gap-1">
+					<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+					</svg>
+					Video
+				</div>
+			</div>
+		</button>
+
+		<!-- Lightbox modal -->
+		<template x-teleport="body">
+			<div
+				x-show="open"
+				x-cloak
+				x-transition:enter="transition ease-out duration-200"
+				x-transition:enter-start="opacity-0"
+				x-transition:enter-end="opacity-100"
+				x-transition:leave="transition ease-in duration-150"
+				x-transition:leave-start="opacity-100"
+				x-transition:leave-end="opacity-0"
+				@keydown.escape.window="open = false"
+				class="fixed inset-0 z-50 bg-nord-0/95 flex items-center justify-center p-4"
+				role="dialog"
+				aria-modal="true"
+				aria-label={ "Video: " + props.Title }
+			>
+				<!-- Close button -->
+				<button
+					type="button"
+					@click="open = false"
+					class="absolute top-4 right-4 p-2 text-nord-4 hover:text-nord-5 transition-colors focus:outline-none focus:ring-2 focus:ring-nord-8 rounded-lg z-10"
+					aria-label="Close video"
+				>
+					<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+					</svg>
+				</button>
+
+				<!-- Video container -->
+				<div
+					@click.stop
+					class="w-full max-w-5xl"
+					x-show="open"
+					x-transition:enter="transition ease-out duration-200 delay-75"
+					x-transition:enter-start="opacity-0 scale-95"
+					x-transition:enter-end="opacity-100 scale-100"
+				>
+					@VideoPlayer(props)
+				</div>
+			</div>
+		</template>
+	</div>
+}
+
+// VideoPlayerScript outputs the necessary JavaScript for the video player
+// This should be included once in the page head or before </body>
+templ VideoPlayerScript() {
+	<!-- Plyr CSS -->
+	<link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css"/>
+
+	<!-- HLS.js for adaptive streaming -->
+	<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js"></script>
+
+	<!-- Plyr player -->
+	<script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+
+	<script>
+		// Alpine.js component for video player
+		document.addEventListener('alpine:init', () => {
+			Alpine.data('videoPlayer', (videoId, streamUrl) => ({
+				player: null,
+				hls: null,
+				loading: true,
+				error: false,
+				errorMessage: '',
+
+				init() {
+					this.$nextTick(() => {
+						this.setupPlayer();
+					});
+				},
+
+				setupPlayer() {
+					const video = document.getElementById(videoId);
+					if (!video) {
+						console.error('Video element not found:', videoId);
+						return;
+					}
+
+					// Check if this is an HLS stream
+					const isHLS = streamUrl.includes('.m3u8');
+
+					if (isHLS && Hls.isSupported()) {
+						// Use HLS.js for browsers that don't natively support HLS
+						this.hls = new Hls({
+							enableWorker: true,
+							lowLatencyMode: true,
+						});
+
+						this.hls.loadSource(streamUrl);
+						this.hls.attachMedia(video);
+
+						this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
+							this.loading = false;
+							this.initPlyr(video);
+						});
+
+						this.hls.on(Hls.Events.ERROR, (event, data) => {
+							if (data.fatal) {
+								switch (data.type) {
+									case Hls.ErrorTypes.NETWORK_ERROR:
+										this.errorMessage = 'Network error - please check your connection';
+										this.hls.startLoad();
+										break;
+									case Hls.ErrorTypes.MEDIA_ERROR:
+										this.errorMessage = 'Media error - attempting recovery';
+										this.hls.recoverMediaError();
+										break;
+									default:
+										this.error = true;
+										this.errorMessage = 'Unable to play this video';
+										this.hls.destroy();
+										break;
+								}
+							}
+						});
+					} else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+						// Native HLS support (Safari)
+						video.src = streamUrl;
+						video.addEventListener('loadedmetadata', () => {
+							this.loading = false;
+							this.initPlyr(video);
+						});
+						video.addEventListener('error', () => {
+							this.error = true;
+							this.errorMessage = 'Failed to load video';
+						});
+					} else {
+						// Regular MP4 video
+						video.src = streamUrl;
+						video.addEventListener('loadeddata', () => {
+							this.loading = false;
+							this.initPlyr(video);
+						});
+						video.addEventListener('error', () => {
+							this.error = true;
+							this.errorMessage = 'Failed to load video';
+						});
+					}
+				},
+
+				initPlyr(video) {
+					// Initialize Plyr with custom options
+					this.player = new Plyr(video, {
+						controls: [
+							'play-large',
+							'play',
+							'progress',
+							'current-time',
+							'mute',
+							'volume',
+							'captions',
+							'settings',
+							'pip',
+							'airplay',
+							'fullscreen'
+						],
+						settings: ['quality', 'speed'],
+						quality: {
+							default: 720,
+							options: [1080, 720, 480, 360]
+						},
+						speed: {
+							selected: 1,
+							options: [0.5, 0.75, 1, 1.25, 1.5, 2]
+						},
+						tooltips: { controls: true, seek: true },
+						keyboard: { focused: true, global: true },
+						fullscreen: { enabled: true, fallback: true, iosNative: true }
+					});
+
+					// Apply Nord theme colors
+					this.applyNordTheme();
+				},
+
+				applyNordTheme() {
+					// Custom CSS for Nord theme
+					const style = document.createElement('style');
+					style.textContent = `
+						.plyr--video {
+							--plyr-color-main: #88C0D0;
+							--plyr-video-control-color: #D8DEE9;
+							--plyr-video-control-background-hover: rgba(136, 192, 208, 0.2);
+							--plyr-menu-background: #3B4252;
+							--plyr-menu-color: #D8DEE9;
+							--plyr-menu-border-color: #4C566A;
+							--plyr-menu-border-shadow-color: transparent;
+							--plyr-range-track-height: 4px;
+							--plyr-range-thumb-height: 14px;
+							--plyr-tooltip-background: #4C566A;
+							--plyr-tooltip-color: #ECEFF4;
+							--plyr-font-family: inherit;
+						}
+						.plyr--video .plyr__controls {
+							background: linear-gradient(transparent, rgba(46, 52, 64, 0.9));
+						}
+					`;
+					document.head.appendChild(style);
+				},
+
+				retry() {
+					this.error = false;
+					this.errorMessage = '';
+					this.loading = true;
+					if (this.hls) {
+						this.hls.destroy();
+						this.hls = null;
+					}
+					if (this.player) {
+						this.player.destroy();
+						this.player = null;
+					}
+					this.setupPlayer();
+				},
+
+				destroy() {
+					if (this.hls) {
+						this.hls.destroy();
+					}
+					if (this.player) {
+						this.player.destroy();
+					}
+				}
+			}));
+		});
+	</script>
+
+	<style>
+		/* Additional video player styles */
+		.video-player-container {
+			aspect-ratio: 16 / 9;
+		}
+
+		.video-player-container.aspect-4-3 {
+			aspect-ratio: 4 / 3;
+		}
+
+		.video-player-container.aspect-1-1 {
+			aspect-ratio: 1 / 1;
+		}
+
+		/* Hide controls during loading */
+		.video-player-container .plyr--loading .plyr__controls {
+			opacity: 0;
+		}
+	</style>
+}
+
+// EmbedCodeGenerator provides an embed code modal for sharing videos
+templ EmbedCodeGenerator(videoID, streamURL, title string) {
+	<div x-data="{ copied: false }" class="space-y-4">
+		<h3 class="text-lg font-medium text-nord-5">Embed Code</h3>
+		<p class="text-sm text-nord-4">Copy this code to embed the video on your website:</p>
+
+		<div class="relative">
+			<pre
+				class="bg-nord-1 border border-nord-3 rounded-lg p-4 text-sm text-nord-4 overflow-x-auto"
+				id={ "embed-code-" + videoID }
+			><code>&lt;iframe
+  src="https://cdn.file.cheap/embed/{ videoID }"
+  width="640"
+  height="360"
+  frameborder="0"
+  allowfullscreen
+  title="{ title }"
+&gt;&lt;/iframe&gt;</code></pre>
+
+			<button
+				@click={fmt.Sprintf(`
+					navigator.clipboard.writeText(document.getElementById('embed-code-%s').innerText);
+					copied = true;
+					setTimeout(() => copied = false, 2000);
+				`, videoID)}
+				class="absolute top-2 right-2 p-2 bg-nord-3 hover:bg-nord-2 rounded-lg transition-colors"
+				:class="copied ? 'bg-nord-14 text-nord-0' : ''"
+			>
+				<svg x-show="!copied" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+				</svg>
+				<svg x-show="copied" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+				</svg>
+			</button>
+		</div>
+
+		<div class="text-xs text-nord-3">
+			The video will use adaptive streaming to deliver the best quality for the viewer's connection.
+		</div>
+	</div>
+}

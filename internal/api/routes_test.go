@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/abdul-hamid-achik/file.cheap/internal/db"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -1232,5 +1233,563 @@ func TestGetBatchHandler(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestVideoHLSHandler_Unauthorized(t *testing.T) {
+	cfg := &Config{}
+	router := NewRouter(cfg)
+
+	fileID := uuid.New()
+	req := httptest.NewRequest("POST", "/v1/files/"+fileID.String()+"/video/hls", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestVideoHLSHandler_InvalidFileID(t *testing.T) {
+	testUserID := uuid.New()
+	cfg := &Config{}
+	router := NewRouter(cfg)
+
+	req := httptest.NewRequest("POST", "/v1/files/invalid-id/video/hls", nil)
+	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+	ctx := context.WithValue(req.Context(), UserIDKey, testUserID)
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest && rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 400 or 401", rec.Code)
+	}
+}
+
+func TestHLSStreamHandler_Unauthorized(t *testing.T) {
+	cfg := &Config{}
+	router := NewRouter(cfg)
+
+	fileID := uuid.New()
+	req := httptest.NewRequest("GET", "/v1/files/"+fileID.String()+"/hls/playlist.m3u8", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestHLSStreamHandler_InvalidFileID(t *testing.T) {
+	testUserID := uuid.New()
+	cfg := &Config{}
+	router := NewRouter(cfg)
+
+	req := httptest.NewRequest("GET", "/v1/files/invalid-id/hls/playlist.m3u8", nil)
+	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+	ctx := context.WithValue(req.Context(), UserIDKey, testUserID)
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest && rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 400 or 401", rec.Code)
+	}
+}
+
+func TestVideoHLSRequest_Defaults(t *testing.T) {
+	req := VideoHLSRequest{}
+
+	if req.SegmentDuration != 0 {
+		t.Errorf("SegmentDuration default = %d, want 0", req.SegmentDuration)
+	}
+
+	if len(req.Resolutions) != 0 {
+		t.Errorf("Resolutions default = %v, want []", req.Resolutions)
+	}
+}
+
+// Helper to create test video file
+func createTestVideoFile(userID uuid.UUID, filename string) db.File {
+	fileID := uuid.New()
+	return createTestVideoFileWithID(fileID, userID, filename)
+}
+
+func createTestVideoFileWithID(id, userID uuid.UUID, filename string) db.File {
+	pgFileID := pgtype.UUID{Bytes: id, Valid: true}
+	pgUserID := pgtype.UUID{Bytes: userID, Valid: true}
+
+	now := time.Now()
+	createdAt := pgtype.Timestamptz{Time: now, Valid: true}
+	updatedAt := pgtype.Timestamptz{Time: now, Valid: true}
+
+	return db.File{
+		ID:          pgFileID,
+		UserID:      pgUserID,
+		Filename:    filename,
+		ContentType: "video/mp4",
+		SizeBytes:   10 * 1024 * 1024, // 10MB
+		StorageKey:  "uploads/" + id.String() + "/" + filename,
+		Status:      db.FileStatusCompleted,
+		CreatedAt:   createdAt,
+		UpdatedAt:   updatedAt,
+	}
+}
+
+func TestVideoTranscodeHandler_Success(t *testing.T) {
+	testUserID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	fileID := uuid.MustParse("770e8400-e29b-41d4-a716-446655440000")
+
+	queries, storage, broker, cfg := setupTestDeps(t)
+	queries.AddFile(createTestVideoFileWithID(fileID, testUserID, "test-video.mp4"))
+
+	router := NewRouter(&Config{
+		Storage:       storage,
+		Queries:       queries,
+		Broker:        broker,
+		MaxUploadSize: cfg.MaxUploadSize,
+		JWTSecret:     cfg.JWTSecret,
+	})
+
+	body := `{"resolutions": [720], "format": "mp4"}`
+	req := httptest.NewRequest("POST", "/v1/files/"+fileID.String()+"/video/transcode", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusAccepted, rec.Body.String())
+	}
+
+	var resp VideoTranscodeResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.FileID != fileID.String() {
+		t.Errorf("file_id = %s, want %s", resp.FileID, fileID.String())
+	}
+
+	if len(resp.Jobs) == 0 {
+		t.Error("expected at least one job ID")
+	}
+
+	if !broker.HasJob("video_transcode") {
+		t.Error("expected video_transcode job to be enqueued")
+	}
+}
+
+func TestVideoTranscodeHandler_MultipleResolutions(t *testing.T) {
+	testUserID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	fileID := uuid.MustParse("770e8400-e29b-41d4-a716-446655440000")
+
+	queries, storage, broker, cfg := setupTestDeps(t)
+	queries.AddFile(createTestVideoFileWithID(fileID, testUserID, "test-video.mp4"))
+
+	router := NewRouter(&Config{
+		Storage:       storage,
+		Queries:       queries,
+		Broker:        broker,
+		MaxUploadSize: cfg.MaxUploadSize,
+		JWTSecret:     cfg.JWTSecret,
+	})
+
+	body := `{"resolutions": [360, 720, 1080], "format": "mp4", "thumbnail": true}`
+	req := httptest.NewRequest("POST", "/v1/files/"+fileID.String()+"/video/transcode", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusAccepted, rec.Body.String())
+	}
+
+	var resp VideoTranscodeResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	// Should have 3 transcode jobs + 1 thumbnail job = 4 jobs
+	if len(resp.Jobs) != 4 {
+		t.Errorf("job count = %d, want 4", len(resp.Jobs))
+	}
+
+	if !broker.HasJob("video_transcode") {
+		t.Error("expected video_transcode job to be enqueued")
+	}
+	if !broker.HasJob("video_thumbnail") {
+		t.Error("expected video_thumbnail job to be enqueued")
+	}
+}
+
+func TestVideoTranscodeHandler_NonVideoFile(t *testing.T) {
+	testUserID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	fileID := uuid.MustParse("770e8400-e29b-41d4-a716-446655440000")
+
+	queries, storage, broker, cfg := setupTestDeps(t)
+	// Add a non-video file (image)
+	queries.AddFile(createTestFileWithID(fileID, testUserID, "test-image.jpg"))
+
+	router := NewRouter(&Config{
+		Storage:       storage,
+		Queries:       queries,
+		Broker:        broker,
+		MaxUploadSize: cfg.MaxUploadSize,
+		JWTSecret:     cfg.JWTSecret,
+	})
+
+	body := `{"resolutions": [720]}`
+	req := httptest.NewRequest("POST", "/v1/files/"+fileID.String()+"/video/transcode", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+
+	// Verify error message mentions it's not a video
+	if !strings.Contains(rec.Body.String(), "not a video") {
+		t.Errorf("expected 'not a video' in error message, got: %s", rec.Body.String())
+	}
+}
+
+func TestVideoTranscodeHandler_ResolutionLimit(t *testing.T) {
+	testUserID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	fileID := uuid.MustParse("770e8400-e29b-41d4-a716-446655440000")
+
+	queries, storage, broker, cfg := setupTestDeps(t)
+	queries.AddFile(createTestVideoFileWithID(fileID, testUserID, "test-video.mp4"))
+	// Free tier blocks API write access via billing middleware, so testing resolution limits
+	// requires Pro tier with transformation quota exceeded
+	queries.BillingTier = db.SubscriptionTierFree
+
+	router := NewRouter(&Config{
+		Storage:       storage,
+		Queries:       queries,
+		Broker:        broker,
+		MaxUploadSize: cfg.MaxUploadSize,
+		JWTSecret:     cfg.JWTSecret,
+	})
+
+	// Try to transcode at 4K - free tier should return upgrade_required
+	body := `{"resolutions": [2160], "format": "mp4"}`
+	req := httptest.NewRequest("POST", "/v1/files/"+fileID.String()+"/video/transcode", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	// Free tier users get blocked by billing middleware before resolution check
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+
+	// Either "upgrade_required" from billing middleware or "resolution_limit" error is acceptable
+	body_str := rec.Body.String()
+	if !strings.Contains(body_str, "upgrade") && !strings.Contains(body_str, "resolution") {
+		t.Errorf("expected upgrade or resolution limit error message, got: %s", body_str)
+	}
+}
+
+func TestVideoTranscodeHandler_InvalidFormat(t *testing.T) {
+	testUserID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	fileID := uuid.MustParse("770e8400-e29b-41d4-a716-446655440000")
+
+	queries, storage, broker, cfg := setupTestDeps(t)
+	queries.AddFile(createTestVideoFileWithID(fileID, testUserID, "test-video.mp4"))
+
+	router := NewRouter(&Config{
+		Storage:       storage,
+		Queries:       queries,
+		Broker:        broker,
+		MaxUploadSize: cfg.MaxUploadSize,
+		JWTSecret:     cfg.JWTSecret,
+	})
+
+	body := `{"resolutions": [720], "format": "avi"}`
+	req := httptest.NewRequest("POST", "/v1/files/"+fileID.String()+"/video/transcode", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+
+	if !strings.Contains(rec.Body.String(), "invalid_format") {
+		t.Errorf("expected 'invalid_format' error, got: %s", rec.Body.String())
+	}
+}
+
+func TestVideoTranscodeHandler_FileNotFound(t *testing.T) {
+	testUserID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	nonExistentID := uuid.MustParse("00000000-0000-0000-0000-000000000000")
+
+	queries, storage, broker, cfg := setupTestDeps(t)
+
+	router := NewRouter(&Config{
+		Storage:       storage,
+		Queries:       queries,
+		Broker:        broker,
+		MaxUploadSize: cfg.MaxUploadSize,
+		JWTSecret:     cfg.JWTSecret,
+	})
+
+	body := `{"resolutions": [720]}`
+	req := httptest.NewRequest("POST", "/v1/files/"+nonExistentID.String()+"/video/transcode", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusNotFound, rec.Body.String())
+	}
+}
+
+func TestVideoHLSHandler_Success(t *testing.T) {
+	testUserID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	fileID := uuid.MustParse("770e8400-e29b-41d4-a716-446655440000")
+
+	queries, storage, broker, cfg := setupTestDeps(t)
+	queries.AddFile(createTestVideoFileWithID(fileID, testUserID, "test-video.mp4"))
+	queries.BillingTier = db.SubscriptionTierPro // Pro tier has HLS access
+
+	router := NewRouter(&Config{
+		Storage:       storage,
+		Queries:       queries,
+		Broker:        broker,
+		MaxUploadSize: cfg.MaxUploadSize,
+		JWTSecret:     cfg.JWTSecret,
+	})
+
+	body := `{}`
+	req := httptest.NewRequest("POST", "/v1/files/"+fileID.String()+"/video/hls", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusAccepted, rec.Body.String())
+	}
+
+	var resp VideoTranscodeResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.FileID != fileID.String() {
+		t.Errorf("file_id = %s, want %s", resp.FileID, fileID.String())
+	}
+
+	if len(resp.Jobs) != 1 {
+		t.Errorf("job count = %d, want 1", len(resp.Jobs))
+	}
+
+	if !broker.HasJob("video_hls") {
+		t.Error("expected video_hls job to be enqueued")
+	}
+}
+
+func TestVideoHLSHandler_CustomSegmentDuration(t *testing.T) {
+	testUserID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	fileID := uuid.MustParse("770e8400-e29b-41d4-a716-446655440000")
+
+	queries, storage, broker, cfg := setupTestDeps(t)
+	queries.AddFile(createTestVideoFileWithID(fileID, testUserID, "test-video.mp4"))
+	queries.BillingTier = db.SubscriptionTierPro
+
+	router := NewRouter(&Config{
+		Storage:       storage,
+		Queries:       queries,
+		Broker:        broker,
+		MaxUploadSize: cfg.MaxUploadSize,
+		JWTSecret:     cfg.JWTSecret,
+	})
+
+	body := `{"segment_duration": 6, "resolutions": [360, 720, 1080]}`
+	req := httptest.NewRequest("POST", "/v1/files/"+fileID.String()+"/video/hls", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusAccepted, rec.Body.String())
+	}
+
+	if !broker.HasJob("video_hls") {
+		t.Error("expected video_hls job to be enqueued")
+	}
+}
+
+func TestVideoHLSHandler_FreeTierRestricted(t *testing.T) {
+	testUserID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	fileID := uuid.MustParse("770e8400-e29b-41d4-a716-446655440000")
+
+	queries, storage, broker, cfg := setupTestDeps(t)
+	queries.AddFile(createTestVideoFileWithID(fileID, testUserID, "test-video.mp4"))
+	queries.BillingTier = db.SubscriptionTierFree // Free tier doesn't have HLS
+
+	router := NewRouter(&Config{
+		Storage:       storage,
+		Queries:       queries,
+		Broker:        broker,
+		MaxUploadSize: cfg.MaxUploadSize,
+		JWTSecret:     cfg.JWTSecret,
+	})
+
+	body := `{}`
+	req := httptest.NewRequest("POST", "/v1/files/"+fileID.String()+"/video/hls", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+
+	if !strings.Contains(rec.Body.String(), "Pro") {
+		t.Errorf("expected 'Pro' in upgrade message, got: %s", rec.Body.String())
+	}
+}
+
+func TestVideoHLSHandler_NonVideoFile(t *testing.T) {
+	testUserID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	fileID := uuid.MustParse("770e8400-e29b-41d4-a716-446655440000")
+
+	queries, storage, broker, cfg := setupTestDeps(t)
+	queries.AddFile(createTestFileWithID(fileID, testUserID, "test-image.jpg")) // Not a video
+	queries.BillingTier = db.SubscriptionTierPro
+
+	router := NewRouter(&Config{
+		Storage:       storage,
+		Queries:       queries,
+		Broker:        broker,
+		MaxUploadSize: cfg.MaxUploadSize,
+		JWTSecret:     cfg.JWTSecret,
+	})
+
+	body := `{}`
+	req := httptest.NewRequest("POST", "/v1/files/"+fileID.String()+"/video/hls", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestHLSStreamHandler_ManifestDelivery(t *testing.T) {
+	testUserID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	fileID := uuid.MustParse("770e8400-e29b-41d4-a716-446655440000")
+
+	queries, storage, broker, cfg := setupTestDeps(t)
+	queries.AddFile(createTestVideoFileWithID(fileID, testUserID, "test-video.mp4"))
+
+	router := NewRouter(&Config{
+		Storage:       storage,
+		Queries:       queries,
+		Broker:        broker,
+		MaxUploadSize: cfg.MaxUploadSize,
+		JWTSecret:     cfg.JWTSecret,
+	})
+
+	req := httptest.NewRequest("GET", "/v1/files/"+fileID.String()+"/hls/master.m3u8", nil)
+	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	// Should redirect to presigned URL
+	if rec.Code != http.StatusTemporaryRedirect {
+		t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusTemporaryRedirect, rec.Body.String())
+	}
+
+	location := rec.Header().Get("Location")
+	if location == "" {
+		t.Error("expected Location header for redirect")
+	}
+}
+
+func TestHLSStreamHandler_SegmentDelivery(t *testing.T) {
+	testUserID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	fileID := uuid.MustParse("770e8400-e29b-41d4-a716-446655440000")
+
+	queries, storage, broker, cfg := setupTestDeps(t)
+	queries.AddFile(createTestVideoFileWithID(fileID, testUserID, "test-video.mp4"))
+
+	router := NewRouter(&Config{
+		Storage:       storage,
+		Queries:       queries,
+		Broker:        broker,
+		MaxUploadSize: cfg.MaxUploadSize,
+		JWTSecret:     cfg.JWTSecret,
+	})
+
+	// Route pattern is /v1/files/{id}/hls/{segment} - segment is a single path component
+	req := httptest.NewRequest("GET", "/v1/files/"+fileID.String()+"/hls/segment001.ts", nil)
+	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	// Should redirect to presigned URL
+	if rec.Code != http.StatusTemporaryRedirect {
+		t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusTemporaryRedirect, rec.Body.String())
+	}
+
+	location := rec.Header().Get("Location")
+	if location == "" {
+		t.Error("expected Location header for redirect")
+	}
+}
+
+func TestHLSStreamHandler_FileNotOwned(t *testing.T) {
+	testUserID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	otherUserID := uuid.MustParse("660e8400-e29b-41d4-a716-446655440000")
+	fileID := uuid.MustParse("770e8400-e29b-41d4-a716-446655440000")
+
+	queries, storage, broker, cfg := setupTestDeps(t)
+	// File belongs to otherUserID
+	queries.AddFile(createTestVideoFileWithID(fileID, otherUserID, "test-video.mp4"))
+
+	router := NewRouter(&Config{
+		Storage:       storage,
+		Queries:       queries,
+		Broker:        broker,
+		MaxUploadSize: cfg.MaxUploadSize,
+		JWTSecret:     cfg.JWTSecret,
+	})
+
+	// Request as testUserID
+	req := httptest.NewRequest("GET", "/v1/files/"+fileID.String()+"/hls/master.m3u8", nil)
+	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusNotFound, rec.Body.String())
 	}
 }

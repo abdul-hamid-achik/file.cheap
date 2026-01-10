@@ -579,9 +579,83 @@ func TestNordThemeColors(t *testing.T) {
 		h.Home(rec, req)
 
 		body := rec.Body.String()
-		// Check that Nord color palette is configured
 		if !strings.Contains(body, "nord") {
 			t.Error("pages should use Nord color palette")
+		}
+	})
+}
+
+func TestVideoEmbedHandler(t *testing.T) {
+	t.Run("invalid_file_id_shows_error", func(t *testing.T) {
+		h, _, _ := createTestHandlers()
+		req := httptest.NewRequest("GET", "/embed/invalid-uuid", nil)
+		req.SetPathValue("id", "invalid-uuid")
+		rec := httptest.NewRecorder()
+
+		h.VideoEmbed(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want 200", rec.Code)
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, "Invalid video ID") {
+			t.Error("should show invalid ID error")
+		}
+	})
+
+	t.Run("no_queries_shows_service_unavailable", func(t *testing.T) {
+		h, _, _ := createTestHandlers()
+		fileID := uuid.New()
+		req := httptest.NewRequest("GET", "/embed/"+fileID.String(), nil)
+		req.SetPathValue("id", fileID.String())
+		rec := httptest.NewRecorder()
+
+		h.VideoEmbed(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want 200", rec.Code)
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, "Service unavailable") {
+			t.Error("should show service unavailable error")
+		}
+	})
+
+	t.Run("embed_page_renders_html", func(t *testing.T) {
+		h, _, _ := createTestHandlers()
+		req := httptest.NewRequest("GET", "/embed/invalid", nil)
+		req.SetPathValue("id", "invalid")
+		rec := httptest.NewRecorder()
+
+		h.VideoEmbed(rec, req)
+
+		body := rec.Body.String()
+		bodyLower := strings.ToLower(body)
+		if !strings.Contains(bodyLower, "<!doctype html>") {
+			t.Error("should render HTML document")
+		}
+		if !strings.Contains(body, "tailwind") {
+			t.Error("should include Tailwind CSS")
+		}
+		if !strings.Contains(body, "plyr") {
+			t.Error("should include Plyr player scripts")
+		}
+		if !strings.Contains(body, "hls") {
+			t.Error("should include HLS.js")
+		}
+	})
+
+	t.Run("embed_page_includes_video_player_script", func(t *testing.T) {
+		h, _, _ := createTestHandlers()
+		req := httptest.NewRequest("GET", "/embed/test", nil)
+		req.SetPathValue("id", uuid.New().String())
+		rec := httptest.NewRecorder()
+
+		h.VideoEmbed(rec, req)
+
+		body := rec.Body.String()
+		if !strings.Contains(body, "videoPlayer") {
+			t.Error("should include videoPlayer Alpine component")
 		}
 	})
 }

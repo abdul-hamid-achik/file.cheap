@@ -394,3 +394,133 @@ func (c *Client) WaitForBatch(ctx context.Context, batchID string, pollInterval 
 		}
 	}
 }
+
+// Video methods
+
+func (c *Client) VideoTranscode(ctx context.Context, fileID string, req *VideoTranscodeRequest) (*VideoTranscodeResponse, error) {
+	var result VideoTranscodeResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/files/"+fileID+"/video/transcode", req, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// Chunked upload methods for large files
+
+func (c *Client) InitChunkedUpload(ctx context.Context, req *ChunkedUploadInitRequest) (*ChunkedUploadInitResponse, error) {
+	var result ChunkedUploadInitResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/upload/chunked", req, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *Client) UploadChunk(ctx context.Context, uploadID string, chunkIndex int, data []byte) (*ChunkedUploadChunkResponse, error) {
+	path := fmt.Sprintf("/api/v1/upload/chunked/%s?chunk=%d", uploadID, chunkIndex)
+	resp, err := c.doRequest(ctx, http.MethodPut, path, bytes.NewReader(data), "application/octet-stream")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode >= 400 {
+		return nil, c.parseError(resp)
+	}
+
+	var result ChunkedUploadChunkResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *Client) GetChunkedUploadStatus(ctx context.Context, uploadID string) (*ChunkedUploadStatusResponse, error) {
+	var result ChunkedUploadStatusResponse
+	if err := c.doJSON(ctx, http.MethodGet, "/api/v1/upload/chunked/"+uploadID, nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *Client) CancelChunkedUpload(ctx context.Context, uploadID string) error {
+	return c.doJSON(ctx, http.MethodDelete, "/api/v1/upload/chunked/"+uploadID, nil, nil)
+}
+
+// UploadLargeFile uploads a file using chunked upload for large files
+func (c *Client) UploadLargeFile(ctx context.Context, filePath string, onProgress func(uploaded, total int64)) (*UploadResponse, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	// Detect content type from extension
+	contentType := "application/octet-stream"
+	ext := strings.ToLower(filepath.Ext(filePath))
+	switch ext {
+	case ".mp4":
+		contentType = "video/mp4"
+	case ".mov":
+		contentType = "video/quicktime"
+	case ".avi":
+		contentType = "video/x-msvideo"
+	case ".mkv":
+		contentType = "video/x-matroska"
+	case ".webm":
+		contentType = "video/webm"
+	case ".wmv":
+		contentType = "video/x-ms-wmv"
+	case ".flv":
+		contentType = "video/x-flv"
+	}
+
+	// Initialize chunked upload
+	initResp, err := c.InitChunkedUpload(ctx, &ChunkedUploadInitRequest{
+		Filename:    filepath.Base(filePath),
+		ContentType: contentType,
+		TotalSize:   stat.Size(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize chunked upload: %w", err)
+	}
+
+	// Upload chunks
+	chunkSize := initResp.ChunkSize
+	buffer := make([]byte, chunkSize)
+	var uploaded int64
+
+	for i := 0; i < initResp.ChunksTotal; i++ {
+		n, err := file.Read(buffer)
+		if err != nil && err != io.EOF {
+			return nil, fmt.Errorf("failed to read chunk %d: %w", i, err)
+		}
+		if n == 0 {
+			break
+		}
+
+		chunkResp, err := c.UploadChunk(ctx, initResp.UploadID, i, buffer[:n])
+		if err != nil {
+			return nil, fmt.Errorf("failed to upload chunk %d: %w", i, err)
+		}
+
+		uploaded += int64(n)
+		if onProgress != nil {
+			onProgress(uploaded, stat.Size())
+		}
+
+		if chunkResp.Complete {
+			return &UploadResponse{
+				ID:       chunkResp.FileID,
+				Filename: filepath.Base(filePath),
+				Status:   "pending",
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("upload completed but no file ID returned")
+}

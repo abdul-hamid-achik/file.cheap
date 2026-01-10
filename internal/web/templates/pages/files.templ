@@ -27,6 +27,8 @@ type FileItem struct {
 	ThumbnailURL string
 	CreatedAt    string
 	UpdatedAt    string
+	IsVideo      bool // true if content type is video/*
+	StreamURL    string // HLS manifest URL for videos
 }
 
 // FileList renders the file list page
@@ -142,6 +144,7 @@ templ FileList(user *auth.SessionUser, data FileListPageData) {
 									>
 										<option value="" selected?={ data.Filter == "" }>All files</option>
 										<option value="images" selected?={ data.Filter == "images" }>Images</option>
+										<option value="videos" selected?={ data.Filter == "videos" }>Videos</option>
 										<option value="documents" selected?={ data.Filter == "documents" }>Documents</option>
 										<option value="processing" selected?={ data.Filter == "processing" }>Processing</option>
 										<option value="completed" selected?={ data.Filter == "completed" }>Completed</option>
@@ -493,6 +496,10 @@ templ fileTypeIconSmall(contentType string) {
 			<svg class="w-6 h-6 text-nord-11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
 			</svg>
+		case isVideoContentType(contentType):
+			<svg class="w-6 h-6 text-nord-15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+			</svg>
 		default:
 			<svg class="w-6 h-6 text-nord-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
@@ -505,6 +512,10 @@ templ fileTypeIconLarge(contentType string) {
 		case contentType == "application/pdf":
 			<svg class="w-12 h-12 text-nord-11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+			</svg>
+		case isVideoContentType(contentType):
+			<svg class="w-12 h-12 text-nord-15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
 			</svg>
 		default:
 			<svg class="w-12 h-12 text-nord-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -567,6 +578,10 @@ func formatInt64(i int64) string {
 	return formatInt64(i/10) + string(rune('0'+i%10))
 }
 
+func isVideoContentType(contentType string) bool {
+	return len(contentType) > 6 && contentType[:6] == "video/"
+}
+
 // FileDetailPageData contains data for the file detail page
 type FileDetailPageData struct {
 	File             FileDetail
@@ -591,6 +606,8 @@ type FileDetail struct {
 	Metadata     map[string]string
 	CreatedAt    string
 	UpdatedAt    string
+	IsVideo      bool
+	StreamURL    string
 }
 
 // FileVariant represents a processed variant of a file
@@ -706,10 +723,41 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 					<div class="grid lg:grid-cols-3 gap-8">
 						<!-- Main Content -->
 						<div class="lg:col-span-2 space-y-6">
-							<!-- Preview Card with Lightbox -->
+							<!-- Preview Card with Lightbox/Video Player -->
 							@components.Card("") {
 								<div class="aspect-video bg-nord-2 relative overflow-hidden rounded-t-xl">
-									if data.File.ThumbnailURL != "" {
+									if data.File.IsVideo {
+										if data.File.StreamURL != "" {
+											@components.VideoPlayerLightbox(components.VideoPlayerProps{
+												VideoID:      "video-" + data.File.ID,
+												StreamURL:    data.File.StreamURL,
+												PosterURL:    data.File.ThumbnailURL,
+												Title:        data.File.Name,
+												ShowControls: true,
+												AspectRatio:  "16:9",
+											}, data.File.ThumbnailURL)
+										} else if data.File.ThumbnailURL != "" {
+											<div class="relative w-full h-full">
+												<img
+													src={ data.File.ThumbnailURL }
+													alt={ data.File.Name }
+													class="w-full h-full object-cover"
+												/>
+												<div class="absolute inset-0 flex items-center justify-center bg-nord-0/40">
+													<div class="flex flex-col items-center gap-2 text-nord-4">
+														<svg class="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+														</svg>
+														<span class="text-sm">Generate HLS to enable playback</span>
+													</div>
+												</div>
+											</div>
+										} else {
+											<div class="w-full h-full flex items-center justify-center">
+												@fileTypeIconLarge(data.File.ContentType)
+											</div>
+										}
+									} else if data.File.ThumbnailURL != "" {
 										@components.Lightbox(data.File.ThumbnailURL, data.File.URL, data.File.Name)
 									} else {
 										<div class="w-full h-full flex items-center justify-center">
@@ -921,6 +969,16 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 												@processActionPro(data.File.ID, "webp", "WebP", "Optimized format", data.ExistingTypes["webp"], data.IsPremium)
 												@processActionWatermark(data.File.ID, data.ExistingTypes["watermarked"], data.IsPremium)
 											</div>
+										}
+										<!-- Video Processing (only for video files) -->
+										if data.File.IsVideo {
+											@processingAccordion("video", "Video Processing", "", data.ExistingTypes["hls_master"], false) {
+												<div class="space-y-2">
+													@processActionHLS(data.File.ID, data.ExistingTypes["hls_master"], data.IsPremium)
+													@processAction(data.File.ID, "video_thumbnail", "Thumbnail", "Extract frame at 10%", data.ExistingTypes["video_thumbnail"])
+													@processActionPro(data.File.ID, "video_watermark", "Watermark", "Add text overlay", data.ExistingTypes["video_watermark"], data.IsPremium)
+												</div>
+											}
 										}
 									</div>
 									<div id="process-result" class="mt-4"></div>
@@ -1340,6 +1398,77 @@ func hasAllResponsive(existingTypes map[string]bool) bool {
 
 func hasAllSocial(existingTypes map[string]bool) bool {
 	return existingTypes["og"] && existingTypes["twitter"] && existingTypes["instagram_square"] && existingTypes["instagram_portrait"] && existingTypes["instagram_story"]
+}
+
+templ processActionHLS(fileID string, exists bool, isPremium bool) {
+	<div class="p-3 bg-nord-2 rounded-lg space-y-3">
+		<div class="flex items-center justify-between">
+			<div>
+				<p class="text-nord-5 font-medium text-sm">
+					HLS Streaming
+					if isPremium {
+						<span class="ml-1 px-1.5 py-0.5 bg-nord-14/20 text-nord-14 text-xs rounded">PRO</span>
+					}
+				</p>
+				<p class="text-nord-4 text-xs">Generate adaptive bitrate stream</p>
+			</div>
+			if exists {
+				<span class="text-nord-14 text-xs flex items-center gap-1">
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+					</svg>
+					Ready
+				</span>
+			}
+		</div>
+		if !exists {
+			if !isPremium {
+				<p class="p-2 bg-nord-13/10 border border-nord-13/20 rounded text-xs text-nord-13">
+					Adaptive bitrate streaming requires Pro.
+					<a href="/billing" class="underline hover:text-nord-5 ml-1">Upgrade</a>
+				</p>
+			} else {
+				<form
+					hx-post={ "/files/" + fileID + "/process" }
+					hx-target="#process-result"
+					hx-swap="innerHTML"
+					class="space-y-2"
+				>
+					<input type="hidden" name="action" value="hls"/>
+					<div class="grid grid-cols-2 gap-2">
+						<div>
+							<label class="text-nord-4 text-xs block mb-1">Segment Duration</label>
+							<select
+								name="segment_duration"
+								class="w-full px-3 py-1.5 bg-nord-1 border border-nord-3 rounded text-nord-5 text-xs focus:outline-none focus:ring-1 focus:ring-nord-8"
+							>
+								<option value="4">4 seconds</option>
+								<option value="6" selected>6 seconds</option>
+								<option value="10">10 seconds</option>
+							</select>
+						</div>
+						<div>
+							<label class="text-nord-4 text-xs block mb-1">Resolutions</label>
+							<select
+								name="resolutions"
+								class="w-full px-3 py-1.5 bg-nord-1 border border-nord-3 rounded text-nord-5 text-xs focus:outline-none focus:ring-1 focus:ring-nord-8"
+							>
+								<option value="480,720">480p, 720p</option>
+								<option value="480,720,1080" selected>480p, 720p, 1080p</option>
+								<option value="360,480,720,1080">360p-1080p</option>
+							</select>
+						</div>
+					</div>
+					<button
+						type="submit"
+						class="w-full px-3 py-1.5 bg-nord-8 text-nord-0 hover:bg-nord-7 rounded text-xs font-medium transition-colors"
+					>
+						Generate HLS Stream
+					</button>
+				</form>
+			}
+		}
+	</div>
 }
 
 // FileStatusPartial renders just the status section for HTMX polling updates

@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -204,9 +205,30 @@ func TestFileDetailRequiresAuth(t *testing.T) {
 
 	router.ServeHTTP(rec, req)
 
-	// Should redirect to login
 	if rec.Code != http.StatusFound {
 		t.Errorf("file detail without auth: status = %d, want 302", rec.Code)
+	}
+}
+
+func TestEmbedRouteIsPublic(t *testing.T) {
+	cfg := &Config{
+		Storage: NewMockStorage(),
+		BaseURL: "http://localhost:8080",
+	}
+	router := createTestRouter(cfg)
+
+	fileID := uuid.New().String()
+	req := httptest.NewRequest("GET", "/embed/"+fileID, nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("embed route should be public: status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "<!DOCTYPE html>") && !strings.Contains(body, "<!doctype html>") {
+		t.Error("embed should render HTML page")
 	}
 }
 

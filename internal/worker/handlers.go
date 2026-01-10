@@ -1,14 +1,18 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
 	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
+	"github.com/abdul-hamid-achik/file.cheap/internal/processor/video"
 	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
 	"github.com/abdul-hamid-achik/job-queue/pkg/job"
 	"github.com/abdul-hamid-achik/job-queue/pkg/middleware"
@@ -685,5 +689,425 @@ func closeSafely(c io.Closer, name string) {
 		if err := c.Close(); err != nil {
 			logger.Default().Warn("error closing resource", "name", name, "error", err)
 		}
+	}
+}
+
+// Video handlers
+
+func VideoThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error {
+	return func(ctx context.Context, j *job.Job) error {
+		log := logger.FromContext(ctx).With("job_id", j.ID, "job_type", "video_thumbnail")
+		log.Info("job started")
+		start := time.Now()
+
+		var payload VideoThumbnailPayload
+		if err := j.UnmarshalPayload(&payload); err != nil {
+			log.Error("invalid payload", "error", err)
+			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
+		}
+
+		log = log.With("file_id", payload.FileID.String())
+
+		fileID := pgtype.UUID{
+			Bytes: payload.FileID,
+			Valid: true,
+		}
+
+		file, err := deps.Queries.GetFile(ctx, fileID)
+		if err != nil {
+			log.Error("failed to retrieve file", "error", err)
+			return fmt.Errorf("failed to retrieve file: %w", err)
+		}
+
+		log.Debug("downloading video from storage", "storage_key", file.StorageKey)
+		downloadStart := time.Now()
+		reader, err := deps.Storage.Download(ctx, file.StorageKey)
+		if err != nil {
+			log.Error("failed to download file", "storage_key", file.StorageKey, "error", err)
+			return fmt.Errorf("failed to download file %s: %w", file.StorageKey, err)
+		}
+		defer closeSafely(reader, "original video reader")
+		log.Debug("video downloaded", "duration_ms", time.Since(downloadStart).Milliseconds())
+
+		proc := deps.Registry.MustGet("video_thumbnail")
+
+		// Use Page field to pass percentage (1-100)
+		pagePercent := int(payload.AtPercent * 100)
+		if pagePercent <= 0 {
+			pagePercent = 10 // default 10%
+		}
+
+		opts := &processor.Options{
+			Width:   payload.Width,
+			Height:  payload.Height,
+			Quality: payload.Quality,
+			Format:  payload.Format,
+			Page:    pagePercent,
+		}
+
+		log.Debug("extracting video thumbnail", "width", payload.Width, "height", payload.Height, "at_percent", payload.AtPercent)
+		processStart := time.Now()
+		result, err := proc.Process(ctx, opts, reader)
+		if err != nil {
+			log.Error("failed to extract video thumbnail", "error", err)
+			return middleware.Permanent(fmt.Errorf("failed to extract video thumbnail: %w", err))
+		}
+		log.Debug("video thumbnail extracted", "duration_ms", time.Since(processStart).Milliseconds(), "output_size", result.Size)
+
+		ext := "jpg"
+		if payload.Format == "png" {
+			ext = "png"
+		}
+		variantKey := buildVariantKey(payload.FileID, "video_thumbnail", fmt.Sprintf("thumbnail.%s", ext))
+		log.Debug("uploading variant", "storage_key", variantKey)
+		uploadStart := time.Now()
+		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
+			log.Error("failed to upload variant", "storage_key", variantKey, "error", err)
+			return fmt.Errorf("failed to upload variant: %w", err)
+		}
+		log.Debug("variant uploaded", "duration_ms", time.Since(uploadStart).Milliseconds())
+
+		width := int32(result.Metadata.Width)
+		height := int32(result.Metadata.Height)
+		_, err = deps.Queries.CreateVariant(ctx, db.CreateVariantParams{
+			FileID:      file.ID,
+			VariantType: db.VariantType("video_thumbnail"),
+			ContentType: result.ContentType,
+			SizeBytes:   result.Size,
+			StorageKey:  variantKey,
+			Width:       &width,
+			Height:      &height,
+		})
+		if err != nil {
+			log.Error("failed to save variant record", "error", err)
+			return fmt.Errorf("failed to save variant record: %w", err)
+		}
+
+		if err := deps.Queries.UpdateFileStatus(ctx, db.UpdateFileStatusParams{
+			ID:     file.ID,
+			Status: db.FileStatusCompleted,
+		}); err != nil {
+			log.Error("failed to update file status", "error", err)
+			return fmt.Errorf("failed to update file status: %w", err)
+		}
+
+		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "output_width", width, "output_height", height)
+		return nil
+	}
+}
+
+func VideoTranscodeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
+	return func(ctx context.Context, j *job.Job) error {
+		log := logger.FromContext(ctx).With("job_id", j.ID, "job_type", "video_transcode")
+		log.Info("job started")
+		start := time.Now()
+
+		var payload VideoTranscodePayload
+		if err := j.UnmarshalPayload(&payload); err != nil {
+			log.Error("invalid payload", "error", err)
+			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
+		}
+
+		log = log.With("file_id", payload.FileID.String(), "variant_type", payload.VariantType)
+
+		fileID := pgtype.UUID{
+			Bytes: payload.FileID,
+			Valid: true,
+		}
+
+		file, err := deps.Queries.GetFile(ctx, fileID)
+		if err != nil {
+			log.Error("failed to retrieve file", "error", err)
+			return fmt.Errorf("failed to retrieve file: %w", err)
+		}
+
+		log.Debug("downloading video from storage", "storage_key", file.StorageKey)
+		downloadStart := time.Now()
+		reader, err := deps.Storage.Download(ctx, file.StorageKey)
+		if err != nil {
+			log.Error("failed to download file", "storage_key", file.StorageKey, "error", err)
+			return fmt.Errorf("failed to download file %s: %w", file.StorageKey, err)
+		}
+		defer closeSafely(reader, "original video reader")
+		log.Debug("video downloaded", "duration_ms", time.Since(downloadStart).Milliseconds())
+
+		proc := deps.Registry.MustGet("video_transcode")
+
+		// Map CRF to quality (CRF 0-51 inverted to quality 0-100)
+		quality := 100 - (payload.CRF * 100 / 51)
+
+		opts := &processor.Options{
+			Quality:     quality,
+			Format:      payload.OutputFormat,
+			Height:      payload.MaxResolution,
+			VariantType: payload.VariantType,
+		}
+
+		log.Debug("transcoding video", "output_format", payload.OutputFormat, "max_resolution", payload.MaxResolution, "preset", payload.Preset)
+		processStart := time.Now()
+		result, err := proc.Process(ctx, opts, reader)
+		if err != nil {
+			log.Error("failed to transcode video", "error", err)
+			return middleware.Permanent(fmt.Errorf("failed to transcode video: %w", err))
+		}
+		log.Debug("video transcoded", "duration_ms", time.Since(processStart).Milliseconds(), "output_size", result.Size)
+
+		ext := payload.OutputFormat
+		if ext == "" {
+			ext = "mp4"
+		}
+		filename := fmt.Sprintf("video.%s", ext)
+		variantKey := buildVariantKey(payload.FileID, payload.VariantType, filename)
+		log.Debug("uploading variant", "storage_key", variantKey)
+		uploadStart := time.Now()
+		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
+			log.Error("failed to upload variant", "storage_key", variantKey, "error", err)
+			return fmt.Errorf("failed to upload variant: %w", err)
+		}
+		log.Debug("variant uploaded", "duration_ms", time.Since(uploadStart).Milliseconds())
+
+		width := int32(result.Metadata.Width)
+		height := int32(result.Metadata.Height)
+		_, err = deps.Queries.CreateVariant(ctx, db.CreateVariantParams{
+			FileID:      file.ID,
+			VariantType: db.VariantType(payload.VariantType),
+			ContentType: result.ContentType,
+			SizeBytes:   result.Size,
+			StorageKey:  variantKey,
+			Width:       &width,
+			Height:      &height,
+		})
+		if err != nil {
+			log.Error("failed to save variant record", "error", err)
+			return fmt.Errorf("failed to save variant record: %w", err)
+		}
+
+		if err := deps.Queries.UpdateFileStatus(ctx, db.UpdateFileStatusParams{
+			ID:     file.ID,
+			Status: db.FileStatusCompleted,
+		}); err != nil {
+			log.Error("failed to update file status", "error", err)
+			return fmt.Errorf("failed to update file status: %w", err)
+		}
+
+		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "output_width", width, "output_height", height, "duration_seconds", result.Metadata.Duration)
+		return nil
+	}
+}
+
+func VideoHLSHandler(deps *Dependencies) func(context.Context, *job.Job) error {
+	return func(ctx context.Context, j *job.Job) error {
+		log := logger.FromContext(ctx).With("job_id", j.ID, "job_type", "video_hls")
+		log.Info("job started")
+		start := time.Now()
+
+		var payload VideoHLSPayload
+		if err := j.UnmarshalPayload(&payload); err != nil {
+			log.Error("invalid payload", "error", err)
+			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
+		}
+
+		log = log.With("file_id", payload.FileID.String())
+
+		fileID := pgtype.UUID{
+			Bytes: payload.FileID,
+			Valid: true,
+		}
+
+		file, err := deps.Queries.GetFile(ctx, fileID)
+		if err != nil {
+			log.Error("failed to retrieve file", "error", err)
+			return fmt.Errorf("failed to retrieve file: %w", err)
+		}
+
+		log.Debug("downloading video from storage", "storage_key", file.StorageKey)
+		downloadStart := time.Now()
+		reader, err := deps.Storage.Download(ctx, file.StorageKey)
+		if err != nil {
+			log.Error("failed to download file", "storage_key", file.StorageKey, "error", err)
+			return fmt.Errorf("failed to download file %s: %w", file.StorageKey, err)
+		}
+		defer closeSafely(reader, "original video reader")
+		log.Debug("video downloaded", "duration_ms", time.Since(downloadStart).Milliseconds())
+
+		proc := deps.Registry.MustGet("video_transcode")
+		ffmpegProc, ok := proc.(*video.FFmpegProcessor)
+		if !ok {
+			log.Error("video_transcode processor is not FFmpegProcessor")
+			return middleware.Permanent(fmt.Errorf("invalid processor type"))
+		}
+
+		segmentDuration := payload.SegmentDuration
+		if segmentDuration <= 0 {
+			segmentDuration = 10
+		}
+
+		opts := &video.VideoOptions{
+			Preset:             "medium",
+			CRF:                23,
+			HLSSegmentDuration: segmentDuration,
+		}
+
+		log.Debug("generating HLS", "segment_duration", segmentDuration, "resolutions", payload.Resolutions)
+		processStart := time.Now()
+		hlsResult, err := ffmpegProc.GenerateHLS(ctx, opts, reader)
+		if err != nil {
+			log.Error("failed to generate HLS", "error", err)
+			return middleware.Permanent(fmt.Errorf("failed to generate HLS: %w", err))
+		}
+		defer func() { _ = os.RemoveAll(filepath.Dir(hlsResult.ManifestPath)) }()
+		log.Debug("HLS generated", "duration_ms", time.Since(processStart).Milliseconds(), "segments", hlsResult.SegmentCount)
+
+		manifestData, err := os.ReadFile(hlsResult.ManifestPath)
+		if err != nil {
+			log.Error("failed to read manifest", "error", err)
+			return fmt.Errorf("failed to read manifest: %w", err)
+		}
+
+		manifestKey := buildVariantKey(payload.FileID, "hls_master", "playlist.m3u8")
+		log.Debug("uploading manifest", "storage_key", manifestKey)
+		if err := deps.Storage.Upload(ctx, manifestKey, bytes.NewReader(manifestData), "application/x-mpegURL", int64(len(manifestData))); err != nil {
+			log.Error("failed to upload manifest", "storage_key", manifestKey, "error", err)
+			return fmt.Errorf("failed to upload manifest: %w", err)
+		}
+
+		for _, segPath := range hlsResult.SegmentPaths {
+			segData, err := os.ReadFile(segPath)
+			if err != nil {
+				log.Error("failed to read segment", "path", segPath, "error", err)
+				return fmt.Errorf("failed to read segment: %w", err)
+			}
+			segName := filepath.Base(segPath)
+			segKey := buildVariantKey(payload.FileID, "hls_master", segName)
+			if err := deps.Storage.Upload(ctx, segKey, bytes.NewReader(segData), "video/mp2t", int64(len(segData))); err != nil {
+				log.Error("failed to upload segment", "storage_key", segKey, "error", err)
+				return fmt.Errorf("failed to upload segment: %w", err)
+			}
+		}
+
+		_, err = deps.Queries.CreateVariant(ctx, db.CreateVariantParams{
+			FileID:      file.ID,
+			VariantType: db.VariantType("hls_master"),
+			ContentType: "application/x-mpegURL",
+			SizeBytes:   int64(len(manifestData)),
+			StorageKey:  manifestKey,
+		})
+		if err != nil {
+			log.Error("failed to save variant record", "error", err)
+			return fmt.Errorf("failed to save variant record: %w", err)
+		}
+
+		if err := deps.Queries.UpdateFileStatus(ctx, db.UpdateFileStatusParams{
+			ID:     file.ID,
+			Status: db.FileStatusCompleted,
+		}); err != nil {
+			log.Error("failed to update file status", "error", err)
+			return fmt.Errorf("failed to update file status: %w", err)
+		}
+
+		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "segments", hlsResult.SegmentCount, "duration_seconds", hlsResult.TotalDuration)
+		return nil
+	}
+}
+
+func VideoWatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) error {
+	return func(ctx context.Context, j *job.Job) error {
+		log := logger.FromContext(ctx).With("job_id", j.ID, "job_type", "video_watermark")
+		log.Info("job started")
+		start := time.Now()
+
+		var payload VideoWatermarkPayload
+		if err := j.UnmarshalPayload(&payload); err != nil {
+			log.Error("invalid payload", "error", err)
+			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
+		}
+
+		log = log.With("file_id", payload.FileID.String())
+
+		fileID := pgtype.UUID{
+			Bytes: payload.FileID,
+			Valid: true,
+		}
+
+		file, err := deps.Queries.GetFile(ctx, fileID)
+		if err != nil {
+			log.Error("failed to retrieve file", "error", err)
+			return fmt.Errorf("failed to retrieve file: %w", err)
+		}
+
+		log.Debug("downloading video from storage", "storage_key", file.StorageKey)
+		downloadStart := time.Now()
+		reader, err := deps.Storage.Download(ctx, file.StorageKey)
+		if err != nil {
+			log.Error("failed to download file", "storage_key", file.StorageKey, "error", err)
+			return fmt.Errorf("failed to download file %s: %w", file.StorageKey, err)
+		}
+		defer closeSafely(reader, "original video reader")
+		log.Debug("video downloaded", "duration_ms", time.Since(downloadStart).Milliseconds())
+
+		proc := deps.Registry.MustGet("video_transcode")
+		ffmpegProc, ok := proc.(*video.FFmpegProcessor)
+		if !ok {
+			log.Error("video_transcode processor is not FFmpegProcessor")
+			return middleware.Permanent(fmt.Errorf("invalid processor type"))
+		}
+
+		text := payload.Text
+		if text == "" {
+			text = "file.cheap"
+		}
+		position := payload.Position
+		if position == "" {
+			position = "bottom-right"
+		}
+		opacity := payload.Opacity
+		if opacity <= 0 || opacity > 1 {
+			opacity = 0.5
+		}
+
+		log.Debug("adding watermark", "text", text, "position", position, "opacity", opacity)
+		processStart := time.Now()
+		result, err := ffmpegProc.AddWatermark(ctx, reader, text, position, opacity)
+		if err != nil {
+			log.Error("failed to add watermark", "error", err)
+			return middleware.Permanent(fmt.Errorf("failed to add watermark: %w", err))
+		}
+		log.Debug("watermark added", "duration_ms", time.Since(processStart).Milliseconds(), "output_size", result.Size)
+
+		variantKey := buildVariantKey(payload.FileID, "video_watermarked", "video.mp4")
+		log.Debug("uploading variant", "storage_key", variantKey)
+		uploadStart := time.Now()
+		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
+			log.Error("failed to upload variant", "storage_key", variantKey, "error", err)
+			return fmt.Errorf("failed to upload variant: %w", err)
+		}
+		log.Debug("variant uploaded", "duration_ms", time.Since(uploadStart).Milliseconds())
+
+		width := int32(result.Metadata.Width)
+		height := int32(result.Metadata.Height)
+		_, err = deps.Queries.CreateVariant(ctx, db.CreateVariantParams{
+			FileID:      file.ID,
+			VariantType: db.VariantType("video_watermarked"),
+			ContentType: result.ContentType,
+			SizeBytes:   result.Size,
+			StorageKey:  variantKey,
+			Width:       &width,
+			Height:      &height,
+		})
+		if err != nil {
+			log.Error("failed to save variant record", "error", err)
+			return fmt.Errorf("failed to save variant record: %w", err)
+		}
+
+		if err := deps.Queries.UpdateFileStatus(ctx, db.UpdateFileStatusParams{
+			ID:     file.ID,
+			Status: db.FileStatusCompleted,
+		}); err != nil {
+			log.Error("failed to update file status", "error", err)
+			return fmt.Errorf("failed to update file status: %w", err)
+		}
+
+		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "output_width", width, "output_height", height)
+		return nil
 	}
 }

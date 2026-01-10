@@ -19,6 +19,24 @@ const (
 
 	EnterpriseTransformationsLimit = -1 // unlimited
 
+	// Video limits - Free tier
+	FreeVideoStorageBytes  = 500 * 1024 * 1024 // 500 MB
+	FreeVideoMinutesLimit  = 10                // 10 minutes of processing per month
+	FreeMaxVideoLength     = 2 * 60            // 2 minutes max video length
+	FreeMaxVideoSize       = 50 * 1024 * 1024  // 50 MB max video file size
+	FreeMaxVideoResolution = 480               // 480p max
+
+	// Video limits - Pro tier
+	ProVideoStorageBytes  = 10 * 1024 * 1024 * 1024 // 10 GB
+	ProVideoMinutesLimit  = 300                     // 300 minutes of processing per month
+	ProMaxVideoLength     = 30 * 60                 // 30 minutes max video length
+	ProMaxVideoSize       = 500 * 1024 * 1024       // 500 MB max video file size
+	ProMaxVideoResolution = 1080                    // 1080p max
+
+	// Video limits - Enterprise tier
+	EnterpriseVideoMinutesLimit  = -1   // unlimited
+	EnterpriseMaxVideoResolution = 2160 // 4K
+
 	TrialDuration = 7 * 24 * time.Hour // 7 days
 	GracePeriod   = 3 * 24 * time.Hour // 3 days for past_due
 )
@@ -32,6 +50,15 @@ type TierLimits struct {
 	APIAccess            APIAccessLevel
 	PriorityQueue        bool
 	CustomWatermark      bool
+
+	// Video limits
+	VideoStorageBytes  int64
+	VideoMinutesLimit  int
+	MaxVideoLength     int   // in seconds
+	MaxVideoSize       int64 // in bytes
+	MaxVideoResolution int   // height in pixels (480, 720, 1080, 2160)
+	AdaptiveBitrate    bool  // HLS streaming
+	VideoWatermark     bool
 }
 
 type APIAccessLevel string
@@ -55,10 +82,20 @@ func GetTierLimits(tier db.SubscriptionTier) TierLimits {
 				"sm", "md", "lg", "xl",
 				"og", "twitter", "instagram_square", "instagram_portrait", "instagram_story",
 				"webp", "watermark",
+				// Video processing
+				"video_thumbnail", "video_transcode", "video_watermark",
 			},
 			APIAccess:       APIAccessFull,
 			PriorityQueue:   true,
 			CustomWatermark: true,
+			// Video - Enterprise
+			VideoStorageBytes:  ProVideoStorageBytes * 10, // 100 GB
+			VideoMinutesLimit:  EnterpriseVideoMinutesLimit,
+			MaxVideoLength:     -1, // unlimited
+			MaxVideoSize:       2 * 1024 * 1024 * 1024, // 2 GB
+			MaxVideoResolution: EnterpriseMaxVideoResolution,
+			AdaptiveBitrate:    true,
+			VideoWatermark:     true,
 		}
 	case db.SubscriptionTierPro:
 		return TierLimits{
@@ -71,10 +108,20 @@ func GetTierLimits(tier db.SubscriptionTier) TierLimits {
 				"sm", "md", "lg", "xl",
 				"og", "twitter", "instagram_square", "instagram_portrait", "instagram_story",
 				"webp", "watermark",
+				// Video processing
+				"video_thumbnail", "video_transcode", "video_watermark",
 			},
 			APIAccess:       APIAccessFull,
 			PriorityQueue:   true,
 			CustomWatermark: true,
+			// Video - Pro
+			VideoStorageBytes:  ProVideoStorageBytes,
+			VideoMinutesLimit:  ProVideoMinutesLimit,
+			MaxVideoLength:     ProMaxVideoLength,
+			MaxVideoSize:       ProMaxVideoSize,
+			MaxVideoResolution: ProMaxVideoResolution,
+			AdaptiveBitrate:    true,
+			VideoWatermark:     true,
 		}
 	default:
 		return TierLimits{
@@ -82,10 +129,18 @@ func GetTierLimits(tier db.SubscriptionTier) TierLimits {
 			MaxFileSize:          FreeMaxFileSize,
 			MaxRetentionDays:     FreeRetentionDays,
 			TransformationsLimit: FreeTransformationsLimit,
-			AllowedProcessing:    []string{"thumbnail", "sm"},
+			AllowedProcessing:    []string{"thumbnail", "sm", "video_thumbnail"},
 			APIAccess:            APIAccessReadOnly,
 			PriorityQueue:        false,
 			CustomWatermark:      false,
+			// Video - Free
+			VideoStorageBytes:  FreeVideoStorageBytes,
+			VideoMinutesLimit:  FreeVideoMinutesLimit,
+			MaxVideoLength:     FreeMaxVideoLength,
+			MaxVideoSize:       FreeMaxVideoSize,
+			MaxVideoResolution: FreeMaxVideoResolution,
+			AdaptiveBitrate:    false,
+			VideoWatermark:     false,
 		}
 	}
 }

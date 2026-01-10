@@ -533,3 +533,222 @@ func TestGetTierLimitsTransformations(t *testing.T) {
 		})
 	}
 }
+
+func TestGetTierLimitsVideo(t *testing.T) {
+	tests := []struct {
+		name               string
+		tier               db.SubscriptionTier
+		wantVideoStorage   int64
+		wantVideoMinutes   int
+		wantMaxVideoLength int
+		wantMaxVideoSize   int64
+		wantMaxResolution  int
+		wantAdaptive       bool
+		wantVideoWatermark bool
+	}{
+		{
+			name:               "free tier video limits",
+			tier:               db.SubscriptionTierFree,
+			wantVideoStorage:   FreeVideoStorageBytes,
+			wantVideoMinutes:   FreeVideoMinutesLimit,
+			wantMaxVideoLength: FreeMaxVideoLength,
+			wantMaxVideoSize:   FreeMaxVideoSize,
+			wantMaxResolution:  FreeMaxVideoResolution,
+			wantAdaptive:       false,
+			wantVideoWatermark: false,
+		},
+		{
+			name:               "pro tier video limits",
+			tier:               db.SubscriptionTierPro,
+			wantVideoStorage:   ProVideoStorageBytes,
+			wantVideoMinutes:   ProVideoMinutesLimit,
+			wantMaxVideoLength: ProMaxVideoLength,
+			wantMaxVideoSize:   ProMaxVideoSize,
+			wantMaxResolution:  ProMaxVideoResolution,
+			wantAdaptive:       true,
+			wantVideoWatermark: true,
+		},
+		{
+			name:               "enterprise tier video limits",
+			tier:               db.SubscriptionTierEnterprise,
+			wantVideoStorage:   ProVideoStorageBytes * 10,
+			wantVideoMinutes:   EnterpriseVideoMinutesLimit,
+			wantMaxVideoLength: -1,
+			wantMaxVideoSize:   2 * 1024 * 1024 * 1024,
+			wantMaxResolution:  EnterpriseMaxVideoResolution,
+			wantAdaptive:       true,
+			wantVideoWatermark: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			limits := GetTierLimits(tt.tier)
+			if limits.VideoStorageBytes != tt.wantVideoStorage {
+				t.Errorf("VideoStorageBytes = %d, want %d", limits.VideoStorageBytes, tt.wantVideoStorage)
+			}
+			if limits.VideoMinutesLimit != tt.wantVideoMinutes {
+				t.Errorf("VideoMinutesLimit = %d, want %d", limits.VideoMinutesLimit, tt.wantVideoMinutes)
+			}
+			if limits.MaxVideoLength != tt.wantMaxVideoLength {
+				t.Errorf("MaxVideoLength = %d, want %d", limits.MaxVideoLength, tt.wantMaxVideoLength)
+			}
+			if limits.MaxVideoSize != tt.wantMaxVideoSize {
+				t.Errorf("MaxVideoSize = %d, want %d", limits.MaxVideoSize, tt.wantMaxVideoSize)
+			}
+			if limits.MaxVideoResolution != tt.wantMaxResolution {
+				t.Errorf("MaxVideoResolution = %d, want %d", limits.MaxVideoResolution, tt.wantMaxResolution)
+			}
+			if limits.AdaptiveBitrate != tt.wantAdaptive {
+				t.Errorf("AdaptiveBitrate = %v, want %v", limits.AdaptiveBitrate, tt.wantAdaptive)
+			}
+			if limits.VideoWatermark != tt.wantVideoWatermark {
+				t.Errorf("VideoWatermark = %v, want %v", limits.VideoWatermark, tt.wantVideoWatermark)
+			}
+		})
+	}
+}
+
+func TestCanUseVideoFeature(t *testing.T) {
+	tests := []struct {
+		name    string
+		tier    db.SubscriptionTier
+		feature string
+		want    bool
+	}{
+		{"free can use video_thumbnail", db.SubscriptionTierFree, "video_thumbnail", true},
+		{"free cannot use video_transcode", db.SubscriptionTierFree, "video_transcode", false},
+		{"free cannot use video_watermark", db.SubscriptionTierFree, "video_watermark", false},
+		{"pro can use video_thumbnail", db.SubscriptionTierPro, "video_thumbnail", true},
+		{"pro can use video_transcode", db.SubscriptionTierPro, "video_transcode", true},
+		{"pro can use video_watermark", db.SubscriptionTierPro, "video_watermark", true},
+		{"enterprise can use video_thumbnail", db.SubscriptionTierEnterprise, "video_thumbnail", true},
+		{"enterprise can use video_transcode", db.SubscriptionTierEnterprise, "video_transcode", true},
+		{"enterprise can use video_watermark", db.SubscriptionTierEnterprise, "video_watermark", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CanUseFeature(tt.tier, tt.feature); got != tt.want {
+				t.Errorf("CanUseFeature(%s, %s) = %v, want %v", tt.tier, tt.feature, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestVideoConstants(t *testing.T) {
+	if FreeVideoStorageBytes != 500*1024*1024 {
+		t.Errorf("FreeVideoStorageBytes = %d, want %d", FreeVideoStorageBytes, 500*1024*1024)
+	}
+	if FreeVideoMinutesLimit != 10 {
+		t.Errorf("FreeVideoMinutesLimit = %d, want %d", FreeVideoMinutesLimit, 10)
+	}
+	if FreeMaxVideoLength != 2*60 {
+		t.Errorf("FreeMaxVideoLength = %d, want %d", FreeMaxVideoLength, 2*60)
+	}
+	if FreeMaxVideoSize != 50*1024*1024 {
+		t.Errorf("FreeMaxVideoSize = %d, want %d", FreeMaxVideoSize, 50*1024*1024)
+	}
+	if FreeMaxVideoResolution != 480 {
+		t.Errorf("FreeMaxVideoResolution = %d, want %d", FreeMaxVideoResolution, 480)
+	}
+
+	if ProVideoStorageBytes != 10*1024*1024*1024 {
+		t.Errorf("ProVideoStorageBytes = %d, want %d", ProVideoStorageBytes, 10*1024*1024*1024)
+	}
+	if ProVideoMinutesLimit != 300 {
+		t.Errorf("ProVideoMinutesLimit = %d, want %d", ProVideoMinutesLimit, 300)
+	}
+	if ProMaxVideoLength != 30*60 {
+		t.Errorf("ProMaxVideoLength = %d, want %d", ProMaxVideoLength, 30*60)
+	}
+	if ProMaxVideoSize != 500*1024*1024 {
+		t.Errorf("ProMaxVideoSize = %d, want %d", ProMaxVideoSize, 500*1024*1024)
+	}
+	if ProMaxVideoResolution != 1080 {
+		t.Errorf("ProMaxVideoResolution = %d, want %d", ProMaxVideoResolution, 1080)
+	}
+
+	if EnterpriseVideoMinutesLimit != -1 {
+		t.Errorf("EnterpriseVideoMinutesLimit = %d, want %d", EnterpriseVideoMinutesLimit, -1)
+	}
+	if EnterpriseMaxVideoResolution != 2160 {
+		t.Errorf("EnterpriseMaxVideoResolution = %d, want %d", EnterpriseMaxVideoResolution, 2160)
+	}
+}
+
+func TestVideoResolutionProgression(t *testing.T) {
+	freeLimits := GetTierLimits(db.SubscriptionTierFree)
+	proLimits := GetTierLimits(db.SubscriptionTierPro)
+	enterpriseLimits := GetTierLimits(db.SubscriptionTierEnterprise)
+
+	if freeLimits.MaxVideoResolution >= proLimits.MaxVideoResolution {
+		t.Errorf("Free resolution (%d) should be less than Pro (%d)",
+			freeLimits.MaxVideoResolution, proLimits.MaxVideoResolution)
+	}
+	if proLimits.MaxVideoResolution >= enterpriseLimits.MaxVideoResolution {
+		t.Errorf("Pro resolution (%d) should be less than Enterprise (%d)",
+			proLimits.MaxVideoResolution, enterpriseLimits.MaxVideoResolution)
+	}
+}
+
+func TestVideoStorageProgression(t *testing.T) {
+	freeLimits := GetTierLimits(db.SubscriptionTierFree)
+	proLimits := GetTierLimits(db.SubscriptionTierPro)
+	enterpriseLimits := GetTierLimits(db.SubscriptionTierEnterprise)
+
+	if freeLimits.VideoStorageBytes >= proLimits.VideoStorageBytes {
+		t.Errorf("Free storage (%d) should be less than Pro (%d)",
+			freeLimits.VideoStorageBytes, proLimits.VideoStorageBytes)
+	}
+	if proLimits.VideoStorageBytes >= enterpriseLimits.VideoStorageBytes {
+		t.Errorf("Pro storage (%d) should be less than Enterprise (%d)",
+			proLimits.VideoStorageBytes, enterpriseLimits.VideoStorageBytes)
+	}
+}
+
+func TestVideoMinutesProgression(t *testing.T) {
+	freeLimits := GetTierLimits(db.SubscriptionTierFree)
+	proLimits := GetTierLimits(db.SubscriptionTierPro)
+	enterpriseLimits := GetTierLimits(db.SubscriptionTierEnterprise)
+
+	if freeLimits.VideoMinutesLimit >= proLimits.VideoMinutesLimit {
+		t.Errorf("Free minutes (%d) should be less than Pro (%d)",
+			freeLimits.VideoMinutesLimit, proLimits.VideoMinutesLimit)
+	}
+	if enterpriseLimits.VideoMinutesLimit != -1 {
+		t.Errorf("Enterprise minutes should be unlimited (-1), got %d",
+			enterpriseLimits.VideoMinutesLimit)
+	}
+}
+
+func TestFreeCannotUseAdvancedVideoFeatures(t *testing.T) {
+	freeLimits := GetTierLimits(db.SubscriptionTierFree)
+
+	if freeLimits.AdaptiveBitrate {
+		t.Error("Free tier should not have AdaptiveBitrate")
+	}
+	if freeLimits.VideoWatermark {
+		t.Error("Free tier should not have VideoWatermark")
+	}
+}
+
+func TestProHasAdvancedVideoFeatures(t *testing.T) {
+	proLimits := GetTierLimits(db.SubscriptionTierPro)
+
+	if !proLimits.AdaptiveBitrate {
+		t.Error("Pro tier should have AdaptiveBitrate")
+	}
+	if !proLimits.VideoWatermark {
+		t.Error("Pro tier should have VideoWatermark")
+	}
+}
+
+func TestEnterpriseHasUnlimitedVideoLength(t *testing.T) {
+	enterpriseLimits := GetTierLimits(db.SubscriptionTierEnterprise)
+
+	if enterpriseLimits.MaxVideoLength != -1 {
+		t.Errorf("Enterprise MaxVideoLength should be unlimited (-1), got %d",
+			enterpriseLimits.MaxVideoLength)
+	}
+}

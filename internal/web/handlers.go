@@ -698,6 +698,14 @@ func (h *Handlers) FileDetail(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		streamURL := ""
+		for _, v := range variants {
+			if string(v.VariantType) == "hls_master" {
+				streamURL = "/files/" + fileIDStr + "/download?variant=hls_master"
+				break
+			}
+		}
+
 		data.File = pages.FileDetail{
 			ID:           fileIDStr,
 			Name:         file.Filename,
@@ -708,6 +716,8 @@ func (h *Handlers) FileDetail(w http.ResponseWriter, r *http.Request) {
 			ThumbnailURL: thumbnailURL,
 			CreatedAt:    file.CreatedAt.Time.Format("Jan 2, 2006 3:04 PM"),
 			UpdatedAt:    file.UpdatedAt.Time.Format("Jan 2, 2006 3:04 PM"),
+			IsVideo:      strings.HasPrefix(file.ContentType, "video/"),
+			StreamURL:    streamURL,
 		}
 	}
 
@@ -1976,4 +1986,71 @@ func formatBytes(bytes int64) string {
 	}
 	sizes := []string{"KB", "MB", "GB", "TB"}
 	return fmt.Sprintf("%.1f %s", float64(bytes)/float64(div), sizes[exp])
+}
+
+func (h *Handlers) VideoEmbed(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
+	fileIDStr := r.PathValue("id")
+
+	data := pages.VideoEmbedData{
+		VideoID: "embed-" + fileIDStr,
+		Title:   "Video",
+		Error:   "",
+	}
+
+	fileID, err := uuid.Parse(fileIDStr)
+	if err != nil {
+		log.Error("invalid file ID for embed", "file_id", fileIDStr, "error", err)
+		data.Error = "Invalid video ID"
+		_ = pages.VideoEmbedPage(data).Render(r.Context(), w)
+		return
+	}
+
+	if h.cfg.Queries == nil {
+		data.Error = "Service unavailable"
+		_ = pages.VideoEmbedPage(data).Render(r.Context(), w)
+		return
+	}
+
+	pgFileID := pgtype.UUID{
+		Bytes: fileID,
+		Valid: true,
+	}
+
+	file, err := h.cfg.Queries.GetFile(r.Context(), pgFileID)
+	if err != nil {
+		log.Error("file not found for embed", "file_id", fileIDStr, "error", err)
+		data.Error = "Video not found"
+		_ = pages.VideoEmbedPage(data).Render(r.Context(), w)
+		return
+	}
+
+	if !strings.HasPrefix(file.ContentType, "video/") {
+		log.Warn("non-video file requested for embed", "file_id", fileIDStr, "content_type", file.ContentType)
+		data.Error = "This file is not a video"
+		_ = pages.VideoEmbedPage(data).Render(r.Context(), w)
+		return
+	}
+
+	data.Title = file.Filename
+
+	variants, err := h.cfg.Queries.ListVariantsByFile(r.Context(), pgFileID)
+	if err != nil {
+		log.Error("failed to list variants for embed", "file_id", fileIDStr, "error", err)
+	}
+
+	for _, v := range variants {
+		if string(v.VariantType) == "hls_master" {
+			data.StreamURL = h.cfg.BaseURL + "/files/" + fileIDStr + "/download?variant=hls_master"
+		}
+		if v.VariantType == db.VariantTypeThumbnail || string(v.VariantType) == "video_thumbnail" {
+			data.PosterURL = h.cfg.BaseURL + "/files/" + fileIDStr + "/download?variant=" + string(v.VariantType)
+		}
+	}
+
+	if data.StreamURL == "" {
+		data.StreamURL = h.cfg.BaseURL + "/files/" + fileIDStr + "/download"
+	}
+
+	_ = pages.VideoEmbedPage(data).Render(r.Context(), w)
 }

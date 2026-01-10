@@ -13,6 +13,7 @@ import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
 	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
+	"github.com/abdul-hamid-achik/file.cheap/internal/processor/video"
 	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
 	"github.com/abdul-hamid-achik/file.cheap/internal/worker"
 	"github.com/google/uuid"
@@ -80,6 +81,19 @@ func NewRouter(cfg *Config) http.Handler {
 	apiMux := http.NewServeMux()
 
 	apiMux.HandleFunc("POST /v1/upload", uploadHandler(cfg))
+
+	chunkedCfg := &ChunkedUploadConfig{
+		Storage:       cfg.Storage,
+		Queries:       cfg.Queries,
+		Broker:        cfg.Broker,
+		MaxUploadSize: cfg.MaxUploadSize,
+		ChunkSize:     5 * 1024 * 1024, // 5MB default chunk size
+	}
+	apiMux.HandleFunc("POST /v1/upload/chunked", InitChunkedUploadHandler(chunkedCfg))
+	apiMux.HandleFunc("PUT /v1/upload/chunked/{uploadId}", UploadChunkHandler(chunkedCfg))
+	apiMux.HandleFunc("GET /v1/upload/chunked/{uploadId}", GetUploadStatusHandler(chunkedCfg))
+	apiMux.HandleFunc("DELETE /v1/upload/chunked/{uploadId}", CancelUploadHandler(chunkedCfg))
+
 	apiMux.HandleFunc("GET /v1/files", listFilesHandler(cfg))
 	apiMux.HandleFunc("GET /v1/files/{id}", getFileHandler(cfg))
 	apiMux.HandleFunc("GET /v1/files/{id}/download", downloadHandler(cfg))
@@ -95,9 +109,17 @@ func NewRouter(cfg *Config) http.Handler {
 	apiMux.HandleFunc("DELETE /v1/shares/{shareId}", DeleteShareHandler(cdnCfg))
 
 	apiMux.HandleFunc("POST /v1/files/{id}/transform", transformHandler(cfg))
+	apiMux.HandleFunc("POST /v1/files/{id}/video/transcode", videoTranscodeHandler(cfg))
+	apiMux.HandleFunc("POST /v1/files/{id}/video/hls", videoHLSHandler(cfg))
+	apiMux.HandleFunc("GET /v1/files/{id}/hls/{segment}", hlsStreamHandler(cfg))
 
 	apiMux.HandleFunc("POST /v1/batch/transform", batchTransformHandler(cfg))
 	apiMux.HandleFunc("GET /v1/batch/{id}", getBatchHandler(cfg))
+
+	sseCfg := &SSEConfig{Queries: cfg.Queries}
+	apiMux.HandleFunc("GET /v1/files/{id}/status", FileStatusHandler(sseCfg))
+	apiMux.HandleFunc("GET /v1/files/{id}/events", FileStatusSSEHandler(sseCfg))
+	apiMux.HandleFunc("GET /v1/upload/progress", UploadProgressSSEHandler())
 
 	deviceAuthCfg := &DeviceAuthConfig{
 		Queries: cfg.Queries,
@@ -228,6 +250,14 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 						log.Error("failed to enqueue pdf_thumbnail job", "error", err)
 					} else {
 						log.Info("pdf_thumbnail job enqueued", "job_id", jobID)
+					}
+				case video.IsVideoType(contentType):
+					payload := worker.NewVideoThumbnailPayload(fileUUID)
+					jobID, err := cfg.Broker.Enqueue("video_thumbnail", payload)
+					if err != nil {
+						log.Error("failed to enqueue video_thumbnail job", "error", err)
+					} else {
+						log.Info("video_thumbnail job enqueued", "job_id", jobID)
 					}
 				default:
 					log.Debug("no automatic processing for content type", "content_type", contentType)
@@ -1076,5 +1106,333 @@ func getBatchHandler(cfg *Config) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(response)
+	}
+}
+
+// Video transcode request/response types
+
+type VideoTranscodeRequest struct {
+	Resolutions []int  `json:"resolutions"` // e.g., [360, 720, 1080]
+	Format      string `json:"format"`      // mp4, webm
+	Preset      string `json:"preset"`      // ultrafast, fast, medium, slow
+	Thumbnail   bool   `json:"thumbnail"`   // extract thumbnail
+}
+
+type VideoTranscodeResponse struct {
+	FileID string   `json:"file_id"`
+	Jobs   []string `json:"jobs"`
+}
+
+func videoTranscodeHandler(cfg *Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log := logger.FromContext(r.Context())
+
+		userID, ok := GetUserID(r.Context())
+		if !ok {
+			apperror.WriteJSON(w, r, apperror.ErrUnauthorized)
+			return
+		}
+
+		fileIDStr := r.PathValue("id")
+		fileID, err := uuid.Parse(fileIDStr)
+		if err != nil {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(err, "invalid_file_id", "Invalid file ID format", http.StatusBadRequest))
+			return
+		}
+
+		log = log.With("user_id", userID.String(), "file_id", fileIDStr)
+
+		if cfg.Queries == nil {
+			apperror.WriteJSON(w, r, apperror.ErrInternal)
+			return
+		}
+
+		pgFileID := pgtype.UUID{Bytes: fileID, Valid: true}
+		pgUserID := pgtype.UUID{Bytes: userID, Valid: true}
+
+		file, err := cfg.Queries.GetFile(r.Context(), pgFileID)
+		if err != nil {
+			apperror.WriteJSON(w, r, apperror.ErrNotFound)
+			return
+		}
+
+		fileUserID := uuidFromPgtype(file.UserID)
+		if fileUserID != userID.String() {
+			apperror.WriteJSON(w, r, apperror.ErrNotFound)
+			return
+		}
+
+		if file.DeletedAt.Valid {
+			apperror.WriteJSON(w, r, apperror.ErrNotFound)
+			return
+		}
+
+		// Verify file is a video
+		if !video.IsVideoType(file.ContentType) {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "not_a_video",
+				"This file is not a video. Video transcoding only works with video files.",
+				http.StatusBadRequest))
+			return
+		}
+
+		var req VideoTranscodeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(err, "invalid_request", "Invalid JSON request body", http.StatusBadRequest))
+			return
+		}
+
+		// Default values
+		if len(req.Resolutions) == 0 {
+			req.Resolutions = []int{720} // Default to 720p
+		}
+		if req.Format == "" {
+			req.Format = "mp4"
+		}
+		if req.Preset == "" {
+			req.Preset = "medium"
+		}
+
+		// Validate format
+		if req.Format != "mp4" && req.Format != "webm" {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "invalid_format",
+				"Invalid format. Supported formats: mp4, webm",
+				http.StatusBadRequest))
+			return
+		}
+
+		// Check billing limits
+		billingInfo := GetBilling(r.Context())
+		if billingInfo != nil {
+			limits := billing.GetTierLimits(billingInfo.Tier)
+
+			// Check max resolution based on tier
+			for _, res := range req.Resolutions {
+				if res > limits.MaxVideoResolution {
+					apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "resolution_limit",
+						fmt.Sprintf("Resolution %dp exceeds your plan limit of %dp. Upgrade to Pro for higher resolutions.",
+							res, limits.MaxVideoResolution),
+						http.StatusForbidden))
+					return
+				}
+			}
+
+			// Check video minutes quota
+			usage, err := cfg.Queries.GetUserTransformationUsage(r.Context(), pgUserID)
+			if err == nil {
+				remaining := int(usage.TransformationsLimit) - int(usage.TransformationsCount)
+				jobCount := len(req.Resolutions)
+				if req.Thumbnail {
+					jobCount++
+				}
+				if usage.TransformationsLimit != -1 && remaining < jobCount {
+					apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "transformation_limit_reached",
+						fmt.Sprintf("Not enough transformations remaining. Need %d, have %d.", jobCount, remaining),
+						http.StatusForbidden))
+					return
+				}
+			}
+		}
+
+		if cfg.Broker == nil {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "service_unavailable", "Job queue is not available", http.StatusServiceUnavailable))
+			return
+		}
+
+		var jobIDs []string
+
+		// Enqueue transcode jobs for each resolution
+		for _, resolution := range req.Resolutions {
+			variantType := fmt.Sprintf("%s_%dp", req.Format, resolution)
+			payload := worker.NewVideoTranscodePayload(fileID, variantType, resolution)
+			jobID, err := cfg.Broker.Enqueue("video_transcode", payload)
+			if err != nil {
+				log.Error("failed to enqueue video transcode job", "resolution", resolution, "error", err)
+				continue
+			}
+			jobIDs = append(jobIDs, jobID)
+
+			if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
+				log.Error("failed to increment transformation count", "error", err)
+			}
+		}
+
+		// Enqueue thumbnail job if requested
+		if req.Thumbnail {
+			payload := worker.NewVideoThumbnailPayload(fileID)
+			jobID, err := cfg.Broker.Enqueue("video_thumbnail", payload)
+			if err != nil {
+				log.Error("failed to enqueue video thumbnail job", "error", err)
+			} else {
+				jobIDs = append(jobIDs, jobID)
+				if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
+					log.Error("failed to increment transformation count", "error", err)
+				}
+			}
+		}
+
+		if len(jobIDs) == 0 {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "no_jobs_created", "Failed to create any transcode jobs", http.StatusInternalServerError))
+			return
+		}
+
+		log.Info("video transcode jobs created", "job_count", len(jobIDs), "resolutions", req.Resolutions)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(VideoTranscodeResponse{
+			FileID: fileIDStr,
+			Jobs:   jobIDs,
+		})
+	}
+}
+
+type VideoHLSRequest struct {
+	SegmentDuration int   `json:"segment_duration"`
+	Resolutions     []int `json:"resolutions"`
+}
+
+func videoHLSHandler(cfg *Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log := logger.FromContext(r.Context())
+
+		userID, ok := GetUserID(r.Context())
+		if !ok {
+			apperror.WriteJSON(w, r, apperror.ErrUnauthorized)
+			return
+		}
+
+		fileIDStr := r.PathValue("id")
+		fileID, err := uuid.Parse(fileIDStr)
+		if err != nil {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(err, "invalid_file_id", "Invalid file ID format", http.StatusBadRequest))
+			return
+		}
+
+		log = log.With("user_id", userID.String(), "file_id", fileIDStr)
+
+		if cfg.Queries == nil {
+			apperror.WriteJSON(w, r, apperror.ErrInternal)
+			return
+		}
+
+		pgFileID := pgtype.UUID{Bytes: fileID, Valid: true}
+		pgUserID := pgtype.UUID{Bytes: userID, Valid: true}
+
+		file, err := cfg.Queries.GetFile(r.Context(), pgFileID)
+		if err != nil {
+			apperror.WriteJSON(w, r, apperror.ErrNotFound)
+			return
+		}
+
+		if uuidFromPgtype(file.UserID) != userID.String() || file.DeletedAt.Valid {
+			apperror.WriteJSON(w, r, apperror.ErrNotFound)
+			return
+		}
+
+		if !video.IsVideoType(file.ContentType) {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "not_a_video",
+				"This file is not a video.", http.StatusBadRequest))
+			return
+		}
+
+		billingInfo := GetBilling(r.Context())
+		if billingInfo != nil {
+			limits := billing.GetTierLimits(billingInfo.Tier)
+			if !limits.AdaptiveBitrate {
+				apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "feature_not_available",
+					"HLS streaming requires Pro tier. Upgrade to enable adaptive bitrate streaming.",
+					http.StatusForbidden))
+				return
+			}
+		}
+
+		var req VideoHLSRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			req = VideoHLSRequest{}
+		}
+		if req.SegmentDuration <= 0 {
+			req.SegmentDuration = 10
+		}
+		if len(req.Resolutions) == 0 {
+			req.Resolutions = []int{360, 720}
+		}
+
+		if cfg.Broker == nil {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "service_unavailable", "Job queue is not available", http.StatusServiceUnavailable))
+			return
+		}
+
+		payload := worker.NewVideoHLSPayload(fileID, req.Resolutions)
+		payload.SegmentDuration = req.SegmentDuration
+		jobID, err := cfg.Broker.Enqueue("video_hls", payload)
+		if err != nil {
+			log.Error("failed to enqueue video HLS job", "error", err)
+			apperror.WriteJSON(w, r, apperror.ErrInternal)
+			return
+		}
+
+		if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
+			log.Error("failed to increment transformation count", "error", err)
+		}
+
+		log.Info("video HLS job created", "job_id", jobID)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(VideoTranscodeResponse{
+			FileID: fileIDStr,
+			Jobs:   []string{jobID},
+		})
+	}
+}
+
+func hlsStreamHandler(cfg *Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, ok := GetUserID(r.Context())
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		fileIDStr := r.PathValue("id")
+		fileID, err := uuid.Parse(fileIDStr)
+		if err != nil {
+			http.Error(w, "invalid file ID", http.StatusBadRequest)
+			return
+		}
+
+		segment := r.PathValue("segment")
+		if segment == "" {
+			http.Error(w, "segment required", http.StatusBadRequest)
+			return
+		}
+
+		if cfg.Queries == nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+
+		pgFileID := pgtype.UUID{Bytes: fileID, Valid: true}
+
+		file, err := cfg.Queries.GetFile(r.Context(), pgFileID)
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+
+		if uuidFromPgtype(file.UserID) != userID.String() {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+
+		storageKey := fmt.Sprintf("variants/%s/hls_master/%s", fileIDStr, segment)
+
+		url, err := cfg.Storage.GetPresignedURL(r.Context(), storageKey, 3600)
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+
+		http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 	}
 }

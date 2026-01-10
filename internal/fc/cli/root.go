@@ -104,6 +104,7 @@ func init() {
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(shareCmd)
+	rootCmd.AddCommand(videoCmd)
 }
 
 func requireAuth() error {

@@ -955,3 +955,757 @@ func equalFold(s, t string) bool {
 	}
 	return true
 }
+
+// Video handler tests
+
+func makeTestVideoFile(id, userID uuid.UUID, filename, storageKey string) db.File {
+	return db.File{
+		ID:          pgtype.UUID{Bytes: id, Valid: true},
+		UserID:      pgtype.UUID{Bytes: userID, Valid: true},
+		Filename:    filename,
+		ContentType: "video/mp4",
+		SizeBytes:   10 * 1024 * 1024, // 10MB
+		StorageKey:  storageKey,
+		Status:      db.FileStatusPending,
+		CreatedAt:   pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		UpdatedAt:   pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	}
+}
+
+func TestVideoThumbnailPayload(t *testing.T) {
+	tests := []struct {
+		name        string
+		payload     VideoThumbnailPayload
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "valid payload",
+			payload: VideoThumbnailPayload{
+				FileID:    uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+				Width:     1280,
+				Height:    720,
+				Quality:   85,
+				Format:    "jpg",
+				AtPercent: 0.1,
+			},
+			wantErr: false,
+		},
+		{
+			name: "nil file ID",
+			payload: VideoThumbnailPayload{
+				FileID: uuid.Nil,
+				Width:  1280,
+				Height: 720,
+			},
+			wantErr:     true,
+			errContains: "invalid",
+		},
+		{
+			name: "zero dimensions use defaults",
+			payload: VideoThumbnailPayload{
+				FileID:    uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+				Width:     0,
+				Height:    0,
+				AtPercent: 0.5,
+			},
+			wantErr: false, // Defaults should apply
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockQueries := NewMockQuerier()
+			mockStorage := NewMockStorage()
+			mockProc := NewMockProcessor("video_thumbnail", "video/mp4", "video/webm")
+
+			if !tt.wantErr && tt.payload.FileID != uuid.Nil {
+				testFile := makeTestVideoFile(tt.payload.FileID, uuid.New(), "test.mp4", "uploads/"+tt.payload.FileID.String()+"/test.mp4")
+				mockQueries.AddFile(testFile)
+				// Upload dummy video data
+				_ = mockStorage.MemoryStorage.Upload(context.Background(), testFile.StorageKey, bytes.NewReader([]byte("fake video")), "video/mp4", 10)
+			}
+
+			testRegistry := newTestRegistry()
+			testRegistry.register("video_thumbnail", mockProc)
+
+			deps := &testDependencies{
+				storage:  mockStorage,
+				registry: testRegistry,
+				queries:  mockQueries,
+			}
+
+			handler := testVideoThumbnailHandler(deps)
+			job := newMockJob(t, "video_thumbnail", tt.payload)
+			err := handler(context.Background(), job)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				} else if tt.errContains != "" && !containsString(err.Error(), tt.errContains) {
+					t.Errorf("error = %q, want error containing %q", err.Error(), tt.errContains)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestVideoTranscodePayload(t *testing.T) {
+	tests := []struct {
+		name        string
+		payload     VideoTranscodePayload
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "valid transcode payload",
+			payload: VideoTranscodePayload{
+				FileID:        uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+				VariantType:   "720p",
+				OutputFormat:  "mp4",
+				MaxResolution: 720,
+				Preset:        "medium",
+				CRF:           23,
+			},
+			wantErr: false,
+		},
+		{
+			name: "nil file ID",
+			payload: VideoTranscodePayload{
+				FileID:      uuid.Nil,
+				VariantType: "720p",
+			},
+			wantErr:     true,
+			errContains: "invalid",
+		},
+		{
+			name: "empty variant type",
+			payload: VideoTranscodePayload{
+				FileID:      uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+				VariantType: "",
+			},
+			wantErr:     true,
+			errContains: "invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockQueries := NewMockQuerier()
+			mockStorage := NewMockStorage()
+			mockProc := NewMockProcessor("video_transcode", "video/mp4", "video/webm")
+
+			if !tt.wantErr && tt.payload.FileID != uuid.Nil && tt.payload.VariantType != "" {
+				testFile := makeTestVideoFile(tt.payload.FileID, uuid.New(), "test.mp4", "uploads/"+tt.payload.FileID.String()+"/test.mp4")
+				mockQueries.AddFile(testFile)
+				_ = mockStorage.MemoryStorage.Upload(context.Background(), testFile.StorageKey, bytes.NewReader([]byte("fake video")), "video/mp4", 10)
+			}
+
+			testRegistry := newTestRegistry()
+			testRegistry.register("video_transcode", mockProc)
+
+			deps := &testDependencies{
+				storage:  mockStorage,
+				registry: testRegistry,
+				queries:  mockQueries,
+			}
+
+			handler := testVideoTranscodeHandler(deps)
+			job := newMockJob(t, "video_transcode", tt.payload)
+			err := handler(context.Background(), job)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				} else if tt.errContains != "" && !containsString(err.Error(), tt.errContains) {
+					t.Errorf("error = %q, want error containing %q", err.Error(), tt.errContains)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestVideoHLSPayload(t *testing.T) {
+	tests := []struct {
+		name        string
+		payload     VideoHLSPayload
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "valid HLS payload",
+			payload: VideoHLSPayload{
+				FileID:          uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+				SegmentDuration: 10,
+				Resolutions:     []int{360, 720, 1080},
+			},
+			wantErr: false,
+		},
+		{
+			name: "nil file ID",
+			payload: VideoHLSPayload{
+				FileID:          uuid.Nil,
+				SegmentDuration: 10,
+			},
+			wantErr:     true,
+			errContains: "invalid",
+		},
+		{
+			name: "zero segment duration uses default",
+			payload: VideoHLSPayload{
+				FileID:          uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+				SegmentDuration: 0, // Should default to 10
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockQueries := NewMockQuerier()
+			mockStorage := NewMockStorage()
+			mockProc := NewMockProcessor("video_transcode", "video/mp4", "video/webm")
+
+			if !tt.wantErr && tt.payload.FileID != uuid.Nil {
+				testFile := makeTestVideoFile(tt.payload.FileID, uuid.New(), "test.mp4", "uploads/"+tt.payload.FileID.String()+"/test.mp4")
+				mockQueries.AddFile(testFile)
+				_ = mockStorage.MemoryStorage.Upload(context.Background(), testFile.StorageKey, bytes.NewReader([]byte("fake video")), "video/mp4", 10)
+			}
+
+			testRegistry := newTestRegistry()
+			testRegistry.register("video_transcode", mockProc)
+
+			deps := &testDependencies{
+				storage:  mockStorage,
+				registry: testRegistry,
+				queries:  mockQueries,
+			}
+
+			handler := testVideoHLSHandler(deps)
+			job := newMockJob(t, "video_hls", tt.payload)
+			err := handler(context.Background(), job)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				} else if tt.errContains != "" && !containsString(err.Error(), tt.errContains) {
+					t.Errorf("error = %q, want error containing %q", err.Error(), tt.errContains)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestVideoWatermarkPayload(t *testing.T) {
+	tests := []struct {
+		name        string
+		payload     VideoWatermarkPayload
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "valid watermark payload",
+			payload: VideoWatermarkPayload{
+				FileID:   uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+				Text:     "file.cheap",
+				Position: "bottom-right",
+				Opacity:  0.5,
+			},
+			wantErr: false,
+		},
+		{
+			name: "nil file ID",
+			payload: VideoWatermarkPayload{
+				FileID: uuid.Nil,
+				Text:   "watermark",
+			},
+			wantErr:     true,
+			errContains: "invalid",
+		},
+		{
+			name: "empty text uses default",
+			payload: VideoWatermarkPayload{
+				FileID:   uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+				Text:     "", // Should default to "file.cheap"
+				Position: "center",
+			},
+			wantErr: false,
+		},
+		{
+			name: "default position when empty",
+			payload: VideoWatermarkPayload{
+				FileID:   uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+				Text:     "watermark",
+				Position: "", // Should default to "bottom-right"
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockQueries := NewMockQuerier()
+			mockStorage := NewMockStorage()
+			mockProc := NewMockProcessor("video_transcode", "video/mp4", "video/webm")
+
+			if !tt.wantErr && tt.payload.FileID != uuid.Nil {
+				testFile := makeTestVideoFile(tt.payload.FileID, uuid.New(), "test.mp4", "uploads/"+tt.payload.FileID.String()+"/test.mp4")
+				mockQueries.AddFile(testFile)
+				_ = mockStorage.MemoryStorage.Upload(context.Background(), testFile.StorageKey, bytes.NewReader([]byte("fake video")), "video/mp4", 10)
+			}
+
+			testRegistry := newTestRegistry()
+			testRegistry.register("video_transcode", mockProc)
+
+			deps := &testDependencies{
+				storage:  mockStorage,
+				registry: testRegistry,
+				queries:  mockQueries,
+			}
+
+			handler := testVideoWatermarkHandler(deps)
+			job := newMockJob(t, "video_watermark", tt.payload)
+			err := handler(context.Background(), job)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				} else if tt.errContains != "" && !containsString(err.Error(), tt.errContains) {
+					t.Errorf("error = %q, want error containing %q", err.Error(), tt.errContains)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestVideoHandlerErrors(t *testing.T) {
+	tests := []struct {
+		name        string
+		handlerType string
+		fileErr     error
+		downloadErr error
+		uploadErr   error
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:        "video thumbnail - file not found",
+			handlerType: "video_thumbnail",
+			fileErr:     errors.New("file not found"),
+			wantErr:     true,
+			errContains: "not found",
+		},
+		{
+			name:        "video transcode - download error",
+			handlerType: "video_transcode",
+			downloadErr: errors.New("storage unavailable"),
+			wantErr:     true,
+			errContains: "storage",
+		},
+		{
+			name:        "video watermark - upload error",
+			handlerType: "video_watermark",
+			uploadErr:   errors.New("upload failed"),
+			wantErr:     true,
+			errContains: "upload",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fileID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+			mockQueries := NewMockQuerier()
+			mockStorage := NewMockStorage()
+			mockProc := NewMockProcessor("video_transcode", "video/mp4")
+
+			mockQueries.GetFileErr = tt.fileErr
+			mockStorage.DownloadErr = tt.downloadErr
+			mockStorage.UploadErr = tt.uploadErr
+
+			if tt.fileErr == nil {
+				testFile := makeTestVideoFile(fileID, uuid.New(), "test.mp4", "uploads/"+fileID.String()+"/test.mp4")
+				mockQueries.AddFile(testFile)
+				if tt.downloadErr == nil {
+					_ = mockStorage.MemoryStorage.Upload(context.Background(), testFile.StorageKey, bytes.NewReader([]byte("fake video")), "video/mp4", 10)
+				}
+			}
+
+			testRegistry := newTestRegistry()
+			testRegistry.register("video_transcode", mockProc)
+			testRegistry.register("video_thumbnail", mockProc)
+
+			deps := &testDependencies{
+				storage:  mockStorage,
+				registry: testRegistry,
+				queries:  mockQueries,
+			}
+
+			var err error
+			switch tt.handlerType {
+			case "video_thumbnail":
+				handler := testVideoThumbnailHandler(deps)
+				payload := VideoThumbnailPayload{FileID: fileID, Width: 200, Height: 200}
+				job := newMockJob(t, tt.handlerType, payload)
+				err = handler(context.Background(), job)
+			case "video_transcode":
+				handler := testVideoTranscodeHandler(deps)
+				payload := VideoTranscodePayload{FileID: fileID, VariantType: "720p"}
+				job := newMockJob(t, tt.handlerType, payload)
+				err = handler(context.Background(), job)
+			case "video_watermark":
+				handler := testVideoWatermarkHandler(deps)
+				payload := VideoWatermarkPayload{FileID: fileID, Text: "test"}
+				job := newMockJob(t, tt.handlerType, payload)
+				err = handler(context.Background(), job)
+			}
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				} else if tt.errContains != "" && !containsString(err.Error(), tt.errContains) {
+					t.Errorf("error = %q, want error containing %q", err.Error(), tt.errContains)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestVideoVariantKeyGeneration(t *testing.T) {
+	fileID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+
+	tests := []struct {
+		name        string
+		variantType string
+		filename    string
+		want        string
+	}{
+		{
+			name:        "video thumbnail key",
+			variantType: "video_thumbnail",
+			filename:    "thumbnail.jpg",
+			want:        "processed/550e8400-e29b-41d4-a716-446655440000/video_thumbnail/thumbnail.jpg",
+		},
+		{
+			name:        "video 720p key",
+			variantType: "720p",
+			filename:    "video.mp4",
+			want:        "processed/550e8400-e29b-41d4-a716-446655440000/720p/video.mp4",
+		},
+		{
+			name:        "HLS master key",
+			variantType: "hls_master",
+			filename:    "playlist.m3u8",
+			want:        "processed/550e8400-e29b-41d4-a716-446655440000/hls_master/playlist.m3u8",
+		},
+		{
+			name:        "video watermarked key",
+			variantType: "video_watermarked",
+			filename:    "video.mp4",
+			want:        "processed/550e8400-e29b-41d4-a716-446655440000/video_watermarked/video.mp4",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildVariantKey(fileID, tt.variantType, tt.filename)
+			if got != tt.want {
+				t.Errorf("buildVariantKey() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// Test handler implementations for video
+
+func testVideoThumbnailHandler(deps *testDependencies) func(context.Context, *mockJob) error {
+	return func(ctx context.Context, j *mockJob) error {
+		var payload VideoThumbnailPayload
+		if err := j.UnmarshalPayload(&payload); err != nil {
+			return &permanentError{err: err}
+		}
+
+		if payload.FileID == uuid.Nil {
+			return &permanentError{err: errors.New("invalid payload: file ID is nil")}
+		}
+
+		pgFileID := pgtype.UUID{Bytes: payload.FileID, Valid: true}
+		file, err := deps.queries.GetFile(ctx, pgFileID)
+		if err != nil {
+			return err
+		}
+
+		reader, err := deps.storage.Download(ctx, file.StorageKey)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = reader.Close() }()
+
+		proc := deps.registry.getForContentType(file.ContentType)
+		if proc == nil {
+			return &permanentError{err: processor.ErrUnsupportedType}
+		}
+
+		width := payload.Width
+		if width <= 0 {
+			width = 1280
+		}
+		height := payload.Height
+		if height <= 0 {
+			height = 720
+		}
+
+		opts := &processor.Options{
+			Width:   width,
+			Height:  height,
+			Quality: payload.Quality,
+			Format:  payload.Format,
+		}
+
+		result, err := proc.Process(ctx, opts, reader)
+		if err != nil {
+			return err
+		}
+
+		variantKey := buildVariantKey(payload.FileID, "video_thumbnail", "thumbnail.jpg")
+		if err := deps.storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
+			return err
+		}
+
+		width32 := int32(result.Metadata.Width)
+		height32 := int32(result.Metadata.Height)
+		_, err = deps.queries.CreateVariant(ctx, db.CreateVariantParams{
+			FileID:      file.ID,
+			VariantType: db.VariantType("video_thumbnail"),
+			ContentType: result.ContentType,
+			SizeBytes:   result.Size,
+			StorageKey:  variantKey,
+			Width:       &width32,
+			Height:      &height32,
+		})
+		if err != nil {
+			return err
+		}
+
+		return deps.queries.UpdateFileStatus(ctx, db.UpdateFileStatusParams{
+			ID:     file.ID,
+			Status: db.FileStatusCompleted,
+		})
+	}
+}
+
+func testVideoTranscodeHandler(deps *testDependencies) func(context.Context, *mockJob) error {
+	return func(ctx context.Context, j *mockJob) error {
+		var payload VideoTranscodePayload
+		if err := j.UnmarshalPayload(&payload); err != nil {
+			return &permanentError{err: err}
+		}
+
+		if payload.FileID == uuid.Nil {
+			return &permanentError{err: errors.New("invalid payload: file ID is nil")}
+		}
+		if payload.VariantType == "" {
+			return &permanentError{err: errors.New("invalid payload: variant type is required")}
+		}
+
+		pgFileID := pgtype.UUID{Bytes: payload.FileID, Valid: true}
+		file, err := deps.queries.GetFile(ctx, pgFileID)
+		if err != nil {
+			return err
+		}
+
+		reader, err := deps.storage.Download(ctx, file.StorageKey)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = reader.Close() }()
+
+		proc := deps.registry.getForContentType(file.ContentType)
+		if proc == nil {
+			return &permanentError{err: processor.ErrUnsupportedType}
+		}
+
+		opts := &processor.Options{
+			Format:      payload.OutputFormat,
+			Height:      payload.MaxResolution,
+			VariantType: payload.VariantType,
+		}
+
+		result, err := proc.Process(ctx, opts, reader)
+		if err != nil {
+			return err
+		}
+
+		ext := payload.OutputFormat
+		if ext == "" {
+			ext = "mp4"
+		}
+		variantKey := buildVariantKey(payload.FileID, payload.VariantType, "video."+ext)
+		if err := deps.storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
+			return err
+		}
+
+		width32 := int32(result.Metadata.Width)
+		height32 := int32(result.Metadata.Height)
+		_, err = deps.queries.CreateVariant(ctx, db.CreateVariantParams{
+			FileID:      file.ID,
+			VariantType: db.VariantType(payload.VariantType),
+			ContentType: result.ContentType,
+			SizeBytes:   result.Size,
+			StorageKey:  variantKey,
+			Width:       &width32,
+			Height:      &height32,
+		})
+		if err != nil {
+			return err
+		}
+
+		return deps.queries.UpdateFileStatus(ctx, db.UpdateFileStatusParams{
+			ID:     file.ID,
+			Status: db.FileStatusCompleted,
+		})
+	}
+}
+
+func testVideoHLSHandler(deps *testDependencies) func(context.Context, *mockJob) error {
+	return func(ctx context.Context, j *mockJob) error {
+		var payload VideoHLSPayload
+		if err := j.UnmarshalPayload(&payload); err != nil {
+			return &permanentError{err: err}
+		}
+
+		if payload.FileID == uuid.Nil {
+			return &permanentError{err: errors.New("invalid payload: file ID is nil")}
+		}
+
+		pgFileID := pgtype.UUID{Bytes: payload.FileID, Valid: true}
+		file, err := deps.queries.GetFile(ctx, pgFileID)
+		if err != nil {
+			return err
+		}
+
+		reader, err := deps.storage.Download(ctx, file.StorageKey)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = reader.Close() }()
+
+		// Simulate HLS generation with manifest data
+		manifestData := []byte("#EXTM3U\n#EXT-X-VERSION:3\n")
+
+		manifestKey := buildVariantKey(payload.FileID, "hls_master", "playlist.m3u8")
+		if err := deps.storage.Upload(ctx, manifestKey, bytes.NewReader(manifestData), "application/x-mpegURL", int64(len(manifestData))); err != nil {
+			return err
+		}
+
+		_, err = deps.queries.CreateVariant(ctx, db.CreateVariantParams{
+			FileID:      file.ID,
+			VariantType: db.VariantType("hls_master"),
+			ContentType: "application/x-mpegURL",
+			SizeBytes:   int64(len(manifestData)),
+			StorageKey:  manifestKey,
+		})
+		if err != nil {
+			return err
+		}
+
+		return deps.queries.UpdateFileStatus(ctx, db.UpdateFileStatusParams{
+			ID:     file.ID,
+			Status: db.FileStatusCompleted,
+		})
+	}
+}
+
+func testVideoWatermarkHandler(deps *testDependencies) func(context.Context, *mockJob) error {
+	return func(ctx context.Context, j *mockJob) error {
+		var payload VideoWatermarkPayload
+		if err := j.UnmarshalPayload(&payload); err != nil {
+			return &permanentError{err: err}
+		}
+
+		if payload.FileID == uuid.Nil {
+			return &permanentError{err: errors.New("invalid payload: file ID is nil")}
+		}
+
+		pgFileID := pgtype.UUID{Bytes: payload.FileID, Valid: true}
+		file, err := deps.queries.GetFile(ctx, pgFileID)
+		if err != nil {
+			return err
+		}
+
+		reader, err := deps.storage.Download(ctx, file.StorageKey)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = reader.Close() }()
+
+		proc := deps.registry.getForContentType(file.ContentType)
+		if proc == nil {
+			return &permanentError{err: processor.ErrUnsupportedType}
+		}
+
+		// Apply defaults
+		text := payload.Text
+		if text == "" {
+			text = "file.cheap"
+		}
+		position := payload.Position
+		if position == "" {
+			position = "bottom-right"
+		}
+
+		opts := &processor.Options{
+			VariantType: text,
+			Fit:         position,
+		}
+
+		result, err := proc.Process(ctx, opts, reader)
+		if err != nil {
+			return err
+		}
+
+		variantKey := buildVariantKey(payload.FileID, "video_watermarked", "video.mp4")
+		if err := deps.storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
+			return err
+		}
+
+		width32 := int32(result.Metadata.Width)
+		height32 := int32(result.Metadata.Height)
+		_, err = deps.queries.CreateVariant(ctx, db.CreateVariantParams{
+			FileID:      file.ID,
+			VariantType: db.VariantType("video_watermarked"),
+			ContentType: result.ContentType,
+			SizeBytes:   result.Size,
+			StorageKey:  variantKey,
+			Width:       &width32,
+			Height:      &height32,
+		})
+		if err != nil {
+			return err
+		}
+
+		return deps.queries.UpdateFileStatus(ctx, db.UpdateFileStatusParams{
+			ID:     file.ID,
+			Status: db.FileStatusCompleted,
+		})
+	}
+}

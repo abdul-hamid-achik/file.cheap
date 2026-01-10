@@ -187,3 +187,87 @@ func NewOptimizePayload(fileID uuid.UUID, quality int) OptimizePayload {
 	}
 	return OptimizePayload{FileID: fileID, Quality: quality}
 }
+
+// Video payloads
+
+type VideoThumbnailPayload struct {
+	FileID    uuid.UUID `json:"file_id"`
+	Width     int       `json:"width"`
+	Height    int       `json:"height"`
+	Quality   int       `json:"quality"`
+	AtPercent float64   `json:"at_percent"` // 0.0-1.0, position in video
+	Format    string    `json:"format"`     // jpeg or png
+}
+
+func NewVideoThumbnailPayload(fileID uuid.UUID) VideoThumbnailPayload {
+	return VideoThumbnailPayload{
+		FileID:    fileID,
+		Width:     320,
+		Height:    180,
+		Quality:   85,
+		AtPercent: 0.1, // 10% into video
+		Format:    "jpeg",
+	}
+}
+
+func NewVideoThumbnailPayloadWithOptions(fileID uuid.UUID, width, height int, atPercent float64, format string) VideoThumbnailPayload {
+	p := NewVideoThumbnailPayload(fileID)
+	if width > 0 {
+		p.Width = width
+	}
+	if height > 0 {
+		p.Height = height
+	}
+	if atPercent > 0 && atPercent <= 1 {
+		p.AtPercent = atPercent
+	}
+	if format == "png" {
+		p.Format = "png"
+	}
+	return p
+}
+
+type VideoTranscodePayload struct {
+	FileID        uuid.UUID `json:"file_id"`
+	OutputFormat  string    `json:"output_format"`  // mp4, webm
+	MaxResolution int       `json:"max_resolution"` // 360, 480, 720, 1080, 2160
+	Preset        string    `json:"preset"`         // ultrafast, fast, medium, slow
+	CRF           int       `json:"crf"`            // 0-51, lower = better quality
+	VariantType   string    `json:"variant_type"`   // mp4_720p, webm_1080p, etc.
+}
+
+func NewVideoTranscodePayload(fileID uuid.UUID, variantType string, maxResolution int) VideoTranscodePayload {
+	return VideoTranscodePayload{
+		FileID:        fileID,
+		OutputFormat:  "mp4",
+		MaxResolution: maxResolution,
+		Preset:        "medium",
+		CRF:           23,
+		VariantType:   variantType,
+	}
+}
+
+type VideoHLSPayload struct {
+	FileID          uuid.UUID `json:"file_id"`
+	SegmentDuration int       `json:"segment_duration"` // seconds per segment
+	Resolutions     []int     `json:"resolutions"`      // [360, 480, 720, 1080]
+}
+
+func NewVideoHLSPayload(fileID uuid.UUID, resolutions []int) VideoHLSPayload {
+	if len(resolutions) == 0 {
+		resolutions = []int{360, 720}
+	}
+	return VideoHLSPayload{
+		FileID:          fileID,
+		SegmentDuration: 10,
+		Resolutions:     resolutions,
+	}
+}
+
+type VideoWatermarkPayload struct {
+	FileID    uuid.UUID `json:"file_id"`
+	Text      string    `json:"text"`
+	Position  string    `json:"position"` // top-left, top-right, bottom-left, bottom-right, center
+	Opacity   float64   `json:"opacity"`
+	IsPremium bool      `json:"is_premium"`
+}

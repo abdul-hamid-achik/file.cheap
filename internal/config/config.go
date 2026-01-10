@@ -26,9 +26,11 @@ type Config struct {
 	MinIOUseSSL    bool
 	MinIORegion    string
 
-	WorkerConcurrency int
-	JobTimeout        time.Duration
-	MaxRetries        int
+	WorkerConcurrency  int
+	JobTimeout         time.Duration
+	VideoJobTimeout    time.Duration
+	MaxRetries         int
+	MaxVideoUploadSize int64
 
 	JWTSecret string
 
@@ -94,7 +96,12 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid JOB_TIMEOUT: %w", err)
 	}
+	cfg.VideoJobTimeout, err = getEnvDuration("VIDEO_JOB_TIMEOUT", "60m")
+	if err != nil {
+		return nil, fmt.Errorf("invalid VIDEO_JOB_TIMEOUT: %w", err)
+	}
 	cfg.MaxRetries = getEnvInt("MAX_RETRIES", 3)
+	cfg.MaxVideoUploadSize = getEnvInt64("MAX_VIDEO_UPLOAD_SIZE", 500*1024*1024) // 500 MB default
 
 	cfg.JWTSecret = getEnvString("JWT_SECRET", "change-me-in-production")
 
