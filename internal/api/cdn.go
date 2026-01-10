@@ -22,9 +22,6 @@ import (
 
 const (
 	cacheThreshold = 3
-	// For redirects to presigned URLs that expire in 3600 seconds,
-	// cache for at most 3000 seconds to allow for some buffer
-	cacheControlRedirect = "public, max-age=3000"
 	// For processed results served directly (not cached yet)
 	cacheControlShort = "public, max-age=3600"
 	// For thumbnails and immutable processed content - cache for 30 days
