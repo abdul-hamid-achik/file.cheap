@@ -343,7 +343,31 @@ Use HTMX for auto-refresh:
 
 ## Database
 
-Schema managed via migrations in `sql/schema/`. Apply with `task migrate`.
+Schema managed via migrations in `migrations/`. Apply with `task migrate`.
+
+### Migration Management
+
+**IMPORTANT:** When adding new database migrations, you must update BOTH:
+
+1. **Create migration file:** `migrations/NNN_description.sql`
+2. **Update local migrate task:** Add the new migration to the `migrate` task in `Taskfile.yml`
+
+The local `migrate` task lists migrations explicitly for reproducible local development. The production `prod:migrate` task automatically runs all `migrations/*.sql` files.
+
+Example when adding a new migration:
+```bash
+# 1. Create the migration file
+echo "CREATE TABLE foo (...);" > migrations/012_add_foo.sql
+
+# 2. Add to Taskfile.yml 'migrate' task
+# Add: - psql "{{.DATABASE_URL}}" -f migrations/012_add_foo.sql
+
+# 3. Run locally
+task migrate
+
+# 4. Deploy (ship runs prod:migrate automatically)
+task ship
+```
 
 ### Key Tables
 - `users` - User accounts and profiles

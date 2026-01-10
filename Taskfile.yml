@@ -557,7 +557,7 @@ tasks:
   "prod:psql":
     desc: Connect to production PostgreSQL
     cmds:
-      - kubectl exec -it sts/postgres -n file-processor --kubeconfig={{.KUBECONFIG}} -- psql -U postgres -d fileprocessor
+      - kubectl exec -it postgres-0 -n file-processor --kubeconfig={{.KUBECONFIG}} -- psql -U fileprocessor -d fileprocessor
 
   "prod:migrate":
     desc: Run all pending migrations on production
@@ -569,11 +569,15 @@ tasks:
       - |
         for f in migrations/*.sql; do
           echo "  ► Running $f..."
-          cat "$f" | kubectl exec -i sts/postgres -n file-processor --kubeconfig={{.KUBECONFIG}} -- psql -U postgres -d fileprocessor -q 2>&1 | grep -v "already exists" || true
+          cat "$f" | kubectl exec -i postgres-0 -n file-processor --kubeconfig={{.KUBECONFIG}} -- psql -U fileprocessor -d fileprocessor -q 2>&1 | grep -v "already exists" || true
         done
       - |
         echo ""
         echo "  ✓ Migrations complete"
+        echo ""
+        echo "  NOTE: When adding new migrations, update both:"
+        echo "    - Taskfile.yml 'migrate' task (for local development)"
+        echo "    - migrations/ directory (prod:migrate runs all *.sql files)"
         echo ""
 
   "prod:migrate:single":
@@ -581,7 +585,7 @@ tasks:
     cmds:
       - |
         echo "  Running migrations/{{.CLI_ARGS}}..."
-        cat "migrations/{{.CLI_ARGS}}" | kubectl exec -i sts/postgres -n file-processor --kubeconfig={{.KUBECONFIG}} -- psql -U postgres -d fileprocessor
+        cat "migrations/{{.CLI_ARGS}}" | kubectl exec -i postgres-0 -n file-processor --kubeconfig={{.KUBECONFIG}} -- psql -U fileprocessor -d fileprocessor
         echo "  ✓ Done"
 
   "prod:redis":

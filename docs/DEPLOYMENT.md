@@ -156,20 +156,30 @@ curl -I https://file.cheap
 
 ## Database Migrations
 
+Migrations are automatically run during `task ship`. You can also run them manually.
+
+### Adding New Migrations
+
+**IMPORTANT:** When creating new migrations, update BOTH:
+
+1. Create the migration file: `migrations/NNN_description.sql`
+2. Add to `Taskfile.yml` `migrate` task for local development
+
+Production's `prod:migrate` task automatically runs all `migrations/*.sql` files.
+
 ### Run Migrations on Production
 
 ```bash
+# Run all pending migrations (preferred)
+task prod:migrate
+
 # Run a single migration
+task prod:migrate:single -- 012_new_feature.sql
+
+# Or manually
 cat migrations/007_image_presets.sql | \
   kubectl exec -i postgres-0 -n file-processor --kubeconfig ~/.kube/file-cheap -- \
   psql -U fileprocessor -d fileprocessor
-
-# Run all migrations
-for f in migrations/*.sql; do
-  echo "Running $f..."
-  cat "$f" | kubectl exec -i postgres-0 -n file-processor --kubeconfig ~/.kube/file-cheap -- \
-    psql -U fileprocessor -d fileprocessor
-done
 ```
 
 ### Connect to Production Database
