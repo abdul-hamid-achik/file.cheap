@@ -22,8 +22,8 @@ This directory contains the infrastructure-as-code for deploying **file.cheap** 
 ## Prerequisites
 
 1. [Hetzner Cloud account](https://console.hetzner.cloud/)
-2. [Tailscale account](https://tailscale.com/) (free for personal use)
-3. Domain name (file.cheap)
+2. Domain name (file.cheap)
+3. Your public IP address (for SSH/API access whitelist)
 
 ## Quick Start
 
@@ -61,8 +61,7 @@ infrastructure/
 │   ├── roles/           # Ansible roles
 │   │   ├── common/      # Base OS config
 │   │   ├── k3s-master/  # K3s server
-│   │   ├── k3s-worker/  # K3s agent
-│   │   └── tailscale/   # VPN setup
+│   │   └── k3s-worker/  # K3s agent
 │   └── inventory/       # Host configuration
 │
 ├── k8s/                 # Kubernetes manifests
@@ -95,13 +94,18 @@ location       = "fsn1"
 worker_count   = 2
 ```
 
-### Environment Variables
+### Secure Access Configuration
 
-For Tailscale, set the auth key before running Ansible:
+SSH and Kubernetes API access are secured via Hetzner Cloud firewall with IP whitelist.
 
-```bash
-export TAILSCALE_AUTHKEY="tskey-auth-..."
+Edit `terraform/terraform.tfvars` to set your allowed IPs:
+
+```hcl
+# Your static IP or range for SSH/K8s API access
+ssh_allowed_ips = ["YOUR.PUBLIC.IP.ADDRESS/32"]
 ```
+
+Find your public IP: `curl -s ifconfig.me`
 
 ## Commands
 
@@ -249,6 +253,61 @@ The current setup uses a single master node. To enable HA:
    ```
 
 K3s will automatically configure embedded etcd for HA.
+
+## Secure Access Options
+
+The infrastructure uses Hetzner Cloud firewall to restrict SSH and Kubernetes API access to whitelisted IPs. Here are alternatives if you need more flexibility:
+
+### Option 1: IP Whitelist (Default - Recommended)
+
+Simplest approach. Set your static IP in `terraform.tfvars`:
+
+```hcl
+ssh_allowed_ips = ["YOUR.PUBLIC.IP.ADDRESS/32"]
+```
+
+**Pros**: No additional tools, native cloud firewall, zero cost
+**Cons**: Requires static IP or manual updates when IP changes
+
+### Option 2: SSH Jump Host / Bastion
+
+Use one node as a bastion for all SSH traffic:
+
+```bash
+# Add to ~/.ssh/config
+Host file-cheap-*
+  ProxyJump root@<master-public-ip>
+```
+
+**Pros**: Single entry point, audit logging possible
+**Cons**: Requires bastion to be always running
+
+### Option 3: WireGuard VPN
+
+Self-hosted VPN similar to Tailscale:
+
+```bash
+# Install on your machine and servers
+apt install wireguard
+
+# Generate keys and configure peers
+wg genkey | tee privatekey | wg pubkey > publickey
+```
+
+**Pros**: Fast, modern VPN, full control
+**Cons**: Manual key management, more setup
+
+### Option 4: Cloudflare Tunnel (Zero Trust)
+
+Use Cloudflare's zero-trust network for SSH access:
+
+```bash
+# Install cloudflared on servers
+cloudflared tunnel create file-cheap
+```
+
+**Pros**: No exposed ports, browser-based SSH option
+**Cons**: Depends on Cloudflare, may add latency
 
 ## Troubleshooting
 
