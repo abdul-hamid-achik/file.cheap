@@ -681,6 +681,16 @@ func (m *MockQuerier) GetAllFiles() []db.File {
 	return result
 }
 
+func (m *MockQuerier) CreateJob(ctx context.Context, arg db.CreateJobParams) (db.ProcessingJob, error) {
+	return db.ProcessingJob{
+		ID:       pgtype.UUID{Bytes: [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}, Valid: true},
+		FileID:   arg.FileID,
+		JobType:  arg.JobType,
+		Status:   db.JobStatusPending,
+		Priority: arg.Priority,
+	}, nil
+}
+
 var _ Querier = (*MockQuerier)(nil)
 
 type MockStorage struct {

@@ -466,7 +466,7 @@ func (h *Handlers) UploadFileAPI(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case strings.HasPrefix(contentType, "image/"):
 					payload := worker.NewThumbnailPayload(dbFileID)
-					jobID, err := h.cfg.Broker.Enqueue("thumbnail", payload)
+					jobID, err := worker.EnqueueWithTracking(r.Context(), h.cfg.Queries, h.cfg.Broker, &payload, db.JobTypeThumbnail)
 					if err != nil {
 						log.Error("failed to enqueue thumbnail job", "error", err)
 					} else {
@@ -474,7 +474,7 @@ func (h *Handlers) UploadFileAPI(w http.ResponseWriter, r *http.Request) {
 					}
 				case contentType == "application/pdf":
 					payload := worker.NewPDFThumbnailPayload(dbFileID)
-					jobID, err := h.cfg.Broker.Enqueue("pdf_thumbnail", payload)
+					jobID, err := worker.EnqueueWithTracking(r.Context(), h.cfg.Queries, h.cfg.Broker, &payload, db.JobTypePdfThumbnail)
 					if err != nil {
 						log.Error("failed to enqueue pdf_thumbnail job", "error", err)
 					} else {
@@ -834,64 +834,76 @@ func (h *Handlers) ProcessFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var variantType db.VariantType
-	var jobType string
-	var payload interface{}
+	var dbJobType db.JobType
+	var payload worker.JobPayload
 
 	switch action {
 	case "thumbnail":
 		variantType = db.VariantTypeThumbnail
-		jobType = "thumbnail"
-		payload = worker.NewThumbnailPayload(fileID)
+		dbJobType = db.JobTypeThumbnail
+		p := worker.NewThumbnailPayload(fileID)
+		payload = &p
 	case "sm":
 		variantType = "sm"
-		jobType = "resize"
-		payload = worker.NewResponsivePayload(fileID, "sm")
+		dbJobType = db.JobTypeResize
+		p := worker.NewResponsivePayload(fileID, "sm")
+		payload = &p
 	case "md":
 		variantType = "md"
-		jobType = "resize"
-		payload = worker.NewResponsivePayload(fileID, "md")
+		dbJobType = db.JobTypeResize
+		p := worker.NewResponsivePayload(fileID, "md")
+		payload = &p
 	case "lg":
 		variantType = "lg"
-		jobType = "resize"
-		payload = worker.NewResponsivePayload(fileID, "lg")
+		dbJobType = db.JobTypeResize
+		p := worker.NewResponsivePayload(fileID, "lg")
+		payload = &p
 	case "xl":
 		variantType = "xl"
-		jobType = "resize"
-		payload = worker.NewResponsivePayload(fileID, "xl")
+		dbJobType = db.JobTypeResize
+		p := worker.NewResponsivePayload(fileID, "xl")
+		payload = &p
 	case "og":
 		variantType = "og"
-		jobType = "resize"
-		payload = worker.NewSocialPayload(fileID, "og")
+		dbJobType = db.JobTypeResize
+		p := worker.NewSocialPayload(fileID, "og")
+		payload = &p
 	case "twitter":
 		variantType = "twitter"
-		jobType = "resize"
-		payload = worker.NewSocialPayload(fileID, "twitter")
+		dbJobType = db.JobTypeResize
+		p := worker.NewSocialPayload(fileID, "twitter")
+		payload = &p
 	case "instagram_square":
 		variantType = "instagram_square"
-		jobType = "resize"
-		payload = worker.NewSocialPayload(fileID, "instagram_square")
+		dbJobType = db.JobTypeResize
+		p := worker.NewSocialPayload(fileID, "instagram_square")
+		payload = &p
 	case "instagram_portrait":
 		variantType = "instagram_portrait"
-		jobType = "resize"
-		payload = worker.NewSocialPayload(fileID, "instagram_portrait")
+		dbJobType = db.JobTypeResize
+		p := worker.NewSocialPayload(fileID, "instagram_portrait")
+		payload = &p
 	case "instagram_story":
 		variantType = "instagram_story"
-		jobType = "resize"
-		payload = worker.NewSocialPayload(fileID, "instagram_story")
+		dbJobType = db.JobTypeResize
+		p := worker.NewSocialPayload(fileID, "instagram_story")
+		payload = &p
 	case "webp":
 		variantType = db.VariantTypeWebp
-		jobType = "webp"
-		payload = worker.NewWebPPayload(fileID, 85)
+		dbJobType = db.JobTypeWebp
+		p := worker.NewWebPPayload(fileID, 85)
+		payload = &p
 	case "watermark":
 		variantType = db.VariantTypeWatermarked
-		jobType = "watermark"
+		dbJobType = db.JobTypeWatermark
 		text := r.FormValue("watermark_text")
 		position := r.FormValue("watermark_position")
 		if position == "" {
 			position = "bottom-right"
 		}
 		isPremium := user.SubscriptionTier == db.SubscriptionTierPro || user.SubscriptionTier == db.SubscriptionTierEnterprise
-		payload = worker.NewWatermarkPayload(fileID, text, position, 0.5, isPremium)
+		p := worker.NewWatermarkPayload(fileID, text, position, 0.5, isPremium)
+		payload = &p
 	case "pdf_preview":
 		if file.ContentType != "application/pdf" {
 			w.Header().Set("Content-Type", "text/html")
@@ -900,8 +912,9 @@ func (h *Handlers) ProcessFile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		variantType = db.VariantTypePdfPreview
-		jobType = "pdf_thumbnail"
-		payload = worker.NewPDFThumbnailPayload(fileID)
+		dbJobType = db.JobTypePdfThumbnail
+		p := worker.NewPDFThumbnailPayload(fileID)
+		payload = &p
 	default:
 		http.Error(w, "Invalid action", http.StatusBadRequest)
 		return
@@ -924,14 +937,14 @@ func (h *Handlers) ProcessFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jobID, err := h.cfg.Broker.Enqueue(jobType, payload)
+	jobID, err := worker.EnqueueWithTracking(r.Context(), h.cfg.Queries, h.cfg.Broker, payload, dbJobType)
 	if err != nil {
-		log.Error("failed to enqueue job", "job_type", jobType, "error", err)
+		log.Error("failed to enqueue job", "job_type", dbJobType, "error", err)
 		http.Error(w, "Failed to start processing", http.StatusInternalServerError)
 		return
 	}
 
-	log.Info("processing job enqueued", "file_id", fileIDStr, "job_type", jobType, "job_id", jobID)
+	log.Info("processing job enqueued", "file_id", fileIDStr, "job_type", dbJobType, "job_id", jobID)
 
 	if err := h.cfg.Queries.UpdateFileStatus(r.Context(), db.UpdateFileStatusParams{
 		ID:     pgFileID,
@@ -1013,18 +1026,17 @@ func (h *Handlers) ProcessBundle(w http.ResponseWriter, r *http.Request) {
 	enqueuedCount := 0
 	for _, action := range actions {
 		var variantType db.VariantType
-		var jobType string
-		var payload interface{}
+		var payload worker.JobPayload
 
 		switch action {
 		case "sm", "md", "lg", "xl":
 			variantType = db.VariantType(action)
-			jobType = "resize"
-			payload = worker.NewResponsivePayload(fileID, action)
+			p := worker.NewResponsivePayload(fileID, action)
+			payload = &p
 		case "og", "twitter", "instagram_square", "instagram_portrait", "instagram_story":
 			variantType = db.VariantType(action)
-			jobType = "resize"
-			payload = worker.NewSocialPayload(fileID, action)
+			p := worker.NewSocialPayload(fileID, action)
+			payload = &p
 		}
 
 		hasVariant, err := h.cfg.Queries.HasVariant(r.Context(), db.HasVariantParams{
@@ -1040,8 +1052,8 @@ func (h *Handlers) ProcessBundle(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		if _, err := h.cfg.Broker.Enqueue(jobType, payload); err != nil {
-			log.Error("failed to enqueue job", "job_type", jobType, "action", action, "error", err)
+		if _, err := worker.EnqueueWithTracking(r.Context(), h.cfg.Queries, h.cfg.Broker, payload, db.JobTypeResize); err != nil {
+			log.Error("failed to enqueue job", "job_type", db.JobTypeResize, "action", action, "error", err)
 			continue
 		}
 		enqueuedCount++
@@ -1927,23 +1939,42 @@ func (h *Handlers) BatchProcessFiles(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Create job
-		_, err = h.cfg.Queries.CreateJob(r.Context(), db.CreateJobParams{
-			FileID:   pgFileID,
-			JobType:  db.JobType(action),
-			Priority: 0,
-		})
-		if err != nil {
-			log.Error("failed to create job in batch process", "file_id", fileIDStr, "action", action, "error", err)
+		// Create and enqueue job with proper payload
+		var payload worker.JobPayload
+		var dbJobType db.JobType
+
+		switch action {
+		case "thumbnail":
+			dbJobType = db.JobTypeThumbnail
+			p := worker.NewThumbnailPayload(fileID)
+			payload = &p
+		case "webp":
+			dbJobType = db.JobTypeWebp
+			p := worker.NewWebPPayload(fileID, 85)
+			payload = &p
+		case "watermark":
+			dbJobType = db.JobTypeWatermark
+			isPremium := user.SubscriptionTier == db.SubscriptionTierPro || user.SubscriptionTier == db.SubscriptionTierEnterprise
+			p := worker.NewWatermarkPayload(fileID, "", "bottom-right", 0.5, isPremium)
+			payload = &p
+		case "pdf_thumbnail":
+			dbJobType = db.JobTypePdfThumbnail
+			p := worker.NewPDFThumbnailPayload(fileID)
+			payload = &p
+		case "optimize":
+			dbJobType = db.JobTypeOptimize
+			p := worker.NewOptimizePayload(fileID, 85)
+			payload = &p
+		case "metadata":
+			dbJobType = db.JobTypeMetadata
+			p := worker.NewMetadataPayload(fileID)
+			payload = &p
+		default:
+			log.Warn("unsupported batch action", "action", action, "file_id", fileIDStr)
 			continue
 		}
 
-		// Enqueue job
-		payload := map[string]interface{}{
-			"file_id": fileIDStr,
-			"user_id": user.ID.String(),
-		}
-		_, err = h.cfg.Broker.Enqueue(action, payload)
+		_, err = worker.EnqueueWithTracking(r.Context(), h.cfg.Queries, h.cfg.Broker, payload, dbJobType)
 		if err != nil {
 			log.Error("failed to enqueue job in batch process", "file_id", fileIDStr, "action", action, "error", err)
 			continue

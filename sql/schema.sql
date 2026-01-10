@@ -9,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TYPE file_status AS ENUM ('pending', 'processing', 'completed', 'failed');
 
 -- Job type enum
-CREATE TYPE job_type AS ENUM ('thumbnail', 'resize', 'webp', 'watermark', 'pdf_thumbnail', 'metadata', 'optimize');
+CREATE TYPE job_type AS ENUM ('thumbnail', 'resize', 'webp', 'watermark', 'pdf_thumbnail', 'metadata', 'optimize', 'video_thumbnail', 'video_transcode', 'video_hls', 'video_watermark');
 
 -- Job status enum  
 CREATE TYPE job_status AS ENUM ('pending', 'running', 'completed', 'failed');

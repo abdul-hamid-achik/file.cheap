@@ -148,13 +148,17 @@ func (ns NullJobStatus) Value() (driver.Value, error) {
 type JobType string
 
 const (
-	JobTypeThumbnail    JobType = "thumbnail"
-	JobTypeResize       JobType = "resize"
-	JobTypeWebp         JobType = "webp"
-	JobTypeWatermark    JobType = "watermark"
-	JobTypePdfThumbnail JobType = "pdf_thumbnail"
-	JobTypeMetadata     JobType = "metadata"
-	JobTypeOptimize     JobType = "optimize"
+	JobTypeThumbnail      JobType = "thumbnail"
+	JobTypeResize         JobType = "resize"
+	JobTypeWebp           JobType = "webp"
+	JobTypeWatermark      JobType = "watermark"
+	JobTypePdfThumbnail   JobType = "pdf_thumbnail"
+	JobTypeMetadata       JobType = "metadata"
+	JobTypeOptimize       JobType = "optimize"
+	JobTypeVideoThumbnail JobType = "video_thumbnail"
+	JobTypeVideoTranscode JobType = "video_transcode"
+	JobTypeVideoHls       JobType = "video_hls"
+	JobTypeVideoWatermark JobType = "video_watermark"
 )
 
 func (e *JobType) Scan(src interface{}) error {

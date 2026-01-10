@@ -26,6 +26,33 @@ type Dependencies struct {
 	Queries  *db.Queries
 }
 
+func (d *Dependencies) markJobRunning(ctx context.Context, jobID pgtype.UUID) {
+	if jobID.Valid {
+		if err := d.Queries.MarkJobRunning(ctx, jobID); err != nil {
+			logger.FromContext(ctx).Warn("failed to mark job running", "job_id", jobID, "error", err)
+		}
+	}
+}
+
+func (d *Dependencies) markJobCompleted(ctx context.Context, jobID pgtype.UUID) {
+	if jobID.Valid {
+		if err := d.Queries.MarkJobCompleted(ctx, jobID); err != nil {
+			logger.FromContext(ctx).Warn("failed to mark job completed", "job_id", jobID, "error", err)
+		}
+	}
+}
+
+func (d *Dependencies) markJobFailed(ctx context.Context, jobID pgtype.UUID, errMsg string) {
+	if jobID.Valid {
+		if err := d.Queries.MarkJobFailed(ctx, db.MarkJobFailedParams{
+			ID:           jobID,
+			ErrorMessage: &errMsg,
+		}); err != nil {
+			logger.FromContext(ctx).Warn("failed to mark job failed", "job_id", jobID, "error", err)
+		}
+	}
+}
+
 func ThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 	return func(ctx context.Context, j *job.Job) error {
 		log := logger.FromContext(ctx).With("job_id", j.ID, "job_type", "thumbnail")
@@ -38,6 +65,7 @@ func ThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
 		}
 
+		deps.markJobRunning(ctx, payload.JobID)
 		log = log.With("file_id", payload.FileID.String())
 
 		fileID := pgtype.UUID{
@@ -48,6 +76,7 @@ func ThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 		file, err := deps.Queries.GetFile(ctx, fileID)
 		if err != nil {
 			log.Error("failed to retrieve file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to retrieve file: %w", err)
 		}
 
@@ -56,6 +85,7 @@ func ThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 		reader, err := deps.Storage.Download(ctx, file.StorageKey)
 		if err != nil {
 			log.Error("failed to download file", "storage_key", file.StorageKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to download file %s: %w", file.StorageKey, err)
 		}
 		defer closeSafely(reader, "original file reader")
@@ -74,6 +104,7 @@ func ThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 		result, err := proc.Process(ctx, opts, reader)
 		if err != nil {
 			log.Error("failed to process thumbnail", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return middleware.Permanent(fmt.Errorf("failed to process thumbnail: %w", err))
 		}
 		log.Debug("thumbnail processed", "duration_ms", time.Since(processStart).Milliseconds(), "output_size", result.Size)
@@ -83,6 +114,7 @@ func ThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 		uploadStart := time.Now()
 		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
 			log.Error("failed to upload variant", "storage_key", variantKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to upload variant: %w", err)
 		}
 		log.Debug("variant uploaded", "duration_ms", time.Since(uploadStart).Milliseconds())
@@ -100,6 +132,7 @@ func ThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 		})
 		if err != nil {
 			log.Error("failed to save variant record", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to save variant record: %w", err)
 		}
 
@@ -108,9 +141,11 @@ func ThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 			Status: db.FileStatusCompleted,
 		}); err != nil {
 			log.Error("failed to update file status", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to update file status: %w", err)
 		}
 
+		deps.markJobCompleted(ctx, payload.JobID)
 		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "output_width", width, "output_height", height)
 		return nil
 	}
@@ -128,6 +163,7 @@ func ResizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
 		}
 
+		deps.markJobRunning(ctx, payload.JobID)
 		log = log.With("file_id", payload.FileID.String(), "variant_type", payload.VariantType)
 
 		fileID := pgtype.UUID{
@@ -138,6 +174,7 @@ func ResizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		file, err := deps.Queries.GetFile(ctx, fileID)
 		if err != nil {
 			log.Error("failed to retrieve file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to retrieve file: %w", err)
 		}
 
@@ -146,6 +183,7 @@ func ResizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		reader, err := deps.Storage.Download(ctx, file.StorageKey)
 		if err != nil {
 			log.Error("failed to download file", "storage_key", file.StorageKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to download file %s: %w", file.StorageKey, err)
 		}
 		defer closeSafely(reader, "original file reader")
@@ -165,6 +203,7 @@ func ResizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		result, err := proc.Process(ctx, opts, reader)
 		if err != nil {
 			log.Error("failed to process resize", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return middleware.Permanent(fmt.Errorf("failed to process resize: %w", err))
 		}
 		log.Debug("resize processed", "duration_ms", time.Since(processStart).Milliseconds(), "output_size", result.Size)
@@ -175,6 +214,7 @@ func ResizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		uploadStart := time.Now()
 		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
 			log.Error("failed to upload variant", "storage_key", variantKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to upload variant: %w", err)
 		}
 		log.Debug("variant uploaded", "duration_ms", time.Since(uploadStart).Milliseconds())
@@ -193,6 +233,7 @@ func ResizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		})
 		if err != nil {
 			log.Error("failed to save variant record", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to save variant record: %w", err)
 		}
 
@@ -201,9 +242,11 @@ func ResizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 			Status: db.FileStatusCompleted,
 		}); err != nil {
 			log.Error("failed to update file status", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to update file status: %w", err)
 		}
 
+		deps.markJobCompleted(ctx, payload.JobID)
 		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "output_width", width, "output_height", height)
 		return nil
 	}
@@ -221,6 +264,7 @@ func WebPHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
 		}
 
+		deps.markJobRunning(ctx, payload.JobID)
 		log = log.With("file_id", payload.FileID.String())
 
 		fileID := pgtype.UUID{
@@ -231,6 +275,7 @@ func WebPHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		file, err := deps.Queries.GetFile(ctx, fileID)
 		if err != nil {
 			log.Error("failed to retrieve file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to retrieve file: %w", err)
 		}
 
@@ -239,6 +284,7 @@ func WebPHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		reader, err := deps.Storage.Download(ctx, file.StorageKey)
 		if err != nil {
 			log.Error("failed to download file", "storage_key", file.StorageKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to download file %s: %w", file.StorageKey, err)
 		}
 		defer closeSafely(reader, "original file reader")
@@ -255,6 +301,7 @@ func WebPHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		result, err := proc.Process(ctx, opts, reader)
 		if err != nil {
 			log.Error("failed to process webp conversion", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return middleware.Permanent(fmt.Errorf("failed to process webp: %w", err))
 		}
 		log.Debug("webp processed", "duration_ms", time.Since(processStart).Milliseconds(), "output_size", result.Size)
@@ -264,6 +311,7 @@ func WebPHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		uploadStart := time.Now()
 		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
 			log.Error("failed to upload variant", "storage_key", variantKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to upload variant: %w", err)
 		}
 		log.Debug("variant uploaded", "duration_ms", time.Since(uploadStart).Milliseconds())
@@ -281,6 +329,7 @@ func WebPHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		})
 		if err != nil {
 			log.Error("failed to save variant record", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to save variant record: %w", err)
 		}
 
@@ -289,9 +338,11 @@ func WebPHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 			Status: db.FileStatusCompleted,
 		}); err != nil {
 			log.Error("failed to update file status", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to update file status: %w", err)
 		}
 
+		deps.markJobCompleted(ctx, payload.JobID)
 		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "output_width", width, "output_height", height)
 		return nil
 	}
@@ -309,6 +360,7 @@ func WatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
 		}
 
+		deps.markJobRunning(ctx, payload.JobID)
 		log = log.With("file_id", payload.FileID.String())
 
 		fileID := pgtype.UUID{
@@ -319,6 +371,7 @@ func WatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 		file, err := deps.Queries.GetFile(ctx, fileID)
 		if err != nil {
 			log.Error("failed to retrieve file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to retrieve file: %w", err)
 		}
 
@@ -327,6 +380,7 @@ func WatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 		reader, err := deps.Storage.Download(ctx, file.StorageKey)
 		if err != nil {
 			log.Error("failed to download file", "storage_key", file.StorageKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to download file %s: %w", file.StorageKey, err)
 		}
 		defer closeSafely(reader, "original file reader")
@@ -346,6 +400,7 @@ func WatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 		result, err := proc.Process(ctx, opts, reader)
 		if err != nil {
 			log.Error("failed to process watermark", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return middleware.Permanent(fmt.Errorf("failed to process watermark: %w", err))
 		}
 		log.Debug("watermark processed", "duration_ms", time.Since(processStart).Milliseconds(), "output_size", result.Size)
@@ -355,6 +410,7 @@ func WatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 		uploadStart := time.Now()
 		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
 			log.Error("failed to upload variant", "storage_key", variantKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to upload variant: %w", err)
 		}
 		log.Debug("variant uploaded", "duration_ms", time.Since(uploadStart).Milliseconds())
@@ -372,6 +428,7 @@ func WatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 		})
 		if err != nil {
 			log.Error("failed to save variant record", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to save variant record: %w", err)
 		}
 
@@ -380,9 +437,11 @@ func WatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 			Status: db.FileStatusCompleted,
 		}); err != nil {
 			log.Error("failed to update file status", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to update file status: %w", err)
 		}
 
+		deps.markJobCompleted(ctx, payload.JobID)
 		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "output_width", width, "output_height", height)
 		return nil
 	}
@@ -400,6 +459,7 @@ func PDFThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) err
 			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
 		}
 
+		deps.markJobRunning(ctx, payload.JobID)
 		log = log.With("file_id", payload.FileID.String(), "page", payload.Page)
 
 		fileID := pgtype.UUID{
@@ -410,11 +470,13 @@ func PDFThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) err
 		file, err := deps.Queries.GetFile(ctx, fileID)
 		if err != nil {
 			log.Error("failed to retrieve file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to retrieve file: %w", err)
 		}
 
 		if file.ContentType != "application/pdf" {
 			log.Error("file is not a PDF", "content_type", file.ContentType)
+			deps.markJobFailed(ctx, payload.JobID, "file is not a PDF: "+file.ContentType)
 			return middleware.Permanent(fmt.Errorf("file is not a PDF: %s", file.ContentType))
 		}
 
@@ -423,6 +485,7 @@ func PDFThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) err
 		reader, err := deps.Storage.Download(ctx, file.StorageKey)
 		if err != nil {
 			log.Error("failed to download file", "storage_key", file.StorageKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to download file %s: %w", file.StorageKey, err)
 		}
 		defer closeSafely(reader, "original file reader")
@@ -443,6 +506,7 @@ func PDFThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) err
 		result, err := proc.Process(ctx, opts, reader)
 		if err != nil {
 			log.Error("failed to process pdf thumbnail", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return middleware.Permanent(fmt.Errorf("failed to process pdf thumbnail: %w", err))
 		}
 		log.Debug("pdf thumbnail processed", "duration_ms", time.Since(processStart).Milliseconds(), "output_size", result.Size)
@@ -456,6 +520,7 @@ func PDFThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) err
 		uploadStart := time.Now()
 		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
 			log.Error("failed to upload variant", "storage_key", variantKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to upload variant: %w", err)
 		}
 		log.Debug("variant uploaded", "duration_ms", time.Since(uploadStart).Milliseconds())
@@ -473,6 +538,7 @@ func PDFThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) err
 		})
 		if err != nil {
 			log.Error("failed to save variant record", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to save variant record: %w", err)
 		}
 
@@ -481,9 +547,11 @@ func PDFThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) err
 			Status: db.FileStatusCompleted,
 		}); err != nil {
 			log.Error("failed to update file status", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to update file status: %w", err)
 		}
 
+		deps.markJobCompleted(ctx, payload.JobID)
 		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "output_width", width, "output_height", height)
 		return nil
 	}
@@ -501,6 +569,7 @@ func MetadataHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
 		}
 
+		deps.markJobRunning(ctx, payload.JobID)
 		log = log.With("file_id", payload.FileID.String())
 
 		fileID := pgtype.UUID{Bytes: payload.FileID, Valid: true}
@@ -508,12 +577,14 @@ func MetadataHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		file, err := deps.Queries.GetFile(ctx, fileID)
 		if err != nil {
 			log.Error("failed to retrieve file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to retrieve file: %w", err)
 		}
 
 		reader, err := deps.Storage.Download(ctx, file.StorageKey)
 		if err != nil {
 			log.Error("failed to download file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to download file: %w", err)
 		}
 		defer closeSafely(reader, "file reader")
@@ -522,15 +593,18 @@ func MetadataHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		result, err := proc.Process(ctx, nil, reader)
 		if err != nil {
 			log.Error("failed to extract metadata", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return middleware.Permanent(fmt.Errorf("failed to extract metadata: %w", err))
 		}
 
 		variantKey := buildVariantKey(payload.FileID, "metadata", "metadata.json")
 		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
 			log.Error("failed to upload metadata", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to upload metadata: %w", err)
 		}
 
+		deps.markJobCompleted(ctx, payload.JobID)
 		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds())
 		return nil
 	}
@@ -548,6 +622,7 @@ func OptimizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
 		}
 
+		deps.markJobRunning(ctx, payload.JobID)
 		log = log.With("file_id", payload.FileID.String())
 
 		fileID := pgtype.UUID{Bytes: payload.FileID, Valid: true}
@@ -555,12 +630,14 @@ func OptimizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		file, err := deps.Queries.GetFile(ctx, fileID)
 		if err != nil {
 			log.Error("failed to retrieve file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to retrieve file: %w", err)
 		}
 
 		reader, err := deps.Storage.Download(ctx, file.StorageKey)
 		if err != nil {
 			log.Error("failed to download file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to download file: %w", err)
 		}
 		defer closeSafely(reader, "file reader")
@@ -570,12 +647,14 @@ func OptimizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		result, err := proc.Process(ctx, opts, reader)
 		if err != nil {
 			log.Error("failed to optimize file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return middleware.Permanent(fmt.Errorf("failed to optimize: %w", err))
 		}
 
 		variantKey := buildVariantKey(payload.FileID, "optimized", "optimized.jpg")
 		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
 			log.Error("failed to upload optimized file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to upload: %w", err)
 		}
 
@@ -592,6 +671,7 @@ func OptimizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		})
 		if err != nil {
 			log.Error("failed to save variant record", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to save variant: %w", err)
 		}
 
@@ -600,9 +680,11 @@ func OptimizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 			Status: db.FileStatusCompleted,
 		}); err != nil {
 			log.Error("failed to update file status", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to update file status: %w", err)
 		}
 
+		deps.markJobCompleted(ctx, payload.JobID)
 		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds())
 		return nil
 	}
@@ -620,6 +702,7 @@ func ConvertHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
 		}
 
+		deps.markJobRunning(ctx, payload.JobID)
 		log = log.With("file_id", payload.FileID.String(), "format", payload.Format)
 
 		fileID := pgtype.UUID{Bytes: payload.FileID, Valid: true}
@@ -627,12 +710,14 @@ func ConvertHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		file, err := deps.Queries.GetFile(ctx, fileID)
 		if err != nil {
 			log.Error("failed to retrieve file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to retrieve file: %w", err)
 		}
 
 		reader, err := deps.Storage.Download(ctx, file.StorageKey)
 		if err != nil {
 			log.Error("failed to download file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to download file: %w", err)
 		}
 		defer closeSafely(reader, "file reader")
@@ -646,12 +731,14 @@ func ConvertHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		result, err := proc.Process(ctx, opts, reader)
 		if err != nil {
 			log.Error("failed to convert file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return middleware.Permanent(fmt.Errorf("failed to convert: %w", err))
 		}
 
 		variantKey := buildVariantKey(payload.FileID, "converted", fmt.Sprintf("converted.%s", payload.Format))
 		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
 			log.Error("failed to upload converted file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to upload: %w", err)
 		}
 
@@ -672,9 +759,11 @@ func ConvertHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		})
 		if err != nil {
 			log.Error("failed to save variant record", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to save variant: %w", err)
 		}
 
+		deps.markJobCompleted(ctx, payload.JobID)
 		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds())
 		return nil
 	}
@@ -706,6 +795,7 @@ func VideoThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) e
 			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
 		}
 
+		deps.markJobRunning(ctx, payload.JobID)
 		log = log.With("file_id", payload.FileID.String())
 
 		fileID := pgtype.UUID{
@@ -716,6 +806,7 @@ func VideoThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		file, err := deps.Queries.GetFile(ctx, fileID)
 		if err != nil {
 			log.Error("failed to retrieve file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to retrieve file: %w", err)
 		}
 
@@ -724,6 +815,7 @@ func VideoThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		reader, err := deps.Storage.Download(ctx, file.StorageKey)
 		if err != nil {
 			log.Error("failed to download file", "storage_key", file.StorageKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to download file %s: %w", file.StorageKey, err)
 		}
 		defer closeSafely(reader, "original video reader")
@@ -750,6 +842,7 @@ func VideoThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		result, err := proc.Process(ctx, opts, reader)
 		if err != nil {
 			log.Error("failed to extract video thumbnail", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return middleware.Permanent(fmt.Errorf("failed to extract video thumbnail: %w", err))
 		}
 		log.Debug("video thumbnail extracted", "duration_ms", time.Since(processStart).Milliseconds(), "output_size", result.Size)
@@ -763,6 +856,7 @@ func VideoThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		uploadStart := time.Now()
 		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
 			log.Error("failed to upload variant", "storage_key", variantKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to upload variant: %w", err)
 		}
 		log.Debug("variant uploaded", "duration_ms", time.Since(uploadStart).Milliseconds())
@@ -780,6 +874,7 @@ func VideoThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		})
 		if err != nil {
 			log.Error("failed to save variant record", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to save variant record: %w", err)
 		}
 
@@ -788,9 +883,11 @@ func VideoThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) e
 			Status: db.FileStatusCompleted,
 		}); err != nil {
 			log.Error("failed to update file status", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to update file status: %w", err)
 		}
 
+		deps.markJobCompleted(ctx, payload.JobID)
 		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "output_width", width, "output_height", height)
 		return nil
 	}
@@ -808,6 +905,7 @@ func VideoTranscodeHandler(deps *Dependencies) func(context.Context, *job.Job) e
 			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
 		}
 
+		deps.markJobRunning(ctx, payload.JobID)
 		log = log.With("file_id", payload.FileID.String(), "variant_type", payload.VariantType)
 
 		fileID := pgtype.UUID{
@@ -818,6 +916,7 @@ func VideoTranscodeHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		file, err := deps.Queries.GetFile(ctx, fileID)
 		if err != nil {
 			log.Error("failed to retrieve file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to retrieve file: %w", err)
 		}
 
@@ -826,6 +925,7 @@ func VideoTranscodeHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		reader, err := deps.Storage.Download(ctx, file.StorageKey)
 		if err != nil {
 			log.Error("failed to download file", "storage_key", file.StorageKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to download file %s: %w", file.StorageKey, err)
 		}
 		defer closeSafely(reader, "original video reader")
@@ -848,6 +948,7 @@ func VideoTranscodeHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		result, err := proc.Process(ctx, opts, reader)
 		if err != nil {
 			log.Error("failed to transcode video", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return middleware.Permanent(fmt.Errorf("failed to transcode video: %w", err))
 		}
 		log.Debug("video transcoded", "duration_ms", time.Since(processStart).Milliseconds(), "output_size", result.Size)
@@ -862,6 +963,7 @@ func VideoTranscodeHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		uploadStart := time.Now()
 		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
 			log.Error("failed to upload variant", "storage_key", variantKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to upload variant: %w", err)
 		}
 		log.Debug("variant uploaded", "duration_ms", time.Since(uploadStart).Milliseconds())
@@ -879,6 +981,7 @@ func VideoTranscodeHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		})
 		if err != nil {
 			log.Error("failed to save variant record", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to save variant record: %w", err)
 		}
 
@@ -887,6 +990,7 @@ func VideoTranscodeHandler(deps *Dependencies) func(context.Context, *job.Job) e
 			Status: db.FileStatusCompleted,
 		}); err != nil {
 			log.Error("failed to update file status", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to update file status: %w", err)
 		}
 
@@ -917,6 +1021,7 @@ func VideoTranscodeHandler(deps *Dependencies) func(context.Context, *job.Job) e
 			}
 		}
 
+		deps.markJobCompleted(ctx, payload.JobID)
 		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "output_width", width, "output_height", height, "duration_seconds", result.Metadata.Duration)
 		return nil
 	}
@@ -934,6 +1039,7 @@ func VideoHLSHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
 		}
 
+		deps.markJobRunning(ctx, payload.JobID)
 		log = log.With("file_id", payload.FileID.String())
 
 		fileID := pgtype.UUID{
@@ -944,6 +1050,7 @@ func VideoHLSHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		file, err := deps.Queries.GetFile(ctx, fileID)
 		if err != nil {
 			log.Error("failed to retrieve file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to retrieve file: %w", err)
 		}
 
@@ -952,6 +1059,7 @@ func VideoHLSHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		reader, err := deps.Storage.Download(ctx, file.StorageKey)
 		if err != nil {
 			log.Error("failed to download file", "storage_key", file.StorageKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to download file %s: %w", file.StorageKey, err)
 		}
 		defer closeSafely(reader, "original video reader")
@@ -961,6 +1069,7 @@ func VideoHLSHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		ffmpegProc, ok := proc.(*video.FFmpegProcessor)
 		if !ok {
 			log.Error("video_transcode processor is not FFmpegProcessor")
+			deps.markJobFailed(ctx, payload.JobID, "invalid processor type")
 			return middleware.Permanent(fmt.Errorf("invalid processor type"))
 		}
 
@@ -980,6 +1089,7 @@ func VideoHLSHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		hlsResult, err := ffmpegProc.GenerateHLS(ctx, opts, reader)
 		if err != nil {
 			log.Error("failed to generate HLS", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return middleware.Permanent(fmt.Errorf("failed to generate HLS: %w", err))
 		}
 		defer func() { _ = os.RemoveAll(filepath.Dir(hlsResult.ManifestPath)) }()
@@ -988,6 +1098,7 @@ func VideoHLSHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		manifestData, err := os.ReadFile(hlsResult.ManifestPath)
 		if err != nil {
 			log.Error("failed to read manifest", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to read manifest: %w", err)
 		}
 
@@ -995,6 +1106,7 @@ func VideoHLSHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		log.Debug("uploading manifest", "storage_key", manifestKey)
 		if err := deps.Storage.Upload(ctx, manifestKey, bytes.NewReader(manifestData), "application/x-mpegURL", int64(len(manifestData))); err != nil {
 			log.Error("failed to upload manifest", "storage_key", manifestKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to upload manifest: %w", err)
 		}
 
@@ -1002,12 +1114,14 @@ func VideoHLSHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 			segData, err := os.ReadFile(segPath)
 			if err != nil {
 				log.Error("failed to read segment", "path", segPath, "error", err)
+				deps.markJobFailed(ctx, payload.JobID, err.Error())
 				return fmt.Errorf("failed to read segment: %w", err)
 			}
 			segName := filepath.Base(segPath)
 			segKey := buildVariantKey(payload.FileID, "hls_master", segName)
 			if err := deps.Storage.Upload(ctx, segKey, bytes.NewReader(segData), "video/mp2t", int64(len(segData))); err != nil {
 				log.Error("failed to upload segment", "storage_key", segKey, "error", err)
+				deps.markJobFailed(ctx, payload.JobID, err.Error())
 				return fmt.Errorf("failed to upload segment: %w", err)
 			}
 		}
@@ -1021,6 +1135,7 @@ func VideoHLSHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		})
 		if err != nil {
 			log.Error("failed to save variant record", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to save variant record: %w", err)
 		}
 
@@ -1029,9 +1144,11 @@ func VideoHLSHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 			Status: db.FileStatusCompleted,
 		}); err != nil {
 			log.Error("failed to update file status", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to update file status: %w", err)
 		}
 
+		deps.markJobCompleted(ctx, payload.JobID)
 		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "segments", hlsResult.SegmentCount, "duration_seconds", hlsResult.TotalDuration)
 		return nil
 	}
@@ -1049,6 +1166,7 @@ func VideoWatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) e
 			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
 		}
 
+		deps.markJobRunning(ctx, payload.JobID)
 		log = log.With("file_id", payload.FileID.String())
 
 		fileID := pgtype.UUID{
@@ -1059,6 +1177,7 @@ func VideoWatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		file, err := deps.Queries.GetFile(ctx, fileID)
 		if err != nil {
 			log.Error("failed to retrieve file", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to retrieve file: %w", err)
 		}
 
@@ -1067,6 +1186,7 @@ func VideoWatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		reader, err := deps.Storage.Download(ctx, file.StorageKey)
 		if err != nil {
 			log.Error("failed to download file", "storage_key", file.StorageKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to download file %s: %w", file.StorageKey, err)
 		}
 		defer closeSafely(reader, "original video reader")
@@ -1076,6 +1196,7 @@ func VideoWatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		ffmpegProc, ok := proc.(*video.FFmpegProcessor)
 		if !ok {
 			log.Error("video_transcode processor is not FFmpegProcessor")
+			deps.markJobFailed(ctx, payload.JobID, "invalid processor type")
 			return middleware.Permanent(fmt.Errorf("invalid processor type"))
 		}
 
@@ -1097,6 +1218,7 @@ func VideoWatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		result, err := ffmpegProc.AddWatermark(ctx, reader, text, position, opacity)
 		if err != nil {
 			log.Error("failed to add watermark", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return middleware.Permanent(fmt.Errorf("failed to add watermark: %w", err))
 		}
 		log.Debug("watermark added", "duration_ms", time.Since(processStart).Milliseconds(), "output_size", result.Size)
@@ -1106,6 +1228,7 @@ func VideoWatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		uploadStart := time.Now()
 		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
 			log.Error("failed to upload variant", "storage_key", variantKey, "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to upload variant: %w", err)
 		}
 		log.Debug("variant uploaded", "duration_ms", time.Since(uploadStart).Milliseconds())
@@ -1123,6 +1246,7 @@ func VideoWatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		})
 		if err != nil {
 			log.Error("failed to save variant record", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to save variant record: %w", err)
 		}
 
@@ -1131,9 +1255,11 @@ func VideoWatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) e
 			Status: db.FileStatusCompleted,
 		}); err != nil {
 			log.Error("failed to update file status", "error", err)
+			deps.markJobFailed(ctx, payload.JobID, err.Error())
 			return fmt.Errorf("failed to update file status: %w", err)
 		}
 
+		deps.markJobCompleted(ctx, payload.JobID)
 		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "output_width", width, "output_height", height)
 		return nil
 	}

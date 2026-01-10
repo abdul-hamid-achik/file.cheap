@@ -3,21 +3,24 @@ package worker
 import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/presets"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type ThumbnailPayload struct {
-	FileID  uuid.UUID `json:"file_id"`
-	Width   int       `json:"width"`
-	Height  int       `json:"height"`
-	Quality int       `json:"quality"`
+	JobID   pgtype.UUID `json:"job_id,omitempty"`
+	FileID  uuid.UUID   `json:"file_id"`
+	Width   int         `json:"width"`
+	Height  int         `json:"height"`
+	Quality int         `json:"quality"`
 }
 
 type ResizePayload struct {
-	FileID      uuid.UUID `json:"file_id"`
-	Width       int       `json:"width"`
-	Height      int       `json:"height"`
-	Quality     int       `json:"quality"`
-	VariantType string    `json:"variant_type"`
+	JobID       pgtype.UUID `json:"job_id,omitempty"`
+	FileID      uuid.UUID   `json:"file_id"`
+	Width       int         `json:"width"`
+	Height      int         `json:"height"`
+	Quality     int         `json:"quality"`
+	VariantType string      `json:"variant_type"`
 }
 
 func NewThumbnailPayload(fileID uuid.UUID) ThumbnailPayload {
@@ -66,8 +69,9 @@ func NewSocialPayload(fileID uuid.UUID, variantType string) ResizePayload {
 }
 
 type WebPPayload struct {
-	FileID  uuid.UUID `json:"file_id"`
-	Quality int       `json:"quality"`
+	JobID   pgtype.UUID `json:"job_id,omitempty"`
+	FileID  uuid.UUID   `json:"file_id"`
+	Quality int         `json:"quality"`
 }
 
 func NewWebPPayload(fileID uuid.UUID, quality int) WebPPayload {
@@ -81,13 +85,14 @@ func NewWebPPayload(fileID uuid.UUID, quality int) WebPPayload {
 }
 
 type WatermarkPayload struct {
-	FileID    uuid.UUID `json:"file_id"`
-	Text      string    `json:"text"`
-	Position  string    `json:"position"`
-	Opacity   float64   `json:"opacity"`
-	FontSize  int       `json:"font_size"`
-	Color     string    `json:"color"`
-	IsPremium bool      `json:"is_premium"`
+	JobID     pgtype.UUID `json:"job_id,omitempty"`
+	FileID    uuid.UUID   `json:"file_id"`
+	Text      string      `json:"text"`
+	Position  string      `json:"position"`
+	Opacity   float64     `json:"opacity"`
+	FontSize  int         `json:"font_size"`
+	Color     string      `json:"color"`
+	IsPremium bool        `json:"is_premium"`
 }
 
 func NewWatermarkPayload(fileID uuid.UUID, text, position string, opacity float64, isPremium bool) WatermarkPayload {
@@ -115,9 +120,10 @@ func NewWatermarkPayload(fileID uuid.UUID, text, position string, opacity float6
 }
 
 type ConvertPayload struct {
-	FileID  uuid.UUID `json:"file_id"`
-	Format  string    `json:"format"`
-	Quality int       `json:"quality"`
+	JobID   pgtype.UUID `json:"job_id,omitempty"`
+	FileID  uuid.UUID   `json:"file_id"`
+	Format  string      `json:"format"`
+	Quality int         `json:"quality"`
 }
 
 func NewConvertPayload(fileID uuid.UUID, format string, quality int) ConvertPayload {
@@ -132,12 +138,13 @@ func NewConvertPayload(fileID uuid.UUID, format string, quality int) ConvertPayl
 }
 
 type PDFThumbnailPayload struct {
-	FileID  uuid.UUID `json:"file_id"`
-	Page    int       `json:"page"`
-	Width   int       `json:"width"`
-	Height  int       `json:"height"`
-	Quality int       `json:"quality"`
-	Format  string    `json:"format"`
+	JobID   pgtype.UUID `json:"job_id,omitempty"`
+	FileID  uuid.UUID   `json:"file_id"`
+	Page    int         `json:"page"`
+	Width   int         `json:"width"`
+	Height  int         `json:"height"`
+	Quality int         `json:"quality"`
+	Format  string      `json:"format"`
 }
 
 func NewPDFThumbnailPayload(fileID uuid.UUID) PDFThumbnailPayload {
@@ -169,7 +176,8 @@ func NewPDFThumbnailPayloadWithOptions(fileID uuid.UUID, page int, format string
 }
 
 type MetadataPayload struct {
-	FileID uuid.UUID `json:"file_id"`
+	JobID  pgtype.UUID `json:"job_id,omitempty"`
+	FileID uuid.UUID   `json:"file_id"`
 }
 
 func NewMetadataPayload(fileID uuid.UUID) MetadataPayload {
@@ -177,8 +185,9 @@ func NewMetadataPayload(fileID uuid.UUID) MetadataPayload {
 }
 
 type OptimizePayload struct {
-	FileID  uuid.UUID `json:"file_id"`
-	Quality int       `json:"quality"`
+	JobID   pgtype.UUID `json:"job_id,omitempty"`
+	FileID  uuid.UUID   `json:"file_id"`
+	Quality int         `json:"quality"`
 }
 
 func NewOptimizePayload(fileID uuid.UUID, quality int) OptimizePayload {
@@ -191,12 +200,13 @@ func NewOptimizePayload(fileID uuid.UUID, quality int) OptimizePayload {
 // Video payloads
 
 type VideoThumbnailPayload struct {
-	FileID    uuid.UUID `json:"file_id"`
-	Width     int       `json:"width"`
-	Height    int       `json:"height"`
-	Quality   int       `json:"quality"`
-	AtPercent float64   `json:"at_percent"` // 0.0-1.0, position in video
-	Format    string    `json:"format"`     // jpeg or png
+	JobID     pgtype.UUID `json:"job_id,omitempty"`
+	FileID    uuid.UUID   `json:"file_id"`
+	Width     int         `json:"width"`
+	Height    int         `json:"height"`
+	Quality   int         `json:"quality"`
+	AtPercent float64     `json:"at_percent"` // 0.0-1.0, position in video
+	Format    string      `json:"format"`     // jpeg or png
 }
 
 func NewVideoThumbnailPayload(fileID uuid.UUID) VideoThumbnailPayload {
@@ -228,12 +238,13 @@ func NewVideoThumbnailPayloadWithOptions(fileID uuid.UUID, width, height int, at
 }
 
 type VideoTranscodePayload struct {
-	FileID        uuid.UUID `json:"file_id"`
-	OutputFormat  string    `json:"output_format"`  // mp4, webm
-	MaxResolution int       `json:"max_resolution"` // 360, 480, 720, 1080, 2160
-	Preset        string    `json:"preset"`         // ultrafast, fast, medium, slow
-	CRF           int       `json:"crf"`            // 0-51, lower = better quality
-	VariantType   string    `json:"variant_type"`   // mp4_720p, webm_1080p, etc.
+	JobID         pgtype.UUID `json:"job_id,omitempty"`
+	FileID        uuid.UUID   `json:"file_id"`
+	OutputFormat  string      `json:"output_format"`  // mp4, webm
+	MaxResolution int         `json:"max_resolution"` // 360, 480, 720, 1080, 2160
+	Preset        string      `json:"preset"`         // ultrafast, fast, medium, slow
+	CRF           int         `json:"crf"`            // 0-51, lower = better quality
+	VariantType   string      `json:"variant_type"`   // mp4_720p, webm_1080p, etc.
 }
 
 func NewVideoTranscodePayload(fileID uuid.UUID, variantType string, maxResolution int) VideoTranscodePayload {
@@ -248,9 +259,10 @@ func NewVideoTranscodePayload(fileID uuid.UUID, variantType string, maxResolutio
 }
 
 type VideoHLSPayload struct {
-	FileID          uuid.UUID `json:"file_id"`
-	SegmentDuration int       `json:"segment_duration"` // seconds per segment
-	Resolutions     []int     `json:"resolutions"`      // [360, 480, 720, 1080]
+	JobID           pgtype.UUID `json:"job_id,omitempty"`
+	FileID          uuid.UUID   `json:"file_id"`
+	SegmentDuration int         `json:"segment_duration"` // seconds per segment
+	Resolutions     []int       `json:"resolutions"`      // [360, 480, 720, 1080]
 }
 
 func NewVideoHLSPayload(fileID uuid.UUID, resolutions []int) VideoHLSPayload {
@@ -265,9 +277,10 @@ func NewVideoHLSPayload(fileID uuid.UUID, resolutions []int) VideoHLSPayload {
 }
 
 type VideoWatermarkPayload struct {
-	FileID    uuid.UUID `json:"file_id"`
-	Text      string    `json:"text"`
-	Position  string    `json:"position"` // top-left, top-right, bottom-left, bottom-right, center
-	Opacity   float64   `json:"opacity"`
-	IsPremium bool      `json:"is_premium"`
+	JobID     pgtype.UUID `json:"job_id,omitempty"`
+	FileID    uuid.UUID   `json:"file_id"`
+	Text      string      `json:"text"`
+	Position  string      `json:"position"` // top-left, top-right, bottom-left, bottom-right, center
+	Opacity   float64     `json:"opacity"`
+	IsPremium bool        `json:"is_premium"`
 }

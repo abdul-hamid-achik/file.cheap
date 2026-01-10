@@ -52,6 +52,7 @@ type Querier interface {
 	CountBatchItemsByStatus(ctx context.Context, batchID pgtype.UUID) (db.CountBatchItemsByStatusRow, error)
 	CreateAPIToken(ctx context.Context, arg db.CreateAPITokenParams) (db.ApiToken, error)
 	GetUserVideoStorageUsage(ctx context.Context, userID pgtype.UUID) (int64, error)
+	CreateJob(ctx context.Context, arg db.CreateJobParams) (db.ProcessingJob, error)
 }
 
 type Broker interface {
@@ -238,7 +239,7 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 				switch {
 				case strings.HasPrefix(contentType, "image/"):
 					payload := worker.NewThumbnailPayload(fileUUID)
-					jobID, err := cfg.Broker.Enqueue("thumbnail", payload)
+					jobID, err := worker.EnqueueWithTracking(r.Context(), cfg.Queries, cfg.Broker, &payload, db.JobTypeThumbnail)
 					if err != nil {
 						log.Error("failed to enqueue thumbnail job", "error", err)
 					} else {
@@ -246,7 +247,7 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 					}
 				case contentType == "application/pdf":
 					payload := worker.NewPDFThumbnailPayload(fileUUID)
-					jobID, err := cfg.Broker.Enqueue("pdf_thumbnail", payload)
+					jobID, err := worker.EnqueueWithTracking(r.Context(), cfg.Queries, cfg.Broker, &payload, db.JobTypePdfThumbnail)
 					if err != nil {
 						log.Error("failed to enqueue pdf_thumbnail job", "error", err)
 					} else {
@@ -254,7 +255,7 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 					}
 				case video.IsVideoType(contentType):
 					payload := worker.NewVideoThumbnailPayload(fileUUID)
-					jobID, err := cfg.Broker.Enqueue("video_thumbnail", payload)
+					jobID, err := worker.EnqueueWithTracking(r.Context(), cfg.Queries, cfg.Broker, &payload, db.JobTypeVideoThumbnail)
 					if err != nil {
 						log.Error("failed to enqueue video_thumbnail job", "error", err)
 					} else {
@@ -683,25 +684,28 @@ func transformHandler(cfg *Config) http.HandlerFunc {
 		}
 
 		for _, preset := range req.Presets {
-			var payload interface{}
-			var jobType string
+			var payload worker.JobPayload
+			var dbJobType db.JobType
 
 			switch preset {
 			case "thumbnail":
-				payload = worker.NewThumbnailPayload(fileID)
-				jobType = "thumbnail"
+				p := worker.NewThumbnailPayload(fileID)
+				payload = &p
+				dbJobType = db.JobTypeThumbnail
 			case "sm", "md", "lg", "xl":
-				payload = worker.NewResponsivePayload(fileID, preset)
-				jobType = "resize"
+				p := worker.NewResponsivePayload(fileID, preset)
+				payload = &p
+				dbJobType = db.JobTypeResize
 			case "og", "twitter", "instagram_square", "instagram_portrait", "instagram_story":
-				payload = worker.NewSocialPayload(fileID, preset)
-				jobType = "resize"
+				p := worker.NewSocialPayload(fileID, preset)
+				payload = &p
+				dbJobType = db.JobTypeResize
 			default:
 				log.Warn("unknown preset requested", "preset", preset)
 				continue
 			}
 
-			jobID, err := cfg.Broker.Enqueue(jobType, payload)
+			jobID, err := worker.EnqueueWithTracking(r.Context(), cfg.Queries, cfg.Broker, payload, dbJobType)
 			if err != nil {
 				log.Error("failed to enqueue job", "preset", preset, "error", err)
 				continue
@@ -715,7 +719,7 @@ func transformHandler(cfg *Config) http.HandlerFunc {
 
 		if req.WebP {
 			payload := worker.NewWebPPayload(fileID, quality)
-			jobID, err := cfg.Broker.Enqueue("webp", payload)
+			jobID, err := worker.EnqueueWithTracking(r.Context(), cfg.Queries, cfg.Broker, &payload, db.JobTypeWebp)
 			if err != nil {
 				log.Error("failed to enqueue webp job", "error", err)
 			} else {
@@ -729,7 +733,7 @@ func transformHandler(cfg *Config) http.HandlerFunc {
 		if req.Watermark != "" {
 			isPremium := billingInfo != nil && (billingInfo.Tier == db.SubscriptionTierPro || billingInfo.Tier == db.SubscriptionTierEnterprise)
 			payload := worker.NewWatermarkPayload(fileID, req.Watermark, "bottom-right", 0.5, isPremium)
-			jobID, err := cfg.Broker.Enqueue("watermark", payload)
+			jobID, err := worker.EnqueueWithTracking(r.Context(), cfg.Queries, cfg.Broker, &payload, db.JobTypeWatermark)
 			if err != nil {
 				log.Error("failed to enqueue watermark job", "error", err)
 			} else {
@@ -923,24 +927,27 @@ func batchTransformHandler(cfg *Config) http.HandlerFunc {
 			var jobIDs []string
 
 			for _, preset := range req.Presets {
-				var payload interface{}
-				var jobType string
+				var payload worker.JobPayload
+				var dbJobType db.JobType
 
 				switch preset {
 				case "thumbnail":
-					payload = worker.NewThumbnailPayload(fileID)
-					jobType = "thumbnail"
+					p := worker.NewThumbnailPayload(fileID)
+					payload = &p
+					dbJobType = db.JobTypeThumbnail
 				case "sm", "md", "lg", "xl":
-					payload = worker.NewResponsivePayload(fileID, preset)
-					jobType = "resize"
+					p := worker.NewResponsivePayload(fileID, preset)
+					payload = &p
+					dbJobType = db.JobTypeResize
 				case "og", "twitter", "instagram_square", "instagram_portrait", "instagram_story":
-					payload = worker.NewSocialPayload(fileID, preset)
-					jobType = "resize"
+					p := worker.NewSocialPayload(fileID, preset)
+					payload = &p
+					dbJobType = db.JobTypeResize
 				default:
 					continue
 				}
 
-				jobID, err := cfg.Broker.Enqueue(jobType, payload)
+				jobID, err := worker.EnqueueWithTracking(r.Context(), cfg.Queries, cfg.Broker, payload, dbJobType)
 				if err != nil {
 					log.Error("failed to enqueue job", "file_id", fileID, "preset", preset, "error", err)
 					continue
@@ -954,7 +961,7 @@ func batchTransformHandler(cfg *Config) http.HandlerFunc {
 
 			if req.WebP {
 				payload := worker.NewWebPPayload(fileID, quality)
-				jobID, err := cfg.Broker.Enqueue("webp", payload)
+				jobID, err := worker.EnqueueWithTracking(r.Context(), cfg.Queries, cfg.Broker, &payload, db.JobTypeWebp)
 				if err != nil {
 					log.Error("failed to enqueue webp job", "file_id", fileID, "error", err)
 				} else {
@@ -967,7 +974,7 @@ func batchTransformHandler(cfg *Config) http.HandlerFunc {
 
 			if req.Watermark != "" {
 				payload := worker.NewWatermarkPayload(fileID, req.Watermark, "bottom-right", 0.5, isPremium)
-				jobID, err := cfg.Broker.Enqueue("watermark", payload)
+				jobID, err := worker.EnqueueWithTracking(r.Context(), cfg.Queries, cfg.Broker, &payload, db.JobTypeWatermark)
 				if err != nil {
 					log.Error("failed to enqueue watermark job", "file_id", fileID, "error", err)
 				} else {
@@ -1245,7 +1252,7 @@ func videoTranscodeHandler(cfg *Config) http.HandlerFunc {
 		for _, resolution := range req.Resolutions {
 			variantType := fmt.Sprintf("%s_%dp", req.Format, resolution)
 			payload := worker.NewVideoTranscodePayload(fileID, variantType, resolution)
-			jobID, err := cfg.Broker.Enqueue("video_transcode", payload)
+			jobID, err := worker.EnqueueWithTracking(r.Context(), cfg.Queries, cfg.Broker, &payload, db.JobTypeVideoTranscode)
 			if err != nil {
 				log.Error("failed to enqueue video transcode job", "resolution", resolution, "error", err)
 				continue
@@ -1260,7 +1267,7 @@ func videoTranscodeHandler(cfg *Config) http.HandlerFunc {
 		// Enqueue thumbnail job if requested
 		if req.Thumbnail {
 			payload := worker.NewVideoThumbnailPayload(fileID)
-			jobID, err := cfg.Broker.Enqueue("video_thumbnail", payload)
+			jobID, err := worker.EnqueueWithTracking(r.Context(), cfg.Queries, cfg.Broker, &payload, db.JobTypeVideoThumbnail)
 			if err != nil {
 				log.Error("failed to enqueue video thumbnail job", "error", err)
 			} else {
@@ -1365,7 +1372,7 @@ func videoHLSHandler(cfg *Config) http.HandlerFunc {
 
 		payload := worker.NewVideoHLSPayload(fileID, req.Resolutions)
 		payload.SegmentDuration = req.SegmentDuration
-		jobID, err := cfg.Broker.Enqueue("video_hls", payload)
+		jobID, err := worker.EnqueueWithTracking(r.Context(), cfg.Queries, cfg.Broker, &payload, db.JobTypeVideoHls)
 		if err != nil {
 			log.Error("failed to enqueue video HLS job", "error", err)
 			apperror.WriteJSON(w, r, apperror.ErrInternal)

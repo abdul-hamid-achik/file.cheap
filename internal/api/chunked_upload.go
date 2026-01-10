@@ -329,21 +329,21 @@ func assembleChunks(ctx context.Context, cfg *ChunkedUploadConfig, session *uplo
 			switch {
 			case strings.HasPrefix(contentType, "image/"):
 				payload := worker.NewThumbnailPayload(fileUUID)
-				if jobID, err := cfg.Broker.Enqueue("thumbnail", payload); err != nil {
+				if jobID, err := worker.EnqueueWithTracking(ctx, cfg.Queries, cfg.Broker, &payload, db.JobTypeThumbnail); err != nil {
 					log.Error("failed to enqueue thumbnail job", "error", err)
 				} else {
 					log.Info("thumbnail job enqueued", "job_id", jobID)
 				}
 			case contentType == "application/pdf":
 				payload := worker.NewPDFThumbnailPayload(fileUUID)
-				if jobID, err := cfg.Broker.Enqueue("pdf_thumbnail", payload); err != nil {
+				if jobID, err := worker.EnqueueWithTracking(ctx, cfg.Queries, cfg.Broker, &payload, db.JobTypePdfThumbnail); err != nil {
 					log.Error("failed to enqueue pdf_thumbnail job", "error", err)
 				} else {
 					log.Info("pdf_thumbnail job enqueued", "job_id", jobID)
 				}
 			case video.IsVideoType(contentType):
 				payload := worker.NewVideoThumbnailPayload(fileUUID)
-				if jobID, err := cfg.Broker.Enqueue("video_thumbnail", payload); err != nil {
+				if jobID, err := worker.EnqueueWithTracking(ctx, cfg.Queries, cfg.Broker, &payload, db.JobTypeVideoThumbnail); err != nil {
 					log.Error("failed to enqueue video_thumbnail job", "error", err)
 				} else {
 					log.Info("video_thumbnail job enqueued", "job_id", jobID)
