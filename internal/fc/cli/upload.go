@@ -127,7 +127,7 @@ func uploadFromStdin(transforms []string) error {
 
 	if uploadWait && !jsonOutput {
 		spinner := output.NewSpinner("Waiting for processing...", quietMode)
-		file, err := apiClient.WaitForFile(ctx, result.ID, 2*time.Second, 5*time.Minute)
+		file, err := apiClient.WaitForFile(ctx, result.ID, 2*time.Second, cfg.GetTimeout("upload"))
 		spinner.Finish()
 		if err != nil {
 			printer.Warn("Processing status unknown: %v", err)

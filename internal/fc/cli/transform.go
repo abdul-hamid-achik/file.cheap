@@ -91,7 +91,7 @@ func runTransform(cmd *cobra.Command, args []string) error {
 		if transformWait {
 			if !jsonOutput && !quietMode {
 				spinner := output.NewSpinner(fmt.Sprintf("Waiting for %s...", fileID), quietMode)
-				file, err := apiClient.WaitForFile(ctx, fileID, 2*time.Second, 5*time.Minute)
+				file, err := apiClient.WaitForFile(ctx, fileID, 2*time.Second, cfg.GetTimeout("upload"))
 				spinner.Finish()
 				if err != nil {
 					printer.Warn("Timeout waiting for %s", fileID)

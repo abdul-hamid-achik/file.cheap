@@ -156,7 +156,7 @@ func waitForBatch(ctx context.Context, batchID string) error {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
-	timeout := time.After(30 * time.Minute)
+	timeout := time.After(cfg.GetTimeout("batch_wait"))
 	var consecutiveErrors int
 	const maxConsecutiveErrors = 5
 

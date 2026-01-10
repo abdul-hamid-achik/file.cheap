@@ -85,7 +85,7 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 
 	timeout := time.Duration(deviceResp.ExpiresIn) * time.Second
 	if timeout == 0 {
-		timeout = 15 * time.Minute
+		timeout = cfg.GetTimeout("auth")
 	}
 
 	deadline := time.Now().Add(timeout)
