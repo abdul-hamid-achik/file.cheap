@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/fc/config"
+	"github.com/abdul-hamid-achik/file.cheap/internal/fc/config"
 )
 
 func TestRootCommand(t *testing.T) {

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/fc/client"
-	"github.com/abdul-hamid-achik/file-processor/internal/fc/config"
+	"github.com/abdul-hamid-achik/file.cheap/internal/fc/client"
+	"github.com/abdul-hamid-achik/file.cheap/internal/fc/config"
 )
 
 // Integration tests require FC_API_KEY and optionally FC_BASE_URL to be set.
