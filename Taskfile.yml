@@ -81,6 +81,10 @@ tasks:
       - psql "{{.DATABASE_URL}}" -f migrations/005_file_shares.sql
       - psql "{{.DATABASE_URL}}" -f migrations/006_stripe_billing.sql
       - psql "{{.DATABASE_URL}}" -f migrations/007_image_presets.sql
+      - psql "{{.DATABASE_URL}}" -f migrations/008_transformation_tracking.sql
+      - psql "{{.DATABASE_URL}}" -f migrations/009_batch_transformations.sql
+      - psql "{{.DATABASE_URL}}" -f migrations/010_notifications.sql
+      - psql "{{.DATABASE_URL}}" -f migrations/011_admin_alerts.sql
 
   gen:
     desc: Run all code generation (sqlc, templ, css)
@@ -464,6 +468,10 @@ tasks:
       - task: deploy
       - |
         echo ""
+        echo "  ► Running database migrations..."
+      - task: "prod:migrate"
+      - |
+        echo ""
         echo "  ╔═══════════════════════════════════════════════════════════════╗"
         echo "  ║  ✓ Shipped!                                                   ║"
         echo "  ╚═══════════════════════════════════════════════════════════════╝"
@@ -550,6 +558,31 @@ tasks:
     desc: Connect to production PostgreSQL
     cmds:
       - kubectl exec -it sts/postgres -n file-processor --kubeconfig={{.KUBECONFIG}} -- psql -U postgres -d fileprocessor
+
+  "prod:migrate":
+    desc: Run all pending migrations on production
+    cmds:
+      - |
+        echo ""
+        echo "  Running production migrations..."
+        echo ""
+      - |
+        for f in migrations/*.sql; do
+          echo "  ► Running $f..."
+          cat "$f" | kubectl exec -i sts/postgres -n file-processor --kubeconfig={{.KUBECONFIG}} -- psql -U postgres -d fileprocessor -q 2>&1 | grep -v "already exists" || true
+        done
+      - |
+        echo ""
+        echo "  ✓ Migrations complete"
+        echo ""
+
+  "prod:migrate:single":
+    desc: "Run a single migration (usage: task prod:migrate:single -- 010_notifications.sql)"
+    cmds:
+      - |
+        echo "  Running migrations/{{.CLI_ARGS}}..."
+        cat "migrations/{{.CLI_ARGS}}" | kubectl exec -i sts/postgres -n file-processor --kubeconfig={{.KUBECONFIG}} -- psql -U postgres -d fileprocessor
+        echo "  ✓ Done"
 
   "prod:redis":
     desc: Connect to production Redis
