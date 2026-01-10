@@ -26,25 +26,6 @@ builds:
       - -X github.com/abdul-hamid-achik/file.cheap/internal/fc/version.Commit={{.ShortCommit}}
       - -X github.com/abdul-hamid-achik/file.cheap/internal/fc/version.Date={{.Date}}
 
-docker:
-  - use: buildx
-    goos: linux
-    goarch:
-      - amd64
-      - arm64
-    image_templates:
-      - 'ghcr.io/abdul-hamid-achik/file.cheap/api:{{ .Tag }}-amd64'
-      - 'ghcr.io/abdul-hamid-achik/file.cheap/api:{{ .Tag }}-arm64'
-      - 'ghcr.io/abdul-hamid-achik/file.cheap/worker-image:{{ .Tag }}-amd64'
-      - 'ghcr.io/abdul-hamid-achik/file.cheap/worker-image:{{ .Tag }}-arm64'
-      - 'ghcr.io/abdul-hamid-achik/file.cheap/worker-video:{{ .Tag }}-amd64'
-      - 'ghcr.io/abdul-hamid-achik/file.cheap/worker-video:{{ .Tag }}-arm64'
-    build_flag_templates:
-      - "--target={{ .Target }}"
-      - "--platform=linux/amd64"
-      - "--platform=linux/arm64"
-    skip_push: false
-
 archives:
   - id: default
     formats:
