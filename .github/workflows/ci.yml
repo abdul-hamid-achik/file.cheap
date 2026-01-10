@@ -23,11 +23,16 @@ jobs:
           go-version: '1.25'
           cache: true
 
-      - name: Download dependencies
-        run: go mod download
+      - name: Cache templ binary
+        id: cache-templ
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/templ
+          key: templ-${{ runner.os }}-v0.3.977
 
       - name: Install templ
-        run: go install github.com/a-h/templ/cmd/templ@latest
+        if: steps.cache-templ.outputs.cache-hit != 'true'
+        run: go install github.com/a-h/templ/cmd/templ@v0.3.977
 
       - name: Generate templ files
         run: templ generate
@@ -53,8 +58,16 @@ jobs:
           go-version: '1.25'
           cache: true
 
+      - name: Cache templ binary
+        id: cache-templ
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/templ
+          key: templ-${{ runner.os }}-v0.3.977
+
       - name: Install templ
-        run: go install github.com/a-h/templ/cmd/templ@latest
+        if: steps.cache-templ.outputs.cache-hit != 'true'
+        run: go install github.com/a-h/templ/cmd/templ@v0.3.977
 
       - name: Generate templ files
         run: templ generate
@@ -74,7 +87,8 @@ jobs:
       packages: write
     outputs:
       api_image: ${{ steps.meta-api.outputs.tags }}
-      worker_image: ${{ steps.meta-worker.outputs.tags }}
+      worker_image_image: ${{ steps.meta-worker-image.outputs.tags }}
+      worker_video_image: ${{ steps.meta-worker-video.outputs.tags }}
     steps:
       - uses: actions/checkout@v4
 
@@ -106,29 +120,50 @@ jobs:
           context: .
           target: api
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/arm64
           tags: ${{ steps.meta-api.outputs.tags }}
           labels: ${{ steps.meta-api.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Extract metadata (Worker)
-        id: meta-worker
+      - name: Extract metadata (Worker Image)
+        id: meta-worker-image
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker-image
           tags: |
             type=sha
             type=raw,value=latest
 
-      - name: Build and push Worker
+      - name: Build and push Worker Image
         uses: docker/build-push-action@v5
         with:
           context: .
-          target: worker
+          target: worker-image
           push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta-worker.outputs.tags }}
-          labels: ${{ steps.meta-worker.outputs.labels }}
+          platforms: linux/arm64
+          tags: ${{ steps.meta-worker-image.outputs.tags }}
+          labels: ${{ steps.meta-worker-image.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata (Worker Video)
+        id: meta-worker-video
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker-video
+          tags: |
+            type=sha
+            type=raw,value=latest
+
+      - name: Build and push Worker Video
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: worker-video
+          push: true
+          platforms: linux/arm64
+          tags: ${{ steps.meta-worker-video.outputs.tags }}
+          labels: ${{ steps.meta-worker-video.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

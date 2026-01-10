@@ -8,14 +8,16 @@ resources:
 
 patches:
   - path: patches/api-resources.yaml
-  - path: patches/worker-resources.yaml
+  - path: patches/worker-image-resources.yaml
   - path: patches/api-replicas.yaml
-  - path: patches/worker-replicas.yaml
+  - path: patches/worker-image-replicas.yaml
 
 images:
   - name: ghcr.io/abdul-hamid-achik/file.cheap/api
     newTag: latest
-  - name: ghcr.io/abdul-hamid-achik/file.cheap/worker
+  - name: ghcr.io/abdul-hamid-achik/file.cheap/worker-image
+    newTag: latest
+  - name: ghcr.io/abdul-hamid-achik/file.cheap/worker-video
     newTag: latest
 
 configMapGenerator:

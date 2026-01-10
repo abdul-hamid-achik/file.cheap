@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-image
+  labels:
+    app: worker-image
+    app.kubernetes.io/name: worker-image
+    app.kubernetes.io/component: worker-image
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/metrics"
+  spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+      protocol: TCP
+  selector:
+    app: worker-image

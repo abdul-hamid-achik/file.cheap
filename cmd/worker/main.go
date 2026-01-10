@@ -17,7 +17,6 @@ import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor/image"
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor/pdf"
-	"github.com/abdul-hamid-achik/file.cheap/internal/processor/video"
 	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
 	fpworker "github.com/abdul-hamid-achik/file.cheap/internal/worker"
 	"github.com/abdul-hamid-achik/job-queue/pkg/broker"
@@ -114,20 +113,7 @@ func run() error {
 	procRegistry.Register("optimize", image.NewOptimizeProcessor(processor.DefaultConfig()))
 	procRegistry.Register("convert", image.NewConvertProcessor(processor.DefaultConfig()))
 
-	// Register video processors
-	videoThumbProc, err := video.NewThumbnailProcessor(nil)
-	if err != nil {
-		log.Warn("video thumbnail processor unavailable (ffmpeg not found)", "error", err)
-	} else {
-		procRegistry.Register("video_thumbnail", videoThumbProc)
-	}
-
-	videoTranscodeProc, err := video.NewFFmpegProcessor(nil)
-	if err != nil {
-		log.Warn("video transcode processor unavailable (ffmpeg not found)", "error", err)
-	} else {
-		procRegistry.Register("video_transcode", videoTranscodeProc)
-	}
+	registerVideoProcessors(procRegistry, log)
 
 	log.Info("processor registry ready", "count", len(procRegistry.List()))
 
@@ -148,9 +134,7 @@ func run() error {
 	_ = registry.Register("optimize", fpworker.OptimizeHandler(deps))
 	_ = registry.Register("convert", fpworker.ConvertHandler(deps))
 
-	// Register video handlers
-	_ = registry.Register("video_thumbnail", fpworker.VideoThumbnailHandler(deps))
-	_ = registry.Register("video_transcode", fpworker.VideoTranscodeHandler(deps))
+	registerVideoHandlers(registry, deps)
 
 	log.Info("handlers registered", "count", len(registry.Types()))
 

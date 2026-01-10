@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-video
+  labels:
+    app: worker-video
+    app.kubernetes.io/name: file-processor
+    app.kubernetes.io/component: worker-video
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: worker-video
+  template:
+    metadata:
+      labels:
+        app: worker-video
+        app.kubernetes.io/name: file-processor
+        app.kubernetes.io/component: worker-video
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/abdul-hamid-achik/file.cheap/worker-video:latest
+          imagePullPolicy: Always
+          envFrom:
+            - secretRef:
+                  name: app-secrets
+          env:
+            - name: ENVIRONMENT
+              value: "production"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: LOG_FORMAT
+              value: "json"
+            - name: WORKER_CONCURRENCY
+              value: "4"
+            - name: JOB_TIMEOUT
+              value: "5m"
+            - name: MAX_RETRIES
+              value: "3"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi

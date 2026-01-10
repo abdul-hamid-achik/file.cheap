@@ -9,9 +9,12 @@ resources:
   - api/service.yaml
   - api/hpa.yaml
   - api/ingress.yaml
-  - worker/deployment.yaml
-  - worker/service.yaml
-  - worker/hpa.yaml
+  - worker-image/deployment.yaml
+  - worker-image/service.yaml
+  - worker-image/hpa.yaml
+  - worker-video/deployment.yaml
+  - worker-video/service.yaml
+  - worker-video/hpa.yaml
   - postgres/statefulset.yaml
   - postgres/service.yaml
   - postgres/pvc.yaml
