@@ -28,7 +28,7 @@ templ Upload(user *auth.SessionUser, data UploadPageData) {
 				<!-- Header -->
 				<div class="mb-8">
 					<h1 class="text-2xl font-bold text-nord-5">Upload Files</h1>
-					<p class="text-nord-4 mt-1">Upload images and documents for processing</p>
+					<p class="text-nord-4 mt-1">Upload images, videos, and documents for processing</p>
 				</div>
 				if data.Error != "" {
 					<div class="mb-6">
@@ -113,7 +113,7 @@ templ Upload(user *auth.SessionUser, data UploadPageData) {
 										id="fileInput"
 										@change="handleFileSelect($event)"
 										multiple
-										accept="image/*,.pdf"
+										accept="image/*,.pdf,video/*"
 										class="hidden"
 									/>
 									<div x-show="!uploading">
@@ -127,9 +127,9 @@ templ Upload(user *auth.SessionUser, data UploadPageData) {
 											or drag and drop
 										</p>
 										if data.IsPremium {
-											<p class="text-nord-4 text-sm">PNG, JPG, GIF, WebP or PDF (up to 100MB)</p>
+											<p class="text-nord-4 text-sm">PNG, JPG, GIF, WebP, PDF, MP4, WebM, MOV (up to 100MB)</p>
 										} else {
-											<p class="text-nord-4 text-sm">PNG, JPG, GIF, WebP or PDF (up to 10MB)</p>
+											<p class="text-nord-4 text-sm">PNG, JPG, GIF, WebP, PDF, MP4, WebM, MOV (up to 10MB)</p>
 										}
 									</div>
 									<div x-show="uploading" class="py-4">
@@ -161,7 +161,14 @@ templ Upload(user *auth.SessionUser, data UploadPageData) {
 													<template x-if="file.preview">
 														<img :src="file.preview" class="w-full h-full object-cover"/>
 													</template>
-													<template x-if="!file.preview">
+													<template x-if="!file.preview && file.isVideo">
+														<div class="w-full h-full flex items-center justify-center bg-nord-2">
+															<svg class="w-6 h-6 text-nord-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+																<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+															</svg>
+														</div>
+													</template>
+													<template x-if="!file.preview && !file.isVideo">
 														<div class="w-full h-full flex items-center justify-center">
 															<svg class="w-6 h-6 text-nord-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 																<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
@@ -273,15 +280,17 @@ templ Upload(user *auth.SessionUser, data UploadPageData) {
 					async addFiles(newFiles) {
 						// Filter valid files
 						const validFiles = newFiles.filter(file => {
-							const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+							const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf', 'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska'];
 							const maxSize = 100 * 1024 * 1024; // 100MB (server enforces actual limit)
 							return validTypes.includes(file.type) && file.size <= maxSize;
 						});
 
-						// Generate previews for images
+						// Generate previews for images, mark videos
 						for (const file of validFiles) {
 							if (file.type.startsWith('image/')) {
 								file.preview = await this.generatePreview(file);
+							} else if (file.type.startsWith('video/')) {
+								file.isVideo = true;
 							}
 						}
 
