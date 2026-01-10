@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/fc/version"
+	"github.com/abdul-hamid-achik/file.cheap/internal/fc/version"
 )
 
 type Client struct {

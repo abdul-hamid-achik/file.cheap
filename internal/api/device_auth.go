@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/apperror"
-	"github.com/abdul-hamid-achik/file-processor/internal/db"
+	"github.com/abdul-hamid-achik/file.cheap/internal/apperror"
+	"github.com/abdul-hamid-achik/file.cheap/internal/db"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )

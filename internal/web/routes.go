@@ -3,10 +3,10 @@ package web
 import (
 	"net/http"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/auth"
-	"github.com/abdul-hamid-achik/file-processor/internal/db"
-	"github.com/abdul-hamid-achik/file-processor/internal/email"
-	"github.com/abdul-hamid-achik/file-processor/internal/storage"
+	"github.com/abdul-hamid-achik/file.cheap/internal/auth"
+	"github.com/abdul-hamid-achik/file.cheap/internal/db"
+	"github.com/abdul-hamid-achik/file.cheap/internal/email"
+	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
 )
 
 type Broker interface {
@@ -60,6 +60,9 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 		mux.Handle("POST /files/{id}/delete", requireAuth(http.HandlerFunc(h.DeleteFile)))
 		mux.Handle("POST /files/{id}/process", requireAuth(http.HandlerFunc(h.ProcessFile)))
 		mux.Handle("POST /files/{id}/process-bundle", requireAuth(http.HandlerFunc(h.ProcessBundle)))
+		mux.Handle("GET /files/{id}/status", requireAuth(http.HandlerFunc(h.FileStatus)))
+		mux.Handle("POST /files/batch/delete", requireAuth(http.HandlerFunc(h.BatchDeleteFiles)))
+		mux.Handle("POST /files/batch/process", requireAuth(http.HandlerFunc(h.BatchProcessFiles)))
 		mux.Handle("GET /profile", requireAuth(http.HandlerFunc(h.Profile)))
 		mux.Handle("POST /profile", requireAuth(http.HandlerFunc(h.ProfilePost)))
 		mux.Handle("POST /profile/avatar", requireAuth(http.HandlerFunc(h.ProfileAvatar)))
@@ -116,6 +119,9 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 		mux.HandleFunc("POST /files/{id}/delete", redirectToLogin)
 		mux.HandleFunc("POST /files/{id}/process", redirectToLogin)
 		mux.HandleFunc("POST /files/{id}/process-bundle", redirectToLogin)
+		mux.HandleFunc("GET /files/{id}/status", redirectToLogin)
+		mux.HandleFunc("POST /files/batch/delete", redirectToLogin)
+		mux.HandleFunc("POST /files/batch/process", redirectToLogin)
 		mux.HandleFunc("GET /profile", redirectToLogin)
 		mux.HandleFunc("POST /profile", redirectToLogin)
 		mux.HandleFunc("POST /profile/avatar", redirectToLogin)

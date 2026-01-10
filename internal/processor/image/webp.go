@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/processor"
+	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
 )
 
 var _ processor.Processor = (*WebPProcessor)(nil)

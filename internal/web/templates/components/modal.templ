@@ -1,0 +1,109 @@
+package components
+
+// ModalProps defines modal configuration
+type ModalProps struct {
+	ID          string
+	Title       string
+	Description string
+	Size        string // "sm", "md", "lg", "xl" - defaults to "md"
+}
+
+func getModalSizeClass(size string) string {
+	switch size {
+	case "sm":
+		return "max-w-sm"
+	case "lg":
+		return "max-w-lg"
+	case "xl":
+		return "max-w-xl"
+	default:
+		return "max-w-md"
+	}
+}
+
+// Modal renders a reusable modal dialog using Alpine.js
+// Open with: $dispatch('open-modal', 'modal-id')
+// Close with: $dispatch('close-modal', 'modal-id')
+templ Modal(props ModalProps) {
+	<div
+		x-data="{ open: false }"
+		x-on:open-modal.window={ "if ($event.detail === '" + props.ID + "') open = true" }
+		x-on:close-modal.window={ "if ($event.detail === '" + props.ID + "') open = false" }
+		x-on:keydown.escape.window="open = false"
+		x-show="open"
+		x-cloak
+		class="fixed inset-0 z-50 overflow-y-auto"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby={ props.ID + "-title" }
+	>
+		<div class="flex items-center justify-center min-h-screen px-4 py-6">
+			<!-- Backdrop -->
+			<div
+				class="fixed inset-0 bg-nord-0/80"
+				@click="open = false"
+				x-transition:enter="transition ease-out duration-200"
+				x-transition:enter-start="opacity-0"
+				x-transition:enter-end="opacity-100"
+				x-transition:leave="transition ease-in duration-150"
+				x-transition:leave-start="opacity-100"
+				x-transition:leave-end="opacity-0"
+				aria-hidden="true"
+			></div>
+			<!-- Modal panel -->
+			<div
+				class={ "relative bg-nord-1 rounded-xl p-6 w-full border border-nord-2 shadow-xl " + getModalSizeClass(props.Size) }
+				x-transition:enter="transition ease-out duration-200"
+				x-transition:enter-start="opacity-0 scale-95"
+				x-transition:enter-end="opacity-100 scale-100"
+				x-transition:leave="transition ease-in duration-150"
+				x-transition:leave-start="opacity-100 scale-100"
+				x-transition:leave-end="opacity-0 scale-95"
+				@click.stop
+			>
+				<!-- Close button -->
+				<button
+					type="button"
+					@click="open = false"
+					class="absolute top-4 right-4 p-1 text-nord-4 hover:text-nord-5 transition-colors rounded-lg focus:outline-none focus:ring-2 focus:ring-nord-8"
+					aria-label="Close modal"
+				>
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+					</svg>
+				</button>
+				<!-- Header -->
+				if props.Title != "" {
+					<h3 id={ props.ID + "-title" } class="text-xl font-bold text-nord-5 mb-2 pr-8">
+						{ props.Title }
+					</h3>
+				}
+				if props.Description != "" {
+					<p class="text-nord-4 mb-4">
+						{ props.Description }
+					</p>
+				}
+				<!-- Content -->
+				{ children... }
+			</div>
+		</div>
+	</div>
+}
+
+// ModalFooter provides standard button layout for modal actions
+templ ModalFooter() {
+	<div class="flex gap-3 justify-end mt-6 pt-4 border-t border-nord-2">
+		{ children... }
+	</div>
+}
+
+// ModalCancelButton provides a standard cancel button
+templ ModalCancelButton(modalID string) {
+	<button
+		type="button"
+		@click={ "$dispatch('close-modal', '" + modalID + "')" }
+		class="px-4 py-2 bg-nord-2 text-nord-4 hover:text-nord-5 hover:bg-nord-3 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-nord-8"
+	>
+		Cancel
+	</button>
+}

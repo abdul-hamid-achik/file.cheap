@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/logger"
+	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )

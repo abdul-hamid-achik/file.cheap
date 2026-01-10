@@ -11,7 +11,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/processor"
+	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
 	"github.com/disintegration/imaging"
 )
 

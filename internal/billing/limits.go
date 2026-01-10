@@ -3,7 +3,7 @@ package billing
 import (
 	"time"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/db"
+	"github.com/abdul-hamid-achik/file.cheap/internal/db"
 )
 
 const (

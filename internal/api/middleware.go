@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/auth"
-	"github.com/abdul-hamid-achik/file-processor/internal/billing"
-	"github.com/abdul-hamid-achik/file-processor/internal/db"
+	"github.com/abdul-hamid-achik/file.cheap/internal/auth"
+	"github.com/abdul-hamid-achik/file.cheap/internal/billing"
+	"github.com/abdul-hamid-achik/file.cheap/internal/db"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"

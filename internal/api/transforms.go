@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/processor"
+	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
 )
 
 type TransformOptions struct {

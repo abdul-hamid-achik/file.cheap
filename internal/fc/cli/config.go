@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/fc/config"
+	"github.com/abdul-hamid-achik/file.cheap/internal/fc/config"
 	"github.com/spf13/cobra"
 )
 

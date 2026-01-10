@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/auth"
-	"github.com/abdul-hamid-achik/file-processor/internal/logger"
+	"github.com/abdul-hamid-achik/file.cheap/internal/auth"
+	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
 	"github.com/google/uuid"
 )
 

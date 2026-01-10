@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/fc/output"
+	"github.com/abdul-hamid-achik/file.cheap/internal/fc/output"
 	"github.com/spf13/cobra"
 )
 

@@ -1,4 +1,4 @@
-module github.com/abdul-hamid-achik/file-processor
+module github.com/abdul-hamid-achik/file.cheap
 
 go 1.25.5
 

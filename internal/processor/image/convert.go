@@ -11,7 +11,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/processor"
+	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
 )
 
 var _ processor.Processor = (*ConvertProcessor)(nil)

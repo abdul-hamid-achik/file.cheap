@@ -7,7 +7,7 @@ import (
 	"net/smtp"
 	"time"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/logger"
+	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
 )
 
 // Config holds email service configuration.

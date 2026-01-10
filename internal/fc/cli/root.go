@@ -3,10 +3,10 @@ package cli
 import (
 	"os"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/fc/client"
-	"github.com/abdul-hamid-achik/file-processor/internal/fc/config"
-	"github.com/abdul-hamid-achik/file-processor/internal/fc/output"
-	"github.com/abdul-hamid-achik/file-processor/internal/fc/version"
+	"github.com/abdul-hamid-achik/file.cheap/internal/fc/client"
+	"github.com/abdul-hamid-achik/file.cheap/internal/fc/config"
+	"github.com/abdul-hamid-achik/file.cheap/internal/fc/output"
+	"github.com/abdul-hamid-achik/file.cheap/internal/fc/version"
 	"github.com/spf13/cobra"
 )
 

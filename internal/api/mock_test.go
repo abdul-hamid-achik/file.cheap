@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/db"
-	"github.com/abdul-hamid-achik/file-processor/internal/storage"
+	"github.com/abdul-hamid-achik/file.cheap/internal/db"
+	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"

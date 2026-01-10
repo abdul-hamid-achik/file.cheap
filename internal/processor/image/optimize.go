@@ -9,7 +9,7 @@ import (
 	"image/png"
 	"io"
 
-	"github.com/abdul-hamid-achik/file-processor/internal/processor"
+	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
 	"github.com/disintegration/imaging"
 	_ "golang.org/x/image/webp"
 )
