@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -36,7 +35,7 @@ func runShare(cmd *cobra.Command, args []string) error {
 	}
 
 	fileID := args[0]
-	ctx := context.Background()
+	ctx := GetContext()
 
 	if !jsonOutput {
 		printer.Info("Creating share link for %s...", fileID)

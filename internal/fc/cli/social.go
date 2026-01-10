@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -63,7 +62,7 @@ func runSocial(cmd *cobra.Command, args []string) error {
 		platforms = defaultSocialPlatforms
 	}
 
-	ctx := context.Background()
+	ctx := GetContext()
 	input := args[0]
 
 	var fileID string
@@ -105,7 +104,7 @@ func runSocial(cmd *cobra.Command, args []string) error {
 
 	if socialWait {
 		spinner := output.NewSpinner("Processing variants...", quietMode)
-		file, err := apiClient.WaitForFile(ctx, fileID, 2*time.Second, 5*time.Minute)
+		file, err := apiClient.WaitForFile(ctx, fileID, 2*time.Second, cfg.GetTimeout("upload"))
 		spinner.Finish()
 
 		if err != nil {

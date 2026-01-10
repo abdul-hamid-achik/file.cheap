@@ -6,9 +6,62 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
+
+// sanitizeFilename removes path traversal attempts and invalid characters from a filename.
+// It returns an empty string if the filename is invalid or dangerous.
+func sanitizeFilename(filename string) string {
+	// Take only the base name, removing any path components
+	filename = filepath.Base(filename)
+
+	// Clean the path to remove . and .. components
+	filename = filepath.Clean(filename)
+
+	// Reject if it still looks dangerous
+	if filename == "." || filename == ".." || filename == "" || filename == "/" {
+		return ""
+	}
+
+	// Remove null bytes and path separators
+	filename = strings.Map(func(r rune) rune {
+		if r == 0 || r == '/' || r == '\\' {
+			return -1
+		}
+		return r
+	}, filename)
+
+	return filename
+}
+
+// safePath ensures the final path stays within the target directory.
+// Returns an error if the path would escape the base directory.
+func safePath(baseDir, filename string) (string, error) {
+	absBase, err := filepath.Abs(baseDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve base directory: %w", err)
+	}
+
+	sanitized := sanitizeFilename(filename)
+	if sanitized == "" {
+		return "", fmt.Errorf("invalid filename")
+	}
+
+	fullPath := filepath.Join(absBase, sanitized)
+	absPath, err := filepath.Abs(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve path: %w", err)
+	}
+
+	// Ensure the path is still within baseDir
+	if !strings.HasPrefix(absPath, absBase+string(filepath.Separator)) && absPath != absBase {
+		return "", fmt.Errorf("path escapes target directory")
+	}
+
+	return absPath, nil
+}
 
 var downloadCmd = &cobra.Command{
 	Use:   "download [file-id...]",
@@ -45,7 +98,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no file IDs specified")
 	}
 
-	ctx := context.Background()
+	ctx := GetContext()
 	var successful, failed int
 
 	for _, fileID := range args {
@@ -97,17 +150,32 @@ func downloadSingleFile(ctx context.Context, fileID, variant string) error {
 		}
 	}
 
-	outputPath := downloadOutput
-	info, err := os.Stat(outputPath)
+	// Sanitize the filename to prevent path traversal attacks
+	filename = sanitizeFilename(filename)
+	if filename == "" {
+		return fmt.Errorf("server returned invalid filename")
+	}
+
+	var outputPath string
+	info, err := os.Stat(downloadOutput)
 	if err == nil && info.IsDir() {
-		outputPath = filepath.Join(outputPath, filename)
+		// Output is a directory - use safePath to construct the full path
+		outputPath, err = safePath(downloadOutput, filename)
+		if err != nil {
+			return fmt.Errorf("unsafe download path: %w", err)
+		}
 	} else if os.IsNotExist(err) {
-		dir := filepath.Dir(outputPath)
+		// Output path doesn't exist - treat it as a file path
+		dir := filepath.Dir(downloadOutput)
 		if dir != "." {
 			if err := os.MkdirAll(dir, 0755); err != nil {
 				return fmt.Errorf("failed to create directory: %w", err)
 			}
 		}
+		outputPath = downloadOutput
+	} else {
+		// Output exists and is a file - use it directly
+		outputPath = downloadOutput
 	}
 
 	outFile, err := os.Create(outputPath)
