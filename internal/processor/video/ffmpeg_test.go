@@ -459,7 +459,7 @@ func TestFFmpegProcessor_GenerateHLS(t *testing.T) {
 
 	// Cleanup
 	if result.ManifestPath != "" {
-		os.RemoveAll(filepath.Dir(result.ManifestPath))
+		_ = os.RemoveAll(filepath.Dir(result.ManifestPath))
 	}
 
 	t.Logf("Generated HLS: %d segments, duration=%.2fs", result.SegmentCount, result.TotalDuration)

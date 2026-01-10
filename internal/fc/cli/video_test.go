@@ -2,25 +2,10 @@ package cli
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/spf13/cobra"
 )
-
-func getTestVideoPath() string {
-	_, filename, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(filename), "..", "..", "..", "testdata", "video", "sample.mp4")
-}
-
-func skipIfNoTestVideo(t *testing.T) {
-	path := getTestVideoPath()
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		t.Skipf("test video not found at %s, skipping test", path)
-	}
-}
 
 func TestVideoCmd(t *testing.T) {
 	if videoCmd == nil {

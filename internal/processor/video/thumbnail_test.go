@@ -245,11 +245,12 @@ func TestThumbnailProcessor_Process(t *testing.T) {
 			}
 
 			// Check magic bytes
-			if tt.wantFormat == "image/jpeg" {
+			switch tt.wantFormat {
+			case "image/jpeg":
 				if len(data) < 2 || data[0] != 0xFF || data[1] != 0xD8 {
 					t.Error("Result is not a valid JPEG")
 				}
-			} else if tt.wantFormat == "image/png" {
+			case "image/png":
 				pngMagic := []byte{0x89, 0x50, 0x4E, 0x47}
 				if len(data) < 4 || !bytes.Equal(data[:4], pngMagic) {
 					t.Error("Result is not a valid PNG")

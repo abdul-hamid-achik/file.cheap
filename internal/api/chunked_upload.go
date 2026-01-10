@@ -171,7 +171,7 @@ func InitChunkedUploadHandler(cfg *ChunkedUploadConfig) http.HandlerFunc {
 		)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(InitUploadResponse{
+		_ = json.NewEncoder(w).Encode(InitUploadResponse{
 			UploadID:    uploadID,
 			ChunkSize:   chunkSize,
 			ChunksTotal: chunksTotal,
@@ -261,7 +261,7 @@ func UploadChunkHandler(cfg *ChunkedUploadConfig) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}
 }
 
@@ -278,7 +278,7 @@ func assembleChunks(ctx context.Context, cfg *ChunkedUploadConfig, session *uplo
 			return "", fmt.Errorf("failed to download chunk %d: %w", i, err)
 		}
 		chunkData, err := io.ReadAll(reader)
-		reader.Close()
+		_ = reader.Close()
 		if err != nil {
 			return "", fmt.Errorf("failed to read chunk %d: %w", i, err)
 		}
@@ -374,7 +374,7 @@ func GetUploadStatusHandler(cfg *ChunkedUploadConfig) http.HandlerFunc {
 		session.mu.Unlock()
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"upload_id":     uploadID,
 			"filename":      session.Filename,
 			"total_size":    session.TotalSize,

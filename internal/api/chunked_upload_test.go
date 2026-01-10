@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -534,61 +533,6 @@ func TestChunkSizeCalculation(t *testing.T) {
 			}
 		})
 	}
-}
-
-// mockStorage is a minimal mock for testing
-type mockChunkedStorage struct {
-	data map[string][]byte
-	mu   sync.RWMutex
-}
-
-func newMockChunkedStorage() *mockChunkedStorage {
-	return &mockChunkedStorage{
-		data: make(map[string][]byte),
-	}
-}
-
-func (m *mockChunkedStorage) Upload(ctx context.Context, key string, reader io.Reader, contentType string, size int64) error {
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return err
-	}
-	m.mu.Lock()
-	m.data[key] = data
-	m.mu.Unlock()
-	return nil
-}
-
-func (m *mockChunkedStorage) Download(ctx context.Context, key string) (io.ReadCloser, error) {
-	m.mu.RLock()
-	data, ok := m.data[key]
-	m.mu.RUnlock()
-	if !ok {
-		return nil, io.EOF
-	}
-	return io.NopCloser(bytes.NewReader(data)), nil
-}
-
-func (m *mockChunkedStorage) Delete(ctx context.Context, key string) error {
-	m.mu.Lock()
-	delete(m.data, key)
-	m.mu.Unlock()
-	return nil
-}
-
-func (m *mockChunkedStorage) GetURL(ctx context.Context, key string) (string, error) {
-	return "https://example.com/" + key, nil
-}
-
-func (m *mockChunkedStorage) GetPresignedURL(ctx context.Context, key string, expires int) (string, error) {
-	return "https://example.com/" + key + "?token=abc", nil
-}
-
-func (m *mockChunkedStorage) Exists(ctx context.Context, key string) (bool, error) {
-	m.mu.RLock()
-	_, ok := m.data[key]
-	m.mu.RUnlock()
-	return ok, nil
 }
 
 func TestSessionOwnershipVerification(t *testing.T) {

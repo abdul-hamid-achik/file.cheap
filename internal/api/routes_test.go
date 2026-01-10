@@ -1311,11 +1311,6 @@ func TestVideoHLSRequest_Defaults(t *testing.T) {
 }
 
 // Helper to create test video file
-func createTestVideoFile(userID uuid.UUID, filename string) db.File {
-	fileID := uuid.New()
-	return createTestVideoFileWithID(fileID, userID, filename)
-}
-
 func createTestVideoFileWithID(id, userID uuid.UUID, filename string) db.File {
 	pgFileID := pgtype.UUID{Bytes: id, Valid: true}
 	pgUserID := pgtype.UUID{Bytes: userID, Valid: true}

@@ -201,8 +201,8 @@ func sendSSEMessage(w http.ResponseWriter, flusher http.Flusher, msg SSEMessage)
 		return
 	}
 
-	fmt.Fprintf(w, "event: %s\n", msg.Event)
-	fmt.Fprintf(w, "data: %s\n\n", data)
+	_, _ = fmt.Fprintf(w, "event: %s\n", msg.Event)
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 	flusher.Flush()
 }
 
@@ -328,7 +328,7 @@ func FileStatusHandler(cfg *SSEConfig) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}
 }
 
