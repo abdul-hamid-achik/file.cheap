@@ -331,6 +331,7 @@ templ Docs(user *auth.SessionUser, activeSection string) {
 										@docsNavItem("getting-started", "Getting Started", activeSection)
 										@docsNavItem("uploading-files", "Uploading Files", activeSection)
 										@docsNavItem("image-processing", "Image Processing", activeSection)
+										@docsNavItem("video-processing", "Video Processing", activeSection)
 										@docsNavItem("pdf-processing", "PDF Processing", activeSection)
 										@docsNavItem("api-reference", "API Reference", activeSection)
 										@docsNavItem("authentication", "Authentication", activeSection)
@@ -356,6 +357,7 @@ templ Docs(user *auth.SessionUser, activeSection string) {
 									<option value="getting-started" selected?={ activeSection == "getting-started" }>Getting Started</option>
 									<option value="uploading-files" selected?={ activeSection == "uploading-files" }>Uploading Files</option>
 									<option value="image-processing" selected?={ activeSection == "image-processing" }>Image Processing</option>
+									<option value="video-processing" selected?={ activeSection == "video-processing" }>Video Processing</option>
 									<option value="pdf-processing" selected?={ activeSection == "pdf-processing" }>PDF Processing</option>
 									<option value="api-reference" selected?={ activeSection == "api-reference" }>API Reference</option>
 									<option value="authentication" selected?={ activeSection == "authentication" }>Authentication</option>
@@ -379,6 +381,8 @@ templ Docs(user *auth.SessionUser, activeSection string) {
 										@docsUploadingFiles()
 									case "image-processing":
 										@docsImageProcessing()
+									case "video-processing":
+										@docsVideoProcessing()
 									case "pdf-processing":
 										@docsPdfProcessing()
 									case "api-reference":
@@ -438,10 +442,14 @@ templ docsGettingStarted() {
 			<li><strong class="text-nord-5">Download results</strong> - Get your processed files from the dashboard</li>
 		</ol>
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Supported File Types</h2>
-		<div class="grid md:grid-cols-2 gap-4 mb-6">
+		<div class="grid md:grid-cols-3 gap-4 mb-6">
 			<div class="bg-nord-2 rounded-lg p-4">
 				<h3 class="font-medium text-nord-5 mb-2">Images</h3>
 				<p class="text-nord-4 text-sm">JPEG, PNG, GIF, WebP, BMP, TIFF</p>
+			</div>
+			<div class="bg-nord-2 rounded-lg p-4">
+				<h3 class="font-medium text-nord-5 mb-2">Videos</h3>
+				<p class="text-nord-4 text-sm">MP4, WebM, MOV, AVI, MKV</p>
 			</div>
 			<div class="bg-nord-2 rounded-lg p-4">
 				<h3 class="font-medium text-nord-5 mb-2">Documents</h3>
@@ -478,7 +486,8 @@ templ docsGettingStarted() {
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Next Steps</h2>
 		<ul class="list-disc list-inside text-nord-4 space-y-1">
 			<li>Learn about <a href="/docs?section=image-processing" class="text-nord-8 hover:text-nord-7">image processing options</a></li>
-			<li>Explore the <a href="/docs?section=api-reference" class="text-nord-8 hover:text-nord-7">API reference</a> { "for" } programmatic access</li>
+			<li>Explore <a href="/docs?section=video-processing" class="text-nord-8 hover:text-nord-7">video transcoding and HLS streaming</a></li>
+			<li>Check out the <a href="/docs?section=api-reference" class="text-nord-8 hover:text-nord-7">API reference</a> { "for" } programmatic access</li>
 			<li>Set up <a href="/docs?section=webhooks" class="text-nord-8 hover:text-nord-7">webhooks</a> { "for" } async processing notifications</li>
 		</ul>
 	</article>
@@ -601,6 +610,77 @@ templ docsImageProcessing() {
 		<p class="text-nord-4 mb-4">
 			Add text or image watermarks to protect your content. Configure position, opacity, and size through the API.
 		</p>
+	</article>
+}
+
+templ docsVideoProcessing() {
+	<article class="prose prose-invert max-w-none">
+		<h1 class="text-3xl font-bold text-nord-5 mb-6">Video Processing</h1>
+		<p class="text-nord-4 mb-6">
+			file.cheap supports comprehensive video processing powered by FFmpeg, including transcoding, HLS streaming, thumbnail extraction, and watermarking.
+		</p>
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Video Transcoding</h2>
+		<p class="text-nord-4 mb-4">
+			Transcode videos to different resolutions and formats. Supported output formats include MP4 (H.264) and WebM (VP9).
+		</p>
+		<p class="text-nord-4 mb-4">Available resolutions:</p>
+		<ul class="list-disc list-inside text-nord-4 mb-6 space-y-1">
+			<li><strong class="text-nord-5">360p:</strong> 640x360</li>
+			<li><strong class="text-nord-5">480p:</strong> 854x480</li>
+			<li><strong class="text-nord-5">720p:</strong> 1280x720 (HD)</li>
+			<li><strong class="text-nord-5">1080p:</strong> 1920x1080 (Full HD)</li>
+			<li><strong class="text-nord-5">1440p:</strong> 2560x1440 (2K)</li>
+			<li><strong class="text-nord-5">2160p:</strong> 3840x2160 (4K)</li>
+		</ul>
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">HLS Streaming</h2>
+		<p class="text-nord-4 mb-4">
+			Generate HTTP Live Streaming (HLS) packages for adaptive bitrate streaming. HLS automatically adjusts video quality based on the viewer's network conditions.
+		</p>
+		<p class="text-nord-4 mb-4">HLS output includes:</p>
+		<ul class="list-disc list-inside text-nord-4 mb-6 space-y-1">
+			<li>Master playlist (.m3u8) with multiple quality levels</li>
+			<li>Segment files (.ts) for each quality variant</li>
+			<li>Automatic bitrate adaptation</li>
+		</ul>
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Video Thumbnails</h2>
+		<p class="text-nord-4 mb-4">
+			Extract thumbnail images from video files at specified timestamps. Perfect for video previews and galleries.
+		</p>
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Video Watermarking</h2>
+		<p class="text-nord-4 mb-4">
+			Add text watermarks to videos to protect your content. Configure position (top-left, top-right, bottom-left, bottom-right, center) and styling.
+		</p>
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Supported Input Formats</h2>
+		<ul class="list-disc list-inside text-nord-4 mb-6 space-y-1">
+			<li>MP4</li>
+			<li>WebM</li>
+			<li>MOV</li>
+			<li>AVI</li>
+			<li>MKV</li>
+		</ul>
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Chunked Upload</h2>
+		<p class="text-nord-4 mb-4">
+			For large video files, use chunked upload to upload files in parts. This allows resumable uploads and better handling of large files.
+		</p>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
+			<pre class="text-nord-4 text-sm">
+				<code>
+					# Initialize chunked upload
+					POST /v1/upload/chunked/init
+					# Upload each chunk
+					POST /v1/upload/chunked/:uploadId/chunk
+					# Complete the upload
+					POST /v1/upload/chunked/:uploadId/complete
+				</code>
+			</pre>
+		</div>
+		<h2 class="text-xl font-semibold text-nord-5 mb-4">Video Embed</h2>
+		<p class="text-nord-4 mb-4">
+			Use the embed endpoint to get a shareable video player page:
+		</p>
+		<div class="bg-nord-2 rounded-lg p-4 mb-6">
+			<code class="text-nord-8">https://file.cheap/embed/:fileId</code>
+		</div>
 	</article>
 }
 
