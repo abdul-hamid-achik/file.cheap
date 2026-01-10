@@ -3,4 +3,4 @@ kind: Deployment
 metadata:
   name: worker-image
 spec:
-  replicas: 2
+  replicas: 1
