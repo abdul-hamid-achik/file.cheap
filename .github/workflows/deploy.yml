@@ -39,16 +39,20 @@ jobs:
       - name: Update images and restart
         run: |
           TAG="${{ github.event.inputs.image_tag || 'latest' }}"
-          
+
           # Update api deployment image
           kubectl set image deployment/api \
             api=ghcr.io/abdul-hamid-achik/file.cheap/api:${TAG} \
             -n file-processor --kubeconfig=$KUBECONFIG_PATH
-          
+
           # Update worker deployment image
           kubectl set image deployment/worker \
             worker=ghcr.io/abdul-hamid-achik/file.cheap/worker:${TAG} \
             -n file-processor --kubeconfig=$KUBECONFIG_PATH
+
+          # Force rollout restart to pull latest images
+          kubectl rollout restart deployment/api -n file-processor --kubeconfig=$KUBECONFIG_PATH
+          kubectl rollout restart deployment/worker -n file-processor --kubeconfig=$KUBECONFIG_PATH
 
       - name: Wait for rollout
         run: |
