@@ -18,6 +18,8 @@ spec:
         app.kubernetes.io/name: file-processor
         app.kubernetes.io/component: worker-video
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
         - name: worker
           image: ghcr.io/abdul-hamid-achik/file.cheap/worker-video:latest

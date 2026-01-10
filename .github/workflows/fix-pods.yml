@@ -23,31 +23,64 @@ jobs:
           echo "${{ secrets.KUBECONFIG }}" | base64 -d > $KUBECONFIG_PATH
           chmod 600 $KUBECONFIG_PATH
 
-      - name: Show pod status
+      - name: Diagnose ImagePullBackOff
         run: |
           echo "=== Current pod status ==="
           kubectl get pods -n file-processor --kubeconfig=$KUBECONFIG_PATH
           echo ""
-          echo "=== Pods in Terminating state ==="
-          kubectl get pods -n file-processor --kubeconfig=$KUBECONFIG_PATH | grep -i terminating || echo "No terminating pods"
+          echo "=== Describe failing worker-image pod ==="
+          kubectl describe pod -n file-processor -l app=worker-image --kubeconfig=$KUBECONFIG_PATH | tail -50
+          echo ""
+          echo "=== Check imagePullSecrets in deployment ==="
+          kubectl get deployment worker-image -n file-processor -o jsonpath='{.spec.template.spec.imagePullSecrets}' --kubeconfig=$KUBECONFIG_PATH || echo "No imagePullSecrets"
+          echo ""
+          echo "=== Check if ghcr-secret exists ==="
+          kubectl get secret ghcr-secret -n file-processor --kubeconfig=$KUBECONFIG_PATH || echo "ghcr-secret not found"
 
-      - name: Force delete stuck pods
+      - name: Create/Update GHCR pull secret
         run: |
-          # Force delete any terminating worker-image pods
-          for pod in $(kubectl get pods -n file-processor -l app=worker-image --kubeconfig=$KUBECONFIG_PATH -o jsonpath='{.items[?(@.metadata.deletionTimestamp)].metadata.name}'); do
-            echo "Force deleting stuck pod: $pod"
-            kubectl delete pod $pod -n file-processor --force --grace-period=0 --kubeconfig=$KUBECONFIG_PATH || true
-          done
-          
-          # Also check worker-video
-          for pod in $(kubectl get pods -n file-processor -l app=worker-video --kubeconfig=$KUBECONFIG_PATH -o jsonpath='{.items[?(@.metadata.deletionTimestamp)].metadata.name}'); do
-            echo "Force deleting stuck pod: $pod"
-            kubectl delete pod $pod -n file-processor --force --grace-period=0 --kubeconfig=$KUBECONFIG_PATH || true
-          done
+          # Create docker config for GHCR
+          kubectl create secret docker-registry ghcr-secret \
+            --docker-server=ghcr.io \
+            --docker-username=${{ github.actor }} \
+            --docker-password=${{ secrets.GITHUB_TOKEN }} \
+            -n file-processor \
+            --kubeconfig=$KUBECONFIG_PATH \
+            --dry-run=client -o yaml | kubectl apply -f - --kubeconfig=$KUBECONFIG_PATH
+          echo "GHCR secret created/updated"
 
-      - name: Verify and show final status
+      - name: Patch deployments with imagePullSecrets
         run: |
-          sleep 10
+          # Patch worker-image deployment
+          kubectl patch deployment worker-image -n file-processor \
+            --type='json' \
+            -p='[{"op": "add", "path": "/spec/template/spec/imagePullSecrets", "value": [{"name": "ghcr-secret"}]}]' \
+            --kubeconfig=$KUBECONFIG_PATH || true
+
+          # Patch worker-video deployment
+          kubectl patch deployment worker-video -n file-processor \
+            --type='json' \
+            -p='[{"op": "add", "path": "/spec/template/spec/imagePullSecrets", "value": [{"name": "ghcr-secret"}]}]' \
+            --kubeconfig=$KUBECONFIG_PATH || true
+
+          # Patch api deployment
+          kubectl patch deployment api -n file-processor \
+            --type='json' \
+            -p='[{"op": "add", "path": "/spec/template/spec/imagePullSecrets", "value": [{"name": "ghcr-secret"}]}]' \
+            --kubeconfig=$KUBECONFIG_PATH || true
+
+          echo "Deployments patched with imagePullSecrets"
+
+      - name: Restart deployments
+        run: |
+          kubectl rollout restart deployment/worker-image -n file-processor --kubeconfig=$KUBECONFIG_PATH
+          kubectl rollout restart deployment/api -n file-processor --kubeconfig=$KUBECONFIG_PATH
+          echo "Waiting for rollouts..."
+          kubectl rollout status deployment/api -n file-processor --timeout=120s --kubeconfig=$KUBECONFIG_PATH || true
+          kubectl rollout status deployment/worker-image -n file-processor --timeout=120s --kubeconfig=$KUBECONFIG_PATH || true
+
+      - name: Final status
+        run: |
           echo "=== Final pod status ==="
           kubectl get pods -n file-processor --kubeconfig=$KUBECONFIG_PATH
           echo ""

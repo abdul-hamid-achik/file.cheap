@@ -18,6 +18,8 @@ spec:
         app.kubernetes.io/name: file-processor
         app.kubernetes.io/component: api
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
         - name: api
           image: ghcr.io/abdul-hamid-achik/file.cheap/api:latest
