@@ -38,11 +38,11 @@ func TestIsVideoType(t *testing.T) {
 
 func TestGetResolutionPreset(t *testing.T) {
 	tests := []struct {
-		name          string
-		height        int
-		wantWidth     int
-		wantVideoBR   string
-		wantAudioBR   string
+		name        string
+		height      int
+		wantWidth   int
+		wantVideoBR string
+		wantAudioBR string
 	}{
 		{"360p", 360, 640, "800k", "64k"},
 		{"480p", 480, 854, "1500k", "96k"},
@@ -85,31 +85,33 @@ func TestDefaultVideoConfig(t *testing.T) {
 		t.Errorf("FFprobePath = %q, want %q", cfg.FFprobePath, "ffprobe")
 	}
 
-	if cfg.DefaultPreset != "medium" {
-		t.Errorf("DefaultPreset = %q, want %q", cfg.DefaultPreset, "medium")
+	// Optimized for speed and smaller file sizes (cost control)
+	if cfg.DefaultPreset != "veryfast" {
+		t.Errorf("DefaultPreset = %q, want %q", cfg.DefaultPreset, "veryfast")
 	}
 
-	if cfg.DefaultCRF != 23 {
-		t.Errorf("DefaultCRF = %d, want %d", cfg.DefaultCRF, 23)
+	if cfg.DefaultCRF != 28 {
+		t.Errorf("DefaultCRF = %d, want %d", cfg.DefaultCRF, 28)
 	}
 
-	if cfg.MaxDuration != 30*60 {
-		t.Errorf("MaxDuration = %d, want %d", cfg.MaxDuration, 30*60)
+	if cfg.MaxDuration != 10*60 {
+		t.Errorf("MaxDuration = %d, want %d", cfg.MaxDuration, 10*60)
 	}
 
 	if cfg.MaxResolution != 1080 {
 		t.Errorf("MaxResolution = %d, want %d", cfg.MaxResolution, 1080)
 	}
 
-	if cfg.MaxFileSize != 500*1024*1024 {
-		t.Errorf("MaxFileSize = %d, want %d", cfg.MaxFileSize, 500*1024*1024)
+	if cfg.MaxFileSize != 200*1024*1024 {
+		t.Errorf("MaxFileSize = %d, want %d", cfg.MaxFileSize, 200*1024*1024)
 	}
 
-	if cfg.HLSSegmentDuration != 10 {
-		t.Errorf("HLSSegmentDuration = %d, want %d", cfg.HLSSegmentDuration, 10)
+	if cfg.HLSSegmentDuration != 6 {
+		t.Errorf("HLSSegmentDuration = %d, want %d", cfg.HLSSegmentDuration, 6)
 	}
 
-	expectedResolutions := []int{360, 480, 720, 1080}
+	// Fewer resolutions for reduced storage
+	expectedResolutions := []int{360, 720}
 	if len(cfg.HLSResolutions) != len(expectedResolutions) {
 		t.Errorf("HLSResolutions length = %d, want %d", len(cfg.HLSResolutions), len(expectedResolutions))
 	}
@@ -122,15 +124,15 @@ func TestDefaultVideoConfig(t *testing.T) {
 
 func TestSupportedVideoTypes(t *testing.T) {
 	expectedTypes := map[string]bool{
-		"video/mp4":         true,
-		"video/webm":        true,
-		"video/quicktime":   true,
-		"video/x-msvideo":   true,
-		"video/x-matroska":  true,
-		"video/mpeg":        true,
-		"video/ogg":         true,
-		"video/3gpp":        true,
-		"video/3gpp2":       true,
+		"video/mp4":        true,
+		"video/webm":       true,
+		"video/quicktime":  true,
+		"video/x-msvideo":  true,
+		"video/x-matroska": true,
+		"video/mpeg":       true,
+		"video/ogg":        true,
+		"video/3gpp":       true,
+		"video/3gpp2":      true,
 	}
 
 	if len(SupportedVideoTypes) != len(expectedTypes) {
@@ -174,13 +176,13 @@ func TestVideoMetadata(t *testing.T) {
 
 func TestVideoOptions(t *testing.T) {
 	opts := VideoOptions{
-		Preset:       "fast",
-		CRF:          20,
-		VideoBitrate: "5M",
-		AudioBitrate: "192k",
-		OutputFormat: "mp4",
-		MaxResolution: 1080,
-		ThumbnailAt:  0.5,
+		Preset:             "fast",
+		CRF:                20,
+		VideoBitrate:       "5M",
+		AudioBitrate:       "192k",
+		OutputFormat:       "mp4",
+		MaxResolution:      1080,
+		ThumbnailAt:        0.5,
 		HLSSegmentDuration: 6,
 	}
 

@@ -91,12 +91,12 @@ type InitUploadResponse struct {
 
 // UploadChunkResponse is returned after uploading a chunk
 type UploadChunkResponse struct {
-	UploadID      string `json:"upload_id"`
-	ChunkIndex    int    `json:"chunk_index"`
-	ChunksLoaded  int    `json:"chunks_loaded"`
-	ChunksTotal   int    `json:"chunks_total"`
-	Complete      bool   `json:"complete"`
-	FileID        string `json:"file_id,omitempty"`
+	UploadID     string `json:"upload_id"`
+	ChunkIndex   int    `json:"chunk_index"`
+	ChunksLoaded int    `json:"chunks_loaded"`
+	ChunksTotal  int    `json:"chunks_total"`
+	Complete     bool   `json:"complete"`
+	FileID       string `json:"file_id,omitempty"`
 }
 
 // InitChunkedUploadHandler starts a new chunked upload session
@@ -129,9 +129,18 @@ func InitChunkedUploadHandler(cfg *ChunkedUploadConfig) http.HandlerFunc {
 			}
 
 			maxSize := billingInfo.MaxFileSize
+			limits := billing.GetTierLimits(billingInfo.Tier)
+
 			if video.IsVideoType(req.ContentType) {
-				limits := billing.GetTierLimits(billingInfo.Tier)
 				maxSize = limits.MaxVideoSize
+
+				// Check video storage quota
+				pgUserID := pgtype.UUID{Bytes: userID, Valid: true}
+				videoUsageBytes, err := cfg.Queries.GetUserVideoStorageUsage(r.Context(), pgUserID)
+				if err == nil && videoUsageBytes+req.TotalSize > limits.VideoStorageBytes {
+					http.Error(w, `{"error":"video storage quota exceeded, please upgrade or delete old videos"}`, http.StatusForbidden)
+					return
+				}
 			}
 
 			if req.TotalSize > maxSize {

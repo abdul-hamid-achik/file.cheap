@@ -27,7 +27,26 @@ const (
 	cacheControlRedirect = "public, max-age=3000"
 	// For processed results served directly (not cached yet)
 	cacheControlShort = "public, max-age=3600"
+	// For thumbnails and immutable processed content - cache for 30 days
+	cacheControlThumbnail = "public, max-age=2592000, immutable"
+	// For HLS segments - immutable, cache forever
+	cacheControlHLS = "public, max-age=31536000, immutable"
+	// For transcoded videos - cache for 7 days
+	cacheControlVideo = "public, max-age=604800"
 )
+
+func getCacheControl(contentType string) string {
+	switch {
+	case strings.HasPrefix(contentType, "application/x-mpegURL"), strings.HasPrefix(contentType, "video/mp2t"):
+		return cacheControlHLS
+	case strings.HasPrefix(contentType, "video/"):
+		return cacheControlVideo
+	case strings.HasPrefix(contentType, "image/"):
+		return cacheControlThumbnail
+	default:
+		return cacheControlShort
+	}
+}
 
 type CDNQuerier interface {
 	GetFileShareByToken(ctx context.Context, token string) (db.GetFileShareByTokenRow, error)
@@ -173,7 +192,7 @@ func serveOriginal(w http.ResponseWriter, r *http.Request, cfg *CDNConfig, stora
 		return
 	}
 
-	w.Header().Set("Cache-Control", cacheControlRedirect)
+	w.Header().Set("Cache-Control", getCacheControl(contentType))
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filename))
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
@@ -185,7 +204,7 @@ func serveCached(w http.ResponseWriter, r *http.Request, cfg *CDNConfig, storage
 		return
 	}
 
-	w.Header().Set("Cache-Control", cacheControlRedirect)
+	w.Header().Set("Cache-Control", getCacheControl(contentType))
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filename))
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
@@ -260,7 +279,7 @@ func cacheResult(ctx context.Context, cfg *CDNConfig, fileID pgtype.UUID, cacheK
 
 func serveResult(w http.ResponseWriter, r *http.Request, result *processor.Result, filename string) {
 	w.Header().Set("Content-Type", result.ContentType)
-	w.Header().Set("Cache-Control", cacheControlShort)
+	w.Header().Set("Cache-Control", getCacheControl(result.ContentType))
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filename))
 
 	_, _ = io.Copy(w, result.Data)

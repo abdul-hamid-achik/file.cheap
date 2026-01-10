@@ -303,6 +303,7 @@ CREATE TABLE monthly_usage (
     transformations_count INTEGER NOT NULL DEFAULT 0,
     bytes_processed BIGINT NOT NULL DEFAULT 0,
     files_uploaded INTEGER NOT NULL DEFAULT 0,
+    video_seconds_processed INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(user_id, year_month)

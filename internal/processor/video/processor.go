@@ -23,8 +23,8 @@ type VideoOptions struct {
 	*processor.Options
 
 	// Encoding settings
-	Preset     string // ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
-	CRF        int    // Constant Rate Factor (0-51, lower = better quality, 23 is default)
+	Preset       string // ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
+	CRF          int    // Constant Rate Factor (0-51, lower = better quality, 23 is default)
 	VideoBitrate string // e.g., "2M", "5M"
 	AudioBitrate string // e.g., "128k", "192k"
 
@@ -43,16 +43,16 @@ type VideoOptions struct {
 
 // VideoMetadata contains detailed video information
 type VideoMetadata struct {
-	Duration    float64 `json:"duration"`     // Duration in seconds
-	Width       int     `json:"width"`        // Video width
-	Height      int     `json:"height"`       // Video height
-	Bitrate     int64   `json:"bitrate"`      // Total bitrate in bits/s
-	VideoCodec  string  `json:"video_codec"`  // e.g., h264, vp9, hevc
-	AudioCodec  string  `json:"audio_codec"`  // e.g., aac, opus, mp3
-	FrameRate   float64 `json:"frame_rate"`   // Frames per second
-	FileSize    int64   `json:"file_size"`    // File size in bytes
-	Container   string  `json:"container"`    // e.g., mp4, webm, mkv
-	HasAudio    bool    `json:"has_audio"`    // Whether video has audio track
+	Duration   float64 `json:"duration"`    // Duration in seconds
+	Width      int     `json:"width"`       // Video width
+	Height     int     `json:"height"`      // Video height
+	Bitrate    int64   `json:"bitrate"`     // Total bitrate in bits/s
+	VideoCodec string  `json:"video_codec"` // e.g., h264, vp9, hevc
+	AudioCodec string  `json:"audio_codec"` // e.g., aac, opus, mp3
+	FrameRate  float64 `json:"frame_rate"`  // Frames per second
+	FileSize   int64   `json:"file_size"`   // File size in bytes
+	Container  string  `json:"container"`   // e.g., mp4, webm, mkv
+	HasAudio   bool    `json:"has_audio"`   // Whether video has audio track
 }
 
 // VideoProcessor defines the interface for video processing operations
@@ -74,11 +74,11 @@ type VideoProcessor interface {
 
 // HLSResult contains the output of HLS generation
 type HLSResult struct {
-	ManifestPath   string   // Path to the m3u8 manifest
-	SegmentPaths   []string // Paths to all segment files
-	TotalDuration  float64  // Total duration in seconds
-	SegmentCount   int      // Number of segments
-	Resolutions    []int    // Available resolutions (heights)
+	ManifestPath  string   // Path to the m3u8 manifest
+	SegmentPaths  []string // Paths to all segment files
+	TotalDuration float64  // Total duration in seconds
+	SegmentCount  int      // Number of segments
+	Resolutions   []int    // Available resolutions (heights)
 }
 
 // VideoConfig holds configuration for video processors
@@ -100,24 +100,25 @@ type VideoConfig struct {
 	MaxFileSize   int64 // Maximum input file size
 
 	// HLS settings
-	HLSSegmentDuration int      // Default segment duration
-	HLSResolutions     []int    // Available resolutions for adaptive streaming
+	HLSSegmentDuration int   // Default segment duration
+	HLSResolutions     []int // Available resolutions for adaptive streaming
 }
 
 // DefaultVideoConfig returns default video configuration
+// Optimized for speed and smaller file sizes (cost control)
 func DefaultVideoConfig() *VideoConfig {
 	return &VideoConfig{
 		Config:             processor.DefaultConfig(),
 		FFmpegPath:         "ffmpeg",
 		FFprobePath:        "ffprobe",
-		DefaultPreset:      "medium",
-		DefaultCRF:         23,
-		DefaultMaxBitrate:  "5M",
-		MaxDuration:        30 * 60, // 30 minutes
+		DefaultPreset:      "veryfast", // 2-3x faster than "medium"
+		DefaultCRF:         28,         // ~40% smaller files, acceptable quality
+		DefaultMaxBitrate:  "3M",       // Reduced from 5M
+		MaxDuration:        10 * 60,    // 10 minutes (aligned with tier limits)
 		MaxResolution:      1080,
-		MaxFileSize:        500 * 1024 * 1024, // 500 MB
-		HLSSegmentDuration: 10,
-		HLSResolutions:     []int{360, 480, 720, 1080},
+		MaxFileSize:        200 * 1024 * 1024, // 200 MB (aligned with Pro tier)
+		HLSSegmentDuration: 6,                 // Better seeking, lower latency
+		HLSResolutions:     []int{360, 720},   // Fewer variants = less storage
 	}
 }
 

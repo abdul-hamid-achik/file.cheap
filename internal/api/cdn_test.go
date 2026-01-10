@@ -641,7 +641,7 @@ func TestCDNHandler_CacheHeaders(t *testing.T) {
 		wantCacheHeader string
 	}{
 		{
-			name:       "original_sets_public_cache",
+			name:       "original_image_uses_thumbnail_cache",
 			transforms: "_",
 			setupMocks: func(q *MockQuerier, s *MockStorage, r *processor.Registry) {
 				share := createTestShareByToken(fileID, userID, "header-token",
@@ -651,10 +651,11 @@ func TestCDNHandler_CacheHeaders(t *testing.T) {
 					return "https://cdn.example.com/" + key, nil
 				}
 			},
-			wantCacheHeader: "public, max-age=3000",
+			// Images get long cache (30 days, immutable)
+			wantCacheHeader: "public, max-age=2592000, immutable",
 		},
 		{
-			name:       "processed_sets_short_cache",
+			name:       "processed_image_uses_thumbnail_cache",
 			transforms: "w_800",
 			setupMocks: func(q *MockQuerier, s *MockStorage, r *processor.Registry) {
 				share := createTestShareByToken(fileID, userID, "header-token",
@@ -675,7 +676,8 @@ func TestCDNHandler_CacheHeaders(t *testing.T) {
 				_ = s.MemoryStorage.Upload(context.Background(), "uploads/test.jpg",
 					bytes.NewReader([]byte("original")), "image/jpeg", 8)
 			},
-			wantCacheHeader: "public, max-age=3600",
+			// Processed images also get long cache
+			wantCacheHeader: "public, max-age=2592000, immutable",
 		},
 	}
 

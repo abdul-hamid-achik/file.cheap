@@ -11,8 +11,19 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const ensureMonthlyUsageRecord = `-- name: EnsureMonthlyUsageRecord :exec
+INSERT INTO monthly_usage (user_id, year_month, transformations_count, bytes_processed, files_uploaded, video_seconds_processed)
+VALUES ($1, TO_CHAR(NOW(), 'YYYY-MM'), 0, 0, 0, 0)
+ON CONFLICT (user_id, year_month) DO NOTHING
+`
+
+func (q *Queries) EnsureMonthlyUsageRecord(ctx context.Context, userID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, ensureMonthlyUsageRecord, userID)
+	return err
+}
+
 const getCurrentMonthUsage = `-- name: GetCurrentMonthUsage :one
-SELECT id, user_id, year_month, transformations_count, bytes_processed, files_uploaded, created_at, updated_at FROM monthly_usage 
+SELECT id, user_id, year_month, transformations_count, bytes_processed, files_uploaded, video_seconds_processed, created_at, updated_at FROM monthly_usage 
 WHERE user_id = $1 AND year_month = TO_CHAR(NOW(), 'YYYY-MM')
 `
 
@@ -26,6 +37,7 @@ func (q *Queries) GetCurrentMonthUsage(ctx context.Context, userID pgtype.UUID) 
 		&i.TransformationsCount,
 		&i.BytesProcessed,
 		&i.FilesUploaded,
+		&i.VideoSecondsProcessed,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -50,6 +62,19 @@ func (q *Queries) GetUserTransformationUsage(ctx context.Context, id pgtype.UUID
 	return i, err
 }
 
+const getVideoSecondsProcessed = `-- name: GetVideoSecondsProcessed :one
+SELECT COALESCE(video_seconds_processed, 0)::integer as video_seconds
+FROM monthly_usage
+WHERE user_id = $1 AND year_month = TO_CHAR(NOW(), 'YYYY-MM')
+`
+
+func (q *Queries) GetVideoSecondsProcessed(ctx context.Context, userID pgtype.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, getVideoSecondsProcessed, userID)
+	var video_seconds int32
+	err := row.Scan(&video_seconds)
+	return video_seconds, err
+}
+
 const incrementTransformationCount = `-- name: IncrementTransformationCount :exec
 UPDATE users 
 SET transformations_count = transformations_count + 1, updated_at = NOW()
@@ -61,10 +86,26 @@ func (q *Queries) IncrementTransformationCount(ctx context.Context, id pgtype.UU
 	return err
 }
 
+const incrementVideoSecondsProcessed = `-- name: IncrementVideoSecondsProcessed :exec
+UPDATE monthly_usage
+SET video_seconds_processed = video_seconds_processed + $2, updated_at = NOW()
+WHERE user_id = $1 AND year_month = TO_CHAR(NOW(), 'YYYY-MM')
+`
+
+type IncrementVideoSecondsProcessedParams struct {
+	UserID                pgtype.UUID `json:"user_id"`
+	VideoSecondsProcessed int32       `json:"video_seconds_processed"`
+}
+
+func (q *Queries) IncrementVideoSecondsProcessed(ctx context.Context, arg IncrementVideoSecondsProcessedParams) error {
+	_, err := q.db.Exec(ctx, incrementVideoSecondsProcessed, arg.UserID, arg.VideoSecondsProcessed)
+	return err
+}
+
 const listMonthlyUsageHistory = `-- name: ListMonthlyUsageHistory :many
-SELECT id, user_id, year_month, transformations_count, bytes_processed, files_uploaded, created_at, updated_at FROM monthly_usage 
-WHERE user_id = $1 
-ORDER BY year_month DESC 
+SELECT id, user_id, year_month, transformations_count, bytes_processed, files_uploaded, video_seconds_processed, created_at, updated_at FROM monthly_usage
+WHERE user_id = $1
+ORDER BY year_month DESC
 LIMIT $2
 `
 
@@ -89,6 +130,7 @@ func (q *Queries) ListMonthlyUsageHistory(ctx context.Context, arg ListMonthlyUs
 			&i.TransformationsCount,
 			&i.BytesProcessed,
 			&i.FilesUploaded,
+			&i.VideoSecondsProcessed,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -139,7 +181,7 @@ ON CONFLICT (user_id, year_month) DO UPDATE SET
     bytes_processed = monthly_usage.bytes_processed + EXCLUDED.bytes_processed,
     files_uploaded = monthly_usage.files_uploaded + EXCLUDED.files_uploaded,
     updated_at = NOW()
-RETURNING id, user_id, year_month, transformations_count, bytes_processed, files_uploaded, created_at, updated_at
+RETURNING id, user_id, year_month, transformations_count, bytes_processed, files_uploaded, video_seconds_processed, created_at, updated_at
 `
 
 type UpsertMonthlyUsageParams struct {
@@ -164,6 +206,7 @@ func (q *Queries) UpsertMonthlyUsage(ctx context.Context, arg UpsertMonthlyUsage
 		&i.TransformationsCount,
 		&i.BytesProcessed,
 		&i.FilesUploaded,
+		&i.VideoSecondsProcessed,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

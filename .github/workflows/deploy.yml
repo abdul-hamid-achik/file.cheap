@@ -36,6 +36,16 @@ jobs:
           echo "${{ secrets.KUBECONFIG }}" | base64 -d > $KUBECONFIG_PATH
           chmod 600 $KUBECONFIG_PATH
 
+      - name: Apply manifests (create/update deployments)
+        run: |
+          TAG="${{ github.event.inputs.image_tag || 'latest' }}"
+
+          # Apply kustomization to create/update all resources
+          cd infrastructure/k8s/overlays/production
+          kubectl apply -k . --kubeconfig=$KUBECONFIG_PATH
+
+          echo "Manifests applied successfully"
+
       - name: Update images and restart
         run: |
           TAG="${{ github.event.inputs.image_tag || 'latest' }}"

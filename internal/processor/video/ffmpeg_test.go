@@ -284,10 +284,10 @@ func TestFFmpegProcessor_Transcode(t *testing.T) {
 	}
 
 	tests := []struct {
-		name         string
-		opts         *VideoOptions
-		wantFormat   string
-		wantErr      bool
+		name       string
+		opts       *VideoOptions
+		wantFormat string
+		wantErr    bool
 	}{
 		{
 			name:       "default options (nil)",

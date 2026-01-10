@@ -72,10 +72,10 @@ type MockQuerier struct {
 	variants map[string]db.FileVariant
 
 	// Share-related storage
-	shares         map[string]db.FileShare
-	sharesByToken  map[string]db.GetFileShareByTokenRow
-	caches         map[string]db.TransformCache
-	requestCounts  map[string]int32
+	shares        map[string]db.FileShare
+	sharesByToken map[string]db.GetFileShareByTokenRow
+	caches        map[string]db.TransformCache
+	requestCounts map[string]int32
 
 	GetFileErr        error
 	ListFilesErr      error
@@ -85,12 +85,12 @@ type MockQuerier struct {
 	CountFilesResult  int64
 
 	// Share-related errors
-	GetFileShareByTokenErr    error
-	CreateFileShareErr        error
-	ListFileSharesByFileErr   error
-	DeleteFileShareErr        error
-	GetTransformCacheErr      error
-	CreateTransformCacheErr   error
+	GetFileShareByTokenErr  error
+	CreateFileShareErr      error
+	ListFileSharesByFileErr error
+	DeleteFileShareErr      error
+	GetTransformCacheErr    error
+	CreateTransformCacheErr error
 
 	BillingTier db.SubscriptionTier
 }
@@ -664,6 +664,10 @@ func (m *MockQuerier) CreateAPIToken(ctx context.Context, arg db.CreateAPITokenP
 		TokenHash: arg.TokenHash,
 		CreatedAt: now,
 	}, nil
+}
+
+func (m *MockQuerier) GetUserVideoStorageUsage(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	return 0, nil
 }
 
 func (m *MockQuerier) GetAllFiles() []db.File {

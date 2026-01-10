@@ -130,6 +130,77 @@ func (q *Queries) GetFilesByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]
 	return items, nil
 }
 
+const getUserStorageUsage = `-- name: GetUserStorageUsage :one
+SELECT COALESCE(SUM(size_bytes), 0)::bigint as total_bytes
+FROM files
+WHERE user_id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) GetUserStorageUsage(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, getUserStorageUsage, userID)
+	var total_bytes int64
+	err := row.Scan(&total_bytes)
+	return total_bytes, err
+}
+
+const getUserVideoStorageUsage = `-- name: GetUserVideoStorageUsage :one
+SELECT COALESCE(SUM(size_bytes), 0)::bigint as total_bytes
+FROM files
+WHERE user_id = $1
+  AND deleted_at IS NULL
+  AND content_type LIKE 'video/%'
+`
+
+func (q *Queries) GetUserVideoStorageUsage(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, getUserVideoStorageUsage, userID)
+	var total_bytes int64
+	err := row.Scan(&total_bytes)
+	return total_bytes, err
+}
+
+const hardDeleteFile = `-- name: HardDeleteFile :exec
+DELETE FROM files WHERE id = $1
+`
+
+func (q *Queries) HardDeleteFile(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, hardDeleteFile, id)
+	return err
+}
+
+const listExpiredSoftDeletedFiles = `-- name: ListExpiredSoftDeletedFiles :many
+SELECT id, storage_key, user_id
+FROM files
+WHERE deleted_at IS NOT NULL
+  AND deleted_at < NOW() - INTERVAL '7 days'
+LIMIT $1
+`
+
+type ListExpiredSoftDeletedFilesRow struct {
+	ID         pgtype.UUID `json:"id"`
+	StorageKey string      `json:"storage_key"`
+	UserID     pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) ListExpiredSoftDeletedFiles(ctx context.Context, limit int32) ([]ListExpiredSoftDeletedFilesRow, error) {
+	rows, err := q.db.Query(ctx, listExpiredSoftDeletedFiles, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListExpiredSoftDeletedFilesRow
+	for rows.Next() {
+		var i ListExpiredSoftDeletedFilesRow
+		if err := rows.Scan(&i.ID, &i.StorageKey, &i.UserID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFilesByUser = `-- name: ListFilesByUser :many
 SELECT id, user_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at FROM files 
 WHERE user_id = $1 AND deleted_at IS NULL
@@ -231,6 +302,52 @@ func (q *Queries) ListFilesByUserWithCount(ctx context.Context, arg ListFilesByU
 		return nil, err
 	}
 	return items, nil
+}
+
+const listRetentionExpiredFiles = `-- name: ListRetentionExpiredFiles :many
+SELECT f.id, f.storage_key, f.user_id
+FROM files f
+JOIN user_settings us ON us.user_id = f.user_id
+WHERE f.deleted_at IS NULL
+  AND f.created_at < NOW() - (us.default_retention_days || ' days')::INTERVAL
+LIMIT $1
+`
+
+type ListRetentionExpiredFilesRow struct {
+	ID         pgtype.UUID `json:"id"`
+	StorageKey string      `json:"storage_key"`
+	UserID     pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) ListRetentionExpiredFiles(ctx context.Context, limit int32) ([]ListRetentionExpiredFilesRow, error) {
+	rows, err := q.db.Query(ctx, listRetentionExpiredFiles, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRetentionExpiredFilesRow
+	for rows.Next() {
+		var i ListRetentionExpiredFilesRow
+		if err := rows.Scan(&i.ID, &i.StorageKey, &i.UserID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markOriginalDeleted = `-- name: MarkOriginalDeleted :exec
+UPDATE files
+SET storage_key = '', updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) MarkOriginalDeleted(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, markOriginalDeleted, id)
+	return err
 }
 
 const softDeleteFile = `-- name: SoftDeleteFile :exec

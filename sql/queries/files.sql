@@ -44,3 +44,38 @@ SELECT *, COUNT(*) OVER() AS total_count FROM files
 WHERE user_id = $1 AND deleted_at IS NULL
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3;
+
+-- name: GetUserStorageUsage :one
+SELECT COALESCE(SUM(size_bytes), 0)::bigint as total_bytes
+FROM files
+WHERE user_id = $1 AND deleted_at IS NULL;
+
+-- name: GetUserVideoStorageUsage :one
+SELECT COALESCE(SUM(size_bytes), 0)::bigint as total_bytes
+FROM files
+WHERE user_id = $1
+  AND deleted_at IS NULL
+  AND content_type LIKE 'video/%';
+
+-- name: ListExpiredSoftDeletedFiles :many
+SELECT id, storage_key, user_id
+FROM files
+WHERE deleted_at IS NOT NULL
+  AND deleted_at < NOW() - INTERVAL '7 days'
+LIMIT $1;
+
+-- name: ListRetentionExpiredFiles :many
+SELECT f.id, f.storage_key, f.user_id
+FROM files f
+JOIN user_settings us ON us.user_id = f.user_id
+WHERE f.deleted_at IS NULL
+  AND f.created_at < NOW() - (us.default_retention_days || ' days')::INTERVAL
+LIMIT $1;
+
+-- name: HardDeleteFile :exec
+DELETE FROM files WHERE id = $1;
+
+-- name: MarkOriginalDeleted :exec
+UPDATE files
+SET storage_key = '', updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL;

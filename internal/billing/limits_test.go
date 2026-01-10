@@ -571,10 +571,10 @@ func TestGetTierLimitsVideo(t *testing.T) {
 		{
 			name:               "enterprise tier video limits",
 			tier:               db.SubscriptionTierEnterprise,
-			wantVideoStorage:   ProVideoStorageBytes * 10,
+			wantVideoStorage:   EnterpriseVideoStorageBytes,
 			wantVideoMinutes:   EnterpriseVideoMinutesLimit,
-			wantMaxVideoLength: -1,
-			wantMaxVideoSize:   2 * 1024 * 1024 * 1024,
+			wantMaxVideoLength: EnterpriseMaxVideoLength,
+			wantMaxVideoSize:   EnterpriseMaxVideoSize,
 			wantMaxResolution:  EnterpriseMaxVideoResolution,
 			wantAdaptive:       true,
 			wantVideoWatermark: true,
@@ -637,40 +637,52 @@ func TestCanUseVideoFeature(t *testing.T) {
 }
 
 func TestVideoConstants(t *testing.T) {
-	if FreeVideoStorageBytes != 500*1024*1024 {
-		t.Errorf("FreeVideoStorageBytes = %d, want %d", FreeVideoStorageBytes, 500*1024*1024)
+	// Free tier - very restrictive for cost control
+	if FreeVideoStorageBytes != 200*1024*1024 {
+		t.Errorf("FreeVideoStorageBytes = %d, want %d", FreeVideoStorageBytes, 200*1024*1024)
 	}
-	if FreeVideoMinutesLimit != 10 {
-		t.Errorf("FreeVideoMinutesLimit = %d, want %d", FreeVideoMinutesLimit, 10)
+	if FreeVideoMinutesLimit != 5 {
+		t.Errorf("FreeVideoMinutesLimit = %d, want %d", FreeVideoMinutesLimit, 5)
 	}
-	if FreeMaxVideoLength != 2*60 {
-		t.Errorf("FreeMaxVideoLength = %d, want %d", FreeMaxVideoLength, 2*60)
+	if FreeMaxVideoLength != 60 {
+		t.Errorf("FreeMaxVideoLength = %d, want %d", FreeMaxVideoLength, 60)
 	}
-	if FreeMaxVideoSize != 50*1024*1024 {
-		t.Errorf("FreeMaxVideoSize = %d, want %d", FreeMaxVideoSize, 50*1024*1024)
+	if FreeMaxVideoSize != 25*1024*1024 {
+		t.Errorf("FreeMaxVideoSize = %d, want %d", FreeMaxVideoSize, 25*1024*1024)
 	}
 	if FreeMaxVideoResolution != 480 {
 		t.Errorf("FreeMaxVideoResolution = %d, want %d", FreeMaxVideoResolution, 480)
 	}
 
-	if ProVideoStorageBytes != 10*1024*1024*1024 {
-		t.Errorf("ProVideoStorageBytes = %d, want %d", ProVideoStorageBytes, 10*1024*1024*1024)
+	// Pro tier - reasonable for individual creators
+	if ProVideoStorageBytes != 5*1024*1024*1024 {
+		t.Errorf("ProVideoStorageBytes = %d, want %d", ProVideoStorageBytes, 5*1024*1024*1024)
 	}
-	if ProVideoMinutesLimit != 300 {
-		t.Errorf("ProVideoMinutesLimit = %d, want %d", ProVideoMinutesLimit, 300)
+	if ProVideoMinutesLimit != 120 {
+		t.Errorf("ProVideoMinutesLimit = %d, want %d", ProVideoMinutesLimit, 120)
 	}
-	if ProMaxVideoLength != 30*60 {
-		t.Errorf("ProMaxVideoLength = %d, want %d", ProMaxVideoLength, 30*60)
+	if ProMaxVideoLength != 10*60 {
+		t.Errorf("ProMaxVideoLength = %d, want %d", ProMaxVideoLength, 10*60)
 	}
-	if ProMaxVideoSize != 500*1024*1024 {
-		t.Errorf("ProMaxVideoSize = %d, want %d", ProMaxVideoSize, 500*1024*1024)
+	if ProMaxVideoSize != 200*1024*1024 {
+		t.Errorf("ProMaxVideoSize = %d, want %d", ProMaxVideoSize, 200*1024*1024)
 	}
 	if ProMaxVideoResolution != 1080 {
 		t.Errorf("ProMaxVideoResolution = %d, want %d", ProMaxVideoResolution, 1080)
 	}
 
-	if EnterpriseVideoMinutesLimit != -1 {
-		t.Errorf("EnterpriseVideoMinutesLimit = %d, want %d", EnterpriseVideoMinutesLimit, -1)
+	// Enterprise tier - capped for cost control
+	if EnterpriseVideoStorageBytes != 25*1024*1024*1024 {
+		t.Errorf("EnterpriseVideoStorageBytes = %d, want %d", EnterpriseVideoStorageBytes, 25*1024*1024*1024)
+	}
+	if EnterpriseVideoMinutesLimit != 300 {
+		t.Errorf("EnterpriseVideoMinutesLimit = %d, want %d", EnterpriseVideoMinutesLimit, 300)
+	}
+	if EnterpriseMaxVideoLength != 10*60 {
+		t.Errorf("EnterpriseMaxVideoLength = %d, want %d", EnterpriseMaxVideoLength, 10*60)
+	}
+	if EnterpriseMaxVideoSize != 500*1024*1024 {
+		t.Errorf("EnterpriseMaxVideoSize = %d, want %d", EnterpriseMaxVideoSize, 500*1024*1024)
 	}
 	if EnterpriseMaxVideoResolution != 2160 {
 		t.Errorf("EnterpriseMaxVideoResolution = %d, want %d", EnterpriseMaxVideoResolution, 2160)
@@ -716,9 +728,10 @@ func TestVideoMinutesProgression(t *testing.T) {
 		t.Errorf("Free minutes (%d) should be less than Pro (%d)",
 			freeLimits.VideoMinutesLimit, proLimits.VideoMinutesLimit)
 	}
-	if enterpriseLimits.VideoMinutesLimit != -1 {
-		t.Errorf("Enterprise minutes should be unlimited (-1), got %d",
-			enterpriseLimits.VideoMinutesLimit)
+	// Enterprise is now capped for cost control
+	if proLimits.VideoMinutesLimit >= enterpriseLimits.VideoMinutesLimit {
+		t.Errorf("Pro minutes (%d) should be less than Enterprise (%d)",
+			proLimits.VideoMinutesLimit, enterpriseLimits.VideoMinutesLimit)
 	}
 }
 
@@ -744,11 +757,18 @@ func TestProHasAdvancedVideoFeatures(t *testing.T) {
 	}
 }
 
-func TestEnterpriseHasUnlimitedVideoLength(t *testing.T) {
+func TestEnterpriseTierLimits(t *testing.T) {
 	enterpriseLimits := GetTierLimits(db.SubscriptionTierEnterprise)
+	proLimits := GetTierLimits(db.SubscriptionTierPro)
 
-	if enterpriseLimits.MaxVideoLength != -1 {
-		t.Errorf("Enterprise MaxVideoLength should be unlimited (-1), got %d",
-			enterpriseLimits.MaxVideoLength)
+	// Enterprise has higher limits than Pro but is now capped for cost control
+	if enterpriseLimits.MaxVideoLength != EnterpriseMaxVideoLength {
+		t.Errorf("Enterprise MaxVideoLength should be %d, got %d",
+			EnterpriseMaxVideoLength, enterpriseLimits.MaxVideoLength)
+	}
+	// Pro and Enterprise now have the same max video length (10 min)
+	if enterpriseLimits.MaxVideoLength != proLimits.MaxVideoLength {
+		t.Errorf("Enterprise and Pro should have same MaxVideoLength (%d), but got Enterprise=%d",
+			proLimits.MaxVideoLength, enterpriseLimits.MaxVideoLength)
 	}
 }

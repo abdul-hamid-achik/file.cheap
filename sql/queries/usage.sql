@@ -34,9 +34,22 @@ SELECT * FROM monthly_usage
 WHERE user_id = $1 AND year_month = TO_CHAR(NOW(), 'YYYY-MM');
 
 -- name: ListMonthlyUsageHistory :many
-SELECT * FROM monthly_usage 
-WHERE user_id = $1 
-ORDER BY year_month DESC 
+SELECT * FROM monthly_usage
+WHERE user_id = $1
+ORDER BY year_month DESC
 LIMIT $2;
 
+-- name: IncrementVideoSecondsProcessed :exec
+UPDATE monthly_usage
+SET video_seconds_processed = video_seconds_processed + $2, updated_at = NOW()
+WHERE user_id = $1 AND year_month = TO_CHAR(NOW(), 'YYYY-MM');
 
+-- name: GetVideoSecondsProcessed :one
+SELECT COALESCE(video_seconds_processed, 0)::integer as video_seconds
+FROM monthly_usage
+WHERE user_id = $1 AND year_month = TO_CHAR(NOW(), 'YYYY-MM');
+
+-- name: EnsureMonthlyUsageRecord :exec
+INSERT INTO monthly_usage (user_id, year_month, transformations_count, bytes_processed, files_uploaded, video_seconds_processed)
+VALUES ($1, TO_CHAR(NOW(), 'YYYY-MM'), 0, 0, 0, 0)
+ON CONFLICT (user_id, year_month) DO NOTHING;

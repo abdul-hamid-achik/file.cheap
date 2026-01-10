@@ -512,14 +512,15 @@ type FileVariant struct {
 }
 
 type MonthlyUsage struct {
-	ID                   pgtype.UUID        `json:"id"`
-	UserID               pgtype.UUID        `json:"user_id"`
-	YearMonth            string             `json:"year_month"`
-	TransformationsCount int32              `json:"transformations_count"`
-	BytesProcessed       int64              `json:"bytes_processed"`
-	FilesUploaded        int32              `json:"files_uploaded"`
-	CreatedAt            pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+	ID                    pgtype.UUID        `json:"id"`
+	UserID                pgtype.UUID        `json:"user_id"`
+	YearMonth             string             `json:"year_month"`
+	TransformationsCount  int32              `json:"transformations_count"`
+	BytesProcessed        int64              `json:"bytes_processed"`
+	FilesUploaded         int32              `json:"files_uploaded"`
+	VideoSecondsProcessed int32              `json:"video_seconds_processed"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Notification struct {

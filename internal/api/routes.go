@@ -51,6 +51,7 @@ type Querier interface {
 	ListBatchItems(ctx context.Context, batchID pgtype.UUID) ([]db.BatchItem, error)
 	CountBatchItemsByStatus(ctx context.Context, batchID pgtype.UUID) (db.CountBatchItemsByStatusRow, error)
 	CreateAPIToken(ctx context.Context, arg db.CreateAPITokenParams) (db.ApiToken, error)
+	GetUserVideoStorageUsage(ctx context.Context, userID pgtype.UUID) (int64, error)
 }
 
 type Broker interface {

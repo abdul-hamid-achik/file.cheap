@@ -494,10 +494,10 @@ func TestCancelUploadHandler_NotFound(t *testing.T) {
 
 func TestChunkSizeCalculation(t *testing.T) {
 	tests := []struct {
-		name        string
-		totalSize   int64
-		chunkSize   int64
-		wantChunks  int
+		name       string
+		totalSize  int64
+		chunkSize  int64
+		wantChunks int
 	}{
 		{
 			name:       "exact division",

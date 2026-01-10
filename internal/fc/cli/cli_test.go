@@ -235,10 +235,10 @@ func TestSafePath(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name:      "path traversal attack",
-			baseDir:   tmpDir,
-			filename:  "../../../etc/passwd",
-			wantErr:   false, // sanitized to "passwd"
+			name:     "path traversal attack",
+			baseDir:  tmpDir,
+			filename: "../../../etc/passwd",
+			wantErr:  false, // sanitized to "passwd"
 		},
 		{
 			name:      "empty filename after sanitization",

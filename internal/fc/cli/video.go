@@ -71,12 +71,12 @@ Examples:
 }
 
 var (
-	videoTranscode    bool
-	videoResolutions  []int
-	videoFormat       string
-	videoPreset       string
-	videoThumbnail    bool
-	videoWait         bool
+	videoTranscode   bool
+	videoResolutions []int
+	videoFormat      string
+	videoPreset      string
+	videoThumbnail   bool
+	videoWait        bool
 )
 
 func init() {
@@ -343,4 +343,3 @@ func formatBytes(bytes int64) string {
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
-

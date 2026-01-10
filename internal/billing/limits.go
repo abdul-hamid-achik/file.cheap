@@ -19,23 +19,26 @@ const (
 
 	EnterpriseTransformationsLimit = -1 // unlimited
 
-	// Video limits - Free tier
-	FreeVideoStorageBytes  = 500 * 1024 * 1024 // 500 MB
-	FreeVideoMinutesLimit  = 10                // 10 minutes of processing per month
-	FreeMaxVideoLength     = 2 * 60            // 2 minutes max video length
-	FreeMaxVideoSize       = 50 * 1024 * 1024  // 50 MB max video file size
+	// Video limits - Free tier (very restrictive for cost control)
+	FreeVideoStorageBytes  = 200 * 1024 * 1024 // 200 MB
+	FreeVideoMinutesLimit  = 5                 // 5 minutes of processing per month
+	FreeMaxVideoLength     = 60                // 1 minute max video length
+	FreeMaxVideoSize       = 25 * 1024 * 1024  // 25 MB max video file size
 	FreeMaxVideoResolution = 480               // 480p max
 
-	// Video limits - Pro tier
-	ProVideoStorageBytes  = 10 * 1024 * 1024 * 1024 // 10 GB
-	ProVideoMinutesLimit  = 300                     // 300 minutes of processing per month
-	ProMaxVideoLength     = 30 * 60                 // 30 minutes max video length
-	ProMaxVideoSize       = 500 * 1024 * 1024       // 500 MB max video file size
-	ProMaxVideoResolution = 1080                    // 1080p max
+	// Video limits - Pro tier (reasonable for individual creators)
+	ProVideoStorageBytes  = 5 * 1024 * 1024 * 1024 // 5 GB
+	ProVideoMinutesLimit  = 120                    // 120 minutes of processing per month
+	ProMaxVideoLength     = 10 * 60                // 10 minutes max video length
+	ProMaxVideoSize       = 200 * 1024 * 1024      // 200 MB max video file size
+	ProMaxVideoResolution = 1080                   // 1080p max
 
-	// Video limits - Enterprise tier
-	EnterpriseVideoMinutesLimit  = -1   // unlimited
-	EnterpriseMaxVideoResolution = 2160 // 4K
+	// Video limits - Enterprise tier (capped for cost control)
+	EnterpriseVideoStorageBytes  = 25 * 1024 * 1024 * 1024 // 25 GB
+	EnterpriseVideoMinutesLimit  = 300                     // 300 minutes of processing per month
+	EnterpriseMaxVideoLength     = 10 * 60                 // 10 minutes max video length
+	EnterpriseMaxVideoSize       = 500 * 1024 * 1024       // 500 MB max video file size
+	EnterpriseMaxVideoResolution = 2160                    // 4K
 
 	TrialDuration = 7 * 24 * time.Hour // 7 days
 	GracePeriod   = 3 * 24 * time.Hour // 3 days for past_due
@@ -88,11 +91,11 @@ func GetTierLimits(tier db.SubscriptionTier) TierLimits {
 			APIAccess:       APIAccessFull,
 			PriorityQueue:   true,
 			CustomWatermark: true,
-			// Video - Enterprise
-			VideoStorageBytes:  ProVideoStorageBytes * 10, // 100 GB
+			// Video - Enterprise (capped for cost control)
+			VideoStorageBytes:  EnterpriseVideoStorageBytes,
 			VideoMinutesLimit:  EnterpriseVideoMinutesLimit,
-			MaxVideoLength:     -1, // unlimited
-			MaxVideoSize:       2 * 1024 * 1024 * 1024, // 2 GB
+			MaxVideoLength:     EnterpriseMaxVideoLength,
+			MaxVideoSize:       EnterpriseMaxVideoSize,
 			MaxVideoResolution: EnterpriseMaxVideoResolution,
 			AdaptiveBitrate:    true,
 			VideoWatermark:     true,

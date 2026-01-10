@@ -890,6 +890,33 @@ func VideoTranscodeHandler(deps *Dependencies) func(context.Context, *job.Job) e
 			return fmt.Errorf("failed to update file status: %w", err)
 		}
 
+		// Track video processing minutes
+		videoDuration := int32(result.Metadata.Duration)
+		if videoDuration > 0 {
+			if err := deps.Queries.EnsureMonthlyUsageRecord(ctx, file.UserID); err != nil {
+				log.Warn("failed to ensure monthly usage record", "error", err)
+			}
+			if err := deps.Queries.IncrementVideoSecondsProcessed(ctx, db.IncrementVideoSecondsProcessedParams{
+				UserID:                file.UserID,
+				VideoSecondsProcessed: videoDuration,
+			}); err != nil {
+				log.Warn("failed to track video processing duration", "error", err)
+			}
+		}
+
+		// Auto-delete original if user setting is enabled
+		userSettings, err := deps.Queries.GetUserSettings(ctx, file.UserID)
+		if err == nil && userSettings.AutoDeleteOriginals && file.StorageKey != "" {
+			if err := deps.Storage.Delete(ctx, file.StorageKey); err != nil {
+				log.Warn("failed to delete original file", "error", err)
+			} else {
+				if err := deps.Queries.MarkOriginalDeleted(ctx, file.ID); err != nil {
+					log.Warn("failed to mark original as deleted", "error", err)
+				}
+				log.Debug("original file deleted (auto_delete_originals enabled)")
+			}
+		}
+
 		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "output_width", width, "output_height", height, "duration_seconds", result.Metadata.Duration)
 		return nil
 	}

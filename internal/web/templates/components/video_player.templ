@@ -4,16 +4,16 @@ import "fmt"
 
 // VideoPlayerProps contains all the configuration for the video player
 type VideoPlayerProps struct {
-	VideoID      string   // Unique ID for the video element
-	StreamURL    string   // HLS manifest URL (.m3u8) or MP4 URL
-	PosterURL    string   // Thumbnail image URL
-	Title        string   // Video title for accessibility
-	Autoplay     bool     // Auto-play on load
-	Muted        bool     // Start muted
-	Loop         bool     // Loop video
-	Qualities    []int    // Available quality options (e.g., 360, 720, 1080)
-	ShowControls bool     // Show player controls
-	AspectRatio  string   // "16:9", "4:3", "1:1", etc.
+	VideoID      string // Unique ID for the video element
+	StreamURL    string // HLS manifest URL (.m3u8) or MP4 URL
+	PosterURL    string // Thumbnail image URL
+	Title        string // Video title for accessibility
+	Autoplay     bool   // Auto-play on load
+	Muted        bool   // Start muted
+	Loop         bool   // Loop video
+	Qualities    []int  // Available quality options (e.g., 360, 720, 1080)
+	ShowControls bool   // Show player controls
+	AspectRatio  string // "16:9", "4:3", "1:1", etc.
 }
 
 // DefaultVideoPlayerProps returns sensible defaults
@@ -56,7 +56,6 @@ templ VideoPlayer(props VideoPlayerProps) {
 			<source src={ props.StreamURL } type="video/mp4"/>
 			Your browser does not support the video tag.
 		</video>
-
 		<!-- Loading overlay -->
 		<div
 			x-show="loading"
@@ -70,7 +69,6 @@ templ VideoPlayer(props VideoPlayerProps) {
 				<span class="text-nord-4 text-sm">Loading video...</span>
 			</div>
 		</div>
-
 		<!-- Error overlay -->
 		<div
 			x-show="error"
@@ -78,7 +76,7 @@ templ VideoPlayer(props VideoPlayerProps) {
 		>
 			<div class="flex flex-col items-center gap-3 text-center p-4">
 				<svg class="h-12 w-12 text-nord-11" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.072 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.072 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
 				</svg>
 				<span class="text-nord-4" x-text="errorMessage || 'Failed to load video'"></span>
 				<button
@@ -111,20 +109,19 @@ templ VideoPlayerLightbox(props VideoPlayerProps, thumbnailURL string) {
 				<div class="absolute inset-0 flex items-center justify-center bg-nord-0/40 group-hover:bg-nord-0/50 transition-colors">
 					<div class="w-16 h-16 rounded-full bg-nord-8/90 flex items-center justify-center group-hover:bg-nord-7 transition-colors shadow-lg">
 						<svg class="w-8 h-8 text-nord-0 ml-1" fill="currentColor" viewBox="0 0 24 24">
-							<path d="M8 5v14l11-7z"/>
+							<path d="M8 5v14l11-7z"></path>
 						</svg>
 					</div>
 				</div>
 				<!-- Video indicator badge -->
 				<div class="absolute bottom-2 right-2 bg-nord-0/80 px-2 py-1 rounded text-xs text-nord-4 flex items-center gap-1">
 					<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
 					</svg>
 					Video
 				</div>
 			</div>
 		</button>
-
 		<!-- Lightbox modal -->
 		<template x-teleport="body">
 			<div
@@ -153,7 +150,6 @@ templ VideoPlayerLightbox(props VideoPlayerProps, thumbnailURL string) {
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
 					</svg>
 				</button>
-
 				<!-- Video container -->
 				<div
 					@click.stop
@@ -175,13 +171,10 @@ templ VideoPlayerLightbox(props VideoPlayerProps, thumbnailURL string) {
 templ VideoPlayerScript() {
 	<!-- Plyr CSS -->
 	<link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css"/>
-
 	<!-- HLS.js for adaptive streaming -->
 	<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js"></script>
-
 	<!-- Plyr player -->
 	<script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
-
 	<script>
 		// Alpine.js component for video player
 		document.addEventListener('alpine:init', () => {
@@ -352,7 +345,6 @@ templ VideoPlayerScript() {
 			}));
 		});
 	</script>
-
 	<style>
 		/* Additional video player styles */
 		.video-player-container {
@@ -379,38 +371,39 @@ templ EmbedCodeGenerator(videoID, streamURL, title string) {
 	<div x-data="{ copied: false }" class="space-y-4">
 		<h3 class="text-lg font-medium text-nord-5">Embed Code</h3>
 		<p class="text-sm text-nord-4">Copy this code to embed the video on your website:</p>
-
 		<div class="relative">
 			<pre
 				class="bg-nord-1 border border-nord-3 rounded-lg p-4 text-sm text-nord-4 overflow-x-auto"
 				id={ "embed-code-" + videoID }
-			><code>&lt;iframe
-  src="https://cdn.file.cheap/embed/{ videoID }"
-  width="640"
-  height="360"
-  frameborder="0"
-  allowfullscreen
-  title="{ title }"
-&gt;&lt;/iframe&gt;</code></pre>
-
+			>
+				<code>
+					&lt;iframe
+					src="https://cdn.file.cheap/embed/{ videoID }"
+					width="640"
+					height="360"
+					frameborder="0"
+					allowfullscreen
+					title="{ title }"
+					&gt;&lt;/iframe&gt;
+				</code>
+			</pre>
 			<button
-				@click={fmt.Sprintf(`
+				@click={ fmt.Sprintf(`
 					navigator.clipboard.writeText(document.getElementById('embed-code-%s').innerText);
 					copied = true;
 					setTimeout(() => copied = false, 2000);
-				`, videoID)}
+				`, videoID) }
 				class="absolute top-2 right-2 p-2 bg-nord-3 hover:bg-nord-2 rounded-lg transition-colors"
 				:class="copied ? 'bg-nord-14 text-nord-0' : ''"
 			>
 				<svg x-show="!copied" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
 				</svg>
 				<svg x-show="copied" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
 				</svg>
 			</button>
 		</div>
-
 		<div class="text-xs text-nord-3">
 			The video will use adaptive streaming to deliver the best quality for the viewer's connection.
 		</div>
