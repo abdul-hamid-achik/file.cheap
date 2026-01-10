@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -112,7 +111,7 @@ func uploadFromStdin(transforms []string) error {
 		return fmt.Errorf("failed to seek temp file: %w", err)
 	}
 
-	ctx := context.Background()
+	ctx := GetContext()
 	result, err := apiClient.UploadReader(ctx, tmpFile, uploadName, size, transforms, uploadWait)
 	if err != nil {
 		printer.FileFailed(uploadName, err)
@@ -230,7 +229,7 @@ func printDryRun(files []string, transforms []string) error {
 }
 
 func uploadFiles(files []string, transforms []string, parallel int) error {
-	ctx := context.Background()
+	ctx := GetContext()
 
 	if !quietMode && !jsonOutput {
 		printer.Printf("Uploading %d files...\n", len(files))

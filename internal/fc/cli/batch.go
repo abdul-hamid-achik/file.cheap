@@ -104,7 +104,7 @@ func readFileIDs(filename string) ([]string, error) {
 }
 
 func batchProcessIDs(fileIDs []string) error {
-	ctx := context.Background()
+	ctx := GetContext()
 
 	presets := batchTransform
 	if batchPreset != "" {
@@ -157,17 +157,37 @@ func waitForBatch(ctx context.Context, batchID string) error {
 	defer ticker.Stop()
 
 	timeout := time.After(30 * time.Minute)
+	var consecutiveErrors int
+	const maxConsecutiveErrors = 5
 
 	for {
 		select {
+		case <-ctx.Done():
+			return ctx.Err()
 		case <-timeout:
 			return fmt.Errorf("batch timed out")
 		case <-ticker.C:
 			status, err := apiClient.GetBatchStatus(ctx, batchID, true)
 			if err != nil {
+				consecutiveErrors++
+
+				// Check for fatal auth errors
+				if isAuthError(err) {
+					return fmt.Errorf("authentication failed: %w", err)
+				}
+
+				// Update spinner to show error state
+				spinner.Update(fmt.Sprintf("Processing: error (%d/%d retries)", consecutiveErrors, maxConsecutiveErrors))
+
+				// Give up after too many consecutive errors
+				if consecutiveErrors >= maxConsecutiveErrors {
+					return fmt.Errorf("failed after %d consecutive errors: %w", consecutiveErrors, err)
+				}
 				continue
 			}
 
+			// Reset error count on success
+			consecutiveErrors = 0
 			spinner.Update(fmt.Sprintf("Processing: %d/%d completed", status.CompletedFiles, status.TotalFiles))
 
 			if status.Status == "completed" || status.Status == "failed" || status.Status == "partial" {
@@ -194,7 +214,7 @@ func waitForBatch(ctx context.Context, batchID string) error {
 }
 
 func uploadAndBatchProcess(files []string) error {
-	ctx := context.Background()
+	ctx := GetContext()
 
 	printer.Printf("Uploading %d files...\n", len(files))
 

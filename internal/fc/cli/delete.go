@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -49,7 +48,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	ctx := context.Background()
+	ctx := GetContext()
 	var successful, failed int
 	var results []map[string]interface{}
 

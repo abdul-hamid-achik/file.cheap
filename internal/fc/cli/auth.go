@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -58,7 +57,7 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	ctx := context.Background()
+	ctx := GetContext()
 	printer.Info("Starting device authentication...")
 
 	deviceResp, err := apiClient.DeviceAuth(ctx)
@@ -91,13 +90,37 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 
 	deadline := time.Now().Add(timeout)
 
+	var consecutiveErrors int
+	const maxConsecutiveErrors = 10
+
 	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		time.Sleep(pollInterval)
 
 		tokenResp, err := apiClient.DeviceToken(ctx, deviceResp.DeviceCode)
 		if err != nil {
+			consecutiveErrors++
+
+			// Show error feedback after a few failures
+			if consecutiveErrors >= 3 {
+				printer.Printf("\rConnection issue, retrying... (%d/%d)   ", consecutiveErrors, maxConsecutiveErrors)
+			}
+
+			// Give up after too many consecutive errors
+			if consecutiveErrors >= maxConsecutiveErrors {
+				printer.Println()
+				return fmt.Errorf("failed after %d consecutive errors: %w", consecutiveErrors, err)
+			}
 			continue
 		}
+
+		// Reset error count on successful response
+		consecutiveErrors = 0
 
 		if tokenResp.Error != "" {
 			if tokenResp.Error == "authorization_pending" {

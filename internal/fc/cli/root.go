@@ -1,7 +1,12 @@
 package cli
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/abdul-hamid-achik/file-processor/internal/fc/client"
 	"github.com/abdul-hamid-achik/file-processor/internal/fc/config"
@@ -10,12 +15,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// ErrNotAuthenticated is returned when authentication is required but not configured
+var ErrNotAuthenticated = errors.New("not authenticated")
+
 var (
 	jsonOutput bool
 	quietMode  bool
 	cfg        *config.Config
 	apiClient  *client.Client
 	printer    *output.Printer
+
+	// rootCtx is the root context that is cancelled on interrupt signals
+	rootCtx    context.Context
+	rootCancel context.CancelFunc
 )
 
 var rootCmd = &cobra.Command{
@@ -31,6 +43,19 @@ Get started:
   fc list                    # List your files`,
 	Version: version.Full(),
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Set up signal handling for graceful cancellation
+		rootCtx, rootCancel = context.WithCancel(context.Background())
+
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			sig := <-sigCh
+			if printer != nil && !quietMode {
+				printer.Warn("\nReceived %s, cancelling...", sig)
+			}
+			rootCancel()
+		}()
+
 		if cmd.Name() == "help" || cmd.Name() == "version" {
 			return nil
 		}
@@ -48,6 +73,11 @@ Get started:
 
 		apiClient = client.New(cfg.BaseURL, cfg.APIKey)
 		return nil
+	},
+	PersistentPostRun: func(cmd *cobra.Command, args []string) {
+		if rootCancel != nil {
+			rootCancel()
+		}
 	},
 	SilenceUsage:  true,
 	SilenceErrors: true,
@@ -78,8 +108,16 @@ func init() {
 
 func requireAuth() error {
 	if !cfg.IsAuthenticated() {
-		printer.Error("Not authenticated. Run 'fc auth login' first.")
-		os.Exit(1)
+		return fmt.Errorf("%w: run 'fc auth login' first", ErrNotAuthenticated)
 	}
 	return nil
+}
+
+// GetContext returns the root context for the CLI command.
+// This context is cancelled when the user presses Ctrl+C.
+func GetContext() context.Context {
+	if rootCtx == nil {
+		return context.Background()
+	}
+	return rootCtx
 }

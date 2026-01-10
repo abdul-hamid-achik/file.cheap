@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -63,7 +62,7 @@ func runSocial(cmd *cobra.Command, args []string) error {
 		platforms = defaultSocialPlatforms
 	}
 
-	ctx := context.Background()
+	ctx := GetContext()
 	input := args[0]
 
 	var fileID string

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -56,7 +55,7 @@ func runTransform(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no transforms specified (use -t or -p)")
 	}
 
-	ctx := context.Background()
+	ctx := GetContext()
 	var successful, failed int
 	var results []map[string]interface{}
 

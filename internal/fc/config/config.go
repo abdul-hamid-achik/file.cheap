@@ -25,6 +25,10 @@ type Preset struct {
 const (
 	DefaultBaseURL  = "https://file.cheap"
 	DefaultParallel = 4
+
+	// Environment variable names for configuration overrides
+	EnvAPIKey  = "FC_API_KEY"
+	EnvBaseURL = "FC_BASE_URL"
 )
 
 var BuiltinPresets = map[string]Preset{
@@ -95,6 +99,14 @@ func Load() (*Config, error) {
 	}
 	if cfg.Parallel == 0 {
 		cfg.Parallel = DefaultParallel
+	}
+
+	// Environment variables take precedence over config file
+	if envKey := os.Getenv(EnvAPIKey); envKey != "" {
+		cfg.APIKey = envKey
+	}
+	if envURL := os.Getenv(EnvBaseURL); envURL != "" {
+		cfg.BaseURL = envURL
 	}
 
 	return cfg, nil
