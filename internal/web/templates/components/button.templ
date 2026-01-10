@@ -22,13 +22,13 @@ const (
 
 // ButtonProps contains button properties
 type ButtonProps struct {
-	Variant  ButtonVariant
-	Size     ButtonSize
-	Type     string
-	Disabled bool
-	Loading  bool
+	Variant   ButtonVariant
+	Size      ButtonSize
+	Type      string
+	Disabled  bool
+	Loading   bool
 	FullWidth bool
-	Class    string
+	Class     string
 }
 
 // DefaultButtonProps returns default button properties
@@ -42,7 +42,7 @@ func DefaultButtonProps() ButtonProps {
 
 func getButtonClasses(props ButtonProps) string {
 	base := "inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-nord-0 disabled:opacity-50 disabled:cursor-not-allowed"
-	
+
 	var variant string
 	switch props.Variant {
 	case ButtonPrimary:
@@ -58,7 +58,7 @@ func getButtonClasses(props ButtonProps) string {
 	default:
 		variant = "bg-nord-8 text-nord-0 hover:bg-nord-7 focus:ring-nord-8"
 	}
-	
+
 	var size string
 	switch props.Size {
 	case ButtonSm:
@@ -70,18 +70,18 @@ func getButtonClasses(props ButtonProps) string {
 	default:
 		size = "px-4 py-2 text-sm"
 	}
-	
+
 	width := ""
 	if props.FullWidth {
 		width = "w-full"
 	}
-	
+
 	return base + " " + variant + " " + size + " " + width + " " + props.Class
 }
 
 // Button renders a styled button
 templ Button(props ButtonProps) {
-	<button 
+	<button
 		type={ props.Type }
 		disabled?={ props.Disabled || props.Loading }
 		class={ getButtonClasses(props) }
@@ -98,7 +98,7 @@ templ Button(props ButtonProps) {
 
 // ButtonLink renders a styled link that looks like a button
 templ ButtonLink(href string, props ButtonProps) {
-	<a 
+	<a
 		href={ templ.SafeURL(href) }
 		class={ getButtonClasses(props) }
 	>
@@ -108,7 +108,7 @@ templ ButtonLink(href string, props ButtonProps) {
 
 // IconButton renders a button with only an icon
 templ IconButton(props ButtonProps) {
-	<button 
+	<button
 		type={ props.Type }
 		disabled?={ props.Disabled }
 		class={ "p-2 rounded-lg transition-colors " + string(props.Class) }

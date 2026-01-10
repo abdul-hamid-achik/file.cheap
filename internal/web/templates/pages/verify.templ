@@ -1,8 +1,8 @@
 package pages
 
 import (
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
 	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
 )
 
 // VerifyEmailPageData contains data for the email verification page
@@ -26,7 +26,7 @@ templ VerifyEmail(data VerifyEmailPageData) {
 							<div class="text-center">
 								<div class="w-16 h-16 mx-auto mb-6 rounded-full bg-nord-14/10 flex items-center justify-center">
 									<svg class="w-8 h-8 text-nord-14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
 									</svg>
 								</div>
 								<h1 class="text-2xl font-bold text-nord-5 mb-2">Email Verified!</h1>
@@ -45,7 +45,7 @@ templ VerifyEmail(data VerifyEmailPageData) {
 							<div class="text-center">
 								<div class="w-16 h-16 mx-auto mb-6 rounded-full bg-nord-11/10 flex items-center justify-center">
 									<svg class="w-8 h-8 text-nord-11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
 									</svg>
 								</div>
 								<h1 class="text-2xl font-bold text-nord-5 mb-2">Verification Failed</h1>
@@ -94,13 +94,11 @@ templ ResendVerification(data ResendVerificationPageData) {
 							<h1 class="text-2xl font-bold text-nord-5">Resend Verification Email</h1>
 							<p class="text-nord-4 mt-2">Enter your email to receive a new verification link</p>
 						</div>
-
 						if data.Error != "" {
 							<div class="mb-6">
 								@components.Alert(components.AlertError, data.Error, true)
 							</div>
 						}
-
 						if data.Success != "" {
 							<div class="mb-6">
 								@components.Alert(components.AlertSuccess, data.Success, false)
@@ -116,7 +114,6 @@ templ ResendVerification(data ResendVerificationPageData) {
 									Required:     true,
 									AutoComplete: "email",
 								})
-
 								@components.Button(components.ButtonProps{
 									Variant:   components.ButtonPrimary,
 									Size:      components.ButtonMd,
@@ -127,7 +124,6 @@ templ ResendVerification(data ResendVerificationPageData) {
 								}
 							</form>
 						}
-
 						<p class="mt-6 text-center text-sm text-nord-4">
 							<a href="/login" class="text-nord-8 hover:text-nord-7 font-medium">
 								Back to sign in

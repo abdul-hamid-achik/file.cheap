@@ -2,8 +2,8 @@ package pages
 
 import (
 	"github.com/abdul-hamid-achik/file-processor/internal/auth"
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
 	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
 )
 
 // UploadPageData contains data for the upload page
@@ -25,45 +25,41 @@ templ Upload(user *auth.SessionUser, data UploadPageData) {
 					<h1 class="text-2xl font-bold text-nord-5">Upload Files</h1>
 					<p class="text-nord-4 mt-1">Upload images and documents for processing</p>
 				</div>
-
 				if data.Error != "" {
 					<div class="mb-6">
 						@components.Alert(components.AlertError, data.Error, true)
 					</div>
 				}
-
 				if data.Success != "" {
 					<div class="mb-6">
 						@components.Alert(components.AlertSuccess, data.Success, true)
 					</div>
 				}
-
 				@components.Card("") {
 					@components.CardBody() {
 						<!-- Drop Zone -->
-						<div 
+						<div
 							x-data="uploadHandler()"
 							class="relative"
 						>
-							<div 
+							<div
 								@dragover.prevent="dragover = true"
 								@dragleave.prevent="dragover = false"
 								@drop.prevent="handleDrop($event)"
 								:class="dragover ? 'border-nord-8 bg-nord-8/5' : 'border-nord-3'"
 								class="border-2 border-dashed rounded-xl p-12 text-center transition-colors"
 							>
-								<input 
-									type="file" 
+								<input
+									type="file"
 									id="fileInput"
 									@change="handleFileSelect($event)"
 									multiple
 									accept="image/*,.pdf"
 									class="hidden"
 								/>
-								
 								<div x-show="!uploading">
 									<svg class="w-16 h-16 mx-auto text-nord-3 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
 									</svg>
 									<p class="text-nord-4 mb-2">
 										<label for="fileInput" class="text-nord-8 cursor-pointer hover:text-nord-7 font-medium">
@@ -73,7 +69,6 @@ templ Upload(user *auth.SessionUser, data UploadPageData) {
 									</p>
 									<p class="text-nord-4 text-sm">PNG, JPG, GIF, WebP or PDF (10MB free, 100MB pro)</p>
 								</div>
-
 								<div x-show="uploading" class="py-4">
 									<svg class="animate-spin w-12 h-12 mx-auto text-nord-8 mb-4" fill="none" viewBox="0 0 24 24">
 										<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -82,7 +77,6 @@ templ Upload(user *auth.SessionUser, data UploadPageData) {
 									<p class="text-nord-4">Uploading... <span x-text="progress"></span>%</p>
 								</div>
 							</div>
-
 							<!-- File List -->
 							<div x-show="files.length > 0" class="mt-6 space-y-4">
 								<h3 class="font-medium text-nord-5">Selected Files</h3>
@@ -91,7 +85,7 @@ templ Upload(user *auth.SessionUser, data UploadPageData) {
 										<div class="flex items-center gap-3">
 											<div class="w-10 h-10 bg-nord-3 rounded-lg flex items-center justify-center">
 												<svg class="w-5 h-5 text-nord-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
 												</svg>
 											</div>
 											<div>
@@ -99,19 +93,18 @@ templ Upload(user *auth.SessionUser, data UploadPageData) {
 												<p class="text-nord-4 text-sm" x-text="formatSize(file.size)"></p>
 											</div>
 										</div>
-										<button 
+										<button
 											@click="removeFile(index)"
 											class="p-2 text-nord-4 hover:text-nord-11 transition-colors"
 											:disabled="uploading"
 										>
 											<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
 											</svg>
 										</button>
 									</div>
 								</template>
 							</div>
-
 							<!-- Upload Button -->
 							<div x-show="files.length > 0 && !uploading" class="mt-6">
 								@components.Button(components.ButtonProps{
@@ -128,7 +121,6 @@ templ Upload(user *auth.SessionUser, data UploadPageData) {
 						</div>
 					}
 				}
-
 				<!-- Processing Options -->
 				@components.Card("mt-6") {
 					@components.CardHeader() {
@@ -146,7 +138,6 @@ templ Upload(user *auth.SessionUser, data UploadPageData) {
 				}
 			</div>
 		</div>
-
 		<script>
 			function uploadHandler() {
 				return {

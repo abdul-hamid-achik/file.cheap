@@ -68,6 +68,8 @@ CREATE TABLE users (
     transformations_limit INTEGER NOT NULL DEFAULT 100,
     transformations_reset_at TIMESTAMPTZ NOT NULL DEFAULT DATE_TRUNC('month', NOW()) + INTERVAL '1 month',
     email_verified_at TIMESTAMPTZ,
+    onboarding_completed_at TIMESTAMPTZ,
+    onboarding_steps JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ
@@ -351,3 +353,35 @@ CREATE TABLE batch_items (
 CREATE INDEX idx_batch_items_batch ON batch_items(batch_id);
 CREATE INDEX idx_batch_items_file ON batch_items(file_id);
 CREATE INDEX idx_batch_items_status ON batch_items(batch_id, status);
+
+-- ============================================================================
+-- NOTIFICATIONS
+-- ============================================================================
+
+CREATE TABLE notifications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    link TEXT,
+    read_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX idx_notifications_user_unread ON notifications(user_id) WHERE read_at IS NULL;
+CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
+
+-- ============================================================================
+-- ADMIN ALERTS
+-- ============================================================================
+
+CREATE TABLE admin_alert_config (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    metric_name TEXT NOT NULL UNIQUE,
+    threshold_value FLOAT8 NOT NULL,
+    enabled BOOLEAN DEFAULT true,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

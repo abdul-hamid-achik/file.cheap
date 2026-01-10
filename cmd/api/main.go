@@ -161,7 +161,9 @@ func run() error {
 		Registry:      registry,
 	}
 	apiRouter := api.NewRouter(apiCfg)
-	mux.Handle("/api/", http.StripPrefix("/api", apiRouter))
+	mux.Handle("/v1/", apiRouter)
+	mux.Handle("/health", apiRouter)
+	mux.Handle("/cdn/", apiRouter)
 
 	webCfg := &web.Config{
 		Storage: instrumentedStore,

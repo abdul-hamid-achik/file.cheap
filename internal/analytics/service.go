@@ -293,6 +293,26 @@ func (s *Service) GetAdminDashboard(ctx context.Context) (*AdminDashboard, error
 		}
 	}
 
+	churn, err := s.GetChurnMetrics(ctx)
+	if err != nil {
+		churn = &ChurnMetrics{}
+	}
+
+	revenue, err := s.GetRevenueMetrics(ctx)
+	if err != nil {
+		revenue = &RevenueMetrics{}
+	}
+
+	nrr, err := s.GetNRRMetrics(ctx)
+	if err != nil {
+		nrr = &NRRMetrics{}
+	}
+
+	cohorts, err := s.GetCohortAnalysis(ctx)
+	if err != nil {
+		cohorts = []CohortData{}
+	}
+
 	return &AdminDashboard{
 		MRR:               metrics.Mrr,
 		MRRGrowth:         mrrGrowth,
@@ -308,6 +328,10 @@ func (s *Service) GetAdminDashboard(ctx context.Context) (*AdminDashboard, error
 		TopUsers:          topUserItems,
 		RecentSignups:     signupItems,
 		FailedJobs:        failedJobItems,
+		Churn:             *churn,
+		Revenue:           *revenue,
+		NRR:               *nrr,
+		CohortData:        cohorts,
 	}, nil
 }
 
@@ -415,6 +439,106 @@ func parseRedisMemory(info string) int64 {
 		}
 	}
 	return 0
+}
+
+func (s *Service) GetChurnMetrics(ctx context.Context) (*ChurnMetrics, error) {
+	metrics, err := s.queries.GetChurnMetrics(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get churn metrics: %w", err)
+	}
+
+	return &ChurnMetrics{
+		ChurnedThisMonth: metrics.ChurnedThisMonth,
+		Churned30Days:    metrics.Churned30d,
+		CurrentActive:    metrics.CurrentActive,
+		MonthlyChurnRate: float64(metrics.MonthlyChurnRate),
+		RetentionRate:    float64(metrics.RetentionRate),
+	}, nil
+}
+
+func (s *Service) GetRevenueMetrics(ctx context.Context) (*RevenueMetrics, error) {
+	metrics, err := s.queries.GetRevenueMetrics(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get revenue metrics: %w", err)
+	}
+
+	estimatedLTV := 0.0
+	if ltv, ok := metrics.EstimatedLtv.(float64); ok {
+		estimatedLTV = ltv
+	}
+
+	return &RevenueMetrics{
+		MRR:          metrics.Mrr,
+		ARR:          metrics.Arr,
+		ARPU:         float64(metrics.Arpu),
+		EstimatedLTV: estimatedLTV,
+		PayingUsers:  metrics.PayingUsers,
+	}, nil
+}
+
+func (s *Service) GetNRRMetrics(ctx context.Context) (*NRRMetrics, error) {
+	metrics, err := s.queries.GetNRR(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get nrr metrics: %w", err)
+	}
+
+	return &NRRMetrics{
+		PreviousMRR: metrics.PreviousMrr,
+		CurrentMRR:  metrics.CurrentMrr,
+		NRRPercent:  float64(metrics.NrrPercent),
+	}, nil
+}
+
+func (s *Service) GetCohortAnalysis(ctx context.Context) ([]CohortData, error) {
+	rows, err := s.queries.GetCohortRetention(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get cohort retention: %w", err)
+	}
+
+	cohorts := make([]CohortData, len(rows))
+	for i, r := range rows {
+		cohorts[i] = CohortData{
+			CohortMonth:  r.CohortMonth.Time,
+			CohortSize:   r.CsCohortSize,
+			MonthsSince:  int(r.RMonthsSince),
+			Retained:     r.RRetained,
+			RetentionPct: float64(r.RetentionPct),
+		}
+	}
+
+	return cohorts, nil
+}
+
+func (s *Service) GetAlertConfigs(ctx context.Context) ([]AlertConfig, error) {
+	rows, err := s.queries.GetAlertConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get alert configs: %w", err)
+	}
+
+	configs := make([]AlertConfig, len(rows))
+	for i, r := range rows {
+		enabled := false
+		if r.Enabled != nil {
+			enabled = *r.Enabled
+		}
+		configs[i] = AlertConfig{
+			ID:             uuidToString(r.ID),
+			MetricName:     r.MetricName,
+			ThresholdValue: r.ThresholdValue,
+			Enabled:        enabled,
+			UpdatedAt:      r.UpdatedAt.Time,
+		}
+	}
+
+	return configs, nil
+}
+
+func (s *Service) UpdateAlertThreshold(ctx context.Context, metricName string, threshold float64, enabled bool) error {
+	return s.queries.UpdateAlertThreshold(ctx, db.UpdateAlertThresholdParams{
+		MetricName:     metricName,
+		ThresholdValue: threshold,
+		Enabled:        &enabled,
+	})
 }
 
 func (s *Service) GetJobsList(ctx context.Context, status string, page, pageSize int) (*JobsListPage, error) {

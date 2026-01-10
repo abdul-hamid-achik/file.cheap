@@ -79,7 +79,7 @@ func TestUploadHandler(t *testing.T) {
 			name: "successful upload - JPEG image",
 			setupRequest: func(t *testing.T) *http.Request {
 				body, contentType := createMultipartFormWithImage(t, "file", "test.jpg", 800, 600)
-				req := httptest.NewRequest("POST", "/api/v1/upload", body)
+				req := httptest.NewRequest("POST", "/v1/upload", body)
 				req.Header.Set("Content-Type", contentType)
 				req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
 				return req
@@ -94,7 +94,7 @@ func TestUploadHandler(t *testing.T) {
 			name: "successful upload - PNG image",
 			setupRequest: func(t *testing.T) *http.Request {
 				body, contentType := createMultipartFormWithData(t, "file", "test.png", []byte("PNG data"), "image/png")
-				req := httptest.NewRequest("POST", "/api/v1/upload", body)
+				req := httptest.NewRequest("POST", "/v1/upload", body)
 				req.Header.Set("Content-Type", contentType)
 				req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
 				return req
@@ -110,7 +110,7 @@ func TestUploadHandler(t *testing.T) {
 				writer := multipart.NewWriter(&buf)
 				_ = writer.Close()
 
-				req := httptest.NewRequest("POST", "/api/v1/upload", &buf)
+				req := httptest.NewRequest("POST", "/v1/upload", &buf)
 				req.Header.Set("Content-Type", writer.FormDataContentType())
 				req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
 				return req
@@ -121,7 +121,7 @@ func TestUploadHandler(t *testing.T) {
 			name: "wrong field name",
 			setupRequest: func(t *testing.T) *http.Request {
 				body, contentType := createMultipartFormWithImage(t, "wrong_field", "test.jpg", 100, 100)
-				req := httptest.NewRequest("POST", "/api/v1/upload", body)
+				req := httptest.NewRequest("POST", "/v1/upload", body)
 				req.Header.Set("Content-Type", contentType)
 				req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
 				return req
@@ -134,7 +134,7 @@ func TestUploadHandler(t *testing.T) {
 				// Create a 200MB file (exceeds default 100MB limit)
 				largeData := make([]byte, 200*1024*1024)
 				body, contentType := createMultipartFormWithData(t, "file", "large.jpg", largeData, "image/jpeg")
-				req := httptest.NewRequest("POST", "/api/v1/upload", body)
+				req := httptest.NewRequest("POST", "/v1/upload", body)
 				req.Header.Set("Content-Type", contentType)
 				req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
 				return req
@@ -145,7 +145,7 @@ func TestUploadHandler(t *testing.T) {
 			name: "unauthorized - missing token",
 			setupRequest: func(t *testing.T) *http.Request {
 				body, contentType := createMultipartFormWithImage(t, "file", "test.jpg", 100, 100)
-				req := httptest.NewRequest("POST", "/api/v1/upload", body)
+				req := httptest.NewRequest("POST", "/v1/upload", body)
 				req.Header.Set("Content-Type", contentType)
 				// No Authorization header
 				return req
@@ -156,7 +156,7 @@ func TestUploadHandler(t *testing.T) {
 			name: "unauthorized - invalid token",
 			setupRequest: func(t *testing.T) *http.Request {
 				body, contentType := createMultipartFormWithImage(t, "file", "test.jpg", 100, 100)
-				req := httptest.NewRequest("POST", "/api/v1/upload", body)
+				req := httptest.NewRequest("POST", "/v1/upload", body)
 				req.Header.Set("Content-Type", contentType)
 				req.Header.Set("Authorization", "Bearer invalid-token")
 				return req
@@ -167,7 +167,7 @@ func TestUploadHandler(t *testing.T) {
 			name: "unauthorized - expired token",
 			setupRequest: func(t *testing.T) *http.Request {
 				body, contentType := createMultipartFormWithImage(t, "file", "test.jpg", 100, 100)
-				req := httptest.NewRequest("POST", "/api/v1/upload", body)
+				req := httptest.NewRequest("POST", "/v1/upload", body)
 				req.Header.Set("Content-Type", contentType)
 				req.Header.Set("Authorization", "Bearer "+generateExpiredToken(t, testUserID))
 				return req
@@ -178,7 +178,7 @@ func TestUploadHandler(t *testing.T) {
 			name: "storage error",
 			setupRequest: func(t *testing.T) *http.Request {
 				body, contentType := createMultipartFormWithImage(t, "file", "test.jpg", 100, 100)
-				req := httptest.NewRequest("POST", "/api/v1/upload", body)
+				req := httptest.NewRequest("POST", "/v1/upload", body)
 				req.Header.Set("Content-Type", contentType)
 				req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
 				return req
@@ -192,7 +192,7 @@ func TestUploadHandler(t *testing.T) {
 			name: "database error",
 			setupRequest: func(t *testing.T) *http.Request {
 				body, contentType := createMultipartFormWithImage(t, "file", "test.jpg", 100, 100)
-				req := httptest.NewRequest("POST", "/api/v1/upload", body)
+				req := httptest.NewRequest("POST", "/v1/upload", body)
 				req.Header.Set("Content-Type", contentType)
 				req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
 				return req
@@ -363,7 +363,7 @@ func TestListFilesHandler(t *testing.T) {
 				JWTSecret:     cfg.JWTSecret,
 			})
 
-			req := httptest.NewRequest("GET", "/api/v1/files"+tt.query, nil)
+			req := httptest.NewRequest("GET", "/v1/files"+tt.query, nil)
 			req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
 
 			rec := httptest.NewRecorder()
@@ -480,9 +480,9 @@ func TestGetFileHandler(t *testing.T) {
 				JWTSecret:     cfg.JWTSecret,
 			})
 
-			url := "/api/v1/files/" + tt.fileID
+			url := "/v1/files/" + tt.fileID
 			if tt.fileID == "" {
-				url = "/api/v1/files/"
+				url = "/v1/files/"
 			}
 
 			req := httptest.NewRequest("GET", url, nil)
@@ -578,7 +578,7 @@ func TestDownloadHandler(t *testing.T) {
 				JWTSecret:     cfg.JWTSecret,
 			})
 
-			req := httptest.NewRequest("GET", "/api/v1/files/"+tt.fileID+"/download"+tt.query, nil)
+			req := httptest.NewRequest("GET", "/v1/files/"+tt.fileID+"/download"+tt.query, nil)
 			req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
 
 			rec := httptest.NewRecorder()
@@ -675,7 +675,7 @@ func TestDeleteHandler(t *testing.T) {
 				JWTSecret:     cfg.JWTSecret,
 			})
 
-			req := httptest.NewRequest("DELETE", "/api/v1/files/"+tt.fileID, nil)
+			req := httptest.NewRequest("DELETE", "/v1/files/"+tt.fileID, nil)
 			req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
 
 			rec := httptest.NewRecorder()
@@ -706,7 +706,7 @@ func TestDeleteHandlerSoftDelete(t *testing.T) {
 		JWTSecret:     cfg.JWTSecret,
 	})
 
-	req := httptest.NewRequest("DELETE", "/api/v1/files/"+fileID.String(), nil)
+	req := httptest.NewRequest("DELETE", "/v1/files/"+fileID.String(), nil)
 	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
 
 	rec := httptest.NewRecorder()
@@ -738,10 +738,10 @@ func TestAPIRequiresAuth(t *testing.T) {
 		method string
 		path   string
 	}{
-		{"GET", "/api/v1/files"},
-		{"GET", "/api/v1/files/550e8400-e29b-41d4-a716-446655440000"},
-		{"GET", "/api/v1/files/550e8400-e29b-41d4-a716-446655440000/download"},
-		{"DELETE", "/api/v1/files/550e8400-e29b-41d4-a716-446655440000"},
+		{"GET", "/v1/files"},
+		{"GET", "/v1/files/550e8400-e29b-41d4-a716-446655440000"},
+		{"GET", "/v1/files/550e8400-e29b-41d4-a716-446655440000/download"},
+		{"DELETE", "/v1/files/550e8400-e29b-41d4-a716-446655440000"},
 		// POST /upload is tested separately due to multipart form
 	}
 
@@ -805,8 +805,8 @@ func TestResponseContentType(t *testing.T) {
 		path   string
 	}{
 		{"GET", "/health"},
-		{"GET", "/api/v1/files"},
-		{"GET", "/api/v1/files/" + fileID.String()},
+		{"GET", "/v1/files"},
+		{"GET", "/v1/files/" + fileID.String()},
 	}
 
 	for _, ep := range endpoints {
@@ -915,7 +915,7 @@ func TestUploadVerifiesJobEnqueued(t *testing.T) {
 	})
 
 	body, contentType := createMultipartFormWithImage(t, "file", "test.jpg", 800, 600)
-	req := httptest.NewRequest("POST", "/api/v1/upload", body)
+	req := httptest.NewRequest("POST", "/v1/upload", body)
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
 
@@ -1025,7 +1025,7 @@ func TestTransformHandler(t *testing.T) {
 				JWTSecret:     cfg.JWTSecret,
 			})
 
-			req := httptest.NewRequest("POST", "/api/v1/files/"+tt.fileID+"/transform", strings.NewReader(tt.body))
+			req := httptest.NewRequest("POST", "/v1/files/"+tt.fileID+"/transform", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
 
@@ -1136,7 +1136,7 @@ func TestBatchTransformHandler(t *testing.T) {
 				JWTSecret:     cfg.JWTSecret,
 			})
 
-			req := httptest.NewRequest("POST", "/api/v1/batch/transform", strings.NewReader(tt.body))
+			req := httptest.NewRequest("POST", "/v1/batch/transform", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
 
@@ -1206,7 +1206,7 @@ func TestGetBatchHandler(t *testing.T) {
 				JWTSecret:     cfg.JWTSecret,
 			})
 
-			req := httptest.NewRequest("GET", "/api/v1/batch/"+tt.batchID+tt.query, nil)
+			req := httptest.NewRequest("GET", "/v1/batch/"+tt.batchID+tt.query, nil)
 			req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testUserID, 1*time.Hour))
 
 			rec := httptest.NewRecorder()

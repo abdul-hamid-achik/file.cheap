@@ -2,7 +2,7 @@
 
 ## Base URL
 
-`https://file.cheap`
+`https://api.file.cheap`
 
 ## Authentication
 
@@ -30,7 +30,7 @@ For CLI tools and applications that cannot open a web browser directly.
 
 #### Initiate Device Flow
 
-**POST** `/api/v1/auth/device`
+**POST** `/v1/auth/device`
 
 No authentication required.
 
@@ -49,7 +49,7 @@ The user should visit `verification_uri` and enter the `user_code` to authorize 
 
 #### Poll for Token
 
-**POST** `/api/v1/auth/device/token`
+**POST** `/v1/auth/device/token`
 
 **Request Body:**
 ```json
@@ -77,7 +77,7 @@ Poll this endpoint every `interval` seconds (from initiate response) until appro
 
 #### Approve Device (Web UI)
 
-**POST** `/api/v1/auth/device/approve`
+**POST** `/v1/auth/device/approve`
 
 Authentication: JWT required (web session)
 
@@ -113,7 +113,7 @@ No authentication required.
 
 ### Upload File
 
-**POST** `/api/v1/upload`
+**POST** `/v1/upload`
 
 Authentication: API key or JWT required
 
@@ -142,7 +142,7 @@ The upload returns immediately. Processing jobs are enqueued in the background.
 
 ### List Files
 
-**GET** `/api/v1/files`
+**GET** `/v1/files`
 
 Authentication: API key or JWT required
 
@@ -174,7 +174,7 @@ Authentication: API key or JWT required
 
 ### Get File
 
-**GET** `/api/v1/files/{id}`
+**GET** `/v1/files/{id}`
 
 Authentication: API key or JWT required
 
@@ -217,7 +217,7 @@ Authentication: API key or JWT required
 
 ### Download File
 
-**GET** `/api/v1/files/{id}/download`
+**GET** `/v1/files/{id}/download`
 
 Authentication: API key or JWT required
 
@@ -237,7 +237,7 @@ Redirects to presigned storage URL valid for 1 hour.
 
 ### Transform File
 
-**POST** `/api/v1/files/{id}/transform`
+**POST** `/v1/files/{id}/transform`
 
 Authentication: API key or JWT required
 
@@ -285,7 +285,7 @@ Apply transformations to an existing file. Jobs are enqueued and processed async
 
 ### Delete File
 
-**DELETE** `/api/v1/files/{id}`
+**DELETE** `/v1/files/{id}`
 
 Authentication: API key or JWT required
 
@@ -307,7 +307,7 @@ Process multiple files with the same transformations in a single request.
 
 ### Create Batch Transform
 
-**POST** `/api/v1/batch/transform`
+**POST** `/v1/batch/transform`
 
 Authentication: API key or JWT required
 
@@ -339,7 +339,7 @@ Authentication: API key or JWT required
   "total_files": 2,
   "total_jobs": 6,
   "status": "pending",
-  "status_url": "/api/v1/batch/b23e4567-e89b-12d3-a456-426614174000"
+  "status_url": "/v1/batch/b23e4567-e89b-12d3-a456-426614174000"
 }
 ```
 
@@ -356,7 +356,7 @@ Authentication: API key or JWT required
 
 ### Get Batch Status
 
-**GET** `/api/v1/batch/{id}`
+**GET** `/v1/batch/{id}`
 
 Authentication: API key or JWT required
 
@@ -429,7 +429,7 @@ Authentication: API key or JWT required
 
 ### Create Share Link
 
-**POST** `/api/v1/files/{id}/share`
+**POST** `/v1/files/{id}/share`
 
 Authentication: API key or JWT required
 
@@ -456,7 +456,7 @@ Authentication: API key or JWT required
 
 ### List Shares
 
-**GET** `/api/v1/files/{id}/shares`
+**GET** `/v1/files/{id}/shares`
 
 Authentication: API key or JWT required
 
@@ -480,7 +480,7 @@ Authentication: API key or JWT required
 
 ### Delete Share
 
-**DELETE** `/api/v1/shares/{shareId}`
+**DELETE** `/v1/shares/{shareId}`
 
 Authentication: API key or JWT required
 

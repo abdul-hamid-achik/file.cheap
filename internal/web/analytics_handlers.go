@@ -245,3 +245,90 @@ func (h *AdminHandlers) Jobs(w http.ResponseWriter, r *http.Request) {
 
 	_ = pages.AdminJobs(user, data).Render(r.Context(), w)
 }
+
+func (h *AnalyticsHandlers) ExportData(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
+	user := auth.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "json"
+	}
+
+	data, err := h.service.GetUserAnalytics(r.Context(), user.ID)
+	if err != nil {
+		log.Error("failed to get analytics for export", "error", err)
+		http.Error(w, "Failed to export data", http.StatusInternalServerError)
+		return
+	}
+
+	var exportData []byte
+	var contentType string
+	var filename string
+
+	switch format {
+	case "csv":
+		exportData, err = analytics.ExportUserAnalyticsCSV(data)
+		contentType = "text/csv"
+		filename = "analytics-export.csv"
+	default:
+		exportData, err = analytics.ExportUserAnalyticsJSON(data)
+		contentType = "application/json"
+		filename = "analytics-export.json"
+	}
+
+	if err != nil {
+		log.Error("failed to export analytics", "format", format, "error", err)
+		http.Error(w, "Export failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", "attachment; filename="+filename)
+	_, _ = w.Write(exportData)
+}
+
+func (h *AdminHandlers) ExportDashboard(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
+
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "json"
+	}
+
+	data, err := h.service.GetAdminDashboard(r.Context())
+	if err != nil {
+		log.Error("failed to get admin dashboard for export", "error", err)
+		http.Error(w, "Failed to export data", http.StatusInternalServerError)
+		return
+	}
+
+	var exportData []byte
+	var contentType string
+	var filename string
+
+	switch format {
+	case "csv":
+		exportData, err = analytics.ExportAdminDashboardCSV(data)
+		contentType = "text/csv"
+		filename = "admin-dashboard-export.csv"
+	default:
+		exportData, err = analytics.ExportAdminDashboardJSON(data)
+		contentType = "application/json"
+		filename = "admin-dashboard-export.json"
+	}
+
+	if err != nil {
+		log.Error("failed to export admin dashboard", "format", format, "error", err)
+		http.Error(w, "Export failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", "attachment; filename="+filename)
+	_, _ = w.Write(exportData)
+}

@@ -2,8 +2,8 @@ package pages
 
 import (
 	"github.com/abdul-hamid-achik/file-processor/internal/auth"
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
 	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
 )
 
 // FileListPageData contains data for the file list page
@@ -48,19 +48,18 @@ templ FileList(user *auth.SessionUser, data FileListPageData) {
 						Size:    components.ButtonMd,
 					}) {
 						<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
 						</svg>
 						Upload Files
 					}
 				</div>
-
 				<!-- Search and Filters -->
 				<div class="mb-6">
 					@components.Card("") {
 						@components.CardBody() {
 							<form action="/files" method="GET" class="flex flex-col sm:flex-row gap-4">
 								<div class="flex-1">
-									<input 
+									<input
 										type="text"
 										name="q"
 										value={ data.Query }
@@ -69,7 +68,7 @@ templ FileList(user *auth.SessionUser, data FileListPageData) {
 									/>
 								</div>
 								<div>
-									<select 
+									<select
 										name="filter"
 										class="w-full sm:w-auto px-4 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 focus:outline-none focus:ring-2 focus:ring-nord-8"
 									>
@@ -92,13 +91,12 @@ templ FileList(user *auth.SessionUser, data FileListPageData) {
 						}
 					}
 				</div>
-
 				<!-- File Grid/List -->
 				if len(data.Files) == 0 {
 					@components.Card("") {
 						<div class="p-12 text-center">
 							<svg class="w-16 h-16 mx-auto text-nord-3 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
 							</svg>
 							if data.Query != "" {
 								<p class="text-nord-4 mb-2">No files found matching "{ data.Query }"</p>
@@ -121,27 +119,25 @@ templ FileList(user *auth.SessionUser, data FileListPageData) {
 							@fileCard(file)
 						}
 					</div>
-
 					<!-- Pagination -->
 					if data.TotalPages > 1 {
 						<div class="mt-8 flex justify-center">
 							<nav class="flex items-center gap-2">
 								if data.CurrentPage > 1 {
-									<a 
+									<a
 										href={ templ.SafeURL("/files?page=" + formatInt(data.CurrentPage-1) + "&q=" + data.Query + "&filter=" + data.Filter) }
 										class="px-3 py-2 bg-nord-2 text-nord-4 hover:text-nord-5 rounded-lg transition-colors"
 									>
 										Previous
 									</a>
 								}
-
 								for i := 1; i <= data.TotalPages; i++ {
 									if i == data.CurrentPage {
 										<span class="px-3 py-2 bg-nord-8 text-nord-0 rounded-lg font-medium">
 											{ formatInt(i) }
 										</span>
 									} else if i == 1 || i == data.TotalPages || (i >= data.CurrentPage-2 && i <= data.CurrentPage+2) {
-										<a 
+										<a
 											href={ templ.SafeURL("/files?page=" + formatInt(i) + "&q=" + data.Query + "&filter=" + data.Filter) }
 											class="px-3 py-2 bg-nord-2 text-nord-4 hover:text-nord-5 rounded-lg transition-colors"
 										>
@@ -151,9 +147,8 @@ templ FileList(user *auth.SessionUser, data FileListPageData) {
 										<span class="px-2 text-nord-4">...</span>
 									}
 								}
-
 								if data.CurrentPage < data.TotalPages {
-									<a 
+									<a
 										href={ templ.SafeURL("/files?page=" + formatInt(data.CurrentPage+1) + "&q=" + data.Query + "&filter=" + data.Filter) }
 										class="px-3 py-2 bg-nord-2 text-nord-4 hover:text-nord-5 rounded-lg transition-colors"
 									>
@@ -175,8 +170,8 @@ templ fileCard(file FileItem) {
 			<!-- Thumbnail -->
 			<div class="aspect-video bg-nord-2 relative overflow-hidden">
 				if file.ThumbnailURL != "" {
-					<img 
-						src={ file.ThumbnailURL } 
+					<img
+						src={ file.ThumbnailURL }
 						alt={ file.Name }
 						class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
 					/>
@@ -190,7 +185,6 @@ templ fileCard(file FileItem) {
 					@fileStatusBadge(file.Status)
 				</div>
 			</div>
-
 			@components.CardBody() {
 				<div class="space-y-2">
 					<h3 class="text-nord-5 font-medium truncate group-hover:text-nord-8 transition-colors">
@@ -207,44 +201,44 @@ templ fileCard(file FileItem) {
 }
 
 templ fileTypeIconLarge(contentType string) {
-	switch {
-	case contentType == "application/pdf":
-		<svg class="w-12 h-12 text-nord-11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-		</svg>
-	default:
-		<svg class="w-12 h-12 text-nord-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-		</svg>
+	switch  {
+		case contentType == "application/pdf":
+			<svg class="w-12 h-12 text-nord-11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+			</svg>
+		default:
+			<svg class="w-12 h-12 text-nord-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+			</svg>
 	}
 }
 
 templ fileStatusBadge(status string) {
 	switch status {
-	case "completed":
-		<span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-nord-14 text-nord-0">
-			Completed
-		</span>
-	case "processing":
-		<span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-nord-8 text-nord-0">
-			<svg class="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
-				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-			</svg>
-			Processing
-		</span>
-	case "pending":
-		<span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-nord-13 text-nord-0">
-			Pending
-		</span>
-	case "failed":
-		<span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-nord-11 text-nord-0">
-			Failed
-		</span>
-	default:
-		<span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-nord-3 text-nord-5">
-			{ status }
-		</span>
+		case "completed":
+			<span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-nord-14 text-nord-0">
+				Completed
+			</span>
+		case "processing":
+			<span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-nord-8 text-nord-0">
+				<svg class="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+				</svg>
+				Processing
+			</span>
+		case "pending":
+			<span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-nord-13 text-nord-0">
+				Pending
+			</span>
+		case "failed":
+			<span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-nord-11 text-nord-0">
+				Failed
+			</span>
+		default:
+			<span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-nord-3 text-nord-5">
+				{ status }
+			</span>
 	}
 }
 
@@ -336,19 +330,16 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 						<li class="text-nord-5">{ data.File.Name }</li>
 					</ol>
 				</nav>
-
 				if data.Error != "" {
 					<div class="mb-6">
 						@components.Alert(components.AlertError, data.Error, true)
 					</div>
 				}
-
 				if data.Success != "" {
 					<div class="mb-6">
 						@components.Alert(components.AlertSuccess, data.Success, true)
 					</div>
 				}
-
 				<div class="grid lg:grid-cols-3 gap-8">
 					<!-- Main Content -->
 					<div class="lg:col-span-2 space-y-6">
@@ -356,8 +347,8 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 						@components.Card("") {
 							<div class="aspect-video bg-nord-2 relative overflow-hidden rounded-t-xl">
 								if data.File.ThumbnailURL != "" {
-									<img 
-										src={ data.File.ThumbnailURL } 
+									<img
+										src={ data.File.ThumbnailURL }
 										alt={ data.File.Name }
 										class="w-full h-full object-contain"
 									/>
@@ -376,13 +367,13 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 										</p>
 									</div>
 									<div class="flex gap-2">
-										<a 
+										<a
 											href={ templ.SafeURL(data.File.URL) }
 											download
 											class="inline-flex items-center px-4 py-2 bg-nord-8 text-nord-0 rounded-lg font-medium hover:bg-nord-7 transition-colors"
 										>
 											<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
 											</svg>
 											Download
 										</a>
@@ -390,7 +381,6 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 								</div>
 							}
 						}
-
 						<!-- Variants -->
 						if len(data.Variants) > 0 {
 							@components.Card("") {
@@ -406,14 +396,14 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 													<p class="text-nord-5 font-medium capitalize">{ variant.Type }</p>
 													<p class="text-nord-4 text-sm">{ variant.Size } • { variant.ContentType }</p>
 												</div>
-												<a 
+												<a
 													href={ templ.SafeURL(variant.URL) }
 													download
 													class="p-2 text-nord-4 hover:text-nord-8 transition-colors"
 													title="Download"
 												>
 													<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
 													</svg>
 												</a>
 											</div>
@@ -422,7 +412,6 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 								}
 							}
 						}
-
 						<!-- Processing Jobs -->
 						if len(data.Jobs) > 0 {
 							@components.Card("") {
@@ -453,7 +442,6 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 							}
 						}
 					</div>
-
 					<!-- Sidebar -->
 					<div class="space-y-6">
 						<!-- Status -->
@@ -466,22 +454,21 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 									@fileStatusBadge(data.File.Status)
 									<span class="text-nord-4 text-sm">
 										switch data.File.Status {
-										case "completed":
-											All processing complete
-										case "processing":
-											Processing in progress...
-										case "pending":
-											Waiting to process
-										case "failed":
-											Processing failed
-										default:
-											{ data.File.Status }
+											case "completed":
+												All processing complete
+											case "processing":
+												Processing in progress...
+											case "pending":
+												Waiting to process
+											case "failed":
+												Processing failed
+											default:
+												{ data.File.Status }
 										}
 									</span>
 								</div>
 							}
 						}
-
 						<!-- Metadata -->
 						if len(data.File.Metadata) > 0 {
 							@components.Card("") {
@@ -500,7 +487,6 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 								}
 							}
 						}
-
 						<!-- File Info -->
 						@components.Card("") {
 							@components.CardHeader() {
@@ -523,7 +509,6 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 								</dl>
 							}
 						}
-
 						<!-- Processing Actions -->
 						@components.Card("") {
 							@components.CardHeader() {
@@ -537,7 +522,6 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 										<p class="text-nord-4 text-xs uppercase tracking-wide font-medium">Basic</p>
 										@processAction(data.File.ID, "thumbnail", "Thumbnail", "300x300 square crop", data.ExistingTypes["thumbnail"])
 									</div>
-
 									<!-- Responsive Sizes -->
 									<div class="space-y-2">
 										<div class="flex items-center justify-between">
@@ -549,7 +533,6 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 										@processActionPro(data.File.ID, "lg", "Large (1920w)", "Desktop displays", data.ExistingTypes["lg"], data.IsPremium)
 										@processActionPro(data.File.ID, "xl", "Extra Large (2560w)", "2K displays", data.ExistingTypes["xl"], data.IsPremium)
 									</div>
-
 									<!-- Social Media Presets -->
 									<div class="space-y-2">
 										<div class="flex items-center justify-between">
@@ -567,7 +550,6 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 										@processActionPro(data.File.ID, "instagram_portrait", "Instagram Portrait", "1080x1350 - Portrait posts", data.ExistingTypes["instagram_portrait"], data.IsPremium)
 										@processActionPro(data.File.ID, "instagram_story", "Instagram Story", "1080x1920 - Stories", data.ExistingTypes["instagram_story"], data.IsPremium)
 									</div>
-
 									<!-- Format Conversion -->
 									<div class="space-y-2">
 										<p class="text-nord-4 text-xs uppercase tracking-wide font-medium">Format</p>
@@ -578,7 +560,6 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 								<div id="process-result" class="mt-4"></div>
 							}
 						}
-
 						<!-- Actions -->
 						@components.Card("border-nord-11/30") {
 							@components.CardHeader() {
@@ -586,7 +567,7 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 							}
 							@components.CardBody() {
 								<form action={ templ.SafeURL("/files/" + data.File.ID + "/delete") } method="POST">
-									<button 
+									<button
 										type="submit"
 										onclick="return confirm('Are you sure you want to delete this file? This action cannot be undone.')"
 										class="w-full px-4 py-2 bg-nord-11/10 text-nord-11 hover:bg-nord-11/20 rounded-lg font-medium transition-colors text-sm"
@@ -605,52 +586,52 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 
 templ jobStatusIcon(status string) {
 	switch status {
-	case "completed":
-		<div class="w-10 h-10 rounded-full bg-nord-14/10 flex items-center justify-center">
-			<svg class="w-5 h-5 text-nord-14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-			</svg>
-		</div>
-	case "processing":
-		<div class="w-10 h-10 rounded-full bg-nord-8/10 flex items-center justify-center">
-			<svg class="w-5 h-5 text-nord-8 animate-spin" fill="none" viewBox="0 0 24 24">
-				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-			</svg>
-		</div>
-	case "failed":
-		<div class="w-10 h-10 rounded-full bg-nord-11/10 flex items-center justify-center">
-			<svg class="w-5 h-5 text-nord-11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-			</svg>
-		</div>
-	default:
-		<div class="w-10 h-10 rounded-full bg-nord-3/20 flex items-center justify-center">
-			<svg class="w-5 h-5 text-nord-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-			</svg>
-		</div>
+		case "completed":
+			<div class="w-10 h-10 rounded-full bg-nord-14/10 flex items-center justify-center">
+				<svg class="w-5 h-5 text-nord-14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+				</svg>
+			</div>
+		case "processing":
+			<div class="w-10 h-10 rounded-full bg-nord-8/10 flex items-center justify-center">
+				<svg class="w-5 h-5 text-nord-8 animate-spin" fill="none" viewBox="0 0 24 24">
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+				</svg>
+			</div>
+		case "failed":
+			<div class="w-10 h-10 rounded-full bg-nord-11/10 flex items-center justify-center">
+				<svg class="w-5 h-5 text-nord-11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+				</svg>
+			</div>
+		default:
+			<div class="w-10 h-10 rounded-full bg-nord-3/20 flex items-center justify-center">
+				<svg class="w-5 h-5 text-nord-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+				</svg>
+			</div>
 	}
 }
 
 templ jobStatusBadge(status string) {
 	switch status {
-	case "completed":
-		<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-nord-14/10 text-nord-14">
-			Completed
-		</span>
-	case "processing":
-		<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-nord-8/10 text-nord-8">
-			Processing
-		</span>
-	case "failed":
-		<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-nord-11/10 text-nord-11">
-			Failed
-		</span>
-	default:
-		<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-nord-3/10 text-nord-4">
-			{ status }
-		</span>
+		case "completed":
+			<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-nord-14/10 text-nord-14">
+				Completed
+			</span>
+		case "processing":
+			<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-nord-8/10 text-nord-8">
+				Processing
+			</span>
+		case "failed":
+			<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-nord-11/10 text-nord-11">
+				Failed
+			</span>
+		default:
+			<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-nord-3/10 text-nord-4">
+				{ status }
+			</span>
 	}
 }
 
@@ -663,7 +644,7 @@ templ processAction(fileID, action, label, description string, exists bool) {
 		if exists {
 			<span class="text-nord-14 text-xs flex items-center gap-1">
 				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
 				</svg>
 				Done
 			</span>
@@ -691,7 +672,7 @@ templ processActionPro(fileID, action, label, description string, exists bool, i
 		if exists {
 			<span class="text-nord-14 text-xs flex items-center gap-1">
 				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
 				</svg>
 				Done
 			</span>
@@ -729,7 +710,7 @@ templ processActionWatermark(fileID string, exists bool, isPremium bool) {
 			if exists {
 				<span class="text-nord-14 text-xs flex items-center gap-1">
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
 					</svg>
 					Done
 				</span>
@@ -742,7 +723,7 @@ templ processActionWatermark(fileID string, exists bool, isPremium bool) {
 					<a href="/settings#subscription" class="underline hover:text-nord-5 ml-1">Upgrade to Pro</a>
 				</p>
 			}
-			<form 
+			<form
 				hx-post={ "/files/" + fileID + "/process" }
 				hx-target="#process-result"
 				hx-swap="innerHTML"
@@ -750,21 +731,21 @@ templ processActionWatermark(fileID string, exists bool, isPremium bool) {
 			>
 				<input type="hidden" name="action" value="watermark"/>
 				if isPremium {
-					<input 
-						type="text" 
-						name="watermark_text" 
+					<input
+						type="text"
+						name="watermark_text"
 						placeholder="Enter your custom watermark text"
 						class="w-full px-3 py-1.5 bg-nord-1 border border-nord-3 rounded text-nord-5 text-xs placeholder-nord-4 focus:outline-none focus:ring-1 focus:ring-nord-8"
 					/>
 				} else {
-					<input 
-						type="text" 
-						name="watermark_text" 
+					<input
+						type="text"
+						name="watermark_text"
 						placeholder="Your text (+ file.cheap branding)"
 						class="w-full px-3 py-1.5 bg-nord-1 border border-nord-3 rounded text-nord-5 text-xs placeholder-nord-4 focus:outline-none focus:ring-1 focus:ring-nord-8"
 					/>
 				}
-				<select 
+				<select
 					name="watermark_position"
 					class="w-full px-3 py-1.5 bg-nord-1 border border-nord-3 rounded text-nord-5 text-xs focus:outline-none focus:ring-1 focus:ring-nord-8"
 				>
@@ -789,7 +770,7 @@ templ bundleButton(fileID, bundle, label string, isPremium bool, allDone bool) {
 	if allDone {
 		<span class="text-nord-14 text-xs flex items-center gap-1">
 			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
 			</svg>
 			All Done
 		</span>

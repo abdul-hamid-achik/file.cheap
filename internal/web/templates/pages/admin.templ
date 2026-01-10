@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"github.com/abdul-hamid-achik/file-processor/internal/analytics"
 	"github.com/abdul-hamid-achik/file-processor/internal/auth"
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
 	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
 )
 
 templ AdminDashboard(user *auth.SessionUser, data *analytics.AdminDashboard) {
@@ -24,18 +24,26 @@ templ AdminDashboard(user *auth.SessionUser, data *analytics.AdminDashboard) {
 						Admin
 					</span>
 				</div>
-
-				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-					@adminMetricCard("MRR", fmt.Sprintf("$%.0f", data.MRR), mrrIcon(), 
+				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+					@adminMetricCard("MRR", fmt.Sprintf("$%.0f", data.MRR), mrrIcon(),
 						fmt.Sprintf("%.1f%% growth", data.MRRGrowth), data.MRRGrowth >= 0)
 					@adminMetricCard("Users", fmt.Sprintf("%d", data.TotalUsers), usersIcon(),
 						fmt.Sprintf("+%d this week", data.NewUsersThisWeek), true)
 					@adminMetricCard("Total Files", formatLargeNumber(data.TotalFiles), adminFilesIcon(),
-						formatBytesShort(data.TotalStorageBytes) + " stored", true)
+						formatBytesShort(data.TotalStorageBytes)+" stored", true)
 					@adminMetricCard("Jobs (24h)", formatLargeNumber(int64(data.JobsLast24h)), jobsIcon(),
 						fmt.Sprintf("%.1f%% success", data.JobSuccessRate), data.JobSuccessRate >= 95)
 				</div>
-
+				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+					@adminMetricCard("Churn Rate", fmt.Sprintf("%.1f%%", data.Churn.MonthlyChurnRate), churnIcon(),
+						fmt.Sprintf("%d churned this month", data.Churn.ChurnedThisMonth), data.Churn.MonthlyChurnRate < 5)
+					@adminMetricCard("Retention", fmt.Sprintf("%.1f%%", data.Churn.RetentionRate), retentionIcon(),
+						fmt.Sprintf("%d active users", data.Churn.CurrentActive), data.Churn.RetentionRate >= 90)
+					@adminMetricCard("ARPU", fmt.Sprintf("$%.2f", data.Revenue.ARPU), arpuIcon(),
+						fmt.Sprintf("%d paying users", data.Revenue.PayingUsers), true)
+					@adminMetricCard("Est. LTV", fmt.Sprintf("$%.0f", data.Revenue.EstimatedLTV), ltvIcon(),
+						fmt.Sprintf("NRR: %.0f%%", data.NRR.NRRPercent), data.NRR.NRRPercent >= 100)
+				</div>
 				<div class="mb-8">
 					@components.Card("") {
 						@components.CardHeader() {
@@ -50,8 +58,8 @@ templ AdminDashboard(user *auth.SessionUser, data *analytics.AdminDashboard) {
 						}
 						@components.CardBody() {
 							<div class="h-72 flex items-center justify-center">
-								<img 
-									src="/admin/chart/revenue" 
+								<img
+									src="/admin/chart/revenue"
 									alt="Revenue chart"
 									class="max-w-full max-h-full object-contain rounded"
 									hx-get="/admin/chart/revenue"
@@ -62,7 +70,6 @@ templ AdminDashboard(user *auth.SessionUser, data *analytics.AdminDashboard) {
 						}
 					}
 				</div>
-
 				<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
 					@components.Card("") {
 						@components.CardHeader() {
@@ -84,7 +91,6 @@ templ AdminDashboard(user *auth.SessionUser, data *analytics.AdminDashboard) {
 							</div>
 						}
 					}
-
 					@components.Card("") {
 						@components.CardHeader() {
 							<div class="flex items-center justify-between">
@@ -101,7 +107,7 @@ templ AdminDashboard(user *auth.SessionUser, data *analytics.AdminDashboard) {
 							</div>
 						}
 						@components.CardBody() {
-							<div 
+							<div
 								class="space-y-3"
 								hx-get="/admin/health"
 								hx-trigger="every 10s"
@@ -112,7 +118,6 @@ templ AdminDashboard(user *auth.SessionUser, data *analytics.AdminDashboard) {
 						}
 					}
 				</div>
-
 				<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
 					@components.Card("") {
 						@components.CardHeader() {
@@ -130,13 +135,12 @@ templ AdminDashboard(user *auth.SessionUser, data *analytics.AdminDashboard) {
 							</div>
 						}
 					}
-
 					@components.Card("") {
 						@components.CardHeader() {
 							@components.CardTitle("Recent Signups")
 						}
 						@components.CardBody() {
-							<div 
+							<div
 								class="space-y-3"
 								hx-get="/admin/signups"
 								hx-trigger="every 30s"
@@ -147,7 +151,6 @@ templ AdminDashboard(user *auth.SessionUser, data *analytics.AdminDashboard) {
 						}
 					}
 				</div>
-
 				@components.Card("") {
 					@components.CardHeader() {
 						<div class="flex items-center justify-between">
@@ -169,6 +172,33 @@ templ AdminDashboard(user *auth.SessionUser, data *analytics.AdminDashboard) {
 								}
 							}
 						</div>
+					}
+				}
+				if len(data.CohortData) > 0 {
+					@components.Card("mt-8") {
+						@components.CardHeader() {
+							@components.CardTitle("Cohort Retention (Last 6 Months)")
+						}
+						@components.CardBody() {
+							<div class="overflow-x-auto">
+								<table class="w-full text-sm">
+									<thead>
+										<tr class="border-b border-nord-2">
+											<th class="text-left py-2 px-3 text-xs font-medium text-nord-4 uppercase">Cohort</th>
+											<th class="text-center py-2 px-3 text-xs font-medium text-nord-4 uppercase">Size</th>
+											<th class="text-center py-2 px-3 text-xs font-medium text-nord-4 uppercase">Month</th>
+											<th class="text-center py-2 px-3 text-xs font-medium text-nord-4 uppercase">Retained</th>
+											<th class="text-right py-2 px-3 text-xs font-medium text-nord-4 uppercase">Retention %</th>
+										</tr>
+									</thead>
+									<tbody class="divide-y divide-nord-2">
+										for _, c := range data.CohortData {
+											@adminCohortRow(c)
+										}
+									</tbody>
+								</table>
+							</div>
+						}
 					}
 				}
 			</div>
@@ -219,7 +249,7 @@ templ adminPlanRow(p analytics.PlanStats, totalUsers int) {
 			<span class="text-nord-4">{ fmt.Sprintf("%d", p.Count) }</span>
 		</div>
 		<div class="w-full bg-nord-2 rounded-full h-2">
-			<div 
+			<div
 				class={ "h-2 rounded-full", adminPlanColor(p.Plan) }
 				style={ fmt.Sprintf("width: %.1f%%", p.Percentage) }
 			></div>
@@ -290,7 +320,7 @@ templ adminFailedJobRow(j analytics.FailedJob) {
 			</div>
 		</div>
 		if j.CanRetry {
-			<button 
+			<button
 				class="text-xs px-2 py-1 bg-nord-1 border border-nord-3 rounded hover:bg-nord-2 text-nord-5"
 				hx-post={ fmt.Sprintf("/admin/jobs/%s/retry", j.ID) }
 				hx-swap="outerHTML"
@@ -302,27 +332,73 @@ templ adminFailedJobRow(j analytics.FailedJob) {
 	</div>
 }
 
+templ adminCohortRow(c analytics.CohortData) {
+	<tr class="hover:bg-nord-1/30">
+		<td class="py-2 px-3 text-nord-5">
+			{ c.CohortMonth.Format("Jan 2006") }
+		</td>
+		<td class="py-2 px-3 text-center text-nord-4">
+			{ fmt.Sprintf("%d", c.CohortSize) }
+		</td>
+		<td class="py-2 px-3 text-center text-nord-4">
+			{ fmt.Sprintf("M%d", c.MonthsSince) }
+		</td>
+		<td class="py-2 px-3 text-center text-nord-4">
+			{ fmt.Sprintf("%d", c.Retained) }
+		</td>
+		<td class="py-2 px-3 text-right">
+			<span class={ cohortRetentionColor(c.RetentionPct) }>
+				{ fmt.Sprintf("%.1f%%", c.RetentionPct) }
+			</span>
+		</td>
+	</tr>
+}
+
 templ mrrIcon() {
 	<svg class="w-5 h-5 text-nord-14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
 	</svg>
 }
 
 templ usersIcon() {
 	<svg class="w-5 h-5 text-nord-9" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"/>
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
 	</svg>
 }
 
 templ adminFilesIcon() {
 	<svg class="w-5 h-5 text-nord-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"/>
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"></path>
 	</svg>
 }
 
 templ jobsIcon() {
 	<svg class="w-5 h-5 text-nord-13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+	</svg>
+}
+
+templ churnIcon() {
+	<svg class="w-5 h-5 text-nord-11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"></path>
+	</svg>
+}
+
+templ retentionIcon() {
+	<svg class="w-5 h-5 text-nord-14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+	</svg>
+}
+
+templ arpuIcon() {
+	<svg class="w-5 h-5 text-nord-9" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+	</svg>
+}
+
+templ ltvIcon() {
+	<svg class="w-5 h-5 text-nord-15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
 	</svg>
 }
 
@@ -393,7 +469,6 @@ templ AdminJobs(user *auth.SessionUser, data *analytics.JobsListPage) {
 						Back to Dashboard
 					</a>
 				</div>
-
 				<div class="mb-6 flex gap-2">
 					@jobStatusFilter("all", "All", data.Status)
 					@jobStatusFilter("pending", "Pending", data.Status)
@@ -401,7 +476,6 @@ templ AdminJobs(user *auth.SessionUser, data *analytics.JobsListPage) {
 					@jobStatusFilter("completed", "Completed", data.Status)
 					@jobStatusFilter("failed", "Failed", data.Status)
 				</div>
-
 				@components.Card("") {
 					<div class="overflow-x-auto">
 						<table class="w-full">
@@ -431,7 +505,6 @@ templ AdminJobs(user *auth.SessionUser, data *analytics.JobsListPage) {
 							</tbody>
 						</table>
 					</div>
-					
 					if data.TotalPages > 1 {
 						<div class="flex items-center justify-between border-t border-nord-2 px-4 py-3">
 							<div class="text-sm text-nord-4">
@@ -439,7 +512,7 @@ templ AdminJobs(user *auth.SessionUser, data *analytics.JobsListPage) {
 							</div>
 							<div class="flex gap-2">
 								if data.Page > 1 {
-									<a 
+									<a
 										href={ templ.SafeURL(fmt.Sprintf("/admin/jobs?status=%s&page=%d", data.Status, data.Page-1)) }
 										class="px-3 py-1 bg-nord-2 hover:bg-nord-3 text-nord-5 rounded text-sm"
 									>
@@ -447,7 +520,7 @@ templ AdminJobs(user *auth.SessionUser, data *analytics.JobsListPage) {
 									</a>
 								}
 								if data.Page < data.TotalPages {
-									<a 
+									<a
 										href={ templ.SafeURL(fmt.Sprintf("/admin/jobs?status=%s&page=%d", data.Status, data.Page+1)) }
 										class="px-3 py-1 bg-nord-2 hover:bg-nord-3 text-nord-5 rounded text-sm"
 									>
@@ -469,7 +542,7 @@ templ jobStatusFilter(value, label, current string) {
 			{ label }
 		</span>
 	} else {
-		<a 
+		<a
 			href={ templ.SafeURL(fmt.Sprintf("/admin/jobs?status=%s", value)) }
 			class="px-3 py-1 bg-nord-2 hover:bg-nord-3 text-nord-4 rounded-full text-sm"
 		>
@@ -504,7 +577,7 @@ templ adminJobRow(job analytics.JobListItem) {
 		</td>
 		<td class="py-3 px-4">
 			if job.Status == "failed" && job.Attempts < 3 {
-				<button 
+				<button
 					class="text-xs px-2 py-1 bg-nord-1 border border-nord-3 rounded hover:bg-nord-2 text-nord-5"
 					hx-post={ fmt.Sprintf("/admin/jobs/%s/retry", job.ID) }
 					hx-swap="outerHTML"
@@ -537,4 +610,14 @@ func truncateFilename(name string) string {
 		return name[:27] + "..."
 	}
 	return name
+}
+
+func cohortRetentionColor(pct float64) string {
+	if pct >= 80 {
+		return "text-nord-14 font-medium"
+	}
+	if pct >= 50 {
+		return "text-nord-13 font-medium"
+	}
+	return "text-nord-11 font-medium"
 }

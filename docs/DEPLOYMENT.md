@@ -301,11 +301,11 @@ kubectl create secret generic app-secrets \
 
 The following DNS records should point to the load balancer:
 
-| Record | Type | Value |
-|--------|------|-------|
-| `file.cheap` | A | 91.98.4.86 |
-| `api.file.cheap` | A | 91.98.4.86 |
-| `grafana.file.cheap` | A | 46.224.17.195 |
+| Record | Type | Value | Purpose |
+|--------|------|-------|---------|
+| `file.cheap` | A | 91.98.4.86 | Web UI |
+| `api.file.cheap` | A | 91.98.4.86 | REST API (`https://api.file.cheap/v1/...`) |
+| `grafana.file.cheap` | A | 46.224.17.195 | Monitoring dashboard |
 
 ## Troubleshooting
 

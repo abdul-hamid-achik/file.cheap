@@ -33,7 +33,7 @@ spec:
             - name: PORT
               value: "8080"
             - name: BASE_URL
-              value: "https://file.cheap"
+              value: "https://api.file.cheap"
             - name: MAX_UPLOAD_SIZE
               value: "104857600"
             - name: SECURE_COOKIES

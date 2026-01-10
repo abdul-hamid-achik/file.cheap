@@ -1,0 +1,170 @@
+package components
+
+import "fmt"
+
+type NotificationItem struct {
+	ID      string
+	Type    string
+	Title   string
+	Message string
+	Link    string
+	TimeAgo string
+	IsRead  bool
+}
+
+type NotificationDropdownData struct {
+	Notifications []NotificationItem
+	UnreadCount   int
+}
+
+templ NotificationDropdown(data NotificationDropdownData) {
+	<div
+		x-data="{ open: false }"
+		class="relative"
+		@click.away="open = false"
+	>
+		<button
+			@click="open = !open"
+			class="relative p-2 text-nord-4 hover:text-nord-5 transition-colors"
+			aria-label="Notifications"
+		>
+			<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+			</svg>
+			if data.UnreadCount > 0 {
+				<span class="absolute top-1 right-1 w-4 h-4 bg-nord-11 text-nord-6 text-xs rounded-full flex items-center justify-center font-medium">
+					{ formatCount(data.UnreadCount) }
+				</span>
+			}
+		</button>
+		<div
+			x-show="open"
+			x-transition:enter="transition ease-out duration-100"
+			x-transition:enter-start="transform opacity-0 scale-95"
+			x-transition:enter-end="transform opacity-100 scale-100"
+			x-transition:leave="transition ease-in duration-75"
+			x-transition:leave-start="transform opacity-100 scale-100"
+			x-transition:leave-end="transform opacity-0 scale-95"
+			class="absolute right-0 mt-2 w-80 bg-nord-1 border border-nord-2 rounded-xl shadow-lg z-50"
+		>
+			<div class="px-4 py-3 border-b border-nord-2 flex items-center justify-between">
+				<h3 class="text-sm font-semibold text-nord-5">Notifications</h3>
+				if data.UnreadCount > 0 {
+					<button
+						hx-post="/notifications/mark-all-read"
+						hx-swap="none"
+						class="text-xs text-nord-8 hover:text-nord-7"
+					>
+						Mark all read
+					</button>
+				}
+			</div>
+			<div class="max-h-96 overflow-y-auto">
+				if len(data.Notifications) == 0 {
+					<div class="px-4 py-8 text-center">
+						<svg class="w-12 h-12 mx-auto text-nord-3 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+						</svg>
+						<p class="text-sm text-nord-4">No notifications yet</p>
+					</div>
+				} else {
+					for _, n := range data.Notifications {
+						@notificationRow(n)
+					}
+				}
+			</div>
+			if len(data.Notifications) > 0 {
+				<div class="px-4 py-3 border-t border-nord-2">
+					<a href="/notifications" class="text-sm text-nord-8 hover:text-nord-7">
+						View all notifications
+					</a>
+				</div>
+			}
+		</div>
+	</div>
+}
+
+templ notificationRow(n NotificationItem) {
+	<a
+		href={ templ.SafeURL(getNotificationLink(n)) }
+		hx-post={ "/notifications/" + n.ID + "/read" }
+		hx-swap="none"
+		class={ "block px-4 py-3 border-b border-nord-2 last:border-0 hover:bg-nord-2/50 transition-colors",
+			templ.KV("bg-nord-9/5", !n.IsRead) }
+	>
+		<div class="flex gap-3">
+			<div class="flex-shrink-0 mt-1">
+				@notificationIcon(n.Type)
+			</div>
+			<div class="flex-1 min-w-0">
+				<p
+					class={ "text-sm font-medium truncate",
+					templ.KV("text-nord-5", !n.IsRead),
+					templ.KV("text-nord-4", n.IsRead) }
+				>
+					{ n.Title }
+				</p>
+				<p class="text-xs text-nord-4 mt-0.5 line-clamp-2">
+					{ n.Message }
+				</p>
+				<p class="text-xs text-nord-3 mt-1">
+					{ n.TimeAgo }
+				</p>
+			</div>
+			if !n.IsRead {
+				<div class="flex-shrink-0">
+					<span class="w-2 h-2 bg-nord-9 rounded-full block"></span>
+				</div>
+			}
+		</div>
+	</a>
+}
+
+templ notificationIcon(notifType string) {
+	switch notifType {
+		case "limit_warning":
+			<div class="w-8 h-8 rounded-full bg-nord-13/20 flex items-center justify-center">
+				<svg class="w-4 h-4 text-nord-13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+				</svg>
+			</div>
+		case "job_failed":
+			<div class="w-8 h-8 rounded-full bg-nord-11/20 flex items-center justify-center">
+				<svg class="w-4 h-4 text-nord-11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+				</svg>
+			</div>
+		case "job_completed":
+			<div class="w-8 h-8 rounded-full bg-nord-14/20 flex items-center justify-center">
+				<svg class="w-4 h-4 text-nord-14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+				</svg>
+			</div>
+		case "billing":
+			<div class="w-8 h-8 rounded-full bg-nord-9/20 flex items-center justify-center">
+				<svg class="w-4 h-4 text-nord-9" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
+				</svg>
+			</div>
+		default:
+			<div class="w-8 h-8 rounded-full bg-nord-8/20 flex items-center justify-center">
+				<svg class="w-4 h-4 text-nord-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+				</svg>
+			</div>
+	}
+}
+
+func formatCount(count int) string {
+	if count > 9 {
+		return "9+"
+	}
+	return fmt.Sprintf("%d", count)
+}
+
+func getNotificationLink(n NotificationItem) string {
+	if n.Link != "" {
+		return n.Link
+	}
+	return "/notifications"
+}

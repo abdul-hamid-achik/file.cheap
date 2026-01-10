@@ -3,28 +3,28 @@ package pages
 import (
 	"fmt"
 	"github.com/abdul-hamid-achik/file-processor/internal/auth"
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
 	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
 )
 
 type SubscriptionData struct {
-	Tier                    string
-	Status                  string
-	PeriodEnd               string
-	TrialEndsAt             string
-	FilesLimit              int
-	FilesUsed               int
-	MaxFileSize             int64
-	IsPro                   bool
-	IsTrialing              bool
-	TrialDaysLeft           int
-	UsagePercent            int
-	CanUpgrade              bool
-	HasStripeCustomer       bool
-	TransformationsUsed     int
-	TransformationsLimit    int
-	TransformationsPercent  int
-	TransformationsResetAt  string
+	Tier                   string
+	Status                 string
+	PeriodEnd              string
+	TrialEndsAt            string
+	FilesLimit             int
+	FilesUsed              int
+	MaxFileSize            int64
+	IsPro                  bool
+	IsTrialing             bool
+	TrialDaysLeft          int
+	UsagePercent           int
+	CanUpgrade             bool
+	HasStripeCustomer      bool
+	TransformationsUsed    int
+	TransformationsLimit   int
+	TransformationsPercent int
+	TransformationsResetAt string
 }
 
 type BillingPageData struct {
@@ -58,30 +58,25 @@ templ Billing(user *auth.SessionUser, data BillingPageData) {
 					<h1 class="text-2xl font-bold text-nord-5">Billing & Subscription</h1>
 					<p class="text-nord-4 mt-1">Manage your plan and payment settings</p>
 				</div>
-
 				if data.Error != "" {
 					<div class="mb-6">
 						@components.Alert(components.AlertError, data.Error, true)
 					</div>
 				}
-
 				if data.Success != "" {
 					<div class="mb-6">
 						@components.Alert(components.AlertSuccess, data.Success, true)
 					</div>
 				}
-
 				<div class="grid gap-6 lg:grid-cols-2">
 					@currentPlanCard(data)
 					@usageCard(data)
 				</div>
-
 				if data.Subscription.CanUpgrade {
 					<div class="mt-8">
 						@pricingSection(data)
 					</div>
 				}
-
 				if data.Subscription.IsPro && data.StripeConfigured {
 					<div class="mt-8">
 						@components.Card("") {
@@ -133,7 +128,7 @@ templ currentPlanCard(data BillingPageData) {
 					<div class="p-4 bg-nord-8/10 border border-nord-8/30 rounded-lg">
 						<div class="flex items-center gap-2 text-nord-8 mb-1">
 							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
 							</svg>
 							<span class="font-medium">Trial Active</span>
 						</div>
@@ -142,7 +137,6 @@ templ currentPlanCard(data BillingPageData) {
 						</p>
 					</div>
 				}
-
 				<div class="grid grid-cols-2 gap-4 text-sm">
 					<div>
 						<p class="text-nord-4">Status</p>
@@ -184,7 +178,7 @@ templ usageCard(data BillingPageData) {
 						</span>
 					</div>
 					<div class="w-full h-2 bg-nord-2 rounded-full overflow-hidden">
-						<div 
+						<div
 							class={ "h-full rounded-full transition-all", templ.KV("bg-nord-14", data.Subscription.UsagePercent < 80), templ.KV("bg-nord-13", data.Subscription.UsagePercent >= 80 && data.Subscription.UsagePercent < 95), templ.KV("bg-nord-11", data.Subscription.UsagePercent >= 95) }
 							style={ fmt.Sprintf("width: %d%%", minInt(data.Subscription.UsagePercent, 100)) }
 						></div>
@@ -193,7 +187,6 @@ templ usageCard(data BillingPageData) {
 						{ fmt.Sprintf("%d%% of your plan limit used", data.Subscription.UsagePercent) }
 					</p>
 				</div>
-
 				<div>
 					<div class="flex items-center justify-between text-sm mb-2">
 						<span class="text-nord-4">Transformations this month</span>
@@ -207,7 +200,7 @@ templ usageCard(data BillingPageData) {
 					</div>
 					if data.Subscription.TransformationsLimit != -1 {
 						<div class="w-full h-2 bg-nord-2 rounded-full overflow-hidden">
-							<div 
+							<div
 								class={ "h-full rounded-full transition-all", templ.KV("bg-nord-8", data.Subscription.TransformationsPercent < 80), templ.KV("bg-nord-13", data.Subscription.TransformationsPercent >= 80 && data.Subscription.TransformationsPercent < 95), templ.KV("bg-nord-11", data.Subscription.TransformationsPercent >= 95) }
 								style={ fmt.Sprintf("width: %d%%", minInt(data.Subscription.TransformationsPercent, 100)) }
 							></div>
@@ -219,7 +212,6 @@ templ usageCard(data BillingPageData) {
 						}
 					</p>
 				</div>
-
 				if data.Subscription.UsagePercent >= 80 && data.Subscription.CanUpgrade {
 					<div class="p-3 bg-nord-13/10 border border-nord-13/30 rounded-lg">
 						<p class="text-nord-13 text-sm">
@@ -227,7 +219,6 @@ templ usageCard(data BillingPageData) {
 						</p>
 					</div>
 				}
-
 				if data.Subscription.TransformationsPercent >= 80 && data.Subscription.CanUpgrade {
 					<div class="p-3 bg-nord-13/10 border border-nord-13/30 rounded-lg">
 						<p class="text-nord-13 text-sm">
@@ -255,37 +246,37 @@ templ pricingSection(data BillingPageData) {
 				<ul class="space-y-3 text-sm mb-6">
 					<li class="flex items-center gap-2 text-nord-4">
 						<svg class="w-4 h-4 text-nord-14" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
 						</svg>
 						100 files
 					</li>
 					<li class="flex items-center gap-2 text-nord-4">
 						<svg class="w-4 h-4 text-nord-14" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
 						</svg>
 						10 MB max file size
 					</li>
 					<li class="flex items-center gap-2 text-nord-4">
 						<svg class="w-4 h-4 text-nord-14" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
 						</svg>
 						100 transformations/month
 					</li>
 					<li class="flex items-center gap-2 text-nord-4">
 						<svg class="w-4 h-4 text-nord-14" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
 						</svg>
 						Thumbnails + small sizes only
 					</li>
 					<li class="flex items-center gap-2 text-nord-4">
 						<svg class="w-4 h-4 text-nord-14" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
 						</svg>
 						7-day file retention
 					</li>
 					<li class="flex items-center gap-2 text-nord-4">
 						<svg class="w-4 h-4 text-nord-14" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
 						</svg>
 						Read-only API access
 					</li>
@@ -297,7 +288,6 @@ templ pricingSection(data BillingPageData) {
 				</div>
 			}
 		}
-
 		@components.Card("border-2 border-nord-8") {
 			@components.CardHeader() {
 				<div class="flex items-center justify-between">
@@ -318,49 +308,49 @@ templ pricingSection(data BillingPageData) {
 				<ul class="space-y-3 text-sm mb-6">
 					<li class="flex items-center gap-2 text-nord-4">
 						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
 						</svg>
 						<strong class="text-nord-5">2,000 files</strong>
 					</li>
 					<li class="flex items-center gap-2 text-nord-4">
 						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
 						</svg>
 						<strong class="text-nord-5">100 MB</strong> max file size
 					</li>
 					<li class="flex items-center gap-2 text-nord-4">
 						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
 						</svg>
 						<strong class="text-nord-5">10,000 transformations/month</strong>
 					</li>
 					<li class="flex items-center gap-2 text-nord-4">
 						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
 						</svg>
 						All processing (resize, webp, watermark)
 					</li>
 					<li class="flex items-center gap-2 text-nord-4">
 						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
 						</svg>
 						1-year file retention
 					</li>
 					<li class="flex items-center gap-2 text-nord-4">
 						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
 						</svg>
 						Full API access
 					</li>
 					<li class="flex items-center gap-2 text-nord-4">
 						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
 						</svg>
 						Custom watermarks (no branding)
 					</li>
 					<li class="flex items-center gap-2 text-nord-4">
 						<svg class="w-4 h-4 text-nord-8" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
 						</svg>
 						Priority processing queue
 					</li>

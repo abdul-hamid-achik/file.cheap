@@ -1,16 +1,16 @@
 package pages
 
 import (
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
 	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
 )
 
 // LoginPageData contains data for the login page
 type LoginPageData struct {
-	Error          string
-	ReturnURL      string
-	GoogleEnabled  bool
-	GitHubEnabled  bool
+	Error         string
+	ReturnURL     string
+	GoogleEnabled bool
+	GitHubEnabled bool
 }
 
 // Login renders the login page
@@ -27,37 +27,35 @@ templ Login(data LoginPageData) {
 							<h1 class="text-2xl font-bold text-nord-5">Welcome back</h1>
 							<p class="text-nord-4 mt-2">Sign in to your account to continue</p>
 						</div>
-
 						if data.Error != "" {
 							<div class="mb-6">
 								@components.Alert(components.AlertError, data.Error, true)
 							</div>
 						}
-
 						<!-- OAuth Buttons -->
 						if data.GoogleEnabled || data.GitHubEnabled {
 							<div class="space-y-3 mb-6">
 								if data.GoogleEnabled {
-									<a 
+									<a
 										href="/auth/google"
 										class="w-full flex items-center justify-center gap-3 px-4 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-4 hover:bg-nord-3 transition-colors"
 									>
 										<svg class="w-5 h-5" viewBox="0 0 24 24">
-											<path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-											<path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-											<path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-											<path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+											<path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"></path>
+											<path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"></path>
+											<path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"></path>
+											<path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"></path>
 										</svg>
 										<span>Continue with Google</span>
 									</a>
 								}
 								if data.GitHubEnabled {
-									<a 
+									<a
 										href="/auth/github"
 										class="w-full flex items-center justify-center gap-3 px-4 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-4 hover:bg-nord-3 transition-colors"
 									>
 										<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-											<path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
+											<path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"></path>
 										</svg>
 										<span>Continue with GitHub</span>
 									</a>
@@ -72,11 +70,9 @@ templ Login(data LoginPageData) {
 								</div>
 							</div>
 						}
-
 						<!-- Email/Password Form -->
 						<form action="/login" method="POST" class="space-y-4">
 							<input type="hidden" name="return" value={ data.ReturnURL }/>
-							
 							@components.FormField("Email", components.InputProps{
 								Type:         "email",
 								Name:         "email",
@@ -85,7 +81,6 @@ templ Login(data LoginPageData) {
 								Required:     true,
 								AutoComplete: "email",
 							})
-							
 							@components.FormField("Password", components.InputProps{
 								Type:         "password",
 								Name:         "password",
@@ -94,14 +89,12 @@ templ Login(data LoginPageData) {
 								Required:     true,
 								AutoComplete: "current-password",
 							})
-
 							<div class="flex items-center justify-between">
 								@components.Checkbox("remember", "remember", "Remember me", false, false)
 								<a href="/forgot-password" class="text-sm text-nord-8 hover:text-nord-7">
 									Forgot password?
 								</a>
 							</div>
-
 							@components.Button(components.ButtonProps{
 								Variant:   components.ButtonPrimary,
 								Size:      components.ButtonMd,
@@ -111,7 +104,6 @@ templ Login(data LoginPageData) {
 								Sign in
 							}
 						</form>
-
 						<p class="mt-6 text-center text-sm text-nord-4">
 							Don't have an account?
 							<a href="/register" class="text-nord-8 hover:text-nord-7 font-medium">
@@ -146,37 +138,35 @@ templ Register(data RegisterPageData) {
 							<h1 class="text-2xl font-bold text-nord-5">Create your account</h1>
 							<p class="text-nord-4 mt-2">Start processing files for free</p>
 						</div>
-
 						if data.Error != "" {
 							<div class="mb-6">
 								@components.Alert(components.AlertError, data.Error, true)
 							</div>
 						}
-
 						<!-- OAuth Buttons -->
 						if data.GoogleEnabled || data.GitHubEnabled {
 							<div class="space-y-3 mb-6">
 								if data.GoogleEnabled {
-									<a 
+									<a
 										href="/auth/google"
 										class="w-full flex items-center justify-center gap-3 px-4 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-4 hover:bg-nord-3 transition-colors"
 									>
 										<svg class="w-5 h-5" viewBox="0 0 24 24">
-											<path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-											<path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-											<path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-											<path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+											<path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"></path>
+											<path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"></path>
+											<path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"></path>
+											<path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"></path>
 										</svg>
 										<span>Sign up with Google</span>
 									</a>
 								}
 								if data.GitHubEnabled {
-									<a 
+									<a
 										href="/auth/github"
 										class="w-full flex items-center justify-center gap-3 px-4 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-4 hover:bg-nord-3 transition-colors"
 									>
 										<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-											<path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
+											<path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"></path>
 										</svg>
 										<span>Sign up with GitHub</span>
 									</a>
@@ -191,7 +181,6 @@ templ Register(data RegisterPageData) {
 								</div>
 							</div>
 						}
-
 						<!-- Registration Form -->
 						<form action="/register" method="POST" class="space-y-4">
 							@components.FormField("Name", components.InputProps{
@@ -202,7 +191,6 @@ templ Register(data RegisterPageData) {
 								Required:     true,
 								AutoComplete: "name",
 							})
-							
 							@components.FormField("Email", components.InputProps{
 								Type:         "email",
 								Name:         "email",
@@ -211,7 +199,6 @@ templ Register(data RegisterPageData) {
 								Required:     true,
 								AutoComplete: "email",
 							})
-							
 							@components.FormField("Password", components.InputProps{
 								Type:         "password",
 								Name:         "password",
@@ -220,7 +207,6 @@ templ Register(data RegisterPageData) {
 								Required:     true,
 								AutoComplete: "new-password",
 							})
-
 							@components.FormField("Confirm Password", components.InputProps{
 								Type:         "password",
 								Name:         "password_confirm",
@@ -229,11 +215,9 @@ templ Register(data RegisterPageData) {
 								Required:     true,
 								AutoComplete: "new-password",
 							})
-
 							<div class="pt-2">
 								@components.Checkbox("terms", "terms", "I agree to the Terms of Service and Privacy Policy", false, false)
 							</div>
-
 							@components.Button(components.ButtonProps{
 								Variant:   components.ButtonPrimary,
 								Size:      components.ButtonMd,
@@ -243,7 +227,6 @@ templ Register(data RegisterPageData) {
 								Create account
 							}
 						</form>
-
 						<p class="mt-6 text-center text-sm text-nord-4">
 							Already have an account?
 							<a href="/login" class="text-nord-8 hover:text-nord-7 font-medium">
@@ -277,13 +260,11 @@ templ ForgotPassword(data ForgotPasswordPageData) {
 							<h1 class="text-2xl font-bold text-nord-5">Forgot password?</h1>
 							<p class="text-nord-4 mt-2">Enter your email and we'll send you a reset link</p>
 						</div>
-
 						if data.Error != "" {
 							<div class="mb-6">
 								@components.Alert(components.AlertError, data.Error, true)
 							</div>
 						}
-
 						if data.Success != "" {
 							<div class="mb-6">
 								@components.Alert(components.AlertSuccess, data.Success, false)
@@ -298,7 +279,6 @@ templ ForgotPassword(data ForgotPasswordPageData) {
 									Required:     true,
 									AutoComplete: "email",
 								})
-
 								@components.Button(components.ButtonProps{
 									Variant:   components.ButtonPrimary,
 									Size:      components.ButtonMd,
@@ -309,7 +289,6 @@ templ ForgotPassword(data ForgotPasswordPageData) {
 								}
 							</form>
 						}
-
 						<p class="mt-6 text-center text-sm text-nord-4">
 							<a href="/login" class="text-nord-8 hover:text-nord-7 font-medium">
 								Back to sign in
@@ -342,16 +321,13 @@ templ ResetPassword(data ResetPasswordPageData) {
 							<h1 class="text-2xl font-bold text-nord-5">Reset Your Password</h1>
 							<p class="text-nord-4 mt-2">Enter your new password below</p>
 						</div>
-
 						if data.Error != "" {
 							<div class="mb-6">
 								@components.Alert(components.AlertError, data.Error, true)
 							</div>
 						}
-
 						<form action="/reset-password" method="POST" class="space-y-4">
 							<input type="hidden" name="token" value={ data.Token }/>
-
 							@components.FormField("New Password", components.InputProps{
 								Type:         "password",
 								Name:         "password",
@@ -360,7 +336,6 @@ templ ResetPassword(data ResetPasswordPageData) {
 								Required:     true,
 								AutoComplete: "new-password",
 							})
-
 							@components.FormField("Confirm Password", components.InputProps{
 								Type:         "password",
 								Name:         "confirm_password",
@@ -369,7 +344,6 @@ templ ResetPassword(data ResetPasswordPageData) {
 								Required:     true,
 								AutoComplete: "new-password",
 							})
-
 							@components.Button(components.ButtonProps{
 								Variant:   components.ButtonPrimary,
 								Size:      components.ButtonMd,
@@ -379,7 +353,6 @@ templ ResetPassword(data ResetPasswordPageData) {
 								Reset Password
 							}
 						</form>
-
 						<p class="mt-6 text-center text-sm text-nord-4">
 							<a href="/login" class="text-nord-8 hover:text-nord-7 font-medium">
 								Back to sign in

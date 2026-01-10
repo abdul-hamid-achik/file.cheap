@@ -55,6 +55,174 @@ func (q *Queries) GetAdminMetrics(ctx context.Context) (GetAdminMetricsRow, erro
 	return i, err
 }
 
+const getAlertConfig = `-- name: GetAlertConfig :many
+SELECT id, metric_name, threshold_value, enabled, updated_at, created_at FROM admin_alert_config ORDER BY metric_name
+`
+
+func (q *Queries) GetAlertConfig(ctx context.Context) ([]AdminAlertConfig, error) {
+	rows, err := q.db.Query(ctx, getAlertConfig)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AdminAlertConfig
+	for rows.Next() {
+		var i AdminAlertConfig
+		if err := rows.Scan(
+			&i.ID,
+			&i.MetricName,
+			&i.ThresholdValue,
+			&i.Enabled,
+			&i.UpdatedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getChurnMetrics = `-- name: GetChurnMetrics :one
+WITH monthly_stats AS (
+    SELECT
+        COUNT(*) FILTER (
+            WHERE subscription_status = 'canceled'
+            AND updated_at >= DATE_TRUNC('month', NOW())
+        )::bigint as churned_this_month,
+        COUNT(*) FILTER (
+            WHERE subscription_status IN ('active', 'trialing')
+            AND created_at < DATE_TRUNC('month', NOW())
+        )::bigint as active_start_of_month,
+        COUNT(*) FILTER (
+            WHERE subscription_status IN ('active', 'trialing')
+        )::bigint as current_active,
+        COUNT(*) FILTER (
+            WHERE subscription_status = 'canceled'
+            AND updated_at >= NOW() - INTERVAL '30 days'
+        )::bigint as churned_30d
+    FROM users
+    WHERE deleted_at IS NULL
+)
+SELECT
+    churned_this_month,
+    churned_30d,
+    current_active,
+    CASE
+        WHEN active_start_of_month > 0
+        THEN (churned_this_month::float8 / active_start_of_month::float8 * 100)
+        ELSE 0
+    END as monthly_churn_rate,
+    CASE
+        WHEN active_start_of_month > 0
+        THEN ((active_start_of_month - churned_this_month)::float8 / active_start_of_month::float8 * 100)
+        ELSE 100
+    END as retention_rate
+FROM monthly_stats
+`
+
+type GetChurnMetricsRow struct {
+	ChurnedThisMonth int64 `json:"churned_this_month"`
+	Churned30d       int64 `json:"churned_30d"`
+	CurrentActive    int64 `json:"current_active"`
+	MonthlyChurnRate int32 `json:"monthly_churn_rate"`
+	RetentionRate    int32 `json:"retention_rate"`
+}
+
+func (q *Queries) GetChurnMetrics(ctx context.Context) (GetChurnMetricsRow, error) {
+	row := q.db.QueryRow(ctx, getChurnMetrics)
+	var i GetChurnMetricsRow
+	err := row.Scan(
+		&i.ChurnedThisMonth,
+		&i.Churned30d,
+		&i.CurrentActive,
+		&i.MonthlyChurnRate,
+		&i.RetentionRate,
+	)
+	return i, err
+}
+
+const getCohortRetention = `-- name: GetCohortRetention :many
+WITH cohorts AS (
+    SELECT
+        id,
+        DATE_TRUNC('month', created_at)::date as cohort_month,
+        created_at,
+        CASE
+            WHEN subscription_status IN ('active', 'trialing') THEN true
+            ELSE false
+        END as is_active
+    FROM users
+    WHERE deleted_at IS NULL
+        AND created_at >= NOW() - INTERVAL '6 months'
+),
+cohort_sizes AS (
+    SELECT
+        cohort_month,
+        COUNT(*) as cohort_size
+    FROM cohorts
+    GROUP BY cohort_month
+),
+retention AS (
+    SELECT
+        c.cohort_month,
+        EXTRACT(MONTH FROM AGE(DATE_TRUNC('month', NOW()), c.cohort_month))::int as months_since,
+        COUNT(*) FILTER (WHERE c.is_active) as retained
+    FROM cohorts c
+    GROUP BY c.cohort_month, months_since
+)
+SELECT
+    r.cohort_month,
+    cs.cohort_size::bigint,
+    r.months_since::int,
+    r.retained::bigint,
+    CASE
+        WHEN cs.cohort_size > 0
+        THEN (r.retained::float8 / cs.cohort_size::float8 * 100)
+        ELSE 0
+    END as retention_pct
+FROM retention r
+JOIN cohort_sizes cs ON cs.cohort_month = r.cohort_month
+ORDER BY r.cohort_month DESC, r.months_since
+`
+
+type GetCohortRetentionRow struct {
+	CohortMonth  pgtype.Date `json:"cohort_month"`
+	CsCohortSize int64       `json:"cs_cohort_size"`
+	RMonthsSince int32       `json:"r_months_since"`
+	RRetained    int64       `json:"r_retained"`
+	RetentionPct int32       `json:"retention_pct"`
+}
+
+func (q *Queries) GetCohortRetention(ctx context.Context) ([]GetCohortRetentionRow, error) {
+	rows, err := q.db.Query(ctx, getCohortRetention)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCohortRetentionRow
+	for rows.Next() {
+		var i GetCohortRetentionRow
+		if err := rows.Scan(
+			&i.CohortMonth,
+			&i.CsCohortSize,
+			&i.RMonthsSince,
+			&i.RRetained,
+			&i.RetentionPct,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getFailedJobs24h = `-- name: GetFailedJobs24h :many
 SELECT 
     pj.id,
@@ -185,6 +353,56 @@ func (q *Queries) GetMRRHistory(ctx context.Context, createdAt pgtype.Timestampt
 	return items, nil
 }
 
+const getNRR = `-- name: GetNRR :one
+WITH previous_month AS (
+    SELECT COALESCE(SUM(
+        CASE subscription_tier
+            WHEN 'pro' THEN 19.00
+            WHEN 'enterprise' THEN 99.00
+            ELSE 0
+        END
+    ), 0)::float8 as mrr
+    FROM users
+    WHERE deleted_at IS NULL
+        AND subscription_status IN ('active', 'trialing')
+        AND created_at < DATE_TRUNC('month', NOW())
+),
+current_month AS (
+    SELECT COALESCE(SUM(
+        CASE subscription_tier
+            WHEN 'pro' THEN 19.00
+            WHEN 'enterprise' THEN 99.00
+            ELSE 0
+        END
+    ), 0)::float8 as mrr
+    FROM users
+    WHERE deleted_at IS NULL
+        AND subscription_status IN ('active', 'trialing')
+)
+SELECT
+    p.mrr as previous_mrr,
+    c.mrr as current_mrr,
+    CASE
+        WHEN p.mrr > 0
+        THEN (c.mrr / p.mrr * 100)
+        ELSE 100
+    END as nrr_percent
+FROM previous_month p, current_month c
+`
+
+type GetNRRRow struct {
+	PreviousMrr float64 `json:"previous_mrr"`
+	CurrentMrr  float64 `json:"current_mrr"`
+	NrrPercent  int32   `json:"nrr_percent"`
+}
+
+func (q *Queries) GetNRR(ctx context.Context) (GetNRRRow, error) {
+	row := q.db.QueryRow(ctx, getNRR)
+	var i GetNRRRow
+	err := row.Scan(&i.PreviousMrr, &i.CurrentMrr, &i.NrrPercent)
+	return i, err
+}
+
 const getRecentSignups = `-- name: GetRecentSignups :many
 SELECT 
     email,
@@ -220,6 +438,74 @@ func (q *Queries) GetRecentSignups(ctx context.Context) ([]GetRecentSignupsRow, 
 		return nil, err
 	}
 	return items, nil
+}
+
+const getRevenueMetrics = `-- name: GetRevenueMetrics :one
+WITH revenue_stats AS (
+    SELECT
+        COUNT(*) FILTER (WHERE subscription_status IN ('active', 'trialing'))::bigint as paying_users,
+        COALESCE(SUM(
+            CASE subscription_tier
+                WHEN 'pro' THEN 19.00
+                WHEN 'enterprise' THEN 99.00
+                ELSE 0
+            END
+        ) FILTER (WHERE subscription_status IN ('active', 'trialing')), 0)::float8 as mrr
+    FROM users
+    WHERE deleted_at IS NULL
+),
+churn_stats AS (
+    SELECT
+        COUNT(*) FILTER (
+            WHERE subscription_status = 'canceled'
+            AND updated_at >= DATE_TRUNC('month', NOW())
+        )::bigint as churned,
+        COUNT(*) FILTER (
+            WHERE subscription_status IN ('active', 'trialing')
+            AND created_at < DATE_TRUNC('month', NOW())
+        )::bigint as start_count
+    FROM users
+    WHERE deleted_at IS NULL
+)
+SELECT
+    r.mrr,
+    CASE
+        WHEN r.paying_users > 0
+        THEN r.mrr / r.paying_users::float8
+        ELSE 0
+    END as arpu,
+    CASE
+        WHEN c.start_count > 0 AND c.churned > 0
+        THEN (r.mrr / r.paying_users::float8) / (c.churned::float8 / c.start_count::float8)
+        ELSE r.mrr * 24
+    END as estimated_ltv,
+    r.paying_users,
+    CASE r.paying_users
+        WHEN 0 THEN 0
+        ELSE (r.mrr * 12)::float8
+    END as arr
+FROM revenue_stats r, churn_stats c
+`
+
+type GetRevenueMetricsRow struct {
+	Mrr          float64     `json:"mrr"`
+	Arpu         int32       `json:"arpu"`
+	EstimatedLtv interface{} `json:"estimated_ltv"`
+	PayingUsers  int64       `json:"paying_users"`
+	Arr          float64     `json:"arr"`
+}
+
+func (q *Queries) GetRevenueMetrics(ctx context.Context) (GetRevenueMetricsRow, error) {
+	row := q.db.QueryRow(ctx, getRevenueMetrics)
+	var i GetRevenueMetricsRow
+	err := row.Scan(
+		&i.Mrr,
+		&i.Arpu,
+		&i.EstimatedLtv,
+		&i.PayingUsers,
+		&i.Arr,
+	)
+	return i, err
 }
 
 const getTopUsersByUsage = `-- name: GetTopUsersByUsage :many
@@ -422,5 +708,22 @@ WHERE id = $1 AND status = 'failed'
 
 func (q *Queries) RetryFailedJob(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, retryFailedJob, id)
+	return err
+}
+
+const updateAlertThreshold = `-- name: UpdateAlertThreshold :exec
+UPDATE admin_alert_config
+SET threshold_value = $2, enabled = $3, updated_at = NOW()
+WHERE metric_name = $1
+`
+
+type UpdateAlertThresholdParams struct {
+	MetricName     string  `json:"metric_name"`
+	ThresholdValue float64 `json:"threshold_value"`
+	Enabled        *bool   `json:"enabled"`
+}
+
+func (q *Queries) UpdateAlertThreshold(ctx context.Context, arg UpdateAlertThresholdParams) error {
+	_, err := q.db.Exec(ctx, updateAlertThreshold, arg.MetricName, arg.ThresholdValue, arg.Enabled)
 	return err
 }

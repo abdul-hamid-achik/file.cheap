@@ -14,6 +14,7 @@ import (
 	"github.com/abdul-hamid-achik/file-processor/internal/db"
 	"github.com/abdul-hamid-achik/file-processor/internal/email"
 	"github.com/abdul-hamid-achik/file-processor/internal/logger"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
 	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/pages"
 	"github.com/abdul-hamid-achik/file-processor/internal/worker"
 	"github.com/google/uuid"
@@ -249,6 +250,15 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	limits := billing.GetTierLimits(user.SubscriptionTier)
+	storageLimitMB := int64(1024)
+	if user.SubscriptionTier == db.SubscriptionTierPro || user.SubscriptionTier == db.SubscriptionTierEnterprise {
+		storageLimitMB = 5 * 1024
+	}
+	if user.SubscriptionTier == db.SubscriptionTierEnterprise {
+		storageLimitMB = 50 * 1024
+	}
+
 	data := pages.DashboardPageData{
 		Stats: pages.DashboardStats{
 			TotalFiles:     0,
@@ -258,7 +268,17 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 			StorageTrend:   "",
 			StorageTrendUp: false,
 		},
-		RecentFiles: []pages.RecentFile{},
+		RecentFiles:       []pages.RecentFile{},
+		SubscriptionTier:  string(user.SubscriptionTier),
+		ShowUpgradeBanner: user.SubscriptionTier == db.SubscriptionTierFree,
+		Usage: components.UsageData{
+			FilesUsed:       0,
+			FilesLimit:      limits.FilesLimit,
+			TransformsUsed:  0,
+			TransformsLimit: limits.TransformationsLimit,
+			StorageUsedMB:   0,
+			StorageLimitMB:  storageLimitMB,
+		},
 	}
 
 	if h.cfg.Queries != nil {
@@ -272,6 +292,7 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 			log.Error("failed to count files", "error", err)
 		} else {
 			data.Stats.TotalFiles = total
+			data.Usage.FilesUsed = int(total)
 		}
 
 		files, err := h.cfg.Queries.ListFilesByUser(r.Context(), db.ListFilesByUserParams{
@@ -303,6 +324,19 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 
 			data.Stats.StorageUsed = formatBytes(totalStorage)
 			data.Stats.ProcessedFiles = processedCount
+			data.Usage.StorageUsedMB = totalStorage / (1024 * 1024)
+		}
+
+		usage, err := h.cfg.Queries.GetUserTransformationUsage(r.Context(), pgUserID)
+		if err != nil {
+			log.Debug("failed to get transformation usage", "error", err)
+		} else {
+			data.Usage.TransformsUsed = int(usage.TransformationsCount)
+			data.Usage.TransformsLimit = int(usage.TransformationsLimit)
+		}
+
+		if components.IsApproachingLimit(data.Usage) {
+			data.ShowUpgradeBanner = true
 		}
 	}
 

@@ -1,0 +1,113 @@
+package components
+
+import "fmt"
+
+type UsageData struct {
+	FilesUsed       int
+	FilesLimit      int
+	TransformsUsed  int
+	TransformsLimit int
+	StorageUsedMB   int64
+	StorageLimitMB  int64
+}
+
+templ UsageBar(data UsageData) {
+	<div class="bg-nord-1 border border-nord-2 rounded-lg px-4 py-3 mb-6">
+		<div class="flex items-center justify-between mb-2">
+			<span class="text-sm font-medium text-nord-4">Usage this month</span>
+			<a href="/dashboard/analytics" class="text-xs text-nord-8 hover:text-nord-7">
+				View details
+			</a>
+		</div>
+		<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+			@usageItem("Files", data.FilesUsed, data.FilesLimit, false)
+			@usageItem("Transforms", data.TransformsUsed, data.TransformsLimit, false)
+			@storageUsageItem(data.StorageUsedMB, data.StorageLimitMB)
+		</div>
+	</div>
+}
+
+templ usageItem(label string, used int, limit int, unlimited bool) {
+	{{ pct := calcUsagePercent(used, limit) }}
+	<div>
+		<div class="flex items-center justify-between text-xs mb-1">
+			<span class="text-nord-4">{ label }</span>
+			<span class="text-nord-5">
+				if unlimited {
+					{ fmt.Sprintf("%d", used) } / Unlimited
+				} else {
+					{ fmt.Sprintf("%d / %d", used, limit) }
+				}
+			</span>
+		</div>
+		<div class="w-full bg-nord-2 rounded-full h-1.5">
+			<div
+				class={ "h-1.5 rounded-full transition-all", usageBarColor(pct) }
+				style={ fmt.Sprintf("width: %.1f%%", minPct(pct, 100)) }
+			></div>
+		</div>
+	</div>
+}
+
+templ storageUsageItem(usedMB int64, limitMB int64) {
+	{{ pct := calcStoragePercent(usedMB, limitMB) }}
+	<div>
+		<div class="flex items-center justify-between text-xs mb-1">
+			<span class="text-nord-4">Storage</span>
+			<span class="text-nord-5">
+				{ formatStorageMB(usedMB) } / { formatStorageMB(limitMB) }
+			</span>
+		</div>
+		<div class="w-full bg-nord-2 rounded-full h-1.5">
+			<div
+				class={ "h-1.5 rounded-full transition-all", usageBarColor(pct) }
+				style={ fmt.Sprintf("width: %.1f%%", minPct(pct, 100)) }
+			></div>
+		</div>
+	</div>
+}
+
+func calcUsagePercent(used, limit int) float64 {
+	if limit <= 0 {
+		return 0
+	}
+	return float64(used) / float64(limit) * 100
+}
+
+func calcStoragePercent(used, limit int64) float64 {
+	if limit <= 0 {
+		return 0
+	}
+	return float64(used) / float64(limit) * 100
+}
+
+func usageBarColor(pct float64) string {
+	if pct >= 90 {
+		return "bg-nord-11"
+	}
+	if pct >= 75 {
+		return "bg-nord-13"
+	}
+	return "bg-nord-14"
+}
+
+func minPct(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func formatStorageMB(mb int64) string {
+	if mb >= 1024 {
+		return fmt.Sprintf("%.1f GB", float64(mb)/1024)
+	}
+	return fmt.Sprintf("%d MB", mb)
+}
+
+func IsApproachingLimit(data UsageData) bool {
+	filesPct := calcUsagePercent(data.FilesUsed, data.FilesLimit)
+	transformsPct := calcUsagePercent(data.TransformsUsed, data.TransformsLimit)
+	storagePct := calcStoragePercent(data.StorageUsedMB, data.StorageLimitMB)
+	return filesPct >= 75 || transformsPct >= 75 || storagePct >= 75
+}

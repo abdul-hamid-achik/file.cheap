@@ -2,8 +2,8 @@ package pages
 
 import (
 	"github.com/abdul-hamid-achik/file-processor/internal/auth"
-	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
 	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/components"
+	"github.com/abdul-hamid-achik/file-processor/internal/web/templates/layouts"
 )
 
 // Privacy renders the privacy policy page
@@ -19,7 +19,6 @@ templ Privacy(user *auth.SessionUser) {
 						<article class="prose prose-invert max-w-none">
 							<h1 class="text-3xl font-bold text-nord-5 mb-2">Privacy Policy</h1>
 							<p class="text-nord-4 mb-8">Last updated: January 2026</p>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">1. Introduction</h2>
 								<p class="text-nord-4 mb-4">
@@ -29,7 +28,6 @@ templ Privacy(user *auth.SessionUser) {
 									By using our service, you agree to the collection and use of information in accordance with this policy.
 								</p>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">2. Information We Collect</h2>
 								<h3 class="text-lg font-medium text-nord-5 mb-2">Personal Information</h3>
@@ -39,14 +37,12 @@ templ Privacy(user *auth.SessionUser) {
 									<li>Payment information when you subscribe to paid plans</li>
 									<li>Communications you send to us</li>
 								</ul>
-
 								<h3 class="text-lg font-medium text-nord-5 mb-2">Files and Content</h3>
 								<ul class="list-disc list-inside text-nord-4 mb-4 space-y-1">
 									<li>Files you upload for processing</li>
 									<li>Metadata extracted from your files (EXIF data, document properties)</li>
 									<li>Processed versions of your files (thumbnails, resized images)</li>
 								</ul>
-
 								<h3 class="text-lg font-medium text-nord-5 mb-2">Automatically Collected Information</h3>
 								<ul class="list-disc list-inside text-nord-4 space-y-1">
 									<li>IP address and browser type</li>
@@ -55,7 +51,6 @@ templ Privacy(user *auth.SessionUser) {
 									<li>Cookies and similar tracking technologies</li>
 								</ul>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">3. How We Use Your Information</h2>
 								<ul class="list-disc list-inside text-nord-4 space-y-1">
@@ -67,7 +62,6 @@ templ Privacy(user *auth.SessionUser) {
 									<li>To comply with legal obligations</li>
 								</ul>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">4. Data Retention</h2>
 								<p class="text-nord-4 mb-4">
@@ -77,17 +71,14 @@ templ Privacy(user *auth.SessionUser) {
 									You can delete your files at any time through the dashboard. When you delete your account, we will delete your personal information within 30 days, except as required by law.
 								</p>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">5. Data Security</h2>
 								<p class="text-nord-4">
 									We implement industry-standard security measures to protect your data, including encryption in transit (TLS 1.3), encryption at rest (AES-256), secure cloud storage, regular security audits, and access controls. However, no method of transmission over the Internet is 100% secure.
 								</p>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">6. Your Rights</h2>
-								
 								<h3 class="text-lg font-medium text-nord-5 mb-2">All Users</h3>
 								<ul class="list-disc list-inside text-nord-4 mb-4 space-y-1">
 									<li>Access your personal data</li>
@@ -96,7 +87,6 @@ templ Privacy(user *auth.SessionUser) {
 									<li>Export your data</li>
 									<li>Opt out of marketing communications</li>
 								</ul>
-
 								<h3 class="text-lg font-medium text-nord-8 mb-2">California Residents (CCPA)</h3>
 								<p class="text-nord-4 mb-4">
 									If you are a California resident, you have additional rights under the California Consumer Privacy Act (CCPA):
@@ -110,7 +100,6 @@ templ Privacy(user *auth.SessionUser) {
 								<p class="text-nord-4 mb-4">
 									To exercise your CCPA rights, email us at privacy@file.cheap or use the "Privacy Request" option in your account settings.
 								</p>
-
 								<h3 class="text-lg font-medium text-nord-8 mb-2">Canadian Residents (PIPEDA)</h3>
 								<p class="text-nord-4 mb-4">
 									If you are a Canadian resident, you have rights under the Personal Information Protection and Electronic Documents Act (PIPEDA):
@@ -124,7 +113,6 @@ templ Privacy(user *auth.SessionUser) {
 								<p class="text-nord-4 mb-4">
 									We collect, use, and disclose personal information only for purposes that a reasonable person would consider appropriate under the circumstances. You may contact our Privacy Officer at privacy@file.cheap.
 								</p>
-
 								<h3 class="text-lg font-medium text-nord-8 mb-2">Mexican Residents (LFPDPPP)</h3>
 								<p class="text-nord-4 mb-4">
 									If you are a Mexican resident, you have rights under the Federal Law on Protection of Personal Data Held by Private Parties (Ley Federal de Proteccion de Datos Personales en Posesion de los Particulares - LFPDPPP):
@@ -142,7 +130,6 @@ templ Privacy(user *auth.SessionUser) {
 									We will respond to your request within 20 business days. You may also file a complaint with INAI (Instituto Nacional de Transparencia, Acceso a la Informacion y Proteccion de Datos Personales).
 								</p>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">7. Third-Party Services</h2>
 								<p class="text-nord-4 mb-4">We may use third-party services for:</p>
@@ -153,28 +140,24 @@ templ Privacy(user *auth.SessionUser) {
 									<li>Analytics (privacy-focused)</li>
 								</ul>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">8. International Data Transfers</h2>
 								<p class="text-nord-4">
 									Your data may be processed in countries outside your jurisdiction. We ensure appropriate safeguards are in place for international transfers, including standard contractual clauses where applicable.
 								</p>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">9. Children's Privacy</h2>
 								<p class="text-nord-4">
 									Our service is not intended for children under 13 years of age. We do not knowingly collect personal information from children under 13.
 								</p>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">10. Changes to This Policy</h2>
 								<p class="text-nord-4">
 									We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page and updating the "Last updated" date.
 								</p>
 							</section>
-
 							<section>
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">11. Contact Us</h2>
 								<p class="text-nord-4 mb-4">If you have questions about this Privacy Policy, please contact us:</p>
@@ -204,21 +187,18 @@ templ Terms(user *auth.SessionUser) {
 						<article class="prose prose-invert max-w-none">
 							<h1 class="text-3xl font-bold text-nord-5 mb-2">Terms of Service</h1>
 							<p class="text-nord-4 mb-8">Last updated: January 2026</p>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">1. Acceptance of Terms</h2>
 								<p class="text-nord-4">
 									By accessing or using file.cheap ("Service"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, do not use the Service.
 								</p>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">2. Description of Service</h2>
 								<p class="text-nord-4">
 									file.cheap provides cloud-based file processing services including but not limited to: image thumbnail generation, image resizing and optimization, format conversion (WebP, etc.), watermarking, PDF processing, and metadata extraction.
 								</p>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">3. Account Registration</h2>
 								<p class="text-nord-4 mb-4">To use certain features, you must create an account. You agree to:</p>
@@ -229,7 +209,6 @@ templ Terms(user *auth.SessionUser) {
 									<li>Accept responsibility for all activities under your account</li>
 								</ul>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">4. Acceptable Use</h2>
 								<p class="text-nord-4 mb-4">You agree not to:</p>
@@ -244,7 +223,6 @@ templ Terms(user *auth.SessionUser) {
 									<li>Upload content depicting child exploitation (will be reported to authorities)</li>
 								</ul>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">5. Content Ownership</h2>
 								<p class="text-nord-4 mb-4">
@@ -254,14 +232,12 @@ templ Terms(user *auth.SessionUser) {
 									<strong class="text-nord-5">Our Content:</strong> The Service, including its design, features, and documentation, is protected by intellectual property laws. You may not copy, modify, or distribute our content without permission.
 								</p>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">6. Service Availability</h2>
 								<p class="text-nord-4">
 									We strive to maintain high availability but do not guarantee uninterrupted access. We may modify, suspend, or discontinue any part of the Service with reasonable notice. Scheduled maintenance will be announced in advance when possible.
 								</p>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">7. Pricing and Payment</h2>
 								<p class="text-nord-4 mb-4">
@@ -271,7 +247,6 @@ templ Terms(user *auth.SessionUser) {
 									We reserve the right to change pricing with 30 days notice. Continued use after price changes constitutes acceptance.
 								</p>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">8. Limitation of Liability</h2>
 								<p class="text-nord-4 mb-4">
@@ -283,14 +258,12 @@ templ Terms(user *auth.SessionUser) {
 									<li>Damages exceeding the amount paid in the 12 months prior</li>
 								</ul>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">9. Indemnification</h2>
 								<p class="text-nord-4">
 									You agree to indemnify and hold harmless file.cheap from any claims, damages, or expenses arising from your use of the Service, your content, or your violation of these Terms.
 								</p>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">10. Termination</h2>
 								<p class="text-nord-4 mb-4">
@@ -300,28 +273,24 @@ templ Terms(user *auth.SessionUser) {
 									Upon termination, your right to use the Service ceases immediately. We may retain your data as required by law or for legitimate business purposes.
 								</p>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">11. Governing Law</h2>
 								<p class="text-nord-4">
 									These Terms shall be governed by and construed in accordance with the laws of the jurisdiction in which file.cheap operates, without regard to conflict of law principles.
 								</p>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">12. Dispute Resolution</h2>
 								<p class="text-nord-4">
 									Any disputes arising from these Terms or the Service shall first be attempted to be resolved through good-faith negotiation. If unsuccessful, disputes shall be resolved through binding arbitration in accordance with applicable rules.
 								</p>
 							</section>
-
 							<section class="mb-8">
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">13. Changes to Terms</h2>
 								<p class="text-nord-4">
 									We may update these Terms from time to time. We will notify you of material changes via email or through the Service. Continued use after changes constitutes acceptance.
 								</p>
 							</section>
-
 							<section>
 								<h2 class="text-xl font-semibold text-nord-5 mb-4">14. Contact</h2>
 								<p class="text-nord-4">
@@ -366,21 +335,20 @@ templ Docs(user *auth.SessionUser, activeSection string) {
 										@docsNavItem("api-reference", "API Reference", activeSection)
 										@docsNavItem("authentication", "Authentication", activeSection)
 										@docsNavItem("webhooks", "Webhooks", activeSection)
-									@docsNavItem("rate-limits", "Rate Limits", activeSection)
-									@docsNavItem("errors", "Error Handling", activeSection)
-									@docsNavItem("cli", "CLI Reference", activeSection)
-									@docsNavItem("faq", "FAQ", activeSection)
+										@docsNavItem("rate-limits", "Rate Limits", activeSection)
+										@docsNavItem("errors", "Error Handling", activeSection)
+										@docsNavItem("cli", "CLI Reference", activeSection)
+										@docsNavItem("faq", "FAQ", activeSection)
 									</ul>
 								}
 							}
 						</div>
 					</nav>
-
 					<!-- Mobile Navigation -->
 					<div class="lg:hidden mb-6">
 						@components.Card("") {
 							@components.CardBody() {
-								<select 
+								<select
 									id="docs-nav-mobile"
 									class="w-full px-4 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 focus:outline-none focus:ring-2 focus:ring-nord-8"
 									onchange="window.location.href='/docs?section=' + this.value"
@@ -400,36 +368,35 @@ templ Docs(user *auth.SessionUser, activeSection string) {
 							}
 						}
 					</div>
-
 					<!-- Content Area -->
 					<div class="lg:col-span-3">
 						@components.Card("") {
 							@components.CardBody() {
 								switch activeSection {
-								case "getting-started":
-									@docsGettingStarted()
-								case "uploading-files":
-									@docsUploadingFiles()
-								case "image-processing":
-									@docsImageProcessing()
-								case "pdf-processing":
-									@docsPdfProcessing()
-								case "api-reference":
-									@docsApiReference()
-								case "authentication":
-									@docsAuthentication()
-								case "webhooks":
-									@docsWebhooks()
-								case "rate-limits":
-									@docsRateLimits()
-								case "errors":
-									@docsErrors()
-								case "cli":
-									@docsCli()
-								case "faq":
-									@docsFaq()
-								default:
-									@docsGettingStarted()
+									case "getting-started":
+										@docsGettingStarted()
+									case "uploading-files":
+										@docsUploadingFiles()
+									case "image-processing":
+										@docsImageProcessing()
+									case "pdf-processing":
+										@docsPdfProcessing()
+									case "api-reference":
+										@docsApiReference()
+									case "authentication":
+										@docsAuthentication()
+									case "webhooks":
+										@docsWebhooks()
+									case "rate-limits":
+										@docsRateLimits()
+									case "errors":
+										@docsErrors()
+									case "cli":
+										@docsCli()
+									case "faq":
+										@docsFaq()
+									default:
+										@docsGettingStarted()
 								}
 							}
 						}
@@ -442,7 +409,7 @@ templ Docs(user *auth.SessionUser, activeSection string) {
 
 templ docsNavItem(section, title, activeSection string) {
 	<li>
-		<a 
+		<a
 			href={ templ.SafeURL("/docs?section=" + section) }
 			class={ "block px-3 py-2 rounded-lg text-sm transition-colors " + 
 				func() string {
@@ -460,11 +427,9 @@ templ docsNavItem(section, title, activeSection string) {
 templ docsGettingStarted() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">Getting Started</h1>
-		
 		<p class="text-nord-4 mb-6">
 			Welcome to file.cheap! This guide will help you get up and running quickly.
 		</p>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Quick Start</h2>
 		<ol class="list-decimal list-inside text-nord-4 mb-6 space-y-2">
 			<li><strong class="text-nord-5">Create an account</strong> - Sign up for free at <a href="/register" class="text-nord-8 hover:text-nord-7">/register</a></li>
@@ -472,7 +437,6 @@ templ docsGettingStarted() {
 			<li><strong class="text-nord-5">Choose processing options</strong> - Select thumbnails, resize, or format conversion</li>
 			<li><strong class="text-nord-5">Download results</strong> - Get your processed files from the dashboard</li>
 		</ol>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Supported File Types</h2>
 		<div class="grid md:grid-cols-2 gap-4 mb-6">
 			<div class="bg-nord-2 rounded-lg p-4">
@@ -484,7 +448,6 @@ templ docsGettingStarted() {
 				<p class="text-nord-4 text-sm">PDF</p>
 			</div>
 		</div>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">File Size Limits</h2>
 		<table class="w-full text-nord-4 mb-6">
 			<thead>
@@ -512,7 +475,6 @@ templ docsGettingStarted() {
 				</tr>
 			</tbody>
 		</table>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Next Steps</h2>
 		<ul class="list-disc list-inside text-nord-4 space-y-1">
 			<li>Learn about <a href="/docs?section=image-processing" class="text-nord-8 hover:text-nord-7">image processing options</a></li>
@@ -525,27 +487,29 @@ templ docsGettingStarted() {
 templ docsUploadingFiles() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">Uploading Files</h1>
-		
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Web Interface</h2>
 		<p class="text-nord-4 mb-4">
 			The easiest way to upload files is through our web interface. Simply drag and drop files onto the upload area, or click to browse your files.
 		</p>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">API Upload</h2>
 		<p class="text-nord-4 mb-4">For programmatic uploads, use the REST API:</p>
-		
 		<h3 class="text-lg font-medium text-nord-5 mb-2">cURL</h3>
 		<div class="bg-nord-2 rounded-lg p-4 mb-4 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code>curl -X POST https://api.file.cheap/v1/files \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
-  -F "file=@/path/to/image.jpg" \
-  -F "generate_thumbnail=true" \
-  -F "generate_resize=true"</code></pre>
+			<pre class="text-nord-4 text-sm">
+				<code>
+					curl -X POST https://api.file.cheap/v1/files \
+					-H "Authorization: Bearer YOUR_API_TOKEN" \
+					-F "file=@/path/to/image.jpg" \
+					-F "generate_thumbnail=true" \
+					-F "generate_resize=true"
+				</code>
+			</pre>
 		</div>
-
 		<h3 class="text-lg font-medium text-nord-5 mb-2">JavaScript (fetch)</h3>
 		<div class="bg-nord-2 rounded-lg p-4 mb-4 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`const formData = new FormData();
+			<pre class="text-nord-4 text-sm">
+				<code>
+					@templ.Raw(`const formData = new FormData();
 formData.append('file', fileInput.files[0]);
 formData.append('generate_thumbnail', 'true');
 formData.append('generate_resize', 'true');
@@ -559,12 +523,15 @@ const response = await fetch('https://api.file.cheap/v1/files', {
 });
 
 const result = await response.json();
-console.log('File ID:', result.id);`)</code></pre>
+console.log('File ID:', result.id);`)
+				</code>
+			</pre>
 		</div>
-
 		<h3 class="text-lg font-medium text-nord-5 mb-2">Python (requests)</h3>
 		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`import requests
+			<pre class="text-nord-4 text-sm">
+				<code>
+					@templ.Raw(`import requests
 
 url = 'https://api.file.cheap/v1/files'
 headers = {'Authorization': 'Bearer YOUR_API_TOKEN'}
@@ -578,9 +545,10 @@ with open('/path/to/image.jpg', 'rb') as f:
     response = requests.post(url, headers=headers, files=files, data=data)
 
 result = response.json()
-print(f"File ID: {result['id']}")`)</code></pre>
+print(f"File ID: {result['id']}")`)
+				</code>
+			</pre>
 		</div>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Processing Options</h2>
 		<table class="w-full text-nord-4 mb-6">
 			<thead>
@@ -614,12 +582,10 @@ print(f"File ID: {result['id']}")`)</code></pre>
 templ docsImageProcessing() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">Image Processing</h1>
-		
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Thumbnails</h2>
 		<p class="text-nord-4 mb-4">
 			Thumbnails are generated at 300x300 pixels by default, maintaining aspect ratio with smart cropping focused on the center of the image.
 		</p>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Resizing</h2>
 		<p class="text-nord-4 mb-4">The resize option creates three variants:</p>
 		<ul class="list-disc list-inside text-nord-4 mb-6 space-y-1">
@@ -627,12 +593,10 @@ templ docsImageProcessing() {
 			<li><strong class="text-nord-5">Medium:</strong> 640px width</li>
 			<li><strong class="text-nord-5">Large:</strong> 1280px width</li>
 		</ul>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">WebP Conversion</h2>
 		<p class="text-nord-4 mb-4">
 			WebP format typically reduces file size by 25-35% compared to JPEG while maintaining visual quality. Great for web optimization.
 		</p>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Watermarking</h2>
 		<p class="text-nord-4 mb-4">
 			Add text or image watermarks to protect your content. Configure position, opacity, and size through the API.
@@ -643,12 +607,10 @@ templ docsImageProcessing() {
 templ docsPdfProcessing() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">PDF Processing</h1>
-		
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Thumbnail Generation</h2>
 		<p class="text-nord-4 mb-4">
 			Generate preview thumbnails from the first page of PDF documents. Useful for document previews and galleries.
 		</p>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Metadata Extraction</h2>
 		<p class="text-nord-4 mb-4">Extract document properties including:</p>
 		<ul class="list-disc list-inside text-nord-4 space-y-1">
@@ -663,50 +625,42 @@ templ docsPdfProcessing() {
 templ docsApiReference() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">API Reference</h1>
-		
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Base URL</h2>
 		<div class="bg-nord-2 rounded-lg p-4 mb-6">
 			<code class="text-nord-8">https://api.file.cheap/v1</code>
 		</div>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Authentication</h2>
 		<p class="text-nord-4 mb-4">All API requests require a Bearer token in the Authorization header:</p>
 		<div class="bg-nord-2 rounded-lg p-4 mb-6">
 			<code class="text-nord-4 text-sm">Authorization: Bearer YOUR_API_TOKEN</code>
 		</div>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Endpoints</h2>
-		
 		<h3 class="text-lg font-medium text-nord-5 mb-2">Upload File</h3>
 		<div class="bg-nord-2 rounded-lg p-4 mb-4">
 			<code class="text-nord-14">POST</code> <code class="text-nord-4">/files</code>
 		</div>
-		
 		<h3 class="text-lg font-medium text-nord-5 mb-2">List Files</h3>
 		<div class="bg-nord-2 rounded-lg p-4 mb-4">
 			<code class="text-nord-8">GET</code> <code class="text-nord-4">/files</code>
 		</div>
-
 		<h3 class="text-lg font-medium text-nord-5 mb-2">Get File</h3>
 		<div class="bg-nord-2 rounded-lg p-4 mb-4">
 			<code class="text-nord-8">GET</code> <code class="text-nord-4">/files/:id</code>
 		</div>
-
 		<h3 class="text-lg font-medium text-nord-5 mb-2">Delete File</h3>
 		<div class="bg-nord-2 rounded-lg p-4 mb-4">
 			<code class="text-nord-11">DELETE</code> <code class="text-nord-4">/files/:id</code>
 		</div>
-
 		<h3 class="text-lg font-medium text-nord-5 mb-2">Get Processing Job</h3>
 		<div class="bg-nord-2 rounded-lg p-4 mb-6">
 			<code class="text-nord-8">GET</code> <code class="text-nord-4">/jobs/:id</code>
 		</div>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Code Examples</h2>
-		
 		<h3 class="text-lg font-medium text-nord-5 mb-2">JavaScript SDK</h3>
 		<div class="bg-nord-2 rounded-lg p-4 mb-4 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`// List files with pagination
+			<pre class="text-nord-4 text-sm">
+				<code>
+					@templ.Raw(`// List files with pagination
 const response = await fetch('https://api.file.cheap/v1/files?page=1&limit=20', {
   headers: { 'Authorization': 'Bearer YOUR_API_TOKEN' }
 });
@@ -723,12 +677,15 @@ console.log('Variants:', file.variants);
 await fetch('https://api.file.cheap/v1/files/abc123', {
   method: 'DELETE',
   headers: { 'Authorization': 'Bearer YOUR_API_TOKEN' }
-});`)</code></pre>
+});`)
+				</code>
+			</pre>
 		</div>
-
 		<h3 class="text-lg font-medium text-nord-5 mb-2">Python SDK</h3>
 		<div class="bg-nord-2 rounded-lg p-4 mb-4 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`import requests
+			<pre class="text-nord-4 text-sm">
+				<code>
+					@templ.Raw(`import requests
 
 API_BASE = 'https://api.file.cheap/v1'
 headers = {'Authorization': 'Bearer YOUR_API_TOKEN'}
@@ -748,13 +705,16 @@ job = requests.get(f'{API_BASE}/jobs/job123', headers=headers).json()
 print(f"Status: {job['status']}")
 
 # Delete a file
-requests.delete(f'{API_BASE}/files/abc123', headers=headers)`)</code></pre>
+requests.delete(f'{API_BASE}/files/abc123', headers=headers)`)
+				</code>
+			</pre>
 		</div>
-
 		<h3 class="text-lg font-medium text-nord-5 mb-2">Response Examples</h3>
 		<p class="text-nord-4 mb-2">Successful file upload response:</p>
 		<div class="bg-nord-2 rounded-lg p-4 mb-4 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`{
+			<pre class="text-nord-4 text-sm">
+				<code>
+					@templ.Raw(`{
   "id": "abc123",
   "name": "photo.jpg",
   "size": 1048576,
@@ -765,11 +725,15 @@ requests.delete(f'{API_BASE}/files/abc123', headers=headers)`)</code></pre>
     {"id": "job123", "type": "thumbnail", "status": "pending"},
     {"id": "job124", "type": "resize", "status": "pending"}
   ]
-}`)</code></pre>
+}`)
+				</code>
+			</pre>
 		</div>
 		<p class="text-nord-4 mb-2">File with completed processing:</p>
 		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`{
+			<pre class="text-nord-4 text-sm">
+				<code>
+					@templ.Raw(`{
   "id": "abc123",
   "name": "photo.jpg",
   "size": 1048576,
@@ -781,7 +745,9 @@ requests.delete(f'{API_BASE}/files/abc123', headers=headers)`)</code></pre>
     {"type": "medium", "url": "https://cdn.file.cheap/abc123/medium.jpg", "size": 153600},
     {"type": "large", "url": "https://cdn.file.cheap/abc123/large.jpg", "size": 512000}
   ]
-}`)</code></pre>
+}`)
+				</code>
+			</pre>
 		</div>
 	</article>
 }
@@ -789,17 +755,14 @@ requests.delete(f'{API_BASE}/files/abc123', headers=headers)`)</code></pre>
 templ docsAuthentication() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">Authentication</h1>
-		
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">API Tokens</h2>
 		<p class="text-nord-4 mb-4">
 			Generate API tokens from your account settings. Each token has full access to your account, so keep them secure.
 		</p>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">OAuth</h2>
 		<p class="text-nord-4 mb-4">
 			We support OAuth 2.0 login with Google and GitHub for the web interface.
 		</p>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Session Security</h2>
 		<p class="text-nord-4">
 			Sessions expire after 7 days of inactivity. Enable two-factor authentication for additional security.
@@ -810,11 +773,9 @@ templ docsAuthentication() {
 templ docsWebhooks() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">Webhooks</h1>
-		
 		<p class="text-nord-4 mb-6">
 			Receive HTTP callbacks when file processing completes. Configure webhooks in your account settings.
 		</p>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Event Types</h2>
 		<ul class="list-disc list-inside text-nord-4 mb-6 space-y-1">
 			<li><code class="text-nord-8">file.uploaded</code> - File was successfully uploaded</li>
@@ -822,10 +783,11 @@ templ docsWebhooks() {
 			<li><code class="text-nord-8">processing.completed</code> - All processing finished</li>
 			<li><code class="text-nord-8">processing.failed</code> - Processing encountered an error</li>
 		</ul>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Payload Example</h2>
 		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`{
+			<pre class="text-nord-4 text-sm">
+				<code>
+					@templ.Raw(`{
   "event": "processing.completed",
   "timestamp": "2026-01-05T12:00:00Z",
   "data": {
@@ -835,9 +797,10 @@ templ docsWebhooks() {
       {"type": "webp", "url": "..."}
     ]
   }
-}`)</code></pre>
+}`)
+				</code>
+			</pre>
 		</div>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Signature Verification</h2>
 		<p class="text-nord-4 mb-4">
 			All webhook requests include a signature header to verify authenticity. Always verify signatures before processing webhooks.
@@ -860,10 +823,11 @@ templ docsWebhooks() {
 				</tr>
 			</tbody>
 		</table>
-
 		<h3 class="text-lg font-medium text-nord-5 mb-2">Verification Example (Node.js)</h3>
 		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`const crypto = require('crypto');
+			<pre class="text-nord-4 text-sm">
+				<code>
+					@templ.Raw(`const crypto = require('crypto');
 
 function verifyWebhook(payload, signature, secret) {
   const expected = crypto
@@ -884,15 +848,16 @@ app.post('/webhook', (req, res) => {
     signature,
     process.env.WEBHOOK_SECRET
   );
-  
+
   if (!isValid) {
     return res.status(401).send('Invalid signature');
   }
-  
-  // Process the webhook...
-});`)</code></pre>
-		</div>
 
+  // Process the webhook...
+});`)
+				</code>
+			</pre>
+		</div>
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Retry Behavior</h2>
 		<p class="text-nord-4 mb-4">
 			If your endpoint returns a non-2xx status code, we retry with exponential backoff:
@@ -906,7 +871,6 @@ app.post('/webhook', (req, res) => {
 		<p class="text-nord-4 mb-6">
 			After 4 failed attempts, the webhook is marked as failed. You can view failed webhooks and manually retry them from your dashboard.
 		</p>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Best Practices</h2>
 		<ul class="list-disc list-inside text-nord-4 space-y-1">
 			<li>Always verify the signature before processing</li>
@@ -921,7 +885,6 @@ app.post('/webhook', (req, res) => {
 templ docsRateLimits() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">Rate Limits</h1>
-		
 		<table class="w-full text-nord-4 mb-6">
 			<thead>
 				<tr class="border-b border-nord-3">
@@ -948,7 +911,6 @@ templ docsRateLimits() {
 				</tr>
 			</tbody>
 		</table>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Rate Limit Headers</h2>
 		<p class="text-nord-4 mb-4">API responses include rate limit information:</p>
 		<ul class="list-disc list-inside text-nord-4 space-y-1">
@@ -962,18 +924,20 @@ templ docsRateLimits() {
 templ docsErrors() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">Error Handling</h1>
-		
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Error Response Format</h2>
 		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code>@templ.Raw(`{
+			<pre class="text-nord-4 text-sm">
+				<code>
+					@templ.Raw(`{
   "error": {
     "code": "INVALID_FILE_TYPE",
     "message": "File type not supported",
     "details": "Expected image/*, got application/zip"
   }
-}`)</code></pre>
+}`)
+				</code>
+			</pre>
 		</div>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Common Error Codes</h2>
 		<table class="w-full text-nord-4">
 			<thead>
@@ -1017,104 +981,101 @@ templ docsErrors() {
 templ docsCli() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">CLI Reference</h1>
-		
 		<p class="text-nord-4 mb-6">
 			The <code class="text-nord-8">fc</code> command-line tool lets you upload, transform, and manage files directly from your terminal.
 		</p>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Installation</h2>
 		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code># macOS (Homebrew)
-brew install file-cheap/tap/fc
-
-# Linux / macOS (direct download)
-curl -fsSL https://file.cheap/install.sh | sh
-
-# Or download from GitHub releases
-# https://github.com/abdul-hamid-achik/file-processor/releases</code></pre>
+			<pre class="text-nord-4 text-sm">
+				<code>
+					# macOS (Homebrew)
+					brew install file-cheap/tap/fc
+					# Linux / macOS (direct download)
+					curl -fsSL https://file.cheap/install.sh | sh
+					# Or download from GitHub releases
+					# https://github.com/abdul-hamid-achik/file-processor/releases
+				</code>
+			</pre>
 		</div>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Authentication</h2>
 		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code># Interactive browser login
-fc auth login
-
-# Login with API key (non-interactive)
-fc auth login --api-key fp_your_api_key
-
-# Check authentication status
-fc auth status
-
-# Logout
-fc auth logout</code></pre>
+			<pre class="text-nord-4 text-sm">
+				<code>
+					# Interactive browser login
+					fc auth login
+					# Login with API key (non-interactive)
+					fc auth login --api-key fp_your_api_key
+					# Check authentication status
+					fc auth status
+					# Logout
+					fc auth logout
+				</code>
+			</pre>
 		</div>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Uploading Files</h2>
 		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code># Upload a single file
-fc upload photo.jpg
-
-# Upload multiple files
-fc upload *.jpg
-
-# Upload a directory recursively
-fc upload photos/ --recursive
-
-# Upload with transformations
-fc upload hero.png --transform webp,thumbnail
-
-# Upload with custom name
-fc upload hero.png --name homepage-hero
-
-# Upload from stdin
-cat screenshot.png | fc upload --stdin --name screenshot.png
-
-# Wait for processing to complete
-fc upload photo.jpg --wait</code></pre>
+			<pre class="text-nord-4 text-sm">
+				<code>
+					# Upload a single file
+					fc upload photo.jpg
+					# Upload multiple files
+					fc upload *.jpg
+					# Upload a directory recursively
+					fc upload photos/ --recursive
+					# Upload with transformations
+					fc upload hero.png --transform webp,thumbnail
+					# Upload with custom name
+					fc upload hero.png --name homepage-hero
+					# Upload from stdin
+					cat screenshot.png | fc upload --stdin --name screenshot.png
+					# Wait for processing to complete
+					fc upload photo.jpg --wait
+				</code>
+			</pre>
 		</div>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Managing Files</h2>
 		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code># List your files
-fc list
-
-# Download a file
-fc download &lt;file-id&gt;
-
-# Download a specific variant
-fc download &lt;file-id&gt; --variant thumbnail
-
-# Delete a file
-fc delete &lt;file-id&gt;
-
-# Check processing status
-fc status &lt;file-id&gt;</code></pre>
+			<pre class="text-nord-4 text-sm">
+				<code>
+					# List your files
+					fc list
+					# Download a file
+					fc download &lt;file-id&gt;
+					# Download a specific variant
+					fc download &lt;file-id&gt; --variant thumbnail
+					# Delete a file
+					fc delete &lt;file-id&gt;
+					# Check processing status
+					fc status &lt;file-id&gt;
+				</code>
+			</pre>
 		</div>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Transformations</h2>
 		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code># Apply a single transform
-fc transform &lt;file-id&gt; webp
-
-# Apply multiple transforms
-fc transform &lt;file-id&gt; thumbnail,webp,watermark
-
-# Batch transforms (responsive sizes)
-fc batch &lt;file-id&gt; responsive
-
-# Generate social media sizes
-fc social &lt;file-id&gt;</code></pre>
+			<pre class="text-nord-4 text-sm">
+				<code>
+					# Apply a single transform
+					fc transform &lt;file-id&gt; webp
+					# Apply multiple transforms
+					fc transform &lt;file-id&gt; thumbnail,webp,watermark
+					# Batch transforms (responsive sizes)
+					fc batch &lt;file-id&gt; responsive
+					# Generate social media sizes
+					fc social &lt;file-id&gt;
+				</code>
+			</pre>
 		</div>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Sharing</h2>
 		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code># Create a share link
-fc share &lt;file-id&gt;
-
-# Create a share link with expiration
-fc share &lt;file-id&gt; --expires 24h</code></pre>
+			<pre class="text-nord-4 text-sm">
+				<code>
+					# Create a share link
+					fc share &lt;file-id&gt;
+					# Create a share link with expiration
+					fc share &lt;file-id&gt; --expires 24h
+				</code>
+			</pre>
 		</div>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Global Flags</h2>
 		<table class="w-full text-nord-4 mb-6">
 			<thead>
@@ -1138,20 +1099,21 @@ fc share &lt;file-id&gt; --expires 24h</code></pre>
 				</tr>
 			</tbody>
 		</table>
-
 		<h2 class="text-xl font-semibold text-nord-5 mb-4">Configuration</h2>
 		<p class="text-nord-4 mb-4">
 			The CLI stores configuration in <code class="text-nord-8">~/.config/fc/config.json</code>. You can also set defaults:
 		</p>
 		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm"><code># View current config
-fc config show
-
-# Set default transforms
-fc config set default_transforms thumbnail,webp
-
-# Set parallel upload count
-fc config set parallel 8</code></pre>
+			<pre class="text-nord-4 text-sm">
+				<code>
+					# View current config
+					fc config show
+					# Set default transforms
+					fc config set default_transforms thumbnail,webp
+					# Set parallel upload count
+					fc config set parallel 8
+				</code>
+			</pre>
 		</div>
 	</article>
 }
@@ -1159,7 +1121,6 @@ fc config set parallel 8</code></pre>
 templ docsFaq() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">Frequently Asked Questions</h1>
-		
 		<div class="space-y-6">
 			<div>
 				<h3 class="text-lg font-medium text-nord-5 mb-2">How long are files stored?</h3>
@@ -1167,35 +1128,30 @@ templ docsFaq() {
 					Uploaded files are stored for 30 days by default. Pro and Enterprise plans offer extended retention options.
 				</p>
 			</div>
-
 			<div>
 				<h3 class="text-lg font-medium text-nord-5 mb-2">Is my data secure?</h3>
 				<p class="text-nord-4">
 					Yes. All files are encrypted in transit (TLS 1.3) and at rest (AES-256). We do not access or analyze your file contents.
 				</p>
 			</div>
-
 			<div>
 				<h3 class="text-lg font-medium text-nord-5 mb-2">Can I use the API for commercial purposes?</h3>
 				<p class="text-nord-4">
 					Yes. All paid plans include commercial usage rights. The free tier is for personal and evaluation use.
 				</p>
 			</div>
-
 			<div>
 				<h3 class="text-lg font-medium text-nord-5 mb-2">What happens if processing fails?</h3>
 				<p class="text-nord-4">
 					Failed jobs are automatically retried up to 3 times. If all retries fail, you'll receive a webhook notification (if configured) and can view the error in your dashboard.
 				</p>
 			</div>
-
 			<div>
 				<h3 class="text-lg font-medium text-nord-5 mb-2">Do you support batch processing?</h3>
 				<p class="text-nord-4">
 					Yes. You can upload multiple files in a single request via the API. The web interface also supports multi-file drag and drop.
 				</p>
 			</div>
-
 			<div>
 				<h3 class="text-lg font-medium text-nord-5 mb-2">How do I cancel my subscription?</h3>
 				<p class="text-nord-4">
@@ -1258,7 +1214,7 @@ templ ServerError(user *auth.SessionUser) {
 					}) {
 						Go Home
 					}
-					<a 
+					<a
 						href="javascript:location.reload()"
 						class="inline-flex items-center justify-center px-4 py-2 bg-nord-2 text-nord-4 hover:text-nord-5 rounded-lg font-medium transition-colors"
 					>

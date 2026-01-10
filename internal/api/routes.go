@@ -76,34 +76,34 @@ func NewRouter(cfg *Config) http.Handler {
 
 	apiMux := http.NewServeMux()
 
-	apiMux.HandleFunc("POST /api/v1/upload", uploadHandler(cfg))
-	apiMux.HandleFunc("GET /api/v1/files", listFilesHandler(cfg))
-	apiMux.HandleFunc("GET /api/v1/files/{id}", getFileHandler(cfg))
-	apiMux.HandleFunc("GET /api/v1/files/{id}/download", downloadHandler(cfg))
-	apiMux.HandleFunc("DELETE /api/v1/files/{id}", deleteHandler(cfg))
+	apiMux.HandleFunc("POST /v1/upload", uploadHandler(cfg))
+	apiMux.HandleFunc("GET /v1/files", listFilesHandler(cfg))
+	apiMux.HandleFunc("GET /v1/files/{id}", getFileHandler(cfg))
+	apiMux.HandleFunc("GET /v1/files/{id}/download", downloadHandler(cfg))
+	apiMux.HandleFunc("DELETE /v1/files/{id}", deleteHandler(cfg))
 
 	cdnCfg := &CDNConfig{
 		Storage:  cfg.Storage,
 		Queries:  cfg.Queries,
 		Registry: cfg.Registry,
 	}
-	apiMux.HandleFunc("POST /api/v1/files/{id}/share", CreateShareHandler(cdnCfg, cfg.BaseURL))
-	apiMux.HandleFunc("GET /api/v1/files/{id}/shares", ListSharesHandler(cdnCfg))
-	apiMux.HandleFunc("DELETE /api/v1/shares/{shareId}", DeleteShareHandler(cdnCfg))
+	apiMux.HandleFunc("POST /v1/files/{id}/share", CreateShareHandler(cdnCfg, cfg.BaseURL))
+	apiMux.HandleFunc("GET /v1/files/{id}/shares", ListSharesHandler(cdnCfg))
+	apiMux.HandleFunc("DELETE /v1/shares/{shareId}", DeleteShareHandler(cdnCfg))
 
-	apiMux.HandleFunc("POST /api/v1/files/{id}/transform", transformHandler(cfg))
+	apiMux.HandleFunc("POST /v1/files/{id}/transform", transformHandler(cfg))
 
-	apiMux.HandleFunc("POST /api/v1/batch/transform", batchTransformHandler(cfg))
-	apiMux.HandleFunc("GET /api/v1/batch/{id}", getBatchHandler(cfg))
+	apiMux.HandleFunc("POST /v1/batch/transform", batchTransformHandler(cfg))
+	apiMux.HandleFunc("GET /v1/batch/{id}", getBatchHandler(cfg))
 
 	deviceAuthCfg := &DeviceAuthConfig{
 		Queries: cfg.Queries,
 		BaseURL: cfg.BaseURL,
 	}
-	mux.HandleFunc("POST /api/v1/auth/device", DeviceAuthHandler(deviceAuthCfg))
-	mux.HandleFunc("POST /api/v1/auth/device/token", DeviceTokenHandler(deviceAuthCfg))
+	mux.HandleFunc("POST /v1/auth/device", DeviceAuthHandler(deviceAuthCfg))
+	mux.HandleFunc("POST /v1/auth/device/token", DeviceTokenHandler(deviceAuthCfg))
 
-	apiMux.HandleFunc("POST /api/v1/auth/device/approve", DeviceApproveHandler(deviceAuthCfg))
+	apiMux.HandleFunc("POST /v1/auth/device/approve", DeviceApproveHandler(deviceAuthCfg))
 
 	rateLimit := cfg.RateLimit
 	if rateLimit <= 0 {
@@ -116,7 +116,7 @@ func NewRouter(cfg *Config) http.Handler {
 	limiter := NewRateLimiter(rateLimit, rateBurst)
 
 	handler := RateLimit(limiter)(CORS(DualAuthMiddleware(cfg.JWTSecret, cfg.Queries)(BillingMiddleware(cfg.Queries)(apiMux))))
-	mux.Handle("/api/", handler)
+	mux.Handle("/v1/", handler)
 
 	mux.HandleFunc("GET /cdn/{token}/{transforms}/{filename}", CDNHandler(cdnCfg))
 
@@ -943,7 +943,7 @@ func batchTransformHandler(cfg *Config) http.HandlerFunc {
 
 		log.Info("batch transform created", "total_files", len(validFileIDs), "total_jobs", totalJobsCreated)
 
-		statusURL := fmt.Sprintf("/api/v1/batch/%s", batchIDStr)
+		statusURL := fmt.Sprintf("/v1/batch/%s", batchIDStr)
 		if cfg.BaseURL != "" {
 			statusURL = cfg.BaseURL + statusURL
 		}

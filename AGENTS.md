@@ -63,9 +63,35 @@ static/
 
 ## Architecture
 
+### API URL Structure
+
+The application uses a subdomain-based API routing:
+
+| Domain | Purpose | Routes |
+|--------|---------|--------|
+| `file.cheap` | Web UI | `/`, `/login`, `/dashboard`, etc. |
+| `api.file.cheap` | REST API | `/v1/files`, `/v1/upload`, `/health`, `/cdn/*` |
+
+**Important:** API routes use `/v1/...` prefix (NOT `/api/v1/...`).
+
+```
+# Correct API URLs
+https://api.file.cheap/v1/files
+https://api.file.cheap/v1/upload
+https://api.file.cheap/v1/auth/device
+https://api.file.cheap/health
+https://api.file.cheap/cdn/{token}/{transforms}/{filename}
+
+# WRONG - these will 404
+https://api.file.cheap/api/v1/files
+https://file.cheap/api/v1/files
+```
+
+The `BASE_URL` environment variable should be set to `https://api.file.cheap` in production.
+
 ### API vs Web UI
-- `/internal/api` - JSON REST API with JWT authentication
-- `/internal/web` - Server-rendered HTML UI with session authentication
+- `/internal/api` - JSON REST API with JWT authentication (served from `api.file.cheap`)
+- `/internal/web` - Server-rendered HTML UI with session authentication (served from `file.cheap`)
 - Both can coexist and share business logic through internal packages
 
 ### Authentication Flows
@@ -273,6 +299,48 @@ message := apperror.SafeMessage(err)
 - Use `hx-indicator` for loading states
 - Handle errors with `hx-error` responses
 
+### Dashboard Development
+
+#### Component Patterns
+- Use Props structs for component configuration
+- Provide `Default[Component]Props()` functions
+- Include a `Class` field for additional Tailwind classes
+- Create helper functions for dynamic class generation
+
+#### Dashboard Components
+Located in `internal/web/templates/components/`:
+- `usage_bar.templ` - Horizontal usage indicator with color thresholds
+- `upgrade_banner.templ` - CTA banner with variants (default, urgent, discount)
+- `onboarding_checklist.templ` - New user onboarding steps
+- `notification_dropdown.templ` - Header notification menu
+
+#### Adding Metrics
+1. Add SQL query in `sql/queries/admin_analytics.sql`
+2. Add type in `internal/analytics/types.go`
+3. Add service method in `internal/analytics/service.go`
+4. Add to dashboard template in `internal/web/templates/pages/admin.templ`
+5. Add icon template if needed
+
+#### Metric Cards Pattern
+```templ
+@adminMetricCard("Label", value, icon(), subtext, isPositive)
+```
+
+#### Color Thresholds for Usage
+- Green (< 75%): `bg-nord-14`
+- Orange (75-90%): `bg-nord-13`
+- Red (> 90%): `bg-nord-11`
+
+#### Real-time Updates
+Use HTMX for auto-refresh:
+- System health: every 10s
+- Activity feeds: every 30s
+- Charts: every 60s
+
+```html
+<div hx-get="/endpoint" hx-trigger="every 30s" hx-swap="innerHTML">
+```
+
 ## Database
 
 Schema managed via migrations in `sql/schema/`. Apply with `task migrate`.
@@ -287,6 +355,8 @@ Schema managed via migrations in `sql/schema/`. Apply with `task migrate`.
 - `processing_jobs` - Background job tracking
 - `password_resets` - Password reset tokens
 - `email_verifications` - Email verification tokens
+- `notifications` - In-app user notifications
+- `admin_alert_config` - Admin alert thresholds
 
 ### Queries
 - Queries defined in `sql/queries/`

@@ -419,6 +419,15 @@ func (ns NullVariantType) Value() (driver.Value, error) {
 	return string(ns.VariantType), nil
 }
 
+type AdminAlertConfig struct {
+	ID             pgtype.UUID        `json:"id"`
+	MetricName     string             `json:"metric_name"`
+	ThresholdValue float64            `json:"threshold_value"`
+	Enabled        *bool              `json:"enabled"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
 type ApiToken struct {
 	ID          pgtype.UUID        `json:"id"`
 	UserID      pgtype.UUID        `json:"user_id"`
@@ -513,6 +522,17 @@ type MonthlyUsage struct {
 	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
 }
 
+type Notification struct {
+	ID        pgtype.UUID        `json:"id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	Type      string             `json:"type"`
+	Title     string             `json:"title"`
+	Message   string             `json:"message"`
+	Link      *string            `json:"link"`
+	ReadAt    pgtype.Timestamptz `json:"read_at"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type OauthAccount struct {
 	ID             pgtype.UUID        `json:"id"`
 	UserID         pgtype.UUID        `json:"user_id"`
@@ -590,6 +610,8 @@ type User struct {
 	TransformationsLimit   int32              `json:"transformations_limit"`
 	TransformationsResetAt pgtype.Timestamptz `json:"transformations_reset_at"`
 	EmailVerifiedAt        pgtype.Timestamptz `json:"email_verified_at"`
+	OnboardingCompletedAt  pgtype.Timestamptz `json:"onboarding_completed_at"`
+	OnboardingSteps        []byte             `json:"onboarding_steps"`
 	CreatedAt              pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt              pgtype.Timestamptz `json:"deleted_at"`

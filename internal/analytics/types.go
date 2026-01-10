@@ -60,6 +60,10 @@ type AdminDashboard struct {
 	JobsLast24h       int     `json:"jobs_last_24h"`
 	JobSuccessRate    float64 `json:"job_success_rate"`
 
+	Churn          ChurnMetrics   `json:"churn"`
+	Revenue        RevenueMetrics `json:"revenue"`
+	NRR            NRRMetrics     `json:"nrr"`
+	CohortData     []CohortData   `json:"cohort_data"`
 	RevenueHistory []RevenuePoint `json:"revenue_history"`
 	UsersByPlan    []PlanStats    `json:"users_by_plan"`
 	Health         SystemHealth   `json:"health"`
@@ -135,4 +139,69 @@ type JobsListPage struct {
 	PageSize   int           `json:"page_size"`
 	TotalPages int           `json:"total_pages"`
 	Status     string        `json:"status"`
+}
+
+type ChurnMetrics struct {
+	ChurnedThisMonth int64   `json:"churned_this_month"`
+	Churned30Days    int64   `json:"churned_30_days"`
+	CurrentActive    int64   `json:"current_active"`
+	MonthlyChurnRate float64 `json:"monthly_churn_rate"`
+	RetentionRate    float64 `json:"retention_rate"`
+}
+
+type RevenueMetrics struct {
+	MRR          float64 `json:"mrr"`
+	ARR          float64 `json:"arr"`
+	ARPU         float64 `json:"arpu"`
+	EstimatedLTV float64 `json:"estimated_ltv"`
+	PayingUsers  int64   `json:"paying_users"`
+}
+
+type NRRMetrics struct {
+	PreviousMRR float64 `json:"previous_mrr"`
+	CurrentMRR  float64 `json:"current_mrr"`
+	NRRPercent  float64 `json:"nrr_percent"`
+}
+
+type CohortData struct {
+	CohortMonth  time.Time `json:"cohort_month"`
+	CohortSize   int64     `json:"cohort_size"`
+	MonthsSince  int       `json:"months_since"`
+	Retained     int64     `json:"retained"`
+	RetentionPct float64   `json:"retention_pct"`
+}
+
+type Notification struct {
+	ID        string     `json:"id"`
+	UserID    string     `json:"user_id"`
+	Type      string     `json:"type"`
+	Title     string     `json:"title"`
+	Message   string     `json:"message"`
+	Link      string     `json:"link,omitempty"`
+	ReadAt    *time.Time `json:"read_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	TimeAgo   string     `json:"time_ago"`
+}
+
+type OnboardingProgress struct {
+	UploadedFirstFile   bool `json:"uploaded_first_file"`
+	CreatedTransform    bool `json:"created_transform"`
+	GeneratedAPIToken   bool `json:"generated_api_token"`
+	SetupWebhook        bool `json:"setup_webhook"`
+	CompletedOnboarding bool `json:"completed_onboarding"`
+}
+
+type AlertConfig struct {
+	ID             string    `json:"id"`
+	MetricName     string    `json:"metric_name"`
+	ThresholdValue float64   `json:"threshold_value"`
+	Enabled        bool      `json:"enabled"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+type ExportData struct {
+	UserAnalytics *UserAnalytics `json:"user_analytics,omitempty"`
+	DailyUsage    []DailyUsage   `json:"daily_usage,omitempty"`
+	TopFiles      []FileUsage    `json:"top_files,omitempty"`
+	ExportedAt    time.Time      `json:"exported_at"`
 }
