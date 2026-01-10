@@ -5,7 +5,7 @@
 
 - name: Restart sshd
   systemd:
-    name: sshd
+    name: ssh
     state: restarted
 
 - name: Restart fail2ban
