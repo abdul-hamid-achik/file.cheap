@@ -23,7 +23,7 @@ This directory contains the infrastructure-as-code for deploying **file.cheap** 
 
 1. [Hetzner Cloud account](https://console.hetzner.cloud/)
 2. Domain name (file.cheap)
-3. Your public IP address (for SSH/API access whitelist)
+3. SSH key pair (ed25519 recommended)
 
 ## Quick Start
 
@@ -94,18 +94,28 @@ location       = "fsn1"
 worker_count   = 2
 ```
 
-### Secure Access Configuration
+### Secure Access
 
-SSH and Kubernetes API access are secured via Hetzner Cloud firewall with IP whitelist.
-
-Edit `terraform/terraform.tfvars` to set your allowed IPs:
+SSH access is secured via **public key authentication** (no password login). Your SSH public key is required in `terraform.tfvars`:
 
 ```hcl
-# Your static IP or range for SSH/K8s API access
+ssh_public_key = "ssh-ed25519 AAAA... your-email@example.com"
+```
+
+**Security hardening included:**
+- Password authentication disabled
+- fail2ban installed (bans IPs after 5 failed attempts)
+- Only key-based authentication allowed
+
+**Optional: IP Whitelist**
+
+For additional security, restrict SSH to specific IPs:
+
+```hcl
 ssh_allowed_ips = ["YOUR.PUBLIC.IP.ADDRESS/32"]
 ```
 
-Find your public IP: `curl -s ifconfig.me`
+By default, SSH is open to all IPs (relying on key auth + fail2ban).
 
 ## Commands
 
@@ -256,58 +266,53 @@ K3s will automatically configure embedded etcd for HA.
 
 ## Secure Access Options
 
-The infrastructure uses Hetzner Cloud firewall to restrict SSH and Kubernetes API access to whitelisted IPs. Here are alternatives if you need more flexibility:
+The infrastructure uses **SSH key authentication** as the primary security mechanism. Additional options are available if needed:
 
-### Option 1: IP Whitelist (Default - Recommended)
+### Default: SSH Key Authentication (Recommended)
 
-Simplest approach. Set your static IP in `terraform.tfvars`:
+Works out of the box with just your SSH public key. No static IP required.
+
+**Security features:**
+- Password authentication disabled
+- fail2ban blocks brute force attempts
+- Key-only authentication enforced
+
+**Pros**: Works from anywhere, no IP management, zero additional cost
+**Cons**: Key must be kept secure
+
+### Optional: IP Whitelist
+
+Add network-level restriction for defense in depth:
 
 ```hcl
 ssh_allowed_ips = ["YOUR.PUBLIC.IP.ADDRESS/32"]
 ```
 
-**Pros**: No additional tools, native cloud firewall, zero cost
-**Cons**: Requires static IP or manual updates when IP changes
+**Pros**: Additional security layer
+**Cons**: Requires static IP or manual updates
 
-### Option 2: SSH Jump Host / Bastion
+### Alternative: WireGuard VPN
 
-Use one node as a bastion for all SSH traffic:
-
-```bash
-# Add to ~/.ssh/config
-Host file-cheap-*
-  ProxyJump root@<master-public-ip>
-```
-
-**Pros**: Single entry point, audit logging possible
-**Cons**: Requires bastion to be always running
-
-### Option 3: WireGuard VPN
-
-Self-hosted VPN similar to Tailscale:
+Self-hosted VPN for private network access:
 
 ```bash
-# Install on your machine and servers
 apt install wireguard
-
-# Generate keys and configure peers
 wg genkey | tee privatekey | wg pubkey > publickey
 ```
 
-**Pros**: Fast, modern VPN, full control
-**Cons**: Manual key management, more setup
+**Pros**: Fast, encrypted tunnel, full control
+**Cons**: Additional setup and key management
 
-### Option 4: Cloudflare Tunnel (Zero Trust)
+### Alternative: Cloudflare Tunnel
 
-Use Cloudflare's zero-trust network for SSH access:
+Zero-trust access without exposed ports:
 
 ```bash
-# Install cloudflared on servers
 cloudflared tunnel create file-cheap
 ```
 
-**Pros**: No exposed ports, browser-based SSH option
-**Cons**: Depends on Cloudflare, may add latency
+**Pros**: No exposed ports, browser SSH option
+**Cons**: Depends on Cloudflare
 
 ## Troubleshooting
 

@@ -2,3 +2,14 @@
 - name: Reboot server
   reboot:
     reboot_timeout: 300
+
+- name: Restart sshd
+  systemd:
+    name: sshd
+    state: restarted
+
+- name: Restart fail2ban
+  systemd:
+    name: fail2ban
+    state: restarted
+    enabled: yes
