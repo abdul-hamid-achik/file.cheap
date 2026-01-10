@@ -1,0 +1,55 @@
+name: Fix Stuck Pods
+
+on:
+  workflow_dispatch:
+
+env:
+  KUBECONFIG_PATH: /tmp/kubeconfig
+
+jobs:
+  fix:
+    name: Fix Stuck Pods
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: "v1.30.0"
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $(dirname $KUBECONFIG_PATH)
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > $KUBECONFIG_PATH
+          chmod 600 $KUBECONFIG_PATH
+
+      - name: Show pod status
+        run: |
+          echo "=== Current pod status ==="
+          kubectl get pods -n file-processor --kubeconfig=$KUBECONFIG_PATH
+          echo ""
+          echo "=== Pods in Terminating state ==="
+          kubectl get pods -n file-processor --kubeconfig=$KUBECONFIG_PATH | grep -i terminating || echo "No terminating pods"
+
+      - name: Force delete stuck pods
+        run: |
+          # Force delete any terminating worker-image pods
+          for pod in $(kubectl get pods -n file-processor -l app=worker-image --kubeconfig=$KUBECONFIG_PATH -o jsonpath='{.items[?(@.metadata.deletionTimestamp)].metadata.name}'); do
+            echo "Force deleting stuck pod: $pod"
+            kubectl delete pod $pod -n file-processor --force --grace-period=0 --kubeconfig=$KUBECONFIG_PATH || true
+          done
+          
+          # Also check worker-video
+          for pod in $(kubectl get pods -n file-processor -l app=worker-video --kubeconfig=$KUBECONFIG_PATH -o jsonpath='{.items[?(@.metadata.deletionTimestamp)].metadata.name}'); do
+            echo "Force deleting stuck pod: $pod"
+            kubectl delete pod $pod -n file-processor --force --grace-period=0 --kubeconfig=$KUBECONFIG_PATH || true
+          done
+
+      - name: Verify and show final status
+        run: |
+          sleep 10
+          echo "=== Final pod status ==="
+          kubectl get pods -n file-processor --kubeconfig=$KUBECONFIG_PATH
+          echo ""
+          echo "=== Deployment status ==="
+          kubectl get deployments -n file-processor --kubeconfig=$KUBECONFIG_PATH
