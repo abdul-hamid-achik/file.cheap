@@ -50,37 +50,21 @@ jobs:
             worker=ghcr.io/abdul-hamid-achik/file.cheap/worker-image:${TAG} \
             -n file-processor --kubeconfig=$KUBECONFIG_PATH
 
-          # Check if worker-video deployment exists, update if yes
-          if kubectl get deployment worker-video -n file-processor --kubeconfig=$KUBECONFIG_PATH 2>/dev/null; then
-            kubectl set image deployment/worker-video \
-              worker=ghcr.io/abdul-hamid-achik/file.cheap/worker-video:${TAG} \
-              -n file-processor --kubeconfig=$KUBECONFIG_PATH
-          fi
+          # Update worker-video deployment
+          kubectl set image deployment/worker-video \
+            worker=ghcr.io/abdul-hamid-achik/file.cheap/worker-video:${TAG} \
+            -n file-processor --kubeconfig=$KUBECONFIG_PATH
 
-          # Force rollout restart
+          # Force rollout restart all deployments
           kubectl rollout restart deployment/api -n file-processor --kubeconfig=$KUBECONFIG_PATH
           kubectl rollout restart deployment/worker-image -n file-processor --kubeconfig=$KUBECONFIG_PATH
-
-          # Check worker-video queue depth and scale accordingly
-          QUEUE_DEPTH=$(kubectl exec -n file-processor redis-0 -- redis-cli XLEN job-queue:default 2>/dev/null || echo "0")
-          if [ "$QUEUE_DEPTH" -gt "0" ]; then
-            if kubectl get deployment worker-video -n file-processor --kubeconfig=$KUBECONFIG_PATH 2>/dev/null; then
-              kubectl scale deployment worker-video --replicas=1 -n file-processor --kubeconfig=$KUBECONFIG_PATH
-              kubectl rollout restart deployment/worker-video -n file-processor --kubeconfig=$KUBECONFIG_PATH
-            fi
-          else
-            if kubectl get deployment worker-video -n file-processor --kubeconfig=$KUBECONFIG_PATH 2>/dev/null; then
-              kubectl scale deployment worker-video --replicas=0 -n file-processor --kubeconfig=$KUBECONFIG_PATH
-            fi
-          fi
+          kubectl rollout restart deployment/worker-video -n file-processor --kubeconfig=$KUBECONFIG_PATH
 
       - name: Wait for rollout
         run: |
           kubectl rollout status deployment/api -n file-processor --timeout=300s --kubeconfig=$KUBECONFIG_PATH
           kubectl rollout status deployment/worker-image -n file-processor --timeout=300s --kubeconfig=$KUBECONFIG_PATH
-          if kubectl get deployment worker-video -n file-processor --kubeconfig=$KUBECONFIG_PATH 2>/dev/null; then
-            kubectl rollout status deployment/worker-video -n file-processor --timeout=300s --kubeconfig=$KUBECONFIG_PATH
-          fi
+          kubectl rollout status deployment/worker-video -n file-processor --timeout=300s --kubeconfig=$KUBECONFIG_PATH
 
       - name: Verify deployment
         run: |
