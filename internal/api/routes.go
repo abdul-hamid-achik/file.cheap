@@ -21,11 +21,14 @@ import (
 
 type Querier interface {
 	GetFile(ctx context.Context, id pgtype.UUID) (db.File, error)
+	GetFilesByIDs(ctx context.Context, ids []pgtype.UUID) ([]db.File, error)
 	ListFilesByUser(ctx context.Context, arg db.ListFilesByUserParams) ([]db.File, error)
+	ListFilesByUserWithCount(ctx context.Context, arg db.ListFilesByUserWithCountParams) ([]db.ListFilesByUserWithCountRow, error)
 	CountFilesByUser(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CreateFile(ctx context.Context, arg db.CreateFileParams) (db.File, error)
 	SoftDeleteFile(ctx context.Context, id pgtype.UUID) error
 	ListVariantsByFile(ctx context.Context, fileID pgtype.UUID) ([]db.FileVariant, error)
+	GetVariant(ctx context.Context, arg db.GetVariantParams) (db.FileVariant, error)
 	GetAPITokenByHash(ctx context.Context, tokenHash string) (db.GetAPITokenByHashRow, error)
 	UpdateAPITokenLastUsed(ctx context.Context, id pgtype.UUID) error
 	GetFileShareByToken(ctx context.Context, token string) (db.GetFileShareByTokenRow, error)
@@ -295,7 +298,8 @@ func listFilesHandler(cfg *Config) http.HandlerFunc {
 
 		pgUserID := pgtype.UUID{Bytes: userID, Valid: true}
 
-		files, err := cfg.Queries.ListFilesByUser(r.Context(), db.ListFilesByUserParams{
+		// Single query with window function for both files and total count
+		files, err := cfg.Queries.ListFilesByUserWithCount(r.Context(), db.ListFilesByUserWithCountParams{
 			UserID: pgUserID,
 			Limit:  limit,
 			Offset: offset,
@@ -305,11 +309,14 @@ func listFilesHandler(cfg *Config) http.HandlerFunc {
 			return
 		}
 
-		total, _ := cfg.Queries.CountFilesByUser(r.Context(), pgUserID)
+		var total int64
+		if len(files) > 0 {
+			total = files[0].TotalCount
+		}
 
 		filesList := make([]map[string]any, len(files))
 		for i, f := range files {
-			filesList[i] = fileToJSON(f)
+			filesList[i] = fileWithCountToJSON(f)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -420,23 +427,16 @@ func downloadHandler(cfg *Config) http.HandlerFunc {
 		storageKey := file.StorageKey
 		variantType := r.URL.Query().Get("variant")
 		if variantType != "" {
-			variants, err := cfg.Queries.ListVariantsByFile(r.Context(), pgFileID)
+			// Direct lookup instead of fetching all variants
+			variant, err := cfg.Queries.GetVariant(r.Context(), db.GetVariantParams{
+				FileID:      pgFileID,
+				VariantType: db.VariantType(variantType),
+			})
 			if err != nil {
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
-			found := false
-			for _, v := range variants {
-				if string(v.VariantType) == variantType {
-					storageKey = v.StorageKey
-					found = true
-					break
-				}
-			}
-			if !found {
-				http.Error(w, "not found", http.StatusNotFound)
-				return
-			}
+			storageKey = variant.StorageKey
 		}
 
 		url, err := cfg.Storage.GetPresignedURL(r.Context(), storageKey, 3600)
@@ -506,6 +506,17 @@ func deleteHandler(cfg *Config) http.HandlerFunc {
 }
 
 func fileToJSON(f db.File) map[string]any {
+	return map[string]any{
+		"id":           uuidFromPgtype(f.ID),
+		"filename":     f.Filename,
+		"content_type": f.ContentType,
+		"size_bytes":   f.SizeBytes,
+		"status":       string(f.Status),
+		"created_at":   f.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+	}
+}
+
+func fileWithCountToJSON(f db.ListFilesByUserWithCountRow) map[string]any {
 	return map[string]any{
 		"id":           uuidFromPgtype(f.ID),
 		"filename":     f.Filename,
@@ -813,23 +824,32 @@ func batchTransformHandler(cfg *Config) http.HandlerFunc {
 			}
 		}
 
-		var validFileIDs []uuid.UUID
+		// Parse file IDs and collect valid UUIDs
+		var pgFileIDs []pgtype.UUID
 		for _, fileIDStr := range req.FileIDs {
 			fileID, err := uuid.Parse(fileIDStr)
 			if err != nil {
 				continue
 			}
-
 			pgFileID := pgtype.UUID{Bytes: fileID, Valid: true}
-			file, err := cfg.Queries.GetFile(r.Context(), pgFileID)
-			if err != nil {
+			pgFileIDs = append(pgFileIDs, pgFileID)
+		}
+
+		// Fetch all files in a single query (fixes N+1)
+		files, err := cfg.Queries.GetFilesByIDs(r.Context(), pgFileIDs)
+		if err != nil {
+			log.Error("failed to fetch files", "error", err)
+			apperror.WriteJSON(w, r, apperror.ErrInternal)
+			return
+		}
+
+		// Validate ownership and collect valid file IDs
+		var validFileIDs []uuid.UUID
+		for _, file := range files {
+			if uuidFromPgtype(file.UserID) != userID.String() {
 				continue
 			}
-
-			if uuidFromPgtype(file.UserID) != userID.String() || file.DeletedAt.Valid {
-				continue
-			}
-
+			fileID, _ := uuid.FromBytes(file.ID.Bytes[:])
 			validFileIDs = append(validFileIDs, fileID)
 		}
 

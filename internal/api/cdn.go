@@ -21,9 +21,12 @@ import (
 )
 
 const (
-	cacheThreshold     = 3
-	cacheControlPublic = "public, max-age=31536000, immutable"
-	cacheControlShort  = "public, max-age=3600"
+	cacheThreshold = 3
+	// For redirects to presigned URLs that expire in 3600 seconds,
+	// cache for at most 3000 seconds to allow for some buffer
+	cacheControlRedirect = "public, max-age=3000"
+	// For processed results served directly (not cached yet)
+	cacheControlShort = "public, max-age=3600"
 )
 
 type CDNQuerier interface {
@@ -170,7 +173,7 @@ func serveOriginal(w http.ResponseWriter, r *http.Request, cfg *CDNConfig, stora
 		return
 	}
 
-	w.Header().Set("Cache-Control", cacheControlPublic)
+	w.Header().Set("Cache-Control", cacheControlRedirect)
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filename))
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
@@ -182,7 +185,7 @@ func serveCached(w http.ResponseWriter, r *http.Request, cfg *CDNConfig, storage
 		return
 	}
 
-	w.Header().Set("Cache-Control", cacheControlPublic)
+	w.Header().Set("Cache-Control", cacheControlRedirect)
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filename))
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }

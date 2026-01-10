@@ -161,6 +161,7 @@ type RateLimiter struct {
 	burst   int
 	buckets map[string]*bucket
 	mu      sync.Mutex
+	done    chan struct{}
 }
 
 type bucket struct {
@@ -169,11 +170,48 @@ type bucket struct {
 }
 
 func NewRateLimiter(rate, burst int) *RateLimiter {
-	return &RateLimiter{
+	rl := &RateLimiter{
 		rate:    rate,
 		burst:   burst,
 		buckets: make(map[string]*bucket),
+		done:    make(chan struct{}),
 	}
+	// Start background cleanup goroutine to prevent memory leaks
+	go rl.cleanupLoop()
+	return rl
+}
+
+// cleanupLoop periodically removes stale rate limit buckets
+func (rl *RateLimiter) cleanupLoop() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			rl.cleanup()
+		case <-rl.done:
+			return
+		}
+	}
+}
+
+// cleanup removes buckets that haven't been accessed in the last 10 minutes
+func (rl *RateLimiter) cleanup() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	cutoff := time.Now().Add(-10 * time.Minute)
+	for key, b := range rl.buckets {
+		if b.lastReset.Before(cutoff) {
+			delete(rl.buckets, key)
+		}
+	}
+}
+
+// Stop stops the cleanup goroutine (for graceful shutdown)
+func (rl *RateLimiter) Stop() {
+	close(rl.done)
 }
 
 func (rl *RateLimiter) Allow(key string) bool {

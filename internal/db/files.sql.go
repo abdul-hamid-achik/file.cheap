@@ -94,6 +94,42 @@ func (q *Queries) GetFile(ctx context.Context, id pgtype.UUID) (File, error) {
 	return i, err
 }
 
+const getFilesByIDs = `-- name: GetFilesByIDs :many
+SELECT id, user_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at FROM files
+WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
+`
+
+func (q *Queries) GetFilesByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]File, error) {
+	rows, err := q.db.Query(ctx, getFilesByIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []File
+	for rows.Next() {
+		var i File
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Filename,
+			&i.ContentType,
+			&i.SizeBytes,
+			&i.StorageKey,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFilesByUser = `-- name: ListFilesByUser :many
 SELECT id, user_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at FROM files 
 WHERE user_id = $1 AND deleted_at IS NULL
@@ -138,8 +174,67 @@ func (q *Queries) ListFilesByUser(ctx context.Context, arg ListFilesByUserParams
 	return items, nil
 }
 
+const listFilesByUserWithCount = `-- name: ListFilesByUserWithCount :many
+SELECT id, user_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at, COUNT(*) OVER() AS total_count FROM files
+WHERE user_id = $1 AND deleted_at IS NULL
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3
+`
+
+type ListFilesByUserWithCountParams struct {
+	UserID pgtype.UUID `json:"user_id"`
+	Limit  int32       `json:"limit"`
+	Offset int32       `json:"offset"`
+}
+
+type ListFilesByUserWithCountRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	Filename    string             `json:"filename"`
+	ContentType string             `json:"content_type"`
+	SizeBytes   int64              `json:"size_bytes"`
+	StorageKey  string             `json:"storage_key"`
+	Status      FileStatus         `json:"status"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt   pgtype.Timestamptz `json:"deleted_at"`
+	TotalCount  int64              `json:"total_count"`
+}
+
+func (q *Queries) ListFilesByUserWithCount(ctx context.Context, arg ListFilesByUserWithCountParams) ([]ListFilesByUserWithCountRow, error) {
+	rows, err := q.db.Query(ctx, listFilesByUserWithCount, arg.UserID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFilesByUserWithCountRow
+	for rows.Next() {
+		var i ListFilesByUserWithCountRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Filename,
+			&i.ContentType,
+			&i.SizeBytes,
+			&i.StorageKey,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const softDeleteFile = `-- name: SoftDeleteFile :exec
-UPDATE files 
+UPDATE files
 SET deleted_at = NOW(), updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
 `
