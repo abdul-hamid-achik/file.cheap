@@ -268,10 +268,28 @@ func generateEmptyChart(width, height int, message string) ([]byte, error) {
 		Canvas: chart.Style{
 			FillColor: colorBg,
 		},
+		XAxis: chart.XAxis{
+			Style: chart.Style{
+				Hidden: true,
+			},
+			Range: &chart.ContinuousRange{
+				Min: 0,
+				Max: 100,
+			},
+		},
+		YAxis: chart.YAxis{
+			Style: chart.Style{
+				Hidden: true,
+			},
+			Range: &chart.ContinuousRange{
+				Min: 0,
+				Max: 100,
+			},
+		},
 		Series: []chart.Series{
 			chart.AnnotationSeries{
 				Annotations: []chart.Value2{
-					{XValue: float64(width / 2), YValue: float64(height / 2), Label: message},
+					{XValue: 50, YValue: 50, Label: message},
 				},
 				Style: chart.Style{
 					FontColor: colorText,
@@ -289,7 +307,53 @@ func generateEmptyChart(width, height int, message string) ([]byte, error) {
 }
 
 func generatePlaceholder(width, height int) []byte {
-	return nil
+	// Fallback: create a minimal valid PNG with just the background
+	graph := chart.Chart{
+		Width:  width,
+		Height: height,
+		Background: chart.Style{
+			FillColor: colorBg,
+		},
+		Canvas: chart.Style{
+			FillColor: colorBg,
+		},
+		XAxis: chart.XAxis{
+			Style: chart.Style{
+				Hidden: true,
+			},
+		},
+		YAxis: chart.YAxis{
+			Style: chart.Style{
+				Hidden: true,
+			},
+		},
+		Series: []chart.Series{
+			chart.ContinuousSeries{
+				XValues: []float64{0, 1},
+				YValues: []float64{0, 0},
+				Style: chart.Style{
+					Hidden: true,
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := graph.Render(chart.PNG, &buf); err != nil {
+		// Last resort: return a minimal 1x1 transparent PNG
+		return []byte{
+			0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
+			0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
+			0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+			0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89,
+			0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, // IDAT chunk
+			0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01,
+			0x0D, 0x0A, 0x2D, 0xB4,
+			0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, // IEND chunk
+			0xAE, 0x42, 0x60, 0x82,
+		}
+	}
+	return buf.Bytes()
 }
 
 var _ color.Color = drawing.Color{}
