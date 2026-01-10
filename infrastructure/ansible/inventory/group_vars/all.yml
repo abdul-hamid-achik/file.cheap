@@ -11,7 +11,8 @@ system_packages:
   - open-iscsi
   - nfs-common
 
-tailscale_authkey: "{{ lookup('env', 'TAILSCALE_AUTHKEY') }}"
+# Secure access is managed via Hetzner firewall with IP whitelist
+# Set ssh_allowed_ips in terraform.tfvars to restrict access
 
 helm_version: v3.14.0
 

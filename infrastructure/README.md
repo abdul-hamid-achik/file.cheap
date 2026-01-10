@@ -22,8 +22,8 @@ This directory contains the infrastructure-as-code for deploying **file.cheap** 
 ## Prerequisites
 
 1. [Hetzner Cloud account](https://console.hetzner.cloud/)
-2. [Tailscale account](https://tailscale.com/) (free for personal use)
-3. Domain name (file.cheap)
+2. Domain name (file.cheap)
+3. SSH key pair (ed25519 recommended)
 
 ## Quick Start
 
@@ -61,8 +61,7 @@ infrastructure/
 │   ├── roles/           # Ansible roles
 │   │   ├── common/      # Base OS config
 │   │   ├── k3s-master/  # K3s server
-│   │   ├── k3s-worker/  # K3s agent
-│   │   └── tailscale/   # VPN setup
+│   │   └── k3s-worker/  # K3s agent
 │   └── inventory/       # Host configuration
 │
 ├── k8s/                 # Kubernetes manifests
@@ -95,13 +94,28 @@ location       = "fsn1"
 worker_count   = 2
 ```
 
-### Environment Variables
+### Secure Access
 
-For Tailscale, set the auth key before running Ansible:
+SSH access is secured via **public key authentication** (no password login). Your SSH public key is required in `terraform.tfvars`:
 
-```bash
-export TAILSCALE_AUTHKEY="tskey-auth-..."
+```hcl
+ssh_public_key = "ssh-ed25519 AAAA... your-email@example.com"
 ```
+
+**Security hardening included:**
+- Password authentication disabled
+- fail2ban installed (bans IPs after 5 failed attempts)
+- Only key-based authentication allowed
+
+**Optional: IP Whitelist**
+
+For additional security, restrict SSH to specific IPs:
+
+```hcl
+ssh_allowed_ips = ["YOUR.PUBLIC.IP.ADDRESS/32"]
+```
+
+By default, SSH is open to all IPs (relying on key auth + fail2ban).
 
 ## Commands
 
@@ -249,6 +263,56 @@ The current setup uses a single master node. To enable HA:
    ```
 
 K3s will automatically configure embedded etcd for HA.
+
+## Secure Access Options
+
+The infrastructure uses **SSH key authentication** as the primary security mechanism. Additional options are available if needed:
+
+### Default: SSH Key Authentication (Recommended)
+
+Works out of the box with just your SSH public key. No static IP required.
+
+**Security features:**
+- Password authentication disabled
+- fail2ban blocks brute force attempts
+- Key-only authentication enforced
+
+**Pros**: Works from anywhere, no IP management, zero additional cost
+**Cons**: Key must be kept secure
+
+### Optional: IP Whitelist
+
+Add network-level restriction for defense in depth:
+
+```hcl
+ssh_allowed_ips = ["YOUR.PUBLIC.IP.ADDRESS/32"]
+```
+
+**Pros**: Additional security layer
+**Cons**: Requires static IP or manual updates
+
+### Alternative: WireGuard VPN
+
+Self-hosted VPN for private network access:
+
+```bash
+apt install wireguard
+wg genkey | tee privatekey | wg pubkey > publickey
+```
+
+**Pros**: Fast, encrypted tunnel, full control
+**Cons**: Additional setup and key management
+
+### Alternative: Cloudflare Tunnel
+
+Zero-trust access without exposed ports:
+
+```bash
+cloudflared tunnel create file-cheap
+```
+
+**Pros**: No exposed ports, browser SSH option
+**Cons**: Depends on Cloudflare
 
 ## Troubleshooting
 

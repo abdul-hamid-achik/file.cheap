@@ -3,10 +3,10 @@
 hcloud_token = "your-hetzner-api-token"
 
 # SSH public key for server access (required)
-# Example: cat ~/.ssh/id_ed25519.pub
-ssh_public_key = "ssh-ed25519 AAAA... your-email@example.com"
+# Get yours with: cat ~/.ssh/id_ed25519.pub
+ssh_public_key = "ssh-ed25519 AAAA..."
 
-# Restrict SSH access to specific IPs (recommended for production)
+# Optional: Restrict SSH access to specific IPs (default: open, relies on key auth + fail2ban)
 # ssh_allowed_ips = ["YOUR_IP/32"]
 
 # Cluster configuration

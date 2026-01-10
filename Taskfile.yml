@@ -318,7 +318,7 @@ tasks:
         echo ""
         echo "  Installing infrastructure tools..."
         echo ""
-      - brew install terraform ansible kubectl helm k9s tailscale
+      - brew install terraform ansible kubectl helm k9s
       - ansible-galaxy install -r {{.ANSIBLE_DIR}}/requirements.yml
       - |
         echo ""
@@ -659,15 +659,10 @@ tasks:
         command -v kubectl >/dev/null && echo "    ✓ kubectl" || echo "    ✗ kubectl (run: brew install kubectl)"
         command -v helm >/dev/null && echo "    ✓ helm" || echo "    ✗ helm (run: brew install helm)"
         command -v k9s >/dev/null && echo "    ✓ k9s" || echo "    ✗ k9s (run: brew install k9s)"
-        command -v tailscale >/dev/null && echo "    ✓ tailscale" || echo "    ✗ tailscale (run: brew install tailscale)"
         echo ""
         echo "  Cluster Connectivity"
         echo "  ────────────────────"
         kubectl cluster-info --kubeconfig={{.KUBECONFIG}} >/dev/null 2>&1 && echo "    ✓ Connected to cluster" || echo "    ✗ Cannot connect (run: task infra:kubeconfig)"
-        echo ""
-        echo "  Tailscale"
-        echo "  ─────────"
-        tailscale status >/dev/null 2>&1 && echo "    ✓ Tailscale connected" || echo "    ✗ Tailscale not connected (run: tailscale up)"
         echo ""
         echo "  DNS Resolution"
         echo "  ──────────────"
