@@ -12,6 +12,7 @@ resources:
   - grafana/configmap-dashboards.yaml
   - grafana/deployment.yaml
   - grafana/service.yaml
+  - grafana/ingress.yaml
 
 configMapGenerator:
   - name: grafana-dashboards
