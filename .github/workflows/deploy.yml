@@ -72,9 +72,30 @@ jobs:
 
       - name: Wait for rollout
         run: |
-          kubectl rollout status deployment/api -n file-processor --timeout=300s --kubeconfig=$KUBECONFIG_PATH
-          kubectl rollout status deployment/worker-image -n file-processor --timeout=300s --kubeconfig=$KUBECONFIG_PATH
-          kubectl rollout status deployment/worker-video -n file-processor --timeout=300s --kubeconfig=$KUBECONFIG_PATH
+          kubectl rollout status deployment/api -n file-processor --timeout=300s --kubeconfig=$KUBECONFIG_PATH || {
+            echo "=== API Rollout Failed - Debugging Info ==="
+            echo "Pod Status:"
+            kubectl get pods -n file-processor -l app=api --kubeconfig=$KUBECONFIG_PATH
+            echo ""
+            echo "Pod Descriptions:"
+            kubectl describe pods -n file-processor -l app=api --kubeconfig=$KUBECONFIG_PATH
+            echo ""
+            echo "Recent Events:"
+            kubectl get events -n file-processor --sort-by='.lastTimestamp' --kubeconfig=$KUBECONFIG_PATH | tail -20
+            exit 1
+          }
+          kubectl rollout status deployment/worker-image -n file-processor --timeout=300s --kubeconfig=$KUBECONFIG_PATH || {
+            echo "=== Worker-Image Rollout Failed - Debugging Info ==="
+            kubectl get pods -n file-processor -l app=worker-image --kubeconfig=$KUBECONFIG_PATH
+            kubectl describe pods -n file-processor -l app=worker-image --kubeconfig=$KUBECONFIG_PATH
+            exit 1
+          }
+          kubectl rollout status deployment/worker-video -n file-processor --timeout=300s --kubeconfig=$KUBECONFIG_PATH || {
+            echo "=== Worker-Video Rollout Failed - Debugging Info ==="
+            kubectl get pods -n file-processor -l app=worker-video --kubeconfig=$KUBECONFIG_PATH
+            kubectl describe pods -n file-processor -l app=worker-video --kubeconfig=$KUBECONFIG_PATH
+            exit 1
+          }
 
       - name: Verify deployment
         run: |
