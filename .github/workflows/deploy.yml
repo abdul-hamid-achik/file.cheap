@@ -36,6 +36,13 @@ jobs:
           echo "${{ secrets.KUBECONFIG }}" | base64 -d > $KUBECONFIG_PATH
           chmod 600 $KUBECONFIG_PATH
 
+      - name: Cleanup legacy resources
+        run: |
+          # Remove legacy deployments that are no longer in manifests
+          # The old 'worker' deployment was replaced by worker-image and worker-video
+          kubectl delete deployment worker -n file-processor --kubeconfig=$KUBECONFIG_PATH --ignore-not-found=true
+          echo "Legacy resources cleaned up"
+
       - name: Apply manifests (create/update deployments)
         run: |
           TAG="${{ github.event.inputs.image_tag || 'latest' }}"
