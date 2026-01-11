@@ -24,6 +24,10 @@ spec:
         - name: worker
           image: ghcr.io/abdul-hamid-achik/file.cheap/worker-image:latest
           imagePullPolicy: Always
+          ports:
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
           envFrom:
             - secretRef:
                 name: app-secrets
