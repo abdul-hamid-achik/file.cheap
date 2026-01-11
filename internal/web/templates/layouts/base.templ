@@ -55,8 +55,39 @@ templ Base(meta PageMeta, user *auth.SessionUser) {
 			</script>
 			<script src="https://unpkg.com/htmx.org@2.0.4"></script>
 			<script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+			<!-- Prism.js for syntax highlighting -->
+			<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet"/>
+			<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+			<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+			<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+			<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+			<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+			<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
 			@components.VideoPlayerScript()
 			<style>
+				/* Prism.js Nord theme overrides */
+				code[class*="language-"], pre[class*="language-"] {
+					background: #434C5E !important;
+					color: #D8DEE9 !important;
+					font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace !important;
+					font-size: 0.875rem !important;
+					line-height: 1.5 !important;
+				}
+				pre[class*="language-"] {
+					padding: 1rem !important;
+					margin: 0 !important;
+					border-radius: 0 0 0.5rem 0.5rem !important;
+					overflow-x: auto !important;
+				}
+				.token.comment, .token.prolog, .token.doctype, .token.cdata { color: #616E88 !important; }
+				.token.punctuation { color: #D8DEE9 !important; }
+				.token.property, .token.tag, .token.boolean, .token.number, .token.constant, .token.symbol { color: #B48EAD !important; }
+				.token.selector, .token.attr-name, .token.string, .token.char, .token.builtin { color: #A3BE8C !important; }
+				.token.operator, .token.entity, .token.url, .language-css .token.string, .style .token.string { color: #81A1C1 !important; }
+				.token.atrule, .token.attr-value, .token.keyword { color: #81A1C1 !important; }
+				.token.function { color: #88C0D0 !important; }
+				.token.regex, .token.important, .token.variable { color: #EBCB8B !important; }
+				.code-block-header { background: #3B4252; border-radius: 0.5rem 0.5rem 0 0; }
 				.htmx-request .htmx-indicator { opacity: 1; }
 				.htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
 				@keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }

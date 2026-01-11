@@ -415,7 +415,7 @@ templ docsNavItem(section, title, activeSection string) {
 	<li>
 		<a
 			href={ templ.SafeURL("/docs?section=" + section) }
-			class={ "block px-3 py-2 rounded-lg text-sm transition-colors " + 
+			class={ "block px-3 py-2 rounded-lg text-sm transition-colors " +
 				func() string {
 					if section == activeSection {
 						return "bg-nord-8/10 text-nord-8 font-medium"
@@ -428,20 +428,47 @@ templ docsNavItem(section, title, activeSection string) {
 	</li>
 }
 
+templ docsPrevNext(prevSection, prevTitle, nextSection, nextTitle string) {
+	<div class="flex justify-between items-center pt-8 mt-8 border-t border-nord-2">
+		if prevSection != "" {
+			<a href={ templ.SafeURL("/docs?section=" + prevSection) } class="group flex items-center gap-2 text-nord-4 hover:text-nord-8 transition-colors">
+				<svg class="w-4 h-4 transition-transform group-hover:-translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+				</svg>
+				<span>{ prevTitle }</span>
+			</a>
+		} else {
+			<div></div>
+		}
+		if nextSection != "" {
+			<a href={ templ.SafeURL("/docs?section=" + nextSection) } class="group flex items-center gap-2 text-nord-4 hover:text-nord-8 transition-colors">
+				<span>{ nextTitle }</span>
+				<svg class="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+				</svg>
+			</a>
+		}
+	</div>
+}
+
 templ docsGettingStarted() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">Getting Started</h1>
 		<p class="text-nord-4 mb-6">
 			Welcome to file.cheap! This guide will help you get up and running quickly.
 		</p>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Quick Start</h2>
+		<h2 id="quick-start" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#quick-start" class="hover:text-nord-8">Quick Start</a>
+		</h2>
 		<ol class="list-decimal list-inside text-nord-4 mb-6 space-y-2">
 			<li><strong class="text-nord-5">Create an account</strong> - Sign up for free at <a href="/register" class="text-nord-8 hover:text-nord-7">/register</a></li>
 			<li><strong class="text-nord-5">Upload a file</strong> - Go to the <a href="/upload" class="text-nord-8 hover:text-nord-7">upload page</a> and drop your first file</li>
 			<li><strong class="text-nord-5">Choose processing options</strong> - Select thumbnails, resize, or format conversion</li>
 			<li><strong class="text-nord-5">Download results</strong> - Get your processed files from the dashboard</li>
 		</ol>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Supported File Types</h2>
+		<h2 id="supported-types" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#supported-types" class="hover:text-nord-8">Supported File Types</a>
+		</h2>
 		<div class="grid md:grid-cols-3 gap-4 mb-6">
 			<div class="bg-nord-2 rounded-lg p-4">
 				<h3 class="font-medium text-nord-5 mb-2">Images</h3>
@@ -456,7 +483,9 @@ templ docsGettingStarted() {
 				<p class="text-nord-4 text-sm">PDF</p>
 			</div>
 		</div>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">File Size Limits</h2>
+		<h2 id="file-limits" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#file-limits" class="hover:text-nord-8">File Size Limits</a>
+		</h2>
 		<table class="w-full text-nord-4 mb-6">
 			<thead>
 				<tr class="border-b border-nord-3">
@@ -483,42 +512,41 @@ templ docsGettingStarted() {
 				</tr>
 			</tbody>
 		</table>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Next Steps</h2>
+		<h2 id="next-steps" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#next-steps" class="hover:text-nord-8">Next Steps</a>
+		</h2>
 		<ul class="list-disc list-inside text-nord-4 space-y-1">
 			<li>Learn about <a href="/docs?section=image-processing" class="text-nord-8 hover:text-nord-7">image processing options</a></li>
 			<li>Explore <a href="/docs?section=video-processing" class="text-nord-8 hover:text-nord-7">video transcoding and HLS streaming</a></li>
 			<li>Check out the <a href="/docs?section=api-reference" class="text-nord-8 hover:text-nord-7">API reference</a> { "for" } programmatic access</li>
 			<li>Set up <a href="/docs?section=webhooks" class="text-nord-8 hover:text-nord-7">webhooks</a> { "for" } async processing notifications</li>
 		</ul>
+		@docsPrevNext("", "", "uploading-files", "Uploading Files")
 	</article>
 }
 
 templ docsUploadingFiles() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">Uploading Files</h1>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Web Interface</h2>
+		<h2 id="web-interface" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#web-interface" class="hover:text-nord-8">Web Interface</a>
+		</h2>
 		<p class="text-nord-4 mb-4">
 			The easiest way to upload files is through our web interface. Simply drag and drop files onto the upload area, or click to browse your files.
 		</p>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">API Upload</h2>
+		<h2 id="api-upload" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#api-upload" class="hover:text-nord-8">API Upload</a>
+		</h2>
 		<p class="text-nord-4 mb-4">For programmatic uploads, use the REST API:</p>
 		<h3 class="text-lg font-medium text-nord-5 mb-2">cURL</h3>
-		<div class="bg-nord-2 rounded-lg p-4 mb-4 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					curl -X POST https://api.file.cheap/v1/files \
-					-H "Authorization: Bearer YOUR_API_TOKEN" \
-					-F "file=@/path/to/image.jpg" \
-					-F "generate_thumbnail=true" \
-					-F "generate_resize=true"
-				</code>
-			</pre>
-		</div>
+		@components.CodeBlock("bash", `curl -X POST https://api.file.cheap/v1/files \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -F "file=@/path/to/image.jpg" \
+  -F "generate_thumbnail=true" \
+  -F "generate_resize=true"`)
 		<h3 class="text-lg font-medium text-nord-5 mb-2">JavaScript (fetch)</h3>
-		<div class="bg-nord-2 rounded-lg p-4 mb-4 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					@templ.Raw(`const formData = new FormData();
+		@components.CodeBlockRaw("javascript") {
+			@templ.Raw(`const formData = new FormData();
 formData.append('file', fileInput.files[0]);
 formData.append('generate_thumbnail', 'true');
 formData.append('generate_resize', 'true');
@@ -533,14 +561,10 @@ const response = await fetch('https://api.file.cheap/v1/files', {
 
 const result = await response.json();
 console.log('File ID:', result.id);`)
-				</code>
-			</pre>
-		</div>
+		}
 		<h3 class="text-lg font-medium text-nord-5 mb-2">Python (requests)</h3>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					@templ.Raw(`import requests
+		@components.CodeBlockRaw("python") {
+			@templ.Raw(`import requests
 
 url = 'https://api.file.cheap/v1/files'
 headers = {'Authorization': 'Bearer YOUR_API_TOKEN'}
@@ -555,10 +579,10 @@ with open('/path/to/image.jpg', 'rb') as f:
 
 result = response.json()
 print(f"File ID: {result['id']}")`)
-				</code>
-			</pre>
-		</div>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Processing Options</h2>
+		}
+		<h2 id="processing-options" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#processing-options" class="hover:text-nord-8">Processing Options</a>
+		</h2>
 		<table class="w-full text-nord-4 mb-6">
 			<thead>
 				<tr class="border-b border-nord-3">
@@ -585,31 +609,63 @@ print(f"File ID: {result['id']}")`)
 				</tr>
 			</tbody>
 		</table>
+		@docsPrevNext("getting-started", "Getting Started", "image-processing", "Image Processing")
 	</article>
 }
 
 templ docsImageProcessing() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">Image Processing</h1>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Thumbnails</h2>
+		<h2 id="thumbnails" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#thumbnails" class="hover:text-nord-8">Thumbnails</a>
+		</h2>
 		<p class="text-nord-4 mb-4">
 			Thumbnails are generated at 300x300 pixels by default, maintaining aspect ratio with smart cropping focused on the center of the image.
 		</p>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Resizing</h2>
+		@components.CodeBlock("bash", `curl -X POST https://api.file.cheap/v1/files \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -F "file=@image.jpg" \
+  -F "generate_thumbnail=true"`)
+		<h2 id="resizing" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#resizing" class="hover:text-nord-8">Resizing</a>
+		</h2>
 		<p class="text-nord-4 mb-4">The resize option creates three variants:</p>
 		<ul class="list-disc list-inside text-nord-4 mb-6 space-y-1">
 			<li><strong class="text-nord-5">Small:</strong> 320px width</li>
 			<li><strong class="text-nord-5">Medium:</strong> 640px width</li>
 			<li><strong class="text-nord-5">Large:</strong> 1280px width</li>
 		</ul>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">WebP Conversion</h2>
+		@components.CodeBlock("bash", `curl -X POST https://api.file.cheap/v1/files \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -F "file=@image.jpg" \
+  -F "generate_resize=true"`)
+		<h2 id="webp" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#webp" class="hover:text-nord-8">WebP Conversion</a>
+		</h2>
 		<p class="text-nord-4 mb-4">
 			WebP format typically reduces file size by 25-35% compared to JPEG while maintaining visual quality. Great for web optimization.
 		</p>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Watermarking</h2>
+		@components.CodeBlock("bash", `curl -X POST https://api.file.cheap/v1/files \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -F "file=@image.jpg" \
+  -F "convert_webp=true"`)
+		<h2 id="watermarking" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#watermarking" class="hover:text-nord-8">Watermarking</a>
+		</h2>
 		<p class="text-nord-4 mb-4">
 			Add text or image watermarks to protect your content. Configure position, opacity, and size through the API.
 		</p>
+		@components.CodeBlockRaw("json") {
+			@templ.Raw(`{
+  "watermark": {
+    "text": "© 2024 Your Company",
+    "position": "bottom-right",
+    "opacity": 0.7,
+    "font_size": 24
+  }
+}`)
+		}
+		@docsPrevNext("uploading-files", "Uploading Files", "video-processing", "Video Processing")
 	</article>
 }
 
@@ -619,10 +675,16 @@ templ docsVideoProcessing() {
 		<p class="text-nord-4 mb-6">
 			file.cheap supports comprehensive video processing powered by FFmpeg, including transcoding, HLS streaming, thumbnail extraction, and watermarking.
 		</p>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Video Transcoding</h2>
+		<h2 id="transcoding" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#transcoding" class="hover:text-nord-8">Video Transcoding</a>
+		</h2>
 		<p class="text-nord-4 mb-4">
 			Transcode videos to different resolutions and formats. Supported output formats include MP4 (H.264) and WebM (VP9).
 		</p>
+		@components.CodeBlock("bash", `curl -X POST https://api.file.cheap/v1/files/:fileId/transcode \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"resolution": "720p", "format": "mp4"}'`)
 		<p class="text-nord-4 mb-4">Available resolutions:</p>
 		<ul class="list-disc list-inside text-nord-4 mb-6 space-y-1">
 			<li><strong class="text-nord-5">360p:</strong> 640x360</li>
@@ -632,25 +694,51 @@ templ docsVideoProcessing() {
 			<li><strong class="text-nord-5">1440p:</strong> 2560x1440 (2K)</li>
 			<li><strong class="text-nord-5">2160p:</strong> 3840x2160 (4K)</li>
 		</ul>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">HLS Streaming</h2>
+		<h2 id="hls" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#hls" class="hover:text-nord-8">HLS Streaming</a>
+		</h2>
 		<p class="text-nord-4 mb-4">
 			Generate HTTP Live Streaming (HLS) packages for adaptive bitrate streaming. HLS automatically adjusts video quality based on the viewer's network conditions.
 		</p>
+		@components.CodeBlock("bash", `curl -X POST https://api.file.cheap/v1/files/:fileId/hls \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"resolutions": ["360p", "720p", "1080p"]}'`)
 		<p class="text-nord-4 mb-4">HLS output includes:</p>
 		<ul class="list-disc list-inside text-nord-4 mb-6 space-y-1">
 			<li>Master playlist (.m3u8) with multiple quality levels</li>
 			<li>Segment files (.ts) for each quality variant</li>
 			<li>Automatic bitrate adaptation</li>
 		</ul>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Video Thumbnails</h2>
+		<h2 id="video-thumbnails" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#video-thumbnails" class="hover:text-nord-8">Video Thumbnails</a>
+		</h2>
 		<p class="text-nord-4 mb-4">
 			Extract thumbnail images from video files at specified timestamps. Perfect for video previews and galleries.
 		</p>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Video Watermarking</h2>
+		@components.CodeBlock("bash", `curl -X POST https://api.file.cheap/v1/files/:fileId/thumbnail \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"timestamp": "00:00:05"}'`)
+		<h2 id="video-watermarking" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#video-watermarking" class="hover:text-nord-8">Video Watermarking</a>
+		</h2>
 		<p class="text-nord-4 mb-4">
 			Add text watermarks to videos to protect your content. Configure position (top-left, top-right, bottom-left, bottom-right, center) and styling.
 		</p>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Supported Input Formats</h2>
+		@components.CodeBlockRaw("json") {
+			@templ.Raw(`{
+  "watermark": {
+    "text": "© Your Company",
+    "position": "bottom-right",
+    "font_size": 18,
+    "opacity": 0.8
+  }
+}`)
+		}
+		<h2 id="supported-formats" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#supported-formats" class="hover:text-nord-8">Supported Input Formats</a>
+		</h2>
 		<ul class="list-disc list-inside text-nord-4 mb-6 space-y-1">
 			<li>MP4</li>
 			<li>WebM</li>
@@ -658,89 +746,154 @@ templ docsVideoProcessing() {
 			<li>AVI</li>
 			<li>MKV</li>
 		</ul>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Chunked Upload</h2>
+		<h2 id="chunked-upload" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#chunked-upload" class="hover:text-nord-8">Chunked Upload</a>
+		</h2>
 		<p class="text-nord-4 mb-4">
 			For large video files, use chunked upload to upload files in parts. This allows resumable uploads and better handling of large files.
 		</p>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					# Initialize chunked upload
-					POST /v1/upload/chunked/init
-					# Upload each chunk
-					POST /v1/upload/chunked/:uploadId/chunk
-					# Complete the upload
-					POST /v1/upload/chunked/:uploadId/complete
-				</code>
-			</pre>
-		</div>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Video Embed</h2>
+		@components.CodeBlock("bash", `# Initialize chunked upload
+curl -X POST https://api.file.cheap/v1/upload/chunked/init \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"filename": "video.mp4", "content_type": "video/mp4", "size": 104857600}'
+
+# Upload each chunk (5MB chunks recommended)
+curl -X POST https://api.file.cheap/v1/upload/chunked/:uploadId/chunk \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Range: bytes 0-5242879/104857600" \
+  --data-binary @chunk1.bin
+
+# Complete the upload
+curl -X POST https://api.file.cheap/v1/upload/chunked/:uploadId/complete \
+  -H "Authorization: Bearer YOUR_API_TOKEN"`)
+		<h2 id="video-embed" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#video-embed" class="hover:text-nord-8">Video Embed</a>
+		</h2>
 		<p class="text-nord-4 mb-4">
 			Use the embed endpoint to get a shareable video player page:
 		</p>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6">
-			<code class="text-nord-8">https://file.cheap/embed/:fileId</code>
-		</div>
+		@components.CodeBlock("bash", `# Get embed URL for a video
+https://file.cheap/embed/:fileId
+
+# Embed in HTML
+<iframe src="https://file.cheap/embed/:fileId"
+  width="640" height="360"
+  frameborder="0" allowfullscreen></iframe>`)
+		@docsPrevNext("image-processing", "Image Processing", "pdf-processing", "PDF Processing")
 	</article>
 }
 
 templ docsPdfProcessing() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">PDF Processing</h1>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Thumbnail Generation</h2>
+		<h2 id="pdf-thumbnails" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#pdf-thumbnails" class="hover:text-nord-8">Thumbnail Generation</a>
+		</h2>
 		<p class="text-nord-4 mb-4">
 			Generate preview thumbnails from the first page of PDF documents. Useful for document previews and galleries.
 		</p>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Metadata Extraction</h2>
+		@components.CodeBlock("bash", `curl -X POST https://api.file.cheap/v1/files \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -F "file=@document.pdf" \
+  -F "generate_thumbnail=true"`)
+		<h3 class="text-lg font-medium text-nord-5 mb-2">Response</h3>
+		@components.CodeBlockRaw("json") {
+			@templ.Raw(`{
+  "id": "file_abc123",
+  "filename": "document.pdf",
+  "content_type": "application/pdf",
+  "size": 1048576,
+  "variants": [
+    {
+      "type": "thumbnail",
+      "url": "https://cdn.file.cheap/abc123/thumbnail.png",
+      "width": 300,
+      "height": 400
+    }
+  ],
+  "metadata": {
+    "page_count": 12,
+    "title": "Annual Report 2024"
+  }
+}`)
+		}
+		<h2 id="pdf-metadata" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#pdf-metadata" class="hover:text-nord-8">Metadata Extraction</a>
+		</h2>
 		<p class="text-nord-4 mb-4">Extract document properties including:</p>
-		<ul class="list-disc list-inside text-nord-4 space-y-1">
+		<ul class="list-disc list-inside text-nord-4 mb-4 space-y-1">
 			<li>Title, Author, Subject</li>
 			<li>Creation and modification dates</li>
 			<li>Page count</li>
 			<li>PDF version</li>
 		</ul>
+		@components.CodeBlock("bash", `curl -X POST https://api.file.cheap/v1/files \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -F "file=@document.pdf" \
+  -F "extract_metadata=true"`)
+		<h2 id="pdf-page-rendering" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#pdf-page-rendering" class="hover:text-nord-8">Page Rendering</a>
+		</h2>
+		<p class="text-nord-4 mb-4">
+			Render specific pages from a PDF as images. Useful for document viewers and previews.
+		</p>
+		@components.CodeBlock("bash", `curl -X POST https://api.file.cheap/v1/files/:fileId/render \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"page": 1, "format": "png", "dpi": 150}'`)
+		@docsPrevNext("video-processing", "Video Processing", "api-reference", "API Reference")
 	</article>
 }
 
 templ docsApiReference() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">API Reference</h1>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Base URL</h2>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6">
-			<code class="text-nord-8">https://api.file.cheap/v1</code>
-		</div>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Authentication</h2>
+		<h2 id="base-url" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#base-url" class="hover:text-nord-8">Base URL</a>
+		</h2>
+		@components.CodeBlock("bash", `https://api.file.cheap/v1`)
+		<h2 id="api-authentication" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#api-authentication" class="hover:text-nord-8">Authentication</a>
+		</h2>
 		<p class="text-nord-4 mb-4">All API requests require a Bearer token in the Authorization header:</p>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6">
-			<code class="text-nord-4 text-sm">Authorization: Bearer YOUR_API_TOKEN</code>
+		@components.CodeBlock("bash", `Authorization: Bearer YOUR_API_TOKEN`)
+		<h2 id="endpoints" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#endpoints" class="hover:text-nord-8">Endpoints</a>
+		</h2>
+		<div class="space-y-3 mb-6">
+			<div class="bg-nord-2 rounded-lg p-3 flex items-center gap-3">
+				<span class="px-2 py-1 rounded text-xs font-medium bg-nord-14/20 text-nord-14">POST</span>
+				<code class="text-nord-4">/files</code>
+				<span class="text-nord-3 text-sm ml-auto">Upload file</span>
+			</div>
+			<div class="bg-nord-2 rounded-lg p-3 flex items-center gap-3">
+				<span class="px-2 py-1 rounded text-xs font-medium bg-nord-8/20 text-nord-8">GET</span>
+				<code class="text-nord-4">/files</code>
+				<span class="text-nord-3 text-sm ml-auto">List files</span>
+			</div>
+			<div class="bg-nord-2 rounded-lg p-3 flex items-center gap-3">
+				<span class="px-2 py-1 rounded text-xs font-medium bg-nord-8/20 text-nord-8">GET</span>
+				<code class="text-nord-4">/files/:id</code>
+				<span class="text-nord-3 text-sm ml-auto">Get file</span>
+			</div>
+			<div class="bg-nord-2 rounded-lg p-3 flex items-center gap-3">
+				<span class="px-2 py-1 rounded text-xs font-medium bg-nord-11/20 text-nord-11">DELETE</span>
+				<code class="text-nord-4">/files/:id</code>
+				<span class="text-nord-3 text-sm ml-auto">Delete file</span>
+			</div>
+			<div class="bg-nord-2 rounded-lg p-3 flex items-center gap-3">
+				<span class="px-2 py-1 rounded text-xs font-medium bg-nord-8/20 text-nord-8">GET</span>
+				<code class="text-nord-4">/jobs/:id</code>
+				<span class="text-nord-3 text-sm ml-auto">Get job status</span>
+			</div>
 		</div>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Endpoints</h2>
-		<h3 class="text-lg font-medium text-nord-5 mb-2">Upload File</h3>
-		<div class="bg-nord-2 rounded-lg p-4 mb-4">
-			<code class="text-nord-14">POST</code> <code class="text-nord-4">/files</code>
-		</div>
-		<h3 class="text-lg font-medium text-nord-5 mb-2">List Files</h3>
-		<div class="bg-nord-2 rounded-lg p-4 mb-4">
-			<code class="text-nord-8">GET</code> <code class="text-nord-4">/files</code>
-		</div>
-		<h3 class="text-lg font-medium text-nord-5 mb-2">Get File</h3>
-		<div class="bg-nord-2 rounded-lg p-4 mb-4">
-			<code class="text-nord-8">GET</code> <code class="text-nord-4">/files/:id</code>
-		</div>
-		<h3 class="text-lg font-medium text-nord-5 mb-2">Delete File</h3>
-		<div class="bg-nord-2 rounded-lg p-4 mb-4">
-			<code class="text-nord-11">DELETE</code> <code class="text-nord-4">/files/:id</code>
-		</div>
-		<h3 class="text-lg font-medium text-nord-5 mb-2">Get Processing Job</h3>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6">
-			<code class="text-nord-8">GET</code> <code class="text-nord-4">/jobs/:id</code>
-		</div>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Code Examples</h2>
-		<h3 class="text-lg font-medium text-nord-5 mb-2">JavaScript SDK</h3>
-		<div class="bg-nord-2 rounded-lg p-4 mb-4 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					@templ.Raw(`// List files with pagination
+		<h2 id="code-examples" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#code-examples" class="hover:text-nord-8">Code Examples</a>
+		</h2>
+		<h3 class="text-lg font-medium text-nord-5 mb-2">JavaScript</h3>
+		@components.CodeBlockRaw("javascript") {
+			@templ.Raw(`// List files with pagination
 const response = await fetch('https://api.file.cheap/v1/files?page=1&limit=20', {
   headers: { 'Authorization': 'Bearer YOUR_API_TOKEN' }
 });
@@ -758,14 +911,10 @@ await fetch('https://api.file.cheap/v1/files/abc123', {
   method: 'DELETE',
   headers: { 'Authorization': 'Bearer YOUR_API_TOKEN' }
 });`)
-				</code>
-			</pre>
-		</div>
-		<h3 class="text-lg font-medium text-nord-5 mb-2">Python SDK</h3>
-		<div class="bg-nord-2 rounded-lg p-4 mb-4 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					@templ.Raw(`import requests
+		}
+		<h3 class="text-lg font-medium text-nord-5 mb-2">Python</h3>
+		@components.CodeBlockRaw("python") {
+			@templ.Raw(`import requests
 
 API_BASE = 'https://api.file.cheap/v1'
 headers = {'Authorization': 'Bearer YOUR_API_TOKEN'}
@@ -786,15 +935,13 @@ print(f"Status: {job['status']}")
 
 # Delete a file
 requests.delete(f'{API_BASE}/files/abc123', headers=headers)`)
-				</code>
-			</pre>
-		</div>
-		<h3 class="text-lg font-medium text-nord-5 mb-2">Response Examples</h3>
+		}
+		<h2 id="response-examples" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#response-examples" class="hover:text-nord-8">Response Examples</a>
+		</h2>
 		<p class="text-nord-4 mb-2">Successful file upload response:</p>
-		<div class="bg-nord-2 rounded-lg p-4 mb-4 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					@templ.Raw(`{
+		@components.CodeBlockRaw("json") {
+			@templ.Raw(`{
   "id": "abc123",
   "name": "photo.jpg",
   "size": 1048576,
@@ -806,14 +953,10 @@ requests.delete(f'{API_BASE}/files/abc123', headers=headers)`)
     {"id": "job124", "type": "resize", "status": "pending"}
   ]
 }`)
-				</code>
-			</pre>
-		</div>
+		}
 		<p class="text-nord-4 mb-2">File with completed processing:</p>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					@templ.Raw(`{
+		@components.CodeBlockRaw("json") {
+			@templ.Raw(`{
   "id": "abc123",
   "name": "photo.jpg",
   "size": 1048576,
@@ -826,27 +969,51 @@ requests.delete(f'{API_BASE}/files/abc123', headers=headers)`)
     {"type": "large", "url": "https://cdn.file.cheap/abc123/large.jpg", "size": 512000}
   ]
 }`)
-				</code>
-			</pre>
-		</div>
+		}
+		@docsPrevNext("pdf-processing", "PDF Processing", "authentication", "Authentication")
 	</article>
 }
 
 templ docsAuthentication() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">Authentication</h1>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">API Tokens</h2>
+		<h2 id="api-tokens" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#api-tokens" class="hover:text-nord-8">API Tokens</a>
+		</h2>
 		<p class="text-nord-4 mb-4">
 			Generate API tokens from your account settings. Each token has full access to your account, so keep them secure.
 		</p>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">OAuth</h2>
+		@components.CodeBlock("bash", `# Using API token in requests
+curl -X GET https://api.file.cheap/v1/files \
+  -H "Authorization: Bearer fp_your_api_token_here"`)
+		<h2 id="oauth" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#oauth" class="hover:text-nord-8">OAuth</a>
+		</h2>
 		<p class="text-nord-4 mb-4">
 			We support OAuth 2.0 login with Google and GitHub for the web interface.
 		</p>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Session Security</h2>
-		<p class="text-nord-4">
+		<div class="grid md:grid-cols-2 gap-4 mb-6">
+			<div class="bg-nord-2 rounded-lg p-4">
+				<h3 class="font-medium text-nord-5 mb-2">Google</h3>
+				<p class="text-nord-4 text-sm">Sign in with your Google account for quick access.</p>
+			</div>
+			<div class="bg-nord-2 rounded-lg p-4">
+				<h3 class="font-medium text-nord-5 mb-2">GitHub</h3>
+				<p class="text-nord-4 text-sm">Sign in with your GitHub account, perfect for developers.</p>
+			</div>
+		</div>
+		<h2 id="session-security" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#session-security" class="hover:text-nord-8">Session Security</a>
+		</h2>
+		<p class="text-nord-4 mb-4">
 			Sessions expire after 7 days of inactivity. Enable two-factor authentication for additional security.
 		</p>
+		<ul class="list-disc list-inside text-nord-4 space-y-1">
+			<li>Sessions are secured with HTTP-only cookies</li>
+			<li>All traffic is encrypted with TLS 1.3</li>
+			<li>API tokens can be revoked at any time from your dashboard</li>
+		</ul>
+		@docsPrevNext("api-reference", "API Reference", "webhooks", "Webhooks")
 	</article>
 }
 
@@ -856,32 +1023,35 @@ templ docsWebhooks() {
 		<p class="text-nord-4 mb-6">
 			Receive HTTP callbacks when file processing completes. Configure webhooks in your account settings.
 		</p>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Event Types</h2>
+		<h2 id="event-types" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#event-types" class="hover:text-nord-8">Event Types</a>
+		</h2>
 		<ul class="list-disc list-inside text-nord-4 mb-6 space-y-1">
 			<li><code class="text-nord-8">file.uploaded</code> - File was successfully uploaded</li>
 			<li><code class="text-nord-8">processing.started</code> - Processing has begun</li>
 			<li><code class="text-nord-8">processing.completed</code> - All processing finished</li>
 			<li><code class="text-nord-8">processing.failed</code> - Processing encountered an error</li>
 		</ul>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Payload Example</h2>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					@templ.Raw(`{
+		<h2 id="payload" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#payload" class="hover:text-nord-8">Payload Example</a>
+		</h2>
+		@components.CodeBlockRaw("json") {
+			@templ.Raw(`{
   "event": "processing.completed",
   "timestamp": "2026-01-05T12:00:00Z",
   "data": {
     "file_id": "abc123",
+    "filename": "photo.jpg",
     "variants": [
-      {"type": "thumbnail", "url": "..."},
-      {"type": "webp", "url": "..."}
+      {"type": "thumbnail", "url": "https://cdn.file.cheap/abc123/thumbnail.jpg"},
+      {"type": "webp", "url": "https://cdn.file.cheap/abc123/original.webp"}
     ]
   }
 }`)
-				</code>
-			</pre>
-		</div>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Signature Verification</h2>
+		}
+		<h2 id="signature" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#signature" class="hover:text-nord-8">Signature Verification</a>
+		</h2>
 		<p class="text-nord-4 mb-4">
 			All webhook requests include a signature header to verify authenticity. Always verify signatures before processing webhooks.
 		</p>
@@ -903,11 +1073,9 @@ templ docsWebhooks() {
 				</tr>
 			</tbody>
 		</table>
-		<h3 class="text-lg font-medium text-nord-5 mb-2">Verification Example (Node.js)</h3>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					@templ.Raw(`const crypto = require('crypto');
+		<h3 class="text-lg font-medium text-nord-5 mb-2">Node.js Example</h3>
+		@components.CodeBlockRaw("javascript") {
+			@templ.Raw(`const crypto = require('crypto');
 
 function verifyWebhook(payload, signature, secret) {
   const expected = crypto
@@ -934,11 +1102,38 @@ app.post('/webhook', (req, res) => {
   }
 
   // Process the webhook...
+  res.status(200).send('OK');
 });`)
-				</code>
-			</pre>
-		</div>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Retry Behavior</h2>
+		}
+		<h3 class="text-lg font-medium text-nord-5 mb-2">Python Example</h3>
+		@components.CodeBlockRaw("python") {
+			@templ.Raw(`import hmac
+import hashlib
+from flask import Flask, request
+
+app = Flask(__name__)
+
+def verify_webhook(payload: bytes, signature: str, secret: str) -> bool:
+    expected = hmac.new(
+        secret.encode(),
+        payload,
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(signature, expected)
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    signature = request.headers.get('X-Signature')
+    if not verify_webhook(request.data, signature, os.environ['WEBHOOK_SECRET']):
+        return 'Invalid signature', 401
+
+    data = request.json
+    # Process the webhook...
+    return 'OK', 200`)
+		}
+		<h2 id="retry" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#retry" class="hover:text-nord-8">Retry Behavior</a>
+		</h2>
 		<p class="text-nord-4 mb-4">
 			If your endpoint returns a non-2xx status code, we retry with exponential backoff:
 		</p>
@@ -951,7 +1146,9 @@ app.post('/webhook', (req, res) => {
 		<p class="text-nord-4 mb-6">
 			After 4 failed attempts, the webhook is marked as failed. You can view failed webhooks and manually retry them from your dashboard.
 		</p>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Best Practices</h2>
+		<h2 id="best-practices" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#best-practices" class="hover:text-nord-8">Best Practices</a>
+		</h2>
 		<ul class="list-disc list-inside text-nord-4 space-y-1">
 			<li>Always verify the signature before processing</li>
 			<li>Respond with 200 quickly, then process asynchronously</li>
@@ -959,12 +1156,16 @@ app.post('/webhook', (req, res) => {
 			<li>Use idempotency keys to handle duplicate deliveries</li>
 			<li>Store webhook secrets securely (environment variables, not code)</li>
 		</ul>
+		@docsPrevNext("authentication", "Authentication", "rate-limits", "Rate Limits")
 	</article>
 }
 
 templ docsRateLimits() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">Rate Limits</h1>
+		<h2 id="limits-by-plan" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#limits-by-plan" class="hover:text-nord-8">Limits by Plan</a>
+		</h2>
 		<table class="w-full text-nord-4 mb-6">
 			<thead>
 				<tr class="border-b border-nord-3">
@@ -991,35 +1192,59 @@ templ docsRateLimits() {
 				</tr>
 			</tbody>
 		</table>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Rate Limit Headers</h2>
+		<h2 id="rate-headers" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#rate-headers" class="hover:text-nord-8">Rate Limit Headers</a>
+		</h2>
 		<p class="text-nord-4 mb-4">API responses include rate limit information:</p>
-		<ul class="list-disc list-inside text-nord-4 space-y-1">
+		<ul class="list-disc list-inside text-nord-4 mb-6 space-y-1">
 			<li><code class="text-nord-8">X-RateLimit-Limit</code> - Maximum requests allowed</li>
 			<li><code class="text-nord-8">X-RateLimit-Remaining</code> - Requests remaining</li>
 			<li><code class="text-nord-8">X-RateLimit-Reset</code> - Unix timestamp when limit resets</li>
 		</ul>
+		<h2 id="handling-limits" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#handling-limits" class="hover:text-nord-8">Handling Rate Limits</a>
+		</h2>
+		<p class="text-nord-4 mb-4">When you exceed the rate limit, you'll receive a 429 response:</p>
+		@components.CodeBlockRaw("json") {
+			@templ.Raw(`{
+  "error": {
+    "code": "RATE_LIMITED",
+    "message": "Too many requests",
+    "retry_after": 30
+  }
+}`)
+		}
+		<p class="text-nord-4 mb-4">Best practices for handling rate limits:</p>
+		<ul class="list-disc list-inside text-nord-4 space-y-1">
+			<li>Implement exponential backoff when you receive a 429</li>
+			<li>Cache API responses when possible</li>
+			<li>Batch operations where the API supports it</li>
+			<li>Monitor your usage via the dashboard</li>
+		</ul>
+		@docsPrevNext("webhooks", "Webhooks", "errors", "Error Handling")
 	</article>
 }
 
 templ docsErrors() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">Error Handling</h1>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Error Response Format</h2>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					@templ.Raw(`{
+		<h2 id="error-format" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#error-format" class="hover:text-nord-8">Error Response Format</a>
+		</h2>
+		<p class="text-nord-4 mb-4">All API errors follow a consistent JSON format:</p>
+		@components.CodeBlockRaw("json") {
+			@templ.Raw(`{
   "error": {
     "code": "INVALID_FILE_TYPE",
     "message": "File type not supported",
     "details": "Expected image/*, got application/zip"
   }
 }`)
-				</code>
-			</pre>
-		</div>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Common Error Codes</h2>
-		<table class="w-full text-nord-4">
+		}
+		<h2 id="error-codes" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#error-codes" class="hover:text-nord-8">Common Error Codes</a>
+		</h2>
+		<table class="w-full text-nord-4 mb-6">
 			<thead>
 				<tr class="border-b border-nord-3">
 					<th class="text-left py-2 text-nord-5">Code</th>
@@ -1029,32 +1254,69 @@ templ docsErrors() {
 			</thead>
 			<tbody>
 				<tr class="border-b border-nord-2">
-					<td class="py-2">UNAUTHORIZED</td>
+					<td class="py-2"><code class="text-nord-8">UNAUTHORIZED</code></td>
 					<td class="py-2">401</td>
 					<td class="py-2">Invalid or missing API token</td>
 				</tr>
 				<tr class="border-b border-nord-2">
-					<td class="py-2">RATE_LIMITED</td>
+					<td class="py-2"><code class="text-nord-8">FORBIDDEN</code></td>
+					<td class="py-2">403</td>
+					<td class="py-2">Access denied to resource</td>
+				</tr>
+				<tr class="border-b border-nord-2">
+					<td class="py-2"><code class="text-nord-8">NOT_FOUND</code></td>
+					<td class="py-2">404</td>
+					<td class="py-2">Resource not found</td>
+				</tr>
+				<tr class="border-b border-nord-2">
+					<td class="py-2"><code class="text-nord-8">RATE_LIMITED</code></td>
 					<td class="py-2">429</td>
 					<td class="py-2">Too many requests</td>
 				</tr>
 				<tr class="border-b border-nord-2">
-					<td class="py-2">FILE_TOO_LARGE</td>
+					<td class="py-2"><code class="text-nord-8">FILE_TOO_LARGE</code></td>
 					<td class="py-2">413</td>
 					<td class="py-2">File exceeds size limit</td>
 				</tr>
 				<tr class="border-b border-nord-2">
-					<td class="py-2">INVALID_FILE_TYPE</td>
+					<td class="py-2"><code class="text-nord-8">INVALID_FILE_TYPE</code></td>
 					<td class="py-2">400</td>
 					<td class="py-2">Unsupported file format</td>
 				</tr>
 				<tr>
-					<td class="py-2">PROCESSING_FAILED</td>
+					<td class="py-2"><code class="text-nord-8">PROCESSING_FAILED</code></td>
 					<td class="py-2">500</td>
 					<td class="py-2">Processing error occurred</td>
 				</tr>
 			</tbody>
 		</table>
+		<h2 id="handling-errors" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#handling-errors" class="hover:text-nord-8">Handling Errors</a>
+		</h2>
+		<p class="text-nord-4 mb-4">Example of handling errors in your code:</p>
+		@components.CodeBlockRaw("javascript") {
+			@templ.Raw(`const response = await fetch('https://api.file.cheap/v1/files', {
+  method: 'POST',
+  headers: { 'Authorization': 'Bearer YOUR_TOKEN' },
+  body: formData
+});
+
+if (!response.ok) {
+  const { error } = await response.json();
+  switch (error.code) {
+    case 'FILE_TOO_LARGE':
+      console.error('File is too large:', error.details);
+      break;
+    case 'RATE_LIMITED':
+      // Wait and retry
+      await sleep(error.retry_after * 1000);
+      break;
+    default:
+      console.error('API Error:', error.message);
+  }
+}`)
+		}
+		@docsPrevNext("rate-limits", "Rate Limits", "cli", "CLI Reference")
 	</article>
 }
 
@@ -1064,99 +1326,102 @@ templ docsCli() {
 		<p class="text-nord-4 mb-6">
 			The <code class="text-nord-8">fc</code> command-line tool lets you upload, transform, and manage files directly from your terminal.
 		</p>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Installation</h2>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					# macOS (Homebrew)
-					brew install file-cheap/tap/fc
-					# Linux / macOS (direct download)
-					curl -fsSL https://file.cheap/install.sh | sh
-					# Or download from GitHub releases
-					# https://github.com/abdul-hamid-achik/file.cheap/releases
-				</code>
-			</pre>
-		</div>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Authentication</h2>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					# Interactive browser login
-					fc auth login
-					# Login with API key (non-interactive)
-					fc auth login --api-key fp_your_api_key
-					# Check authentication status
-					fc auth status
-					# Logout
-					fc auth logout
-				</code>
-			</pre>
-		</div>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Uploading Files</h2>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					# Upload a single file
-					fc upload photo.jpg
-					# Upload multiple files
-					fc upload *.jpg
-					# Upload a directory recursively
-					fc upload photos/ --recursive
-					# Upload with transformations
-					fc upload hero.png --transform webp,thumbnail
-					# Upload with custom name
-					fc upload hero.png --name homepage-hero
-					# Upload from stdin
-					cat screenshot.png | fc upload --stdin --name screenshot.png
-					# Wait for processing to complete
-					fc upload photo.jpg --wait
-				</code>
-			</pre>
-		</div>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Managing Files</h2>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					# List your files
-					fc list
-					# Download a file
-					fc download &lt;file-id&gt;
-					# Download a specific variant
-					fc download &lt;file-id&gt; --variant thumbnail
-					# Delete a file
-					fc delete &lt;file-id&gt;
-					# Check processing status
-					fc status &lt;file-id&gt;
-				</code>
-			</pre>
-		</div>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Transformations</h2>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					# Apply a single transform
-					fc transform &lt;file-id&gt; webp
-					# Apply multiple transforms
-					fc transform &lt;file-id&gt; thumbnail,webp,watermark
-					# Batch transforms (responsive sizes)
-					fc batch &lt;file-id&gt; responsive
-					# Generate social media sizes
-					fc social &lt;file-id&gt;
-				</code>
-			</pre>
-		</div>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Sharing</h2>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					# Create a share link
-					fc share &lt;file-id&gt;
-					# Create a share link with expiration
-					fc share &lt;file-id&gt; --expires 24h
-				</code>
-			</pre>
-		</div>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Global Flags</h2>
+		<h2 id="installation" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#installation" class="hover:text-nord-8">Installation</a>
+		</h2>
+		@components.CodeBlock("bash", `# macOS (Homebrew)
+brew install file-cheap/tap/fc
+
+# Linux / macOS (direct download)
+curl -fsSL https://file.cheap/install.sh | sh
+
+# Or download from GitHub releases
+# https://github.com/abdul-hamid-achik/file.cheap/releases`)
+		<h2 id="authentication" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#authentication" class="hover:text-nord-8">Authentication</a>
+		</h2>
+		@components.CodeBlock("bash", `# Interactive browser login
+fc auth login
+
+# Login with API key (non-interactive)
+fc auth login --api-key fp_your_api_key
+
+# Check authentication status
+fc auth status
+
+# Logout
+fc auth logout`)
+		<h2 id="uploading" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#uploading" class="hover:text-nord-8">Uploading Files</a>
+		</h2>
+		@components.CodeBlock("bash", `# Upload a single file
+fc upload photo.jpg
+
+# Upload multiple files
+fc upload *.jpg
+
+# Upload a directory recursively
+fc upload photos/ --recursive
+
+# Upload with transformations
+fc upload hero.png --transform webp,thumbnail
+
+# Upload with custom name
+fc upload hero.png --name homepage-hero
+
+# Upload from stdin
+cat screenshot.png | fc upload --stdin --name screenshot.png
+
+# Wait for processing to complete
+fc upload photo.jpg --wait`)
+		<h2 id="managing" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#managing" class="hover:text-nord-8">Managing Files</a>
+		</h2>
+		@components.CodeBlockRaw("bash") {
+			@templ.Raw(`# List your files
+fc list
+
+# Download a file
+fc download <file-id>
+
+# Download a specific variant
+fc download <file-id> --variant thumbnail
+
+# Delete a file
+fc delete <file-id>
+
+# Check processing status
+fc status <file-id>`)
+		}
+		<h2 id="transformations" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#transformations" class="hover:text-nord-8">Transformations</a>
+		</h2>
+		@components.CodeBlockRaw("bash") {
+			@templ.Raw(`# Apply a single transform
+fc transform <file-id> webp
+
+# Apply multiple transforms
+fc transform <file-id> thumbnail,webp,watermark
+
+# Batch transforms (responsive sizes)
+fc batch <file-id> responsive
+
+# Generate social media sizes
+fc social <file-id>`)
+		}
+		<h2 id="sharing" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#sharing" class="hover:text-nord-8">Sharing</a>
+		</h2>
+		@components.CodeBlockRaw("bash") {
+			@templ.Raw(`# Create a share link
+fc share <file-id>
+
+# Create a share link with expiration
+fc share <file-id> --expires 24h`)
+		}
+		<h2 id="global-flags" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#global-flags" class="hover:text-nord-8">Global Flags</a>
+		</h2>
 		<table class="w-full text-nord-4 mb-6">
 			<thead>
 				<tr class="border-b border-nord-3">
@@ -1173,28 +1438,34 @@ templ docsCli() {
 					<td class="py-2"><code class="text-nord-8">--quiet</code></td>
 					<td class="py-2">Suppress non-error output</td>
 				</tr>
+				<tr class="border-b border-nord-2">
+					<td class="py-2"><code class="text-nord-8">--verbose</code></td>
+					<td class="py-2">Enable verbose output for debugging</td>
+				</tr>
 				<tr>
 					<td class="py-2"><code class="text-nord-8">--help</code></td>
 					<td class="py-2">Show help for any command</td>
 				</tr>
 			</tbody>
 		</table>
-		<h2 class="text-xl font-semibold text-nord-5 mb-4">Configuration</h2>
+		<h2 id="configuration" class="text-xl font-semibold text-nord-5 mb-4">
+			<a href="#configuration" class="hover:text-nord-8">Configuration</a>
+		</h2>
 		<p class="text-nord-4 mb-4">
 			The CLI stores configuration in <code class="text-nord-8">~/.config/fc/config.json</code>. You can also set defaults:
 		</p>
-		<div class="bg-nord-2 rounded-lg p-4 mb-6 overflow-x-auto">
-			<pre class="text-nord-4 text-sm">
-				<code>
-					# View current config
-					fc config show
-					# Set default transforms
-					fc config set default_transforms thumbnail,webp
-					# Set parallel upload count
-					fc config set parallel 8
-				</code>
-			</pre>
-		</div>
+		@components.CodeBlock("bash", `# View current config
+fc config show
+
+# Set default transforms
+fc config set default_transforms thumbnail,webp
+
+# Set parallel upload count
+fc config set parallel 8
+
+# Set default output format
+fc config set output json`)
+		@docsPrevNext("errors", "Error Handling", "faq", "FAQ")
 	</article>
 }
 
@@ -1202,43 +1473,64 @@ templ docsFaq() {
 	<article class="prose prose-invert max-w-none">
 		<h1 class="text-3xl font-bold text-nord-5 mb-6">Frequently Asked Questions</h1>
 		<div class="space-y-6">
-			<div>
-				<h3 class="text-lg font-medium text-nord-5 mb-2">How long are files stored?</h3>
+			<div id="storage" class="bg-nord-2/50 rounded-lg p-4">
+				<h3 class="text-lg font-medium text-nord-5 mb-2">
+					<a href="#storage" class="hover:text-nord-8">How long are files stored?</a>
+				</h3>
 				<p class="text-nord-4">
 					Uploaded files are stored for 30 days by default. Pro and Enterprise plans offer extended retention options.
 				</p>
 			</div>
-			<div>
-				<h3 class="text-lg font-medium text-nord-5 mb-2">Is my data secure?</h3>
+			<div id="security" class="bg-nord-2/50 rounded-lg p-4">
+				<h3 class="text-lg font-medium text-nord-5 mb-2">
+					<a href="#security" class="hover:text-nord-8">Is my data secure?</a>
+				</h3>
 				<p class="text-nord-4">
 					Yes. All files are encrypted in transit (TLS 1.3) and at rest (AES-256). We do not access or analyze your file contents.
 				</p>
 			</div>
-			<div>
-				<h3 class="text-lg font-medium text-nord-5 mb-2">Can I use the API for commercial purposes?</h3>
+			<div id="commercial" class="bg-nord-2/50 rounded-lg p-4">
+				<h3 class="text-lg font-medium text-nord-5 mb-2">
+					<a href="#commercial" class="hover:text-nord-8">Can I use the API for commercial purposes?</a>
+				</h3>
 				<p class="text-nord-4">
 					Yes. All paid plans include commercial usage rights. The free tier is for personal and evaluation use.
 				</p>
 			</div>
-			<div>
-				<h3 class="text-lg font-medium text-nord-5 mb-2">What happens if processing fails?</h3>
+			<div id="failures" class="bg-nord-2/50 rounded-lg p-4">
+				<h3 class="text-lg font-medium text-nord-5 mb-2">
+					<a href="#failures" class="hover:text-nord-8">What happens if processing fails?</a>
+				</h3>
 				<p class="text-nord-4">
 					Failed jobs are automatically retried up to 3 times. If all retries fail, you'll receive a webhook notification (if configured) and can view the error in your dashboard.
 				</p>
 			</div>
-			<div>
-				<h3 class="text-lg font-medium text-nord-5 mb-2">Do you support batch processing?</h3>
+			<div id="batch" class="bg-nord-2/50 rounded-lg p-4">
+				<h3 class="text-lg font-medium text-nord-5 mb-2">
+					<a href="#batch" class="hover:text-nord-8">Do you support batch processing?</a>
+				</h3>
 				<p class="text-nord-4">
 					Yes. You can upload multiple files in a single request via the API. The web interface also supports multi-file drag and drop.
 				</p>
 			</div>
-			<div>
-				<h3 class="text-lg font-medium text-nord-5 mb-2">How do I cancel my subscription?</h3>
+			<div id="cancel" class="bg-nord-2/50 rounded-lg p-4">
+				<h3 class="text-lg font-medium text-nord-5 mb-2">
+					<a href="#cancel" class="hover:text-nord-8">How do I cancel my subscription?</a>
+				</h3>
 				<p class="text-nord-4">
 					Go to Settings &gt; Billing and click "Cancel subscription". Your access continues until the end of the billing period.
 				</p>
 			</div>
+			<div id="support" class="bg-nord-2/50 rounded-lg p-4">
+				<h3 class="text-lg font-medium text-nord-5 mb-2">
+					<a href="#support" class="hover:text-nord-8">How do I get support?</a>
+				</h3>
+				<p class="text-nord-4">
+					Email us at support@file.cheap or use the chat widget in the bottom right corner. Pro and Enterprise plans include priority support with faster response times.
+				</p>
+			</div>
 		</div>
+		@docsPrevNext("cli", "CLI Reference", "", "")
 	</article>
 }
 
