@@ -12,8 +12,6 @@ resources:
   - grafana/configmap-dashboards.yaml
   - grafana/deployment.yaml
   - grafana/service.yaml
-  - servicemonitor-api.yaml
-  - servicemonitor-workers.yaml
 
 configMapGenerator:
   - name: grafana-dashboards
