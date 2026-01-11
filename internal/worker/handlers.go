@@ -14,6 +14,7 @@ import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor/video"
 	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
+	"github.com/abdul-hamid-achik/file.cheap/internal/webhook"
 	"github.com/abdul-hamid-achik/job-queue/pkg/job"
 	"github.com/abdul-hamid-achik/job-queue/pkg/middleware"
 	"github.com/google/uuid"
@@ -21,9 +22,10 @@ import (
 )
 
 type Dependencies struct {
-	Storage  storage.Storage
-	Registry *processor.Registry
-	Queries  *db.Queries
+	Storage           storage.Storage
+	Registry          *processor.Registry
+	Queries           *db.Queries
+	WebhookDispatcher *webhook.Dispatcher
 }
 
 func (d *Dependencies) markJobRunning(ctx context.Context, jobID pgtype.UUID) {
@@ -51,6 +53,38 @@ func (d *Dependencies) markJobFailed(ctx context.Context, jobID pgtype.UUID, err
 			logger.FromContext(ctx).Warn("failed to mark job failed", "job_id", jobID, "error", err)
 		}
 	}
+}
+
+func (d *Dependencies) dispatchProcessingCompleted(ctx context.Context, userID pgtype.UUID, fileID, jobID, jobType, variantKey, contentType string, sizeBytes, durationMs int64) {
+	if d.WebhookDispatcher == nil || !userID.Valid {
+		return
+	}
+	event, err := webhook.NewProcessingCompletedEvent(fileID, jobID, jobType, variantKey, contentType, sizeBytes, durationMs)
+	if err != nil {
+		return
+	}
+	uid := uuid.UUID(userID.Bytes)
+	go func() {
+		if err := d.WebhookDispatcher.Dispatch(context.Background(), uid, event); err != nil {
+			logger.FromContext(ctx).Debug("webhook dispatch failed", "error", err)
+		}
+	}()
+}
+
+func (d *Dependencies) dispatchProcessingFailed(ctx context.Context, userID pgtype.UUID, fileID, jobID, jobType, errMsg string) {
+	if d.WebhookDispatcher == nil || !userID.Valid {
+		return
+	}
+	event, err := webhook.NewProcessingFailedEvent(fileID, jobID, jobType, errMsg)
+	if err != nil {
+		return
+	}
+	uid := uuid.UUID(userID.Bytes)
+	go func() {
+		if err := d.WebhookDispatcher.Dispatch(context.Background(), uid, event); err != nil {
+			logger.FromContext(ctx).Debug("webhook dispatch failed", "error", err)
+		}
+	}()
 }
 
 func ThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error {
@@ -86,6 +120,7 @@ func ThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 		if err != nil {
 			log.Error("failed to download file", "storage_key", file.StorageKey, "error", err)
 			deps.markJobFailed(ctx, payload.JobID, err.Error())
+			deps.dispatchProcessingFailed(ctx, file.UserID, payload.FileID.String(), j.ID, "thumbnail", err.Error())
 			return fmt.Errorf("failed to download file %s: %w", file.StorageKey, err)
 		}
 		defer closeSafely(reader, "original file reader")
@@ -105,6 +140,7 @@ func ThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 		if err != nil {
 			log.Error("failed to process thumbnail", "error", err)
 			deps.markJobFailed(ctx, payload.JobID, err.Error())
+			deps.dispatchProcessingFailed(ctx, file.UserID, payload.FileID.String(), j.ID, "thumbnail", err.Error())
 			return middleware.Permanent(fmt.Errorf("failed to process thumbnail: %w", err))
 		}
 		log.Debug("thumbnail processed", "duration_ms", time.Since(processStart).Milliseconds(), "output_size", result.Size)
@@ -115,6 +151,7 @@ func ThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
 			log.Error("failed to upload variant", "storage_key", variantKey, "error", err)
 			deps.markJobFailed(ctx, payload.JobID, err.Error())
+			deps.dispatchProcessingFailed(ctx, file.UserID, payload.FileID.String(), j.ID, "thumbnail", err.Error())
 			return fmt.Errorf("failed to upload variant: %w", err)
 		}
 		log.Debug("variant uploaded", "duration_ms", time.Since(uploadStart).Milliseconds())
@@ -133,6 +170,7 @@ func ThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 		if err != nil {
 			log.Error("failed to save variant record", "error", err)
 			deps.markJobFailed(ctx, payload.JobID, err.Error())
+			deps.dispatchProcessingFailed(ctx, file.UserID, payload.FileID.String(), j.ID, "thumbnail", err.Error())
 			return fmt.Errorf("failed to save variant record: %w", err)
 		}
 
@@ -142,11 +180,14 @@ func ThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 		}); err != nil {
 			log.Error("failed to update file status", "error", err)
 			deps.markJobFailed(ctx, payload.JobID, err.Error())
+			deps.dispatchProcessingFailed(ctx, file.UserID, payload.FileID.String(), j.ID, "thumbnail", err.Error())
 			return fmt.Errorf("failed to update file status: %w", err)
 		}
 
 		deps.markJobCompleted(ctx, payload.JobID)
-		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "output_width", width, "output_height", height)
+		durationMs := time.Since(start).Milliseconds()
+		deps.dispatchProcessingCompleted(ctx, file.UserID, payload.FileID.String(), j.ID, "thumbnail", variantKey, result.ContentType, result.Size, durationMs)
+		log.Info("job completed", "duration_ms", durationMs, "output_width", width, "output_height", height)
 		return nil
 	}
 }
@@ -184,6 +225,7 @@ func ResizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		if err != nil {
 			log.Error("failed to download file", "storage_key", file.StorageKey, "error", err)
 			deps.markJobFailed(ctx, payload.JobID, err.Error())
+			deps.dispatchProcessingFailed(ctx, file.UserID, payload.FileID.String(), j.ID, "resize", err.Error())
 			return fmt.Errorf("failed to download file %s: %w", file.StorageKey, err)
 		}
 		defer closeSafely(reader, "original file reader")
@@ -204,6 +246,7 @@ func ResizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		if err != nil {
 			log.Error("failed to process resize", "error", err)
 			deps.markJobFailed(ctx, payload.JobID, err.Error())
+			deps.dispatchProcessingFailed(ctx, file.UserID, payload.FileID.String(), j.ID, "resize", err.Error())
 			return middleware.Permanent(fmt.Errorf("failed to process resize: %w", err))
 		}
 		log.Debug("resize processed", "duration_ms", time.Since(processStart).Milliseconds(), "output_size", result.Size)
@@ -215,6 +258,7 @@ func ResizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		if err := deps.Storage.Upload(ctx, variantKey, result.Data, result.ContentType, result.Size); err != nil {
 			log.Error("failed to upload variant", "storage_key", variantKey, "error", err)
 			deps.markJobFailed(ctx, payload.JobID, err.Error())
+			deps.dispatchProcessingFailed(ctx, file.UserID, payload.FileID.String(), j.ID, "resize", err.Error())
 			return fmt.Errorf("failed to upload variant: %w", err)
 		}
 		log.Debug("variant uploaded", "duration_ms", time.Since(uploadStart).Milliseconds())
@@ -234,6 +278,7 @@ func ResizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		if err != nil {
 			log.Error("failed to save variant record", "error", err)
 			deps.markJobFailed(ctx, payload.JobID, err.Error())
+			deps.dispatchProcessingFailed(ctx, file.UserID, payload.FileID.String(), j.ID, "resize", err.Error())
 			return fmt.Errorf("failed to save variant record: %w", err)
 		}
 
@@ -243,11 +288,14 @@ func ResizeHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 		}); err != nil {
 			log.Error("failed to update file status", "error", err)
 			deps.markJobFailed(ctx, payload.JobID, err.Error())
+			deps.dispatchProcessingFailed(ctx, file.UserID, payload.FileID.String(), j.ID, "resize", err.Error())
 			return fmt.Errorf("failed to update file status: %w", err)
 		}
 
 		deps.markJobCompleted(ctx, payload.JobID)
-		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "output_width", width, "output_height", height)
+		durationMs := time.Since(start).Milliseconds()
+		deps.dispatchProcessingCompleted(ctx, file.UserID, payload.FileID.String(), j.ID, "resize", variantKey, result.ContentType, result.Size, durationMs)
+		log.Info("job completed", "duration_ms", durationMs, "output_width", width, "output_height", height)
 		return nil
 	}
 }

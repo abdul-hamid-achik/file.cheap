@@ -15,6 +15,7 @@ import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor/video"
 	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
+	"github.com/abdul-hamid-achik/file.cheap/internal/webhook"
 	"github.com/abdul-hamid-achik/file.cheap/internal/worker"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -53,6 +54,16 @@ type Querier interface {
 	CreateAPIToken(ctx context.Context, arg db.CreateAPITokenParams) (db.ApiToken, error)
 	GetUserVideoStorageUsage(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CreateJob(ctx context.Context, arg db.CreateJobParams) (db.ProcessingJob, error)
+	CreateWebhook(ctx context.Context, arg db.CreateWebhookParams) (db.Webhook, error)
+	GetWebhook(ctx context.Context, arg db.GetWebhookParams) (db.Webhook, error)
+	ListWebhooksByUser(ctx context.Context, arg db.ListWebhooksByUserParams) ([]db.Webhook, error)
+	CountWebhooksByUser(ctx context.Context, userID pgtype.UUID) (int64, error)
+	UpdateWebhook(ctx context.Context, arg db.UpdateWebhookParams) (db.Webhook, error)
+	DeleteWebhook(ctx context.Context, arg db.DeleteWebhookParams) error
+	ListDeliveriesByWebhook(ctx context.Context, arg db.ListDeliveriesByWebhookParams) ([]db.WebhookDelivery, error)
+	CountDeliveriesByWebhook(ctx context.Context, webhookID pgtype.UUID) (int64, error)
+	CreateWebhookDelivery(ctx context.Context, arg db.CreateWebhookDeliveryParams) (db.WebhookDelivery, error)
+	ListActiveWebhooksByUserAndEvent(ctx context.Context, arg db.ListActiveWebhooksByUserAndEventParams) ([]db.Webhook, error)
 }
 
 type Broker interface {
@@ -60,15 +71,16 @@ type Broker interface {
 }
 
 type Config struct {
-	Storage       storage.Storage
-	Broker        Broker
-	Queries       Querier
-	MaxUploadSize int64
-	JWTSecret     string
-	RateLimit     int
-	RateBurst     int
-	BaseURL       string
-	Registry      *processor.Registry
+	Storage           storage.Storage
+	Broker            Broker
+	Queries           Querier
+	MaxUploadSize     int64
+	JWTSecret         string
+	RateLimit         int
+	RateBurst         int
+	BaseURL           string
+	Registry          *processor.Registry
+	WebhookDispatcher *webhook.Dispatcher
 }
 
 func NewRouter(cfg *Config) http.Handler {
@@ -131,6 +143,18 @@ func NewRouter(cfg *Config) http.Handler {
 	mux.HandleFunc("POST /v1/auth/device/token", DeviceTokenHandler(deviceAuthCfg))
 
 	apiMux.HandleFunc("POST /v1/auth/device/approve", DeviceApproveHandler(deviceAuthCfg))
+
+	webhookCfg := &WebhookConfig{
+		Queries: cfg.Queries,
+		Broker:  cfg.Broker,
+	}
+	apiMux.HandleFunc("POST /v1/webhooks", CreateWebhookHandler(webhookCfg))
+	apiMux.HandleFunc("GET /v1/webhooks", ListWebhooksHandler(webhookCfg))
+	apiMux.HandleFunc("GET /v1/webhooks/{id}", GetWebhookHandler(webhookCfg))
+	apiMux.HandleFunc("PUT /v1/webhooks/{id}", UpdateWebhookHandler(webhookCfg))
+	apiMux.HandleFunc("DELETE /v1/webhooks/{id}", DeleteWebhookHandler(webhookCfg))
+	apiMux.HandleFunc("GET /v1/webhooks/{id}/deliveries", ListDeliveriesHandler(webhookCfg))
+	apiMux.HandleFunc("POST /v1/webhooks/{id}/test", TestWebhookHandler(webhookCfg))
 
 	rateLimit := cfg.RateLimit
 	if rateLimit <= 0 {
@@ -263,6 +287,18 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 					}
 				default:
 					log.Debug("no automatic processing for content type", "content_type", contentType)
+				}
+			}
+
+			// Dispatch file.uploaded webhook event
+			if cfg.WebhookDispatcher != nil {
+				event, err := webhook.NewFileUploadedEvent(fileIDStr, dbFile.Filename, dbFile.ContentType, dbFile.SizeBytes)
+				if err == nil {
+					go func() {
+						if err := cfg.WebhookDispatcher.Dispatch(context.Background(), userID, event); err != nil {
+							log.Debug("webhook dispatch failed", "error", err)
+						}
+					}()
 				}
 			}
 

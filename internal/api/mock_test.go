@@ -691,6 +691,69 @@ func (m *MockQuerier) CreateJob(ctx context.Context, arg db.CreateJobParams) (db
 	}, nil
 }
 
+func (m *MockQuerier) CreateWebhook(ctx context.Context, arg db.CreateWebhookParams) (db.Webhook, error) {
+	return db.Webhook{
+		ID:     pgtype.UUID{Bytes: [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}, Valid: true},
+		UserID: arg.UserID,
+		Url:    arg.Url,
+		Secret: arg.Secret,
+		Events: arg.Events,
+		Active: true,
+	}, nil
+}
+
+func (m *MockQuerier) GetWebhook(ctx context.Context, arg db.GetWebhookParams) (db.Webhook, error) {
+	return db.Webhook{
+		ID:     arg.ID,
+		UserID: arg.UserID,
+		Active: true,
+	}, nil
+}
+
+func (m *MockQuerier) ListWebhooksByUser(ctx context.Context, arg db.ListWebhooksByUserParams) ([]db.Webhook, error) {
+	return []db.Webhook{}, nil
+}
+
+func (m *MockQuerier) CountWebhooksByUser(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	return 0, nil
+}
+
+func (m *MockQuerier) UpdateWebhook(ctx context.Context, arg db.UpdateWebhookParams) (db.Webhook, error) {
+	return db.Webhook{
+		ID:     arg.ID,
+		UserID: arg.UserID,
+		Url:    arg.Url,
+		Events: arg.Events,
+		Active: arg.Active,
+	}, nil
+}
+
+func (m *MockQuerier) DeleteWebhook(ctx context.Context, arg db.DeleteWebhookParams) error {
+	return nil
+}
+
+func (m *MockQuerier) ListDeliveriesByWebhook(ctx context.Context, arg db.ListDeliveriesByWebhookParams) ([]db.WebhookDelivery, error) {
+	return []db.WebhookDelivery{}, nil
+}
+
+func (m *MockQuerier) CountDeliveriesByWebhook(ctx context.Context, webhookID pgtype.UUID) (int64, error) {
+	return 0, nil
+}
+
+func (m *MockQuerier) CreateWebhookDelivery(ctx context.Context, arg db.CreateWebhookDeliveryParams) (db.WebhookDelivery, error) {
+	return db.WebhookDelivery{
+		ID:        pgtype.UUID{Bytes: [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}, Valid: true},
+		WebhookID: arg.WebhookID,
+		EventType: arg.EventType,
+		Payload:   arg.Payload,
+		Status:    db.WebhookDeliveryStatusPending,
+	}, nil
+}
+
+func (m *MockQuerier) ListActiveWebhooksByUserAndEvent(ctx context.Context, arg db.ListActiveWebhooksByUserAndEventParams) ([]db.Webhook, error) {
+	return []db.Webhook{}, nil
+}
+
 var _ Querier = (*MockQuerier)(nil)
 
 type MockStorage struct {

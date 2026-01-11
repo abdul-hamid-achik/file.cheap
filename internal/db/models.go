@@ -423,6 +423,50 @@ func (ns NullVariantType) Value() (driver.Value, error) {
 	return string(ns.VariantType), nil
 }
 
+type WebhookDeliveryStatus string
+
+const (
+	WebhookDeliveryStatusPending  WebhookDeliveryStatus = "pending"
+	WebhookDeliveryStatusSuccess  WebhookDeliveryStatus = "success"
+	WebhookDeliveryStatusFailed   WebhookDeliveryStatus = "failed"
+	WebhookDeliveryStatusRetrying WebhookDeliveryStatus = "retrying"
+)
+
+func (e *WebhookDeliveryStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = WebhookDeliveryStatus(s)
+	case string:
+		*e = WebhookDeliveryStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for WebhookDeliveryStatus: %T", src)
+	}
+	return nil
+}
+
+type NullWebhookDeliveryStatus struct {
+	WebhookDeliveryStatus WebhookDeliveryStatus `json:"webhook_delivery_status"`
+	Valid                 bool                  `json:"valid"` // Valid is true if WebhookDeliveryStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullWebhookDeliveryStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.WebhookDeliveryStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.WebhookDeliveryStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullWebhookDeliveryStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.WebhookDeliveryStatus), nil
+}
+
 type AdminAlertConfig struct {
 	ID             pgtype.UUID        `json:"id"`
 	MetricName     string             `json:"metric_name"`
@@ -632,4 +676,29 @@ type UserSetting struct {
 	AutoDeleteOriginals  bool               `json:"auto_delete_originals"`
 	CreatedAt            pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Webhook struct {
+	ID        pgtype.UUID        `json:"id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	Url       string             `json:"url"`
+	Secret    string             `json:"secret"`
+	Events    []string           `json:"events"`
+	Active    bool               `json:"active"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type WebhookDelivery struct {
+	ID            pgtype.UUID           `json:"id"`
+	WebhookID     pgtype.UUID           `json:"webhook_id"`
+	EventType     string                `json:"event_type"`
+	Payload       []byte                `json:"payload"`
+	Status        WebhookDeliveryStatus `json:"status"`
+	Attempts      int32                 `json:"attempts"`
+	LastAttemptAt pgtype.Timestamptz    `json:"last_attempt_at"`
+	NextRetryAt   pgtype.Timestamptz    `json:"next_retry_at"`
+	ResponseCode  *int32                `json:"response_code"`
+	ResponseBody  *string               `json:"response_body"`
+	CreatedAt     pgtype.Timestamptz    `json:"created_at"`
 }
