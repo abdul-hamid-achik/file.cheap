@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: monitoring
+
+resources:
+  - namespace.yaml
+  - prometheus/configmap.yaml
+  - prometheus/deployment.yaml
+  - prometheus/service.yaml
+  - grafana/configmap-datasources.yaml
+  - grafana/configmap-dashboards.yaml
+  - grafana/deployment.yaml
+  - grafana/service.yaml
+  - servicemonitor-api.yaml
+  - servicemonitor-workers.yaml
+
+configMapGenerator:
+  - name: grafana-dashboards
+    files:
+      - grafana/dashboards/application-overview.json
+      - grafana/dashboards/worker-performance.json
+      - grafana/dashboards/system-health.json
+      - grafana/dashboards/user-activity.json
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: file-processor-monitoring
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false

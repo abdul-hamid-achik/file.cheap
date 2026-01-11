@@ -142,6 +142,7 @@ func run() error {
 		middleware.RecoveryMiddleware(zerologger),
 		middleware.LoggingMiddleware(zerologger),
 		middleware.TimeoutMiddleware(cfg.JobTimeout),
+		middleware.MetricsMiddleware(metrics.NewPrometheusCollector()),
 	)
 
 	log.Info("creating worker pool", "concurrency", cfg.WorkerConcurrency)

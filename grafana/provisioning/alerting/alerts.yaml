@@ -1,0 +1,221 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: file-processor-alerts
+    folder: Alerts
+    interval: 1m
+    rules:
+      - uid: high-error-rate
+        title: High Error Rate
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 5
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    type: last
+              refId: C
+              type: classic_conditions
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: High HTTP error rate detected
+          description: HTTP error rate is above 5% for the last 5 minutes
+        labels:
+          severity: critical
+
+      - uid: service-down
+        title: Service Down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: up{job="api"}
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    type: last
+              refId: C
+              type: classic_conditions
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: API service is down
+          description: No metrics received from API for 2 minutes
+        labels:
+          severity: critical
+
+      - uid: job-queue-backup
+        title: Job Queue Backup
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: jobs_in_queue{queue="default"}
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 100
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    type: last
+              refId: C
+              type: classic_conditions
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: Job queue is backing up
+          description: More than 100 jobs pending in queue for 5 minutes
+        labels:
+          severity: critical
+
+      - uid: slow-requests
+        title: Slow Requests
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 2
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    type: last
+              refId: C
+              type: classic_conditions
+        noDataState: OK
+        execErrState: Alerting
+        for: 10m
+        annotations:
+          summary: Slow HTTP requests detected
+          description: P95 latency is above 2 seconds for the last 10 minutes
+        labels:
+          severity: warning
+
+      - uid: high-job-failure-rate
+        title: High Job Failure Rate
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(jobs_processed_total{status="error"}[10m])) / sum(rate(jobs_processed_total[10m])) * 100
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 10
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    type: last
+              refId: C
+              type: classic_conditions
+        noDataState: OK
+        execErrState: Alerting
+        for: 10m
+        annotations:
+          summary: High job failure rate
+          description: Job failure rate is above 10% for the last 10 minutes
+        labels:
+          severity: critical

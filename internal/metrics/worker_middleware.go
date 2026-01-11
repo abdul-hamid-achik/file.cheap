@@ -1,31 +1,38 @@
 package metrics
 
 import (
-	"context"
 	"time"
-
-	"github.com/abdul-hamid-achik/job-queue/pkg/job"
 )
 
-type JobHandler func(context.Context, *job.Job) error
+// PrometheusCollector implements the job-queue MetricsCollector interface
+// using Prometheus metrics for job processing statistics.
+type PrometheusCollector struct{}
 
-func JobMetricsMiddleware(next JobHandler) JobHandler {
-	return func(ctx context.Context, j *job.Job) error {
-		start := time.Now()
-		WorkerPoolActiveJobs.Inc()
-		defer WorkerPoolActiveJobs.Dec()
+// NewPrometheusCollector creates a new metrics collector for job processing.
+func NewPrometheusCollector() *PrometheusCollector {
+	return &PrometheusCollector{}
+}
 
-		err := next(ctx, j)
+// JobStarted is called when a job begins processing.
+func (c *PrometheusCollector) JobStarted(jobType, queue string) {
+	WorkerPoolActiveJobs.Inc()
+}
 
-		duration := time.Since(start).Seconds()
-		status := "success"
-		if err != nil {
-			status = "error"
-		}
+// JobCompleted is called when a job finishes successfully.
+func (c *PrometheusCollector) JobCompleted(jobType, queue string, duration time.Duration) {
+	WorkerPoolActiveJobs.Dec()
+	JobsProcessedTotal.WithLabelValues(jobType, "success").Inc()
+	JobsProcessingDuration.WithLabelValues(jobType, "total").Observe(duration.Seconds())
+}
 
-		JobsProcessedTotal.WithLabelValues(j.Type, status).Inc()
-		JobsProcessingDuration.WithLabelValues(j.Type, "total").Observe(duration)
+// JobFailed is called when a job fails permanently.
+func (c *PrometheusCollector) JobFailed(jobType, queue string, duration time.Duration) {
+	WorkerPoolActiveJobs.Dec()
+	JobsProcessedTotal.WithLabelValues(jobType, "error").Inc()
+	JobsProcessingDuration.WithLabelValues(jobType, "total").Observe(duration.Seconds())
+}
 
-		return err
-	}
+// JobRetrying is called when a job is being retried.
+func (c *PrometheusCollector) JobRetrying(jobType, queue string, attempt int) {
+	JobsProcessedTotal.WithLabelValues(jobType, "retry").Inc()
 }
