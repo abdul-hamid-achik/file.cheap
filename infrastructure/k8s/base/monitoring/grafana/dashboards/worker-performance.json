@@ -677,7 +677,7 @@
             "type": "loki",
             "uid": "P8E80F9AEF21F6940"
           },
-          "expr": "{service=\"worker\"} |= \"error\" | json",
+          "expr": "{service=~\"worker-image|worker-video\"} |= \"error\" | json",
           "refId": "A"
         }
       ],

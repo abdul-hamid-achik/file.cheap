@@ -92,7 +92,7 @@ func Load() (*Config, error) {
 	cfg.MinIORegion = getEnvString("MINIO_REGION", "us-east-1")
 
 	cfg.WorkerConcurrency = getEnvInt("WORKER_CONCURRENCY", 4)
-	cfg.JobTimeout, err = getEnvDuration("JOB_TIMEOUT", "5m")
+	cfg.JobTimeout, err = getEnvDuration("JOB_TIMEOUT", "15m")
 	if err != nil {
 		return nil, fmt.Errorf("invalid JOB_TIMEOUT: %w", err)
 	}
