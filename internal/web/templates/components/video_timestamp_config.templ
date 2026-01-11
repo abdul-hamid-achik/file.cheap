@@ -1,0 +1,175 @@
+package components
+
+import (
+	"fmt"
+	"strconv"
+)
+
+// VideoTimestampConfigProps contains video timestamp configuration properties
+type VideoTimestampConfigProps struct {
+	FileID   string
+	Duration float64 // Duration in seconds
+}
+
+// formatVideoDuration formats seconds to MM:SS
+func formatVideoDuration(seconds float64) string {
+	mins := int(seconds) / 60
+	secs := int(seconds) % 60
+	return fmt.Sprintf("%02d:%02d", mins, secs)
+}
+
+// VideoTimestampConfig renders the video timestamp selection form with preview
+templ VideoTimestampConfig(props VideoTimestampConfigProps) {
+	<div
+		x-data="videoTimestampConfig()"
+		x-init={ "init('" + props.FileID + "', " + strconv.FormatFloat(props.Duration, 'f', 2, 64) + ")" }
+		class="space-y-4"
+	>
+		<!-- Frame Preview -->
+		<div class="relative aspect-video bg-nord-2 rounded-lg overflow-hidden flex items-center justify-center">
+			<img
+				id="video-preview-img"
+				src={ "/files/" + props.FileID + "/preview?percent=10&width=400" }
+				alt="Video Frame Preview"
+				class="max-w-full max-h-full object-contain"
+			/>
+			<!-- Loading Overlay -->
+			<div
+				x-show="loading"
+				x-transition
+				class="absolute inset-0 bg-nord-0/50 flex items-center justify-center"
+			>
+				<svg class="w-8 h-8 text-nord-8 animate-spin" fill="none" viewBox="0 0 24 24">
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+				</svg>
+			</div>
+			<!-- Time Display Overlay -->
+			<div class="absolute bottom-2 right-2 bg-nord-0/80 px-2 py-1 rounded text-xs text-nord-5">
+				<span x-text="formatTime(getCurrentTime())"></span>
+				<span class="text-nord-4"> / { formatVideoDuration(props.Duration) }</span>
+			</div>
+		</div>
+		<!-- Timeline Slider -->
+		<div class="space-y-2">
+			<div class="flex items-center justify-between text-sm">
+				<span class="text-nord-4">Position</span>
+				<span class="text-nord-5 font-medium" x-text="percent + '%'"></span>
+			</div>
+			<input
+				type="range"
+				x-model.number="percent"
+				@input="loadPreview()"
+				min="0"
+				max="100"
+				step="1"
+				class="w-full h-2 bg-nord-2 rounded-lg appearance-none cursor-pointer accent-nord-8"
+			/>
+			<div class="flex justify-between text-xs text-nord-4">
+				<span>0:00</span>
+				<span>{ formatVideoDuration(props.Duration) }</span>
+			</div>
+		</div>
+		<!-- Quick Position Buttons -->
+		<div class="flex flex-wrap gap-2 justify-center">
+			<button
+				type="button"
+				@click="setPercent(10)"
+				:class="percent === 10 ? 'bg-nord-8 text-nord-0' : 'bg-nord-2 text-nord-4 hover:bg-nord-3'"
+				class="px-3 py-1.5 rounded text-xs font-medium transition-colors"
+			>
+				10%
+			</button>
+			<button
+				type="button"
+				@click="setPercent(25)"
+				:class="percent === 25 ? 'bg-nord-8 text-nord-0' : 'bg-nord-2 text-nord-4 hover:bg-nord-3'"
+				class="px-3 py-1.5 rounded text-xs font-medium transition-colors"
+			>
+				25%
+			</button>
+			<button
+				type="button"
+				@click="setPercent(50)"
+				:class="percent === 50 ? 'bg-nord-8 text-nord-0' : 'bg-nord-2 text-nord-4 hover:bg-nord-3'"
+				class="px-3 py-1.5 rounded text-xs font-medium transition-colors"
+			>
+				50%
+			</button>
+			<button
+				type="button"
+				@click="setPercent(75)"
+				:class="percent === 75 ? 'bg-nord-8 text-nord-0' : 'bg-nord-2 text-nord-4 hover:bg-nord-3'"
+				class="px-3 py-1.5 rounded text-xs font-medium transition-colors"
+			>
+				75%
+			</button>
+			<button
+				type="button"
+				@click="setPercent(90)"
+				:class="percent === 90 ? 'bg-nord-8 text-nord-0' : 'bg-nord-2 text-nord-4 hover:bg-nord-3'"
+				class="px-3 py-1.5 rounded text-xs font-medium transition-colors"
+			>
+				90%
+			</button>
+		</div>
+		<!-- Submit Form -->
+		<form
+			hx-post={ "/files/" + props.FileID + "/process" }
+			hx-target="#process-result"
+			hx-swap="innerHTML"
+			class="pt-2"
+		>
+			<input type="hidden" name="action" value="video_thumbnail"/>
+			<input type="hidden" name="video_percent" :value="percent"/>
+			@Button(ButtonProps{
+				Variant: ButtonPrimary,
+				Size:    ButtonMd,
+				Type:    "submit",
+				Class:   "w-full",
+			}) {
+				Extract Thumbnail
+			}
+		</form>
+	</div>
+	<script>
+		function videoTimestampConfig() {
+			return {
+				percent: 10,
+				duration: 0,
+				fileId: '',
+				loading: false,
+				debounceTimer: null,
+				init(fileId, duration) {
+					this.fileId = fileId;
+					this.duration = duration;
+					this.loadPreview();
+				},
+				getCurrentTime() {
+					return (this.percent / 100) * this.duration;
+				},
+				formatTime(seconds) {
+					const mins = Math.floor(seconds / 60);
+					const secs = Math.floor(seconds % 60);
+					return mins.toString().padStart(2, '0') + ':' + secs.toString().padStart(2, '0');
+				},
+				setPercent(p) {
+					this.percent = p;
+					this.loadPreview();
+				},
+				loadPreview() {
+					clearTimeout(this.debounceTimer);
+					this.debounceTimer = setTimeout(() => {
+						this.loading = true;
+						const img = document.getElementById('video-preview-img');
+						if (img) {
+							img.src = '/files/' + this.fileId + '/preview?percent=' + this.percent + '&width=400';
+							img.onload = () => { this.loading = false; };
+							img.onerror = () => { this.loading = false; };
+						}
+					}, 300);
+				}
+			};
+		}
+	</script>
+}

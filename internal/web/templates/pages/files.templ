@@ -592,6 +592,9 @@ type FileDetailPageData struct {
 	SubscriptionTier string
 	Error            string
 	Success          string
+	// Processing config metadata
+	PageCount int     // PDF page count
+	Duration  float64 // Video duration in seconds
 }
 
 // FileDetail contains detailed file information
@@ -967,15 +970,23 @@ templ FileDetailPage(user *auth.SessionUser, data FileDetailPageData) {
 										@processingAccordion("format", "Format & Effects", "", data.ExistingTypes["webp"] && data.ExistingTypes["watermarked"], false) {
 											<div class="space-y-2">
 												@processActionPro(data.File.ID, "webp", "WebP", "Optimized format", data.ExistingTypes["webp"], data.IsPremium)
-												@processActionWatermark(data.File.ID, data.ExistingTypes["watermarked"], data.IsPremium)
+												@processActionWatermark(data.File.ID, data.File.ThumbnailURL, data.ExistingTypes["watermarked"], data.IsPremium)
 											</div>
+										}
+										<!-- PDF Processing (only for PDF files) -->
+										if data.File.ContentType == "application/pdf" && data.PageCount > 0 {
+											@processingAccordion("pdf", "PDF Processing", "", data.ExistingTypes["pdf_preview"], false) {
+												<div class="space-y-2">
+													@processActionPDFThumbnail(data.File.ID, data.PageCount, data.ExistingTypes["pdf_preview"])
+												</div>
+											}
 										}
 										<!-- Video Processing (only for video files) -->
 										if data.File.IsVideo {
 											@processingAccordion("video", "Video Processing", "", data.ExistingTypes["hls_master"], false) {
 												<div class="space-y-2">
 													@processActionHLS(data.File.ID, data.ExistingTypes["hls_master"], data.IsPremium)
-													@processAction(data.File.ID, "video_thumbnail", "Thumbnail", "Extract frame at 10%", data.ExistingTypes["video_thumbnail"])
+													@processActionVideoThumbnail(data.File.ID, data.Duration, data.ExistingTypes["video_thumbnail"])
 													@processActionPro(data.File.ID, "video_watermark", "Watermark", "Add text overlay", data.ExistingTypes["video_watermark"], data.IsPremium)
 												</div>
 											}
@@ -1295,7 +1306,7 @@ templ processActionPro(fileID, action, label, description string, exists bool, i
 	</div>
 }
 
-templ processActionWatermark(fileID string, exists bool, isPremium bool) {
+templ processActionWatermark(fileID, thumbnailURL string, exists bool, isPremium bool) {
 	<div class="p-3 bg-nord-2 rounded-lg space-y-3">
 		<div class="flex items-center justify-between">
 			<div>
@@ -1305,7 +1316,7 @@ templ processActionWatermark(fileID string, exists bool, isPremium bool) {
 						<span class="ml-1 px-1.5 py-0.5 bg-nord-14/20 text-nord-14 text-xs rounded">PRO</span>
 					}
 				</p>
-				<p class="text-nord-4 text-xs">Add text watermark to image</p>
+				<p class="text-nord-4 text-xs">Add text watermark with visual preview</p>
 			</div>
 			if exists {
 				<span class="text-nord-14 text-xs flex items-center gap-1">
@@ -1314,56 +1325,36 @@ templ processActionWatermark(fileID string, exists bool, isPremium bool) {
 					</svg>
 					Done
 				</span>
+			} else {
+				<button
+					type="button"
+					@click={ "$dispatch('open-modal', 'watermark-config-" + fileID + "')" }
+					class="px-3 py-1.5 bg-nord-8 text-nord-0 hover:bg-nord-7 rounded text-xs font-medium transition-colors"
+				>
+					Configure
+				</button>
 			}
 		</div>
-		if !exists {
-			if !isPremium {
-				<p class="p-2 bg-nord-13/10 border border-nord-13/20 rounded text-xs text-nord-13 mb-2">
-					Free tier: file.cheap branding will be added.
-					<a href="/settings#subscription" class="underline hover:text-nord-5 ml-1">Upgrade to Pro</a>
-				</p>
-			}
-			<form
-				hx-post={ "/files/" + fileID + "/process" }
-				hx-target="#process-result"
-				hx-swap="innerHTML"
-				class="space-y-2"
-			>
-				<input type="hidden" name="action" value="watermark"/>
-				if isPremium {
-					<input
-						type="text"
-						name="watermark_text"
-						placeholder="Enter your custom watermark text"
-						class="w-full px-3 py-1.5 bg-nord-1 border border-nord-3 rounded text-nord-5 text-xs placeholder-nord-4 focus:outline-none focus:ring-1 focus:ring-nord-8"
-					/>
-				} else {
-					<input
-						type="text"
-						name="watermark_text"
-						placeholder="Your text (+ file.cheap branding)"
-						class="w-full px-3 py-1.5 bg-nord-1 border border-nord-3 rounded text-nord-5 text-xs placeholder-nord-4 focus:outline-none focus:ring-1 focus:ring-nord-8"
-					/>
-				}
-				<select
-					name="watermark_position"
-					class="w-full px-3 py-1.5 bg-nord-1 border border-nord-3 rounded text-nord-5 text-xs focus:outline-none focus:ring-1 focus:ring-nord-8"
-				>
-					<option value="bottom-right">Bottom Right</option>
-					<option value="bottom-left">Bottom Left</option>
-					<option value="top-right">Top Right</option>
-					<option value="top-left">Top Left</option>
-					<option value="center">Center</option>
-				</select>
-				<button
-					type="submit"
-					class="w-full px-3 py-1.5 bg-nord-8 text-nord-0 hover:bg-nord-7 rounded text-xs font-medium transition-colors"
-				>
-					Add Watermark
-				</button>
-			</form>
+		if !exists && !isPremium {
+			<p class="p-2 bg-nord-13/10 border border-nord-13/20 rounded text-xs text-nord-13">
+				Free tier: file.cheap branding will be added.
+				<a href="/settings#subscription" class="underline hover:text-nord-5 ml-1">Upgrade to Pro</a>
+			</p>
 		}
 	</div>
+	<!-- Watermark Configuration Modal -->
+	@components.Modal(components.ModalProps{
+		ID:          "watermark-config-" + fileID,
+		Title:       "Watermark Configuration",
+		Description: "Position and customize your watermark with live preview",
+		Size:        "lg",
+	}) {
+		@components.WatermarkConfig(components.WatermarkConfigProps{
+			FileID:       fileID,
+			ThumbnailURL: thumbnailURL,
+			IsPremium:    isPremium,
+		})
+	}
 }
 
 templ bundleButton(fileID, bundle, label string, isPremium bool, allDone bool) {
@@ -1469,6 +1460,86 @@ templ processActionHLS(fileID string, exists bool, isPremium bool) {
 			}
 		}
 	</div>
+}
+
+// processActionPDFThumbnail renders PDF thumbnail action with page selection modal
+templ processActionPDFThumbnail(fileID string, pageCount int, exists bool) {
+	<div class="p-3 bg-nord-2 rounded-lg">
+		<div class="flex items-center justify-between">
+			<div>
+				<p class="text-nord-5 font-medium text-sm">Page Thumbnail</p>
+				<p class="text-nord-4 text-xs">Select page for thumbnail ({ formatInt(pageCount) } pages)</p>
+			</div>
+			if exists {
+				<span class="text-nord-14 text-xs flex items-center gap-1">
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+					</svg>
+					Done
+				</span>
+			} else {
+				<button
+					type="button"
+					@click={ "$dispatch('open-modal', 'pdf-page-config-" + fileID + "')" }
+					class="px-3 py-1.5 bg-nord-8 text-nord-0 hover:bg-nord-7 rounded text-xs font-medium transition-colors"
+				>
+					Configure
+				</button>
+			}
+		</div>
+	</div>
+	<!-- PDF Page Configuration Modal -->
+	@components.Modal(components.ModalProps{
+		ID:          "pdf-page-config-" + fileID,
+		Title:       "PDF Page Selection",
+		Description: "Choose which page to use for the thumbnail",
+		Size:        "lg",
+	}) {
+		@components.PDFPageConfig(components.PDFPageConfigProps{
+			FileID:    fileID,
+			PageCount: pageCount,
+		})
+	}
+}
+
+// processActionVideoThumbnail renders video thumbnail action with configuration modal
+templ processActionVideoThumbnail(fileID string, duration float64, exists bool) {
+	<div class="p-3 bg-nord-2 rounded-lg">
+		<div class="flex items-center justify-between">
+			<div>
+				<p class="text-nord-5 font-medium text-sm">Thumbnail</p>
+				<p class="text-nord-4 text-xs">Extract frame with timestamp picker</p>
+			</div>
+			if exists {
+				<span class="text-nord-14 text-xs flex items-center gap-1">
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+					</svg>
+					Done
+				</span>
+			} else {
+				<button
+					type="button"
+					@click={ "$dispatch('open-modal', 'video-thumb-config-" + fileID + "')" }
+					class="px-3 py-1.5 bg-nord-8 text-nord-0 hover:bg-nord-7 rounded text-xs font-medium transition-colors"
+				>
+					Configure
+				</button>
+			}
+		</div>
+	</div>
+	<!-- Video Thumbnail Configuration Modal -->
+	@components.Modal(components.ModalProps{
+		ID:          "video-thumb-config-" + fileID,
+		Title:       "Video Thumbnail",
+		Description: "Select the frame to extract for thumbnail",
+		Size:        "lg",
+	}) {
+		@components.VideoTimestampConfig(components.VideoTimestampConfigProps{
+			FileID:   fileID,
+			Duration: duration,
+		})
+	}
 }
 
 // FileStatusPartial renders just the status section for HTMX polling updates

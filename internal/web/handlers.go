@@ -1,10 +1,15 @@
 package web
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -719,6 +724,17 @@ func (h *Handlers) FileDetail(w http.ResponseWriter, r *http.Request) {
 			IsVideo:      strings.HasPrefix(file.ContentType, "video/"),
 			StreamURL:    streamURL,
 		}
+
+		// Fetch file metadata for processing configuration
+		if file.ContentType == "application/pdf" {
+			if pageCount, err := h.getPDFPageCount(r.Context(), file.StorageKey); err == nil {
+				data.PageCount = pageCount
+			}
+		} else if strings.HasPrefix(file.ContentType, "video/") {
+			if duration, err := h.getVideoDuration(r.Context(), file.StorageKey); err == nil {
+				data.Duration = duration
+			}
+		}
 	}
 
 	_ = pages.FileDetailPage(user, data).Render(r.Context(), w)
@@ -901,8 +917,14 @@ func (h *Handlers) ProcessFile(w http.ResponseWriter, r *http.Request) {
 		if position == "" {
 			position = "bottom-right"
 		}
+		opacity := 0.5
+		if o := r.FormValue("watermark_opacity"); o != "" {
+			if parsed, err := strconv.ParseFloat(o, 64); err == nil && parsed > 0 && parsed <= 1 {
+				opacity = parsed
+			}
+		}
 		isPremium := user.SubscriptionTier == db.SubscriptionTierPro || user.SubscriptionTier == db.SubscriptionTierEnterprise
-		p := worker.NewWatermarkPayload(fileID, text, position, 0.5, isPremium)
+		p := worker.NewWatermarkPayload(fileID, text, position, opacity, isPremium)
 		payload = &p
 	case "pdf_preview":
 		if file.ContentType != "application/pdf" {
@@ -913,7 +935,54 @@ func (h *Handlers) ProcessFile(w http.ResponseWriter, r *http.Request) {
 		}
 		variantType = db.VariantTypePdfPreview
 		dbJobType = db.JobTypePdfThumbnail
-		p := worker.NewPDFThumbnailPayload(fileID)
+		page := 1
+		if p := r.FormValue("pdf_page"); p != "" {
+			if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+				page = parsed
+			}
+		}
+		p := worker.NewPDFThumbnailPayloadWithOptions(fileID, page, "png", 300, 300)
+		payload = &p
+	case "video_thumbnail":
+		if !strings.HasPrefix(file.ContentType, "video/") {
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprintf(w, `<div class="p-4 bg-nord-11/20 text-nord-11 rounded-lg text-sm">This action is only available for video files.</div>`)
+			return
+		}
+		variantType = "video_thumbnail"
+		dbJobType = db.JobTypeVideoThumbnail
+		atPercent := 0.1
+		if p := r.FormValue("video_percent"); p != "" {
+			if parsed, err := strconv.ParseFloat(p, 64); err == nil && parsed >= 0 && parsed <= 100 {
+				atPercent = parsed / 100.0
+			}
+		}
+		p := worker.NewVideoThumbnailPayloadWithOptions(fileID, 320, 180, atPercent, "jpeg")
+		payload = &p
+	case "hls":
+		if !strings.HasPrefix(file.ContentType, "video/") {
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprintf(w, `<div class="p-4 bg-nord-11/20 text-nord-11 rounded-lg text-sm">This action is only available for video files.</div>`)
+			return
+		}
+		variantType = "hls_master"
+		dbJobType = db.JobTypeVideoHls
+		resolutions := []int{480, 720, 1080}
+		if res := r.FormValue("resolutions"); res != "" {
+			parts := strings.Split(res, ",")
+			parsed := make([]int, 0, len(parts))
+			for _, part := range parts {
+				if r, err := strconv.Atoi(strings.TrimSpace(part)); err == nil && r > 0 {
+					parsed = append(parsed, r)
+				}
+			}
+			if len(parsed) > 0 {
+				resolutions = parsed
+			}
+		}
+		p := worker.NewVideoHLSPayload(fileID, resolutions)
 		payload = &p
 	default:
 		http.Error(w, "Invalid action", http.StatusBadRequest)
@@ -2084,4 +2153,364 @@ func (h *Handlers) VideoEmbed(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = pages.VideoEmbedPage(data).Render(r.Context(), w)
+}
+
+// FileInfo returns metadata for a file (PDF page count, video duration, dimensions)
+func (h *Handlers) FileInfo(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
+	user := auth.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	fileIDStr := r.PathValue("id")
+	fileID, err := uuid.Parse(fileIDStr)
+	if err != nil {
+		log.Error("invalid file ID", "file_id", fileIDStr, "error", err)
+		http.Error(w, "Invalid file ID", http.StatusBadRequest)
+		return
+	}
+
+	if h.cfg.Queries == nil || h.cfg.Storage == nil {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	pgFileID := pgtype.UUID{Bytes: fileID, Valid: true}
+	pgUserID := pgtype.UUID{Bytes: user.ID, Valid: true}
+
+	file, err := h.cfg.Queries.GetFile(r.Context(), pgFileID)
+	if err != nil {
+		log.Error("file not found", "file_id", fileIDStr, "error", err)
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+
+	if file.UserID.Bytes != pgUserID.Bytes {
+		log.Warn("unauthorized file info access", "file_id", fileIDStr, "user_id", user.ID.String())
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+
+	response := map[string]interface{}{
+		"id":           fileIDStr,
+		"content_type": file.ContentType,
+		"metadata":     map[string]interface{}{},
+	}
+
+	metadata := response["metadata"].(map[string]interface{})
+
+	if file.ContentType == "application/pdf" {
+		pageCount, err := h.getPDFPageCount(r.Context(), file.StorageKey)
+		if err != nil {
+			log.Error("failed to get PDF page count", "file_id", fileIDStr, "error", err)
+		} else {
+			metadata["page_count"] = pageCount
+		}
+	} else if strings.HasPrefix(file.ContentType, "video/") {
+		duration, err := h.getVideoDuration(r.Context(), file.StorageKey)
+		if err != nil {
+			log.Error("failed to get video duration", "file_id", fileIDStr, "error", err)
+		} else {
+			metadata["duration"] = duration
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+// getPDFPageCount downloads the PDF and extracts page count using pdfinfo
+func (h *Handlers) getPDFPageCount(ctx context.Context, storageKey string) (int, error) {
+	tmpFile, err := os.CreateTemp("", "pdf-*.pdf")
+	if err != nil {
+		return 0, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	defer func() { _ = tmpFile.Close() }()
+
+	reader, err := h.cfg.Storage.Download(ctx, storageKey)
+	if err != nil {
+		return 0, fmt.Errorf("failed to download file: %w", err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	if _, err := io.Copy(tmpFile, reader); err != nil {
+		return 0, fmt.Errorf("failed to copy file: %w", err)
+	}
+	_ = tmpFile.Close()
+
+	cmd := exec.CommandContext(ctx, "pdfinfo", tmpFile.Name())
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("pdfinfo failed: %w, output: %s", err, string(output))
+	}
+
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.HasPrefix(line, "Pages:") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				count, err := strconv.Atoi(parts[1])
+				if err != nil {
+					return 0, fmt.Errorf("failed to parse page count: %w", err)
+				}
+				return count, nil
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("could not determine page count")
+}
+
+// getVideoDuration downloads the video and extracts duration using ffprobe
+func (h *Handlers) getVideoDuration(ctx context.Context, storageKey string) (float64, error) {
+	tmpFile, err := os.CreateTemp("", "video-*")
+	if err != nil {
+		return 0, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	defer func() { _ = tmpFile.Close() }()
+
+	reader, err := h.cfg.Storage.Download(ctx, storageKey)
+	if err != nil {
+		return 0, fmt.Errorf("failed to download file: %w", err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	if _, err := io.Copy(tmpFile, reader); err != nil {
+		return 0, fmt.Errorf("failed to copy file: %w", err)
+	}
+	_ = tmpFile.Close()
+
+	args := []string{
+		"-v", "error",
+		"-select_streams", "v:0",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		tmpFile.Name(),
+	}
+
+	cmd := exec.CommandContext(ctx, "ffprobe", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, fmt.Errorf("ffprobe failed: %w", err)
+	}
+
+	duration, err := strconv.ParseFloat(string(bytes.TrimSpace(output)), 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse duration: %w", err)
+	}
+
+	return duration, nil
+}
+
+// FilePreview generates a preview image for a file (PDF page or video frame)
+func (h *Handlers) FilePreview(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
+	user := auth.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	fileIDStr := r.PathValue("id")
+	fileID, err := uuid.Parse(fileIDStr)
+	if err != nil {
+		log.Error("invalid file ID", "file_id", fileIDStr, "error", err)
+		http.Error(w, "Invalid file ID", http.StatusBadRequest)
+		return
+	}
+
+	if h.cfg.Queries == nil || h.cfg.Storage == nil {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	pgFileID := pgtype.UUID{Bytes: fileID, Valid: true}
+	pgUserID := pgtype.UUID{Bytes: user.ID, Valid: true}
+
+	file, err := h.cfg.Queries.GetFile(r.Context(), pgFileID)
+	if err != nil {
+		log.Error("file not found", "file_id", fileIDStr, "error", err)
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+
+	if file.UserID.Bytes != pgUserID.Bytes {
+		log.Warn("unauthorized file preview access", "file_id", fileIDStr, "user_id", user.ID.String())
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+
+	width := 300
+	if w := r.URL.Query().Get("width"); w != "" {
+		if parsed, err := strconv.Atoi(w); err == nil && parsed > 0 && parsed <= 1000 {
+			width = parsed
+		}
+	}
+
+	if file.ContentType == "application/pdf" {
+		page := 1
+		if p := r.URL.Query().Get("page"); p != "" {
+			if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+				page = parsed
+			}
+		}
+		h.servePDFPreview(w, r, file.StorageKey, page, width)
+	} else if strings.HasPrefix(file.ContentType, "video/") {
+		percent := 10.0
+		if p := r.URL.Query().Get("percent"); p != "" {
+			if parsed, err := strconv.ParseFloat(p, 64); err == nil && parsed >= 0 && parsed <= 100 {
+				percent = parsed
+			}
+		}
+		h.serveVideoPreview(w, r, file.StorageKey, percent/100.0, width)
+	} else {
+		http.Error(w, "Preview not available for this file type", http.StatusBadRequest)
+	}
+}
+
+// servePDFPreview generates a preview of a specific PDF page
+func (h *Handlers) servePDFPreview(w http.ResponseWriter, r *http.Request, storageKey string, page, width int) {
+	log := logger.FromContext(r.Context())
+
+	tmpFile, err := os.CreateTemp("", "pdf-*.pdf")
+	if err != nil {
+		log.Error("failed to create temp file", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	defer func() { _ = tmpFile.Close() }()
+
+	reader, err := h.cfg.Storage.Download(r.Context(), storageKey)
+	if err != nil {
+		log.Error("failed to download file", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	defer func() { _ = reader.Close() }()
+
+	if _, err := io.Copy(tmpFile, reader); err != nil {
+		log.Error("failed to copy file", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	_ = tmpFile.Close()
+
+	outputDir, err := os.MkdirTemp("", "pdf-preview-*")
+	if err != nil {
+		log.Error("failed to create output dir", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	defer func() { _ = os.RemoveAll(outputDir) }()
+
+	outputPrefix := filepath.Join(outputDir, "page")
+
+	args := []string{
+		"-jpeg",
+		"-singlefile",
+		"-scale-to", strconv.Itoa(width),
+		"-f", strconv.Itoa(page),
+		"-l", strconv.Itoa(page),
+		tmpFile.Name(),
+		outputPrefix,
+	}
+
+	cmd := exec.CommandContext(r.Context(), "pdftoppm", args...)
+	if err := cmd.Run(); err != nil {
+		log.Error("pdftoppm failed", "error", err)
+		http.Error(w, "Failed to generate preview", http.StatusInternalServerError)
+		return
+	}
+
+	outputPath := outputPrefix + ".jpg"
+	outputData, err := os.ReadFile(outputPath)
+	if err != nil {
+		log.Error("failed to read output", "error", err)
+		http.Error(w, "Failed to generate preview", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	_, _ = w.Write(outputData)
+}
+
+// serveVideoPreview generates a preview frame from a video
+func (h *Handlers) serveVideoPreview(w http.ResponseWriter, r *http.Request, storageKey string, percent float64, width int) {
+	log := logger.FromContext(r.Context())
+
+	tmpFile, err := os.CreateTemp("", "video-*")
+	if err != nil {
+		log.Error("failed to create temp file", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	defer func() { _ = tmpFile.Close() }()
+
+	reader, err := h.cfg.Storage.Download(r.Context(), storageKey)
+	if err != nil {
+		log.Error("failed to download file", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	defer func() { _ = reader.Close() }()
+
+	if _, err := io.Copy(tmpFile, reader); err != nil {
+		log.Error("failed to copy file", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	_ = tmpFile.Close()
+
+	duration, err := h.getVideoDuration(r.Context(), storageKey)
+	if err != nil {
+		log.Error("failed to get video duration", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	timestamp := duration * percent
+
+	outputFile, err := os.CreateTemp("", "frame-*.jpg")
+	if err != nil {
+		log.Error("failed to create output file", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	outputPath := outputFile.Name()
+	_ = outputFile.Close()
+	defer func() { _ = os.Remove(outputPath) }()
+
+	args := []string{
+		"-ss", fmt.Sprintf("%.3f", timestamp),
+		"-i", tmpFile.Name(),
+		"-vframes", "1",
+		"-vf", fmt.Sprintf("scale=%d:-1", width),
+		"-q:v", "2",
+		"-y",
+		outputPath,
+	}
+
+	cmd := exec.CommandContext(r.Context(), "ffmpeg", args...)
+	if err := cmd.Run(); err != nil {
+		log.Error("ffmpeg failed", "error", err)
+		http.Error(w, "Failed to generate preview", http.StatusInternalServerError)
+		return
+	}
+
+	outputData, err := os.ReadFile(outputPath)
+	if err != nil {
+		log.Error("failed to read output", "error", err)
+		http.Error(w, "Failed to generate preview", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	_, _ = w.Write(outputData)
 }

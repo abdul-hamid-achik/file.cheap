@@ -1,0 +1,170 @@
+package components
+
+import "strconv"
+
+// PDFPageConfigProps contains PDF page configuration properties
+type PDFPageConfigProps struct {
+	FileID    string
+	PageCount int
+}
+
+// PDFPageConfig renders the PDF page selection form with preview
+templ PDFPageConfig(props PDFPageConfigProps) {
+	<div
+		x-data="pdfPageConfig()"
+		x-init={ "init('" + props.FileID + "', " + strconv.Itoa(props.PageCount) + ")" }
+		class="space-y-4"
+	>
+		<!-- Page Preview -->
+		<div class="relative aspect-[3/4] bg-nord-2 rounded-lg overflow-hidden flex items-center justify-center">
+			<img
+				id="pdf-preview-img"
+				src={ "/files/" + props.FileID + "/preview?page=1&width=400" }
+				alt="PDF Page Preview"
+				class="max-w-full max-h-full object-contain"
+			/>
+			<!-- Loading Overlay -->
+			<div
+				x-show="loading"
+				x-transition
+				class="absolute inset-0 bg-nord-0/50 flex items-center justify-center"
+			>
+				<svg class="w-8 h-8 text-nord-8 animate-spin" fill="none" viewBox="0 0 24 24">
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+				</svg>
+			</div>
+		</div>
+		<!-- Page Navigation -->
+		<div class="flex items-center justify-center gap-4">
+			<button
+				type="button"
+				@click="prevPage()"
+				:disabled="page <= 1"
+				:class="page <= 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-nord-3'"
+				class="p-2 bg-nord-2 rounded-lg text-nord-5 transition-colors"
+			>
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+				</svg>
+			</button>
+			<div class="flex items-center gap-2">
+				<span class="text-nord-4 text-sm">Page</span>
+				<input
+					type="number"
+					x-model.number="page"
+					@change="validateAndLoad()"
+					min="1"
+					:max="pageCount"
+					class="w-16 px-2 py-1 bg-nord-2 border border-nord-3 rounded text-nord-5 text-center text-sm focus:outline-none focus:ring-2 focus:ring-nord-8"
+				/>
+				<span class="text-nord-4 text-sm">of</span>
+				<span class="text-nord-5 text-sm font-medium" x-text="pageCount"></span>
+			</div>
+			<button
+				type="button"
+				@click="nextPage()"
+				:disabled="page >= pageCount"
+				:class="page >= pageCount ? 'opacity-50 cursor-not-allowed' : 'hover:bg-nord-3'"
+				class="p-2 bg-nord-2 rounded-lg text-nord-5 transition-colors"
+			>
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+				</svg>
+			</button>
+		</div>
+		<!-- Quick Page Selection -->
+		if props.PageCount > 1 {
+			<div class="flex flex-wrap gap-2 justify-center">
+				<button
+					type="button"
+					@click="goToPage(1)"
+					:class="page === 1 ? 'bg-nord-8 text-nord-0' : 'bg-nord-2 text-nord-4 hover:bg-nord-3'"
+					class="px-3 py-1 rounded text-xs font-medium transition-colors"
+				>
+					First
+				</button>
+				if props.PageCount > 2 {
+					<button
+						type="button"
+						@click="goToPage(Math.ceil(pageCount / 2))"
+						class="px-3 py-1 rounded text-xs font-medium transition-colors bg-nord-2 text-nord-4 hover:bg-nord-3"
+					>
+						Middle
+					</button>
+				}
+				<button
+					type="button"
+					@click="goToPage(pageCount)"
+					:class="page === pageCount ? 'bg-nord-8 text-nord-0' : 'bg-nord-2 text-nord-4 hover:bg-nord-3'"
+					class="px-3 py-1 rounded text-xs font-medium transition-colors"
+				>
+					Last
+				</button>
+			</div>
+		}
+		<!-- Submit Form -->
+		<form
+			hx-post={ "/files/" + props.FileID + "/process" }
+			hx-target="#process-result"
+			hx-swap="innerHTML"
+			class="pt-2"
+		>
+			<input type="hidden" name="action" value="pdf_preview"/>
+			<input type="hidden" name="pdf_page" :value="page"/>
+			@Button(ButtonProps{
+				Variant: ButtonPrimary,
+				Size:    ButtonMd,
+				Type:    "submit",
+				Class:   "w-full",
+			}) {
+				Generate Thumbnail from Page
+			}
+		</form>
+	</div>
+	<script>
+		function pdfPageConfig() {
+			return {
+				page: 1,
+				pageCount: 1,
+				fileId: '',
+				loading: false,
+				init(fileId, pageCount) {
+					this.fileId = fileId;
+					this.pageCount = pageCount;
+					this.loadPreview();
+				},
+				prevPage() {
+					if (this.page > 1) {
+						this.page--;
+						this.loadPreview();
+					}
+				},
+				nextPage() {
+					if (this.page < this.pageCount) {
+						this.page++;
+						this.loadPreview();
+					}
+				},
+				goToPage(p) {
+					this.page = p;
+					this.loadPreview();
+				},
+				validateAndLoad() {
+					if (this.page < 1) this.page = 1;
+					if (this.page > this.pageCount) this.page = this.pageCount;
+					this.loadPreview();
+				},
+				loadPreview() {
+					this.loading = true;
+					const img = document.getElementById('pdf-preview-img');
+					if (img) {
+						img.src = '/files/' + this.fileId + '/preview?page=' + this.page + '&width=400';
+						img.onload = () => { this.loading = false; };
+						img.onerror = () => { this.loading = false; };
+					}
+				}
+			};
+		}
+	</script>
+}
