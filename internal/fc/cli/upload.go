@@ -19,12 +19,17 @@ var uploadCmd = &cobra.Command{
 	Short: "Upload files to file.cheap",
 	Long: `Upload one or more files with optional transformations.
 
+Position options for thumbnails:
+  center, north, south, east, west,
+  north-west, north-east, south-west, south-east
+
 Examples:
   fc upload photo.jpg                           # Single file
   fc upload *.jpg                               # Multiple files (glob)
   fc upload photos/ --recursive                 # Directory
   fc upload hero.png -t webp,thumbnail          # With transforms
   fc upload hero.png --name=homepage-hero       # Custom name
+  fc upload portrait.jpg -t thumbnail --position north
   cat screenshot.png | fc upload --stdin -n screenshot.png`,
 	RunE: runUpload,
 }
@@ -37,6 +42,7 @@ var (
 	uploadStdin      bool
 	uploadDryRun     bool
 	uploadWait       bool
+	uploadPosition   string
 )
 
 func init() {
@@ -47,6 +53,7 @@ func init() {
 	uploadCmd.Flags().BoolVar(&uploadStdin, "stdin", false, "Read from stdin")
 	uploadCmd.Flags().BoolVar(&uploadDryRun, "dry-run", false, "Show what would be uploaded")
 	uploadCmd.Flags().BoolVarP(&uploadWait, "wait", "w", false, "Wait for processing to complete")
+	uploadCmd.Flags().StringVar(&uploadPosition, "position", "", "Thumbnail anchor position (center, north, south, east, west, north-west, north-east, south-west, south-east)")
 }
 
 func runUpload(cmd *cobra.Command, args []string) error {
@@ -62,6 +69,11 @@ func runUpload(cmd *cobra.Command, args []string) error {
 	transforms := uploadTransforms
 	if len(transforms) == 0 && len(cfg.DefaultTransforms) > 0 {
 		transforms = cfg.DefaultTransforms
+	}
+
+	// Add position to transforms if specified
+	if uploadPosition != "" {
+		transforms = append(transforms, "position:"+uploadPosition)
 	}
 
 	if uploadStdin {

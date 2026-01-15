@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/fc/client"
+	"github.com/abdul-hamid-achik/file.cheap/internal/fc/config"
 	"github.com/abdul-hamid-achik/file.cheap/internal/fc/output"
 	"github.com/spf13/cobra"
 )
@@ -23,19 +25,36 @@ Examples:
   fc batch ./photos -t webp,resize:lg
   fc batch --ids=abc123,def456 -t thumbnail
   fc batch --file=images.txt -t webp
-  fc batch ./large-folder --preset=social --progress`,
+  fc batch ./large-folder --preset=social --progress
+  fc batch ./media --config=batch.yaml
+
+Config file format (YAML):
+  defaults:
+    transforms: [thumbnail, webp]
+    quality: 85
+    position: center
+
+  files:
+    - pattern: "*.mp4"
+      thumbnail_at: "50%"
+    - pattern: "hero-*.jpg"
+      position: "north"
+      transforms: [thumbnail, webp, resize:lg]
+    - path: "specific-file.png"
+      position: "south-east"`,
 	RunE: runBatch,
 }
 
 var (
-	batchPreset    string
-	batchTransform []string
-	batchIDs       string
-	batchFile      string
-	batchQuality   int
-	batchWatermark string
-	batchProgress  bool
-	batchWait      bool
+	batchPreset     string
+	batchTransform  []string
+	batchIDs        string
+	batchFile       string
+	batchQuality    int
+	batchWatermark  string
+	batchProgress   bool
+	batchWait       bool
+	batchConfigFile string
 )
 
 func init() {
@@ -47,6 +66,7 @@ func init() {
 	batchCmd.Flags().StringVar(&batchWatermark, "watermark", "", "Watermark text")
 	batchCmd.Flags().BoolVar(&batchProgress, "progress", false, "Show progress bar")
 	batchCmd.Flags().BoolVarP(&batchWait, "wait", "w", false, "Wait for batch to complete")
+	batchCmd.Flags().StringVarP(&batchConfigFile, "config", "c", "", "YAML config file for per-file settings")
 }
 
 func runBatch(cmd *cobra.Command, args []string) error {
@@ -216,6 +236,20 @@ func waitForBatch(ctx context.Context, batchID string) error {
 func uploadAndBatchProcess(files []string) error {
 	ctx := GetContext()
 
+	var batchCfg *config.BatchConfig
+	if batchConfigFile != "" {
+		var err error
+		batchCfg, err = config.LoadBatchConfig(batchConfigFile)
+		if err != nil {
+			return fmt.Errorf("failed to load batch config: %w", err)
+		}
+		printer.Info("Loaded batch config from %s", batchConfigFile)
+	}
+
+	if batchCfg != nil {
+		return uploadAndBatchProcessWithConfig(ctx, files, batchCfg)
+	}
+
 	printer.Printf("Uploading %d files...\n", len(files))
 
 	var fileIDs []string
@@ -241,4 +275,104 @@ func uploadAndBatchProcess(files []string) error {
 	printer.Println()
 
 	return batchProcessIDs(fileIDs)
+}
+
+func uploadAndBatchProcessWithConfig(ctx context.Context, files []string, batchCfg *config.BatchConfig) error {
+	printer.Printf("Uploading and processing %d files with per-file config...\n", len(files))
+
+	parallel := cfg.Parallel
+	if parallel <= 0 {
+		parallel = 4
+	}
+
+	type uploadResult struct {
+		file   string
+		fileID string
+		err    error
+	}
+
+	results := make(chan uploadResult, len(files))
+	sem := make(chan struct{}, parallel)
+	var wg sync.WaitGroup
+
+	progress := output.NewProgress(len(files), "Processing", output.ProgressWithQuiet(quietMode || jsonOutput))
+
+	for _, file := range files {
+		wg.Add(1)
+		go func(f string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			transforms := batchCfg.BuildTransformsForFile(f)
+			if len(transforms) == 0 {
+				transforms = batchTransform
+			}
+
+			if batchPreset != "" {
+				preset, ok := cfg.GetPreset(batchPreset)
+				if ok {
+					transforms = append(transforms, preset.Transforms...)
+				}
+			}
+
+			if quality := batchCfg.GetQuality(f); quality > 0 {
+				transforms = append(transforms, fmt.Sprintf("q_%d", quality))
+			} else if batchQuality > 0 {
+				transforms = append(transforms, fmt.Sprintf("q_%d", batchQuality))
+			}
+
+			if watermark := batchCfg.GetWatermark(f); watermark != "" {
+				transforms = append(transforms, "watermark:"+watermark)
+			} else if batchWatermark != "" {
+				transforms = append(transforms, "watermark:"+batchWatermark)
+			}
+
+			result, err := apiClient.Upload(ctx, f, transforms, batchWait)
+			if err != nil {
+				results <- uploadResult{file: f, err: err}
+			} else {
+				results <- uploadResult{file: f, fileID: result.ID}
+			}
+			progress.Increment()
+		}(file)
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	var uploaded, failed []string
+	for result := range results {
+		if result.err != nil {
+			failed = append(failed, result.file)
+			if !jsonOutput {
+				printer.FileFailed(result.file, result.err)
+			}
+		} else {
+			uploaded = append(uploaded, result.fileID)
+			if !jsonOutput && !quietMode {
+				printer.Info("Processed: %s", result.file)
+			}
+		}
+	}
+
+	progress.Finish()
+
+	if jsonOutput {
+		return printer.JSON(map[string]interface{}{
+			"uploaded":   uploaded,
+			"failed":     len(failed),
+			"total":      len(files),
+			"successful": len(uploaded),
+		})
+	}
+
+	printer.Summary(len(uploaded), len(failed))
+
+	if len(failed) > 0 {
+		return fmt.Errorf("%d files failed to process", len(failed))
+	}
+	return nil
 }

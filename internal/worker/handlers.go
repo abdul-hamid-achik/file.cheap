@@ -129,12 +129,13 @@ func ThumbnailHandler(deps *Dependencies) func(context.Context, *job.Job) error 
 		proc := deps.Registry.MustGet("thumbnail")
 
 		opts := &processor.Options{
-			Width:   payload.Width,
-			Height:  payload.Height,
-			Quality: payload.Quality,
+			Width:    payload.Width,
+			Height:   payload.Height,
+			Quality:  payload.Quality,
+			Position: payload.Position,
 		}
 
-		log.Debug("processing thumbnail", "width", payload.Width, "height", payload.Height)
+		log.Debug("processing thumbnail", "width", payload.Width, "height", payload.Height, "position", payload.Position)
 		processStart := time.Now()
 		result, err := proc.Process(ctx, opts, reader)
 		if err != nil {

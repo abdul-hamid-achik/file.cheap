@@ -28,6 +28,7 @@ type Options struct {
 	Format      string
 	VariantType string
 	Page        int
+	Position    string // anchor position for thumbnail cropping (center, north, south, east, west, north-west, north-east, south-west, south-east)
 }
 
 type Result struct {

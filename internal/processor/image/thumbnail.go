@@ -52,7 +52,7 @@ func (p *ThumbnailProcessor) Process(ctx context.Context, opts *processor.Option
 		return nil, err
 	}
 
-	thumb := createThumbnail(img, opts.Width, opts.Height)
+	thumb := createThumbnail(img, opts.Width, opts.Height, opts.Position)
 	quality := getQuality(opts.Quality, p.config.Quality)
 
 	buf, err := encodeJPEG(thumb, quality)
@@ -80,8 +80,31 @@ func decodeImage(r io.Reader) (image.Image, string, error) {
 	return img, format, nil
 }
 
-func createThumbnail(img image.Image, width, height int) image.Image {
-	return imaging.Fill(img, width, height, imaging.Center, imaging.Lanczos)
+func createThumbnail(img image.Image, width, height int, position string) image.Image {
+	return imaging.Fill(img, width, height, getAnchor(position), imaging.Lanczos)
+}
+
+func getAnchor(position string) imaging.Anchor {
+	switch position {
+	case "north", "top":
+		return imaging.Top
+	case "south", "bottom":
+		return imaging.Bottom
+	case "west", "left":
+		return imaging.Left
+	case "east", "right":
+		return imaging.Right
+	case "north-west", "top-left":
+		return imaging.TopLeft
+	case "north-east", "top-right":
+		return imaging.TopRight
+	case "south-west", "bottom-left":
+		return imaging.BottomLeft
+	case "south-east", "bottom-right":
+		return imaging.BottomRight
+	default:
+		return imaging.Center
+	}
 }
 
 func encodeJPEG(img image.Image, quality int) (*bytes.Buffer, error) {

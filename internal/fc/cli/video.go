@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,10 +34,16 @@ var videoUploadCmd = &cobra.Command{
 
 Supports: MP4, MOV, AVI, MKV, WebM, WMV, FLV
 
+Thumbnail timestamp can be specified as:
+  - Percentage: 50% (of video duration)
+  - Duration: 30s, 1m30s, 2m (absolute time)
+
 Examples:
   fc video upload movie.mp4
   fc video upload movie.mp4 --transcode
-  fc video upload movie.mp4 --transcode -r 720,1080`,
+  fc video upload movie.mp4 --transcode -r 720,1080
+  fc video upload movie.mp4 --transcode --thumbnail-at 50%
+  fc video upload movie.mp4 --transcode --thumbnail-at 1m30s`,
 	Args: cobra.ExactArgs(1),
 	RunE: runVideoUpload,
 }
@@ -50,11 +57,16 @@ Available resolutions: 360, 480, 720, 1080, 1440, 2160
 Available formats: mp4, webm
 Available presets: ultrafast, fast, medium, slow
 
+Thumbnail timestamp can be specified as:
+  - Percentage: 50% (of video duration)
+  - Duration: 30s, 1m30s, 2m (absolute time)
+
 Examples:
   fc video transcode abc123 -r 720
   fc video transcode abc123 -r 720,1080
   fc video transcode abc123 -r 720 -f webm
-  fc video transcode abc123 -r 1080 --thumbnail`,
+  fc video transcode abc123 -r 1080 --thumbnail
+  fc video transcode abc123 -r 720 --thumbnail-at 2m`,
 	Args: cobra.ExactArgs(1),
 	RunE: runVideoTranscode,
 }
@@ -76,6 +88,7 @@ var (
 	videoFormat      string
 	videoPreset      string
 	videoThumbnail   bool
+	videoThumbnailAt string
 	videoWait        bool
 )
 
@@ -85,12 +98,14 @@ func init() {
 	videoUploadCmd.Flags().StringVarP(&videoFormat, "format", "f", "mp4", "Output format (mp4, webm)")
 	videoUploadCmd.Flags().StringVar(&videoPreset, "preset", "medium", "Encoding preset (ultrafast, fast, medium, slow)")
 	videoUploadCmd.Flags().BoolVar(&videoThumbnail, "thumbnail", true, "Generate thumbnail")
+	videoUploadCmd.Flags().StringVar(&videoThumbnailAt, "thumbnail-at", "", "Thumbnail timestamp (e.g., 30s, 1m30s, 50%)")
 	videoUploadCmd.Flags().BoolVarP(&videoWait, "wait", "w", false, "Wait for processing to complete")
 
 	videoTranscodeCmd.Flags().IntSliceVarP(&videoResolutions, "resolution", "r", []int{720}, "Target resolutions")
 	videoTranscodeCmd.Flags().StringVarP(&videoFormat, "format", "f", "mp4", "Output format")
 	videoTranscodeCmd.Flags().StringVar(&videoPreset, "preset", "medium", "Encoding preset")
 	videoTranscodeCmd.Flags().BoolVar(&videoThumbnail, "thumbnail", true, "Generate thumbnail")
+	videoTranscodeCmd.Flags().StringVar(&videoThumbnailAt, "thumbnail-at", "", "Thumbnail timestamp (e.g., 30s, 1m30s, 50%)")
 	videoTranscodeCmd.Flags().BoolVarP(&videoWait, "wait", "w", false, "Wait for processing")
 
 	videoCmd.AddCommand(videoUploadCmd)
@@ -156,11 +171,17 @@ func runVideoUpload(cmd *cobra.Command, args []string) error {
 			resolutions = []int{720}
 		}
 
+		thumbnailAt, err := parseThumbnailTimestamp(videoThumbnailAt)
+		if err != nil {
+			return err
+		}
+
 		transcodeReq := &client.VideoTranscodeRequest{
 			Resolutions: resolutions,
 			Format:      videoFormat,
 			Preset:      videoPreset,
 			Thumbnail:   videoThumbnail,
+			ThumbnailAt: thumbnailAt,
 		}
 
 		transcodeResp, err = apiClient.VideoTranscode(ctx, resp.ID, transcodeReq)
@@ -235,11 +256,17 @@ func runVideoTranscode(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid preset: %s (supported: ultrafast, fast, medium, slow)", videoPreset)
 	}
 
+	thumbnailAt, err := parseThumbnailTimestamp(videoThumbnailAt)
+	if err != nil {
+		return err
+	}
+
 	req := &client.VideoTranscodeRequest{
 		Resolutions: videoResolutions,
 		Format:      videoFormat,
 		Preset:      videoPreset,
 		Thumbnail:   videoThumbnail,
+		ThumbnailAt: thumbnailAt,
 	}
 
 	resp, err := apiClient.VideoTranscode(ctx, fileID, req)
@@ -342,4 +369,25 @@ func formatBytes(bytes int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+func parseThumbnailTimestamp(s string) (float64, error) {
+	if s == "" {
+		return 0, nil
+	}
+	// Percentage format: "50%"
+	if strings.HasSuffix(s, "%") {
+		pct, err := strconv.ParseFloat(strings.TrimSuffix(s, "%"), 64)
+		if err != nil || pct < 0 || pct > 100 {
+			return 0, fmt.Errorf("invalid percentage: %s (must be 0-100)", s)
+		}
+		return pct / 100, nil
+	}
+	// Duration format: "30s", "1m30s", "1h2m3s"
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("invalid duration: %s (use 30s, 1m30s, or 50%%)", s)
+	}
+	// Return negative value to indicate absolute time in seconds
+	return -d.Seconds(), nil
 }

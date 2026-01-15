@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -77,6 +78,18 @@ func GenerateShareToken() (string, error) {
 	return token, nil
 }
 
+func generateETag(cacheKey string, timestamp time.Time) string {
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s-%d", cacheKey, timestamp.Unix())))
+	return fmt.Sprintf(`"%x"`, h[:8])
+}
+
+func checkETag(r *http.Request, etag string) bool {
+	if clientETag := r.Header.Get("If-None-Match"); clientETag != "" {
+		return clientETag == etag || clientETag == "*"
+	}
+	return false
+}
+
 func CDNHandler(cfg *CDNConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
@@ -144,7 +157,9 @@ func CDNHandler(cfg *CDNConfig) http.HandlerFunc {
 				})
 			}()
 
-			serveCached(w, r, cfg, cached.StorageKey, cached.ContentType, filename)
+			// Generate ETag from cache key and cache entry timestamp
+			etag := generateETag(cacheKey, cached.CreatedAt.Time)
+			serveCached(w, r, cfg, cached.StorageKey, cached.ContentType, filename, etag)
 			return
 		}
 
@@ -166,7 +181,9 @@ func CDNHandler(cfg *CDNConfig) http.HandlerFunc {
 			cacheResult(r.Context(), cfg, fileID, cacheKey, transforms, result, log)
 		}
 
-		serveResult(w, r, result, filename)
+		// Generate ETag from cache key and current time (freshly processed)
+		etag := generateETag(cacheKey, time.Now())
+		serveResult(w, r, result, filename, etag)
 	}
 }
 
@@ -194,13 +211,22 @@ func serveOriginal(w http.ResponseWriter, r *http.Request, cfg *CDNConfig, stora
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
-func serveCached(w http.ResponseWriter, r *http.Request, cfg *CDNConfig, storageKey, contentType, filename string) {
+func serveCached(w http.ResponseWriter, r *http.Request, cfg *CDNConfig, storageKey, contentType, filename, etag string) {
+	// Check for conditional request
+	if etag != "" && checkETag(r, etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
 	url, err := cfg.Storage.GetPresignedURL(r.Context(), storageKey, 3600)
 	if err != nil {
 		http.Error(w, `{"error":{"code":"internal","message":"failed to generate URL"}}`, http.StatusInternalServerError)
 		return
 	}
 
+	if etag != "" {
+		w.Header().Set("ETag", etag)
+	}
 	w.Header().Set("Cache-Control", getCacheControl(contentType))
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filename))
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
@@ -274,7 +300,16 @@ func cacheResult(ctx context.Context, cfg *CDNConfig, fileID pgtype.UUID, cacheK
 	}
 }
 
-func serveResult(w http.ResponseWriter, r *http.Request, result *processor.Result, filename string) {
+func serveResult(w http.ResponseWriter, r *http.Request, result *processor.Result, filename string, etag string) {
+	// Check for conditional request
+	if etag != "" {
+		if checkETag(r, etag) {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", etag)
+	}
+
 	w.Header().Set("Content-Type", result.ContentType)
 	w.Header().Set("Cache-Control", getCacheControl(result.ContentType))
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filename))

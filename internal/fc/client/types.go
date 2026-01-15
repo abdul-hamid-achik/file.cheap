@@ -146,10 +146,11 @@ type UploadSummary struct {
 // Video types
 
 type VideoTranscodeRequest struct {
-	Resolutions []int  `json:"resolutions,omitempty"` // e.g., [360, 720, 1080]
-	Format      string `json:"format,omitempty"`      // mp4, webm
-	Preset      string `json:"preset,omitempty"`      // ultrafast, fast, medium, slow
-	Thumbnail   bool   `json:"thumbnail,omitempty"`   // extract thumbnail
+	Resolutions []int   `json:"resolutions,omitempty"` // e.g., [360, 720, 1080]
+	Format      string  `json:"format,omitempty"`      // mp4, webm
+	Preset      string  `json:"preset,omitempty"`      // ultrafast, fast, medium, slow
+	Thumbnail   bool    `json:"thumbnail,omitempty"`   // extract thumbnail
+	ThumbnailAt float64 `json:"thumbnail_at,omitempty"` // timestamp as percentage (0.0-1.0) or negative for absolute seconds
 }
 
 type VideoTranscodeResponse struct {

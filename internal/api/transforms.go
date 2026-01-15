@@ -18,6 +18,7 @@ type TransformOptions struct {
 	Crop      string
 	Watermark string
 	Page      int
+	Position  string
 }
 
 func (t *TransformOptions) ToProcessorOptions() *processor.Options {
@@ -29,19 +30,20 @@ func (t *TransformOptions) ToProcessorOptions() *processor.Options {
 		Fit:         t.Crop,
 		VariantType: t.Watermark,
 		Page:        t.Page,
+		Position:    t.Position,
 	}
 }
 
 func (t *TransformOptions) CacheKey() string {
 	h := sha256.New()
-	_, _ = fmt.Fprintf(h, "w=%d,h=%d,q=%d,f=%s,c=%s,wm=%s,p=%d",
-		t.Width, t.Height, t.Quality, t.Format, t.Crop, t.Watermark, t.Page)
+	_, _ = fmt.Fprintf(h, "w=%d,h=%d,q=%d,f=%s,c=%s,wm=%s,p=%d,pos=%s",
+		t.Width, t.Height, t.Quality, t.Format, t.Crop, t.Watermark, t.Page, t.Position)
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 func (t *TransformOptions) RequiresProcessing() bool {
 	return t.Width > 0 || t.Height > 0 || t.Quality > 0 ||
-		t.Format != "" || t.Crop != "" || t.Watermark != "" || t.Page > 0
+		t.Format != "" || t.Crop != "" || t.Watermark != "" || t.Page > 0 || t.Position != ""
 }
 
 func (t *TransformOptions) ProcessorName() string {
@@ -152,6 +154,18 @@ func ParseTransforms(s string) (*TransformOptions, error) {
 				return nil, fmt.Errorf("page must be between 1 and 9999, got %d", p)
 			}
 			opts.Page = p
+
+		case "pos":
+			value = strings.ToLower(value)
+			switch value {
+			case "center", "north", "south", "east", "west",
+				"north-west", "north-east", "south-west", "south-east",
+				"top", "bottom", "left", "right",
+				"top-left", "top-right", "bottom-left", "bottom-right":
+				opts.Position = value
+			default:
+				return nil, fmt.Errorf("unsupported position: %s (supported: center, north, south, east, west, north-west, north-east, south-west, south-east)", value)
+			}
 
 		default:
 			return nil, fmt.Errorf("unknown transform key: %s", key)

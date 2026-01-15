@@ -1,0 +1,115 @@
+package components
+
+// ThumbnailPositionConfigProps contains thumbnail position configuration properties
+type ThumbnailPositionConfigProps struct {
+	FileID       string
+	ThumbnailURL string
+	ImageWidth   int
+	ImageHeight  int
+}
+
+// ThumbnailPositionConfig renders the thumbnail position configuration form with a 9-position grid
+templ ThumbnailPositionConfig(props ThumbnailPositionConfigProps) {
+	<div
+		x-data="{
+			position: 'center',
+			positions: [
+				{ id: 'north-west', label: 'NW', row: 0, col: 0 },
+				{ id: 'north', label: 'N', row: 0, col: 1 },
+				{ id: 'north-east', label: 'NE', row: 0, col: 2 },
+				{ id: 'west', label: 'W', row: 1, col: 0 },
+				{ id: 'center', label: 'C', row: 1, col: 1 },
+				{ id: 'east', label: 'E', row: 1, col: 2 },
+				{ id: 'south-west', label: 'SW', row: 2, col: 0 },
+				{ id: 'south', label: 'S', row: 2, col: 1 },
+				{ id: 'south-east', label: 'SE', row: 2, col: 2 }
+			],
+			getCropOverlayStyle() {
+				const pos = this.positions.find(p => p.id === this.position);
+				if (!pos) return { top: '25%', left: '25%' };
+				const xPos = pos.col === 0 ? '0%' : pos.col === 1 ? '25%' : '50%';
+				const yPos = pos.row === 0 ? '0%' : pos.row === 1 ? '25%' : '50%';
+				return { top: yPos, left: xPos };
+			}
+		}"
+		class="space-y-4"
+	>
+		<!-- Preview Panel with Crop Overlay -->
+		<div class="relative aspect-video bg-nord-2 rounded-lg overflow-hidden">
+			if props.ThumbnailURL != "" {
+				<img src={ props.ThumbnailURL } alt="Preview" class="w-full h-full object-cover"/>
+				<!-- Crop region indicator -->
+				<div
+					class="absolute w-1/2 h-1/2 border-2 border-nord-8 bg-nord-8/20 pointer-events-none transition-all duration-200"
+					:style="'top: ' + getCropOverlayStyle().top + '; left: ' + getCropOverlayStyle().left"
+				></div>
+				<!-- Darkened areas outside crop -->
+				<div class="absolute inset-0 pointer-events-none">
+					<div
+						class="absolute bg-black/40 transition-all duration-200"
+						:style="'top: 0; left: 0; right: 0; height: ' + getCropOverlayStyle().top"
+					></div>
+					<div
+						class="absolute bg-black/40 transition-all duration-200"
+						:style="'bottom: 0; left: 0; right: 0; height: calc(100% - ' + getCropOverlayStyle().top + ' - 50%)'"
+					></div>
+					<div
+						class="absolute bg-black/40 transition-all duration-200"
+						:style="'top: ' + getCropOverlayStyle().top + '; left: 0; width: ' + getCropOverlayStyle().left + '; height: 50%'"
+					></div>
+					<div
+						class="absolute bg-black/40 transition-all duration-200"
+						:style="'top: ' + getCropOverlayStyle().top + '; right: 0; width: calc(100% - ' + getCropOverlayStyle().left + ' - 50%); height: 50%'"
+					></div>
+				</div>
+			} else {
+				<div class="w-full h-full flex items-center justify-center text-nord-4">
+					<span>No preview available</span>
+				</div>
+			}
+		</div>
+		<!-- Position Info -->
+		<div class="text-sm text-nord-4">
+			<p>Select which part of the image to use for the thumbnail crop.</p>
+		</div>
+		<!-- Configuration Form -->
+		<form
+			hx-post={ "/files/" + props.FileID + "/process" }
+			hx-target="#process-result"
+			hx-swap="innerHTML"
+			class="space-y-4"
+		>
+			<input type="hidden" name="action" value="thumbnail"/>
+			<input type="hidden" name="thumbnail_position" x-model="position"/>
+			<!-- Position Grid -->
+			<div class="space-y-2">
+				<label class="block text-sm font-medium text-nord-4">Anchor Position</label>
+				<div class="grid grid-cols-3 gap-1 w-36">
+					<template x-for="pos in positions" :key="pos.id">
+						<button
+							type="button"
+							@click="position = pos.id"
+							:class="position === pos.id ? 'bg-nord-8 text-nord-0' : 'bg-nord-2 text-nord-4 hover:bg-nord-3'"
+							class="p-2 rounded text-xs font-medium transition-colors"
+							x-text="pos.label"
+						></button>
+					</template>
+				</div>
+				<p class="text-xs text-nord-4 mt-1">
+					Selected: <span class="text-nord-8" x-text="position"></span>
+				</p>
+			</div>
+			<!-- Submit Button -->
+			<div class="pt-2">
+				@Button(ButtonProps{
+					Variant: ButtonPrimary,
+					Size:    ButtonMd,
+					Type:    "submit",
+					Class:   "w-full",
+				}) {
+					Generate Thumbnail
+				}
+			</div>
+		</form>
+	</div>
+}

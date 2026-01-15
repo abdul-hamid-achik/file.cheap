@@ -7,11 +7,12 @@ import (
 )
 
 type ThumbnailPayload struct {
-	JobID   pgtype.UUID `json:"job_id,omitempty"`
-	FileID  uuid.UUID   `json:"file_id"`
-	Width   int         `json:"width"`
-	Height  int         `json:"height"`
-	Quality int         `json:"quality"`
+	JobID    pgtype.UUID `json:"job_id,omitempty"`
+	FileID   uuid.UUID   `json:"file_id"`
+	Width    int         `json:"width"`
+	Height   int         `json:"height"`
+	Quality  int         `json:"quality"`
+	Position string      `json:"position,omitempty"` // anchor position: center, north, south, east, west, etc.
 }
 
 type ResizePayload struct {
@@ -25,11 +26,20 @@ type ResizePayload struct {
 
 func NewThumbnailPayload(fileID uuid.UUID) ThumbnailPayload {
 	return ThumbnailPayload{
-		FileID:  fileID,
-		Width:   presets.Thumbnail.Width,
-		Height:  presets.Thumbnail.Height,
-		Quality: presets.Thumbnail.Quality,
+		FileID:   fileID,
+		Width:    presets.Thumbnail.Width,
+		Height:   presets.Thumbnail.Height,
+		Quality:  presets.Thumbnail.Quality,
+		Position: "center",
 	}
+}
+
+func NewThumbnailPayloadWithPosition(fileID uuid.UUID, position string) ThumbnailPayload {
+	p := NewThumbnailPayload(fileID)
+	if position != "" {
+		p.Position = position
+	}
+	return p
 }
 
 func NewResizePayload(fileID uuid.UUID, variantType string, width, height int) ResizePayload {

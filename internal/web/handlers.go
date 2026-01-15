@@ -857,7 +857,8 @@ func (h *Handlers) ProcessFile(w http.ResponseWriter, r *http.Request) {
 	case "thumbnail":
 		variantType = db.VariantTypeThumbnail
 		dbJobType = db.JobTypeThumbnail
-		p := worker.NewThumbnailPayload(fileID)
+		position := r.FormValue("thumbnail_position")
+		p := worker.NewThumbnailPayloadWithPosition(fileID, position)
 		payload = &p
 	case "sm":
 		variantType = "sm"
