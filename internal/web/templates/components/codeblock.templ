@@ -43,6 +43,10 @@ templ CodeBlockRaw(language string) {
 				<span x-text="copied ? 'Copied!' : 'Copy'">Copy</span>
 			</button>
 		</div>
-		<pre class={ "language-" + language }><code x-ref="codeContent" class={ "language-" + language }>{ children... }</code></pre>
+		<pre class={ "language-" + language }>
+			<code x-ref="codeContent" class={ "language-" + language }>
+				{ children... }
+			</code>
+		</pre>
 	</div>
 }
