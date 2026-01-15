@@ -11,6 +11,7 @@ import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/apperror"
 	"github.com/abdul-hamid-achik/file.cheap/internal/billing"
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
+	"github.com/abdul-hamid-achik/file.cheap/internal/health"
 	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor/video"
@@ -19,6 +20,8 @@ import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/worker"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 type Querier interface {
@@ -81,16 +84,17 @@ type Config struct {
 	BaseURL           string
 	Registry          *processor.Registry
 	WebhookDispatcher *webhook.Dispatcher
+	Pool              *pgxpool.Pool
+	RedisClient       *redis.Client
 }
 
 func NewRouter(cfg *Config) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
+	healthChecker := health.NewChecker(cfg.Pool, cfg.RedisClient).WithStorage(cfg.Storage)
+	mux.HandleFunc("GET /health", health.HealthHandler(healthChecker))
+	mux.HandleFunc("GET /health/live", health.LivenessHandler())
+	mux.HandleFunc("GET /health/ready", health.ReadinessHandler(healthChecker))
 
 	apiMux := http.NewServeMux()
 

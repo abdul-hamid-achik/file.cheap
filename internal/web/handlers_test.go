@@ -164,6 +164,10 @@ func (m *MockStorage) GetPresignedURL(ctx context.Context, key string, expirySec
 	return "http://localhost:9000/" + key, nil
 }
 
+func (m *MockStorage) HealthCheck(ctx context.Context) error {
+	return nil
+}
+
 // Test helper to create handlers with mocks
 func createTestHandlers() (*Handlers, *MockStorage, *MockQuerier) {
 	stor := NewMockStorage()

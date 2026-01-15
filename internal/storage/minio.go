@@ -147,3 +147,11 @@ func isNotFoundError(err error) bool {
 func presignDuration(seconds int) time.Duration {
 	return time.Duration(seconds) * time.Second
 }
+
+func (s *MinIOStorage) HealthCheck(ctx context.Context) error {
+	_, err := s.client.BucketExists(ctx, s.bucket)
+	if err != nil {
+		return fmt.Errorf("storage health check failed: %w", err)
+	}
+	return nil
+}

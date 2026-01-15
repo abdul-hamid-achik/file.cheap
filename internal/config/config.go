@@ -53,6 +53,11 @@ type Config struct {
 	StripePublishableKey string
 	StripeWebhookSecret  string
 	StripePriceIDPro     string
+
+	// Tracing configuration
+	TracingEnabled  bool
+	OTLPEndpoint    string
+	TraceSampleRate float64
 }
 
 func Load() (*Config, error) {
@@ -132,6 +137,11 @@ func Load() (*Config, error) {
 	cfg.StripeWebhookSecret = os.Getenv("STRIPE_WEBHOOK_SECRET")
 	cfg.StripePriceIDPro = os.Getenv("STRIPE_PRICE_ID_PRO")
 
+	// Tracing (enabled by default)
+	cfg.TracingEnabled = getEnvBool("TRACING_ENABLED", true)
+	cfg.OTLPEndpoint = getEnvString("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317")
+	cfg.TraceSampleRate = getEnvFloat64("TRACE_SAMPLE_RATE", 1.0)
+
 	return cfg, nil
 }
 
@@ -164,6 +174,15 @@ func getEnvBool(key string, defaultValue bool) bool {
 	if value := os.Getenv(key); value != "" {
 		if b, err := strconv.ParseBool(value); err == nil {
 			return b
+		}
+	}
+	return defaultValue
+}
+
+func getEnvFloat64(key string, defaultValue float64) float64 {
+	if value := os.Getenv(key); value != "" {
+		if f, err := strconv.ParseFloat(value, 64); err == nil {
+			return f
 		}
 	}
 	return defaultValue

@@ -19,6 +19,7 @@ type Storage interface {
 	Delete(ctx context.Context, key string) error
 	Exists(ctx context.Context, key string) (bool, error)
 	GetPresignedURL(ctx context.Context, key string, expirySeconds int) (string, error)
+	HealthCheck(ctx context.Context) error
 }
 
 type Config struct {

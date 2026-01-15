@@ -22,6 +22,7 @@ import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
 	imgproc "github.com/abdul-hamid-achik/file.cheap/internal/processor/image"
 	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
+	"github.com/abdul-hamid-achik/file.cheap/internal/tracing"
 	"github.com/abdul-hamid-achik/file.cheap/internal/web"
 	"github.com/abdul-hamid-achik/job-queue/pkg/broker"
 	"github.com/abdul-hamid-achik/job-queue/pkg/job"
@@ -68,6 +69,22 @@ func run() error {
 	log.Info("configuration loaded")
 
 	ctx := context.Background()
+
+	if cfg.TracingEnabled {
+		shutdownTracing, err := tracing.Init(ctx, &tracing.Config{
+			ServiceName:    "api",
+			ServiceVersion: "1.0.0",
+			Environment:    cfg.Environment,
+			OTLPEndpoint:   cfg.OTLPEndpoint,
+			Enabled:        true,
+			SampleRate:     cfg.TraceSampleRate,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to init tracing: %w", err)
+		}
+		defer func() { _ = shutdownTracing(ctx) }()
+		log.Info("tracing enabled", "endpoint", cfg.OTLPEndpoint, "sample_rate", cfg.TraceSampleRate)
+	}
 
 	log.Info("connecting to database")
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
@@ -159,10 +176,13 @@ func run() error {
 		JWTSecret:     cfg.JWTSecret,
 		BaseURL:       cfg.BaseURL,
 		Registry:      registry,
+		Pool:          pool,
+		RedisClient:   redisClient,
 	}
 	apiRouter := api.NewRouter(apiCfg)
 	mux.Handle("/v1/", apiRouter)
 	mux.Handle("/health", apiRouter)
+	mux.Handle("/health/", apiRouter)
 	mux.Handle("/cdn/", apiRouter)
 
 	webCfg := &web.Config{
@@ -207,7 +227,10 @@ func run() error {
 	webRouter := web.NewRouter(webCfg, sessionManager, authService, oauthService, emailService, billingHandlers, analyticsHandlers, adminHandlers)
 	mux.Handle("/", webRouter)
 
-	handler := metrics.HTTPMetricsMiddleware(web.Recovery(web.RequestID(web.RequestLogger(mux))))
+	var handler http.Handler = metrics.HTTPMetricsMiddleware(web.Recovery(web.RequestID(web.RequestLogger(mux))))
+	if cfg.TracingEnabled {
+		handler = tracing.HTTPMiddleware("api")(handler)
+	}
 
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),

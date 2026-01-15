@@ -6,6 +6,7 @@ namespace: monitoring
 resources:
   - namespace.yaml
   - prometheus/configmap.yaml
+  - prometheus/pvc.yaml
   - prometheus/deployment.yaml
   - prometheus/service.yaml
   - grafana/configmap-datasources.yaml
@@ -13,6 +14,13 @@ resources:
   - grafana/deployment.yaml
   - grafana/service.yaml
   - grafana/ingress.yaml
+  - jaeger/deployment.yaml
+  - jaeger/service.yaml
+  - loki/configmap.yaml
+  - loki/deployment.yaml
+  - loki/service.yaml
+  - promtail/configmap.yaml
+  - promtail/daemonset.yaml
 
 configMapGenerator:
   - name: grafana-dashboards

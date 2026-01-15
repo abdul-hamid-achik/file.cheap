@@ -12,12 +12,14 @@ import (
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/config"
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
+	"github.com/abdul-hamid-achik/file.cheap/internal/health"
 	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
 	"github.com/abdul-hamid-achik/file.cheap/internal/metrics"
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor/image"
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor/pdf"
 	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
+	"github.com/abdul-hamid-achik/file.cheap/internal/tracing"
 	fpworker "github.com/abdul-hamid-achik/file.cheap/internal/worker"
 	"github.com/abdul-hamid-achik/job-queue/pkg/broker"
 	"github.com/abdul-hamid-achik/job-queue/pkg/middleware"
@@ -48,6 +50,22 @@ func run() error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	if cfg.TracingEnabled {
+		shutdownTracing, err := tracing.Init(ctx, &tracing.Config{
+			ServiceName:    "worker",
+			ServiceVersion: "1.0.0",
+			Environment:    cfg.Environment,
+			OTLPEndpoint:   cfg.OTLPEndpoint,
+			Enabled:        true,
+			SampleRate:     cfg.TraceSampleRate,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to init tracing: %w", err)
+		}
+		defer func() { _ = shutdownTracing(ctx) }()
+		log.Info("tracing enabled", "endpoint", cfg.OTLPEndpoint, "sample_rate", cfg.TraceSampleRate)
+	}
 
 	zerologger := zerolog.New(os.Stdout).With().Timestamp().Logger()
 
@@ -162,10 +180,11 @@ func run() error {
 
 	metricsMux := http.NewServeMux()
 	metricsMux.Handle("/metrics", promhttp.Handler())
-	metricsMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
+
+	healthChecker := health.NewChecker(pool, redisClient).WithStorage(store)
+	metricsMux.HandleFunc("/health", health.HealthHandler(healthChecker))
+	metricsMux.HandleFunc("/health/live", health.LivenessHandler())
+	metricsMux.HandleFunc("/health/ready", health.ReadinessHandler(healthChecker))
 
 	metricsServer := &http.Server{
 		Addr:    ":" + metricsPort,

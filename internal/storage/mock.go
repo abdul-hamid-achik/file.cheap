@@ -152,3 +152,8 @@ func (s *MemoryStorage) Count() int {
 	defer s.mu.RUnlock()
 	return len(s.files)
 }
+
+// HealthCheck always returns nil for in-memory storage.
+func (s *MemoryStorage) HealthCheck(ctx context.Context) error {
+	return nil
+}
