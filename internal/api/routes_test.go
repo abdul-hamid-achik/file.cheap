@@ -39,8 +39,8 @@ func TestHealthCheck(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if body["status"] != "ok" {
-		t.Errorf("body status = %q, want %q", body["status"], "ok")
+	if body["status"] != "healthy" {
+		t.Errorf("body status = %q, want %q", body["status"], "healthy")
 	}
 }
 
