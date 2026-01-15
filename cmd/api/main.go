@@ -227,7 +227,7 @@ func run() error {
 	webRouter := web.NewRouter(webCfg, sessionManager, authService, oauthService, emailService, billingHandlers, analyticsHandlers, adminHandlers)
 	mux.Handle("/", webRouter)
 
-	var handler http.Handler = metrics.HTTPMetricsMiddleware(web.Recovery(web.RequestID(web.RequestLogger(mux))))
+	handler := metrics.HTTPMetricsMiddleware(web.Recovery(web.RequestID(web.RequestLogger(mux))))
 	if cfg.TracingEnabled {
 		handler = tracing.HTTPMiddleware("api")(handler)
 	}
