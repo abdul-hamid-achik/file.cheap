@@ -56,8 +56,9 @@ tasks:
     cmds:
       - docker compose restart
 
-  logs:
-    desc: View all service logs
+  "logs:local":
+    desc: View all local service logs
+    aliases: [dcl]
     cmds:
       - docker compose logs -f
 
@@ -282,8 +283,8 @@ tasks:
       - rm -f static/css/output.css
 
   mon:
-    desc: Open Grafana dashboard
-    aliases: [grafana, dashboard]
+    desc: Open local Grafana dashboard
+    aliases: [dashboard]
     cmds:
       - open http://localhost:3000 || echo "Open http://localhost:3000"
 
@@ -368,15 +369,18 @@ tasks:
         echo "  Daily Operations"
         echo "  ─────────────────────"
         echo "    task status            Cluster health dashboard"
-        echo "    task ship              Test -> Build -> Push -> Deploy (auto-migrates)"
-        echo "    task deploy            Deploy to production (auto-migrates via CI)"
-        echo "    task prod:logs         Tail production logs"
+        echo "    task ship              Test -> Build -> Push -> Deploy"
+        echo "    task deploy            Deploy to production"
+        echo "    task logs              Tail production logs (or: task logs -- api)"
+        echo "    task shell             Open shell in API pod"
+        echo "    task psql              Connect to production PostgreSQL"
         echo ""
         echo "  Shortcuts"
         echo "  ─────────────────────"
+        echo "    task kick              Quick restart all pods"
         echo "    task wtf               Debug: logs + events + status"
         echo "    task doctor            Diagnose common issues"
-        echo "    task fix               Restart stuck pods"
+        echo "    task grafana           Open Grafana dashboard"
         echo ""
 
   "infra:setup":
@@ -450,7 +454,7 @@ tasks:
         echo "    API:       https://api.{{.DOMAIN}}"
         echo ""
         echo "  Run 'task status' to see cluster health"
-        echo "  Run 'task prod:grafana' to access Grafana"
+        echo "  Run 'task grafana' to access Grafana"
         echo ""
       - osascript -e 'display notification "Cluster provisioned successfully!" with title "file.cheap" sound name "Glass"' || true
 
@@ -591,39 +595,44 @@ tasks:
   # PRODUCTION - Logs & Shell Access
   # ════════════════════════════════════════════════════════════════════════════
 
-  "prod:logs":
-    desc: Tail production logs (api + worker)
+  logs:
+    desc: "Tail production logs (usage: task logs, task logs -- api)"
     aliases: [pl]
     cmds:
-      - kubectl logs -f -l app.kubernetes.io/part-of=file-processor -n file-processor --kubeconfig={{.KUBECONFIG}} --prefix --tail=50
+      - |
+        if [ -n "{{.CLI_ARGS}}" ]; then
+          kubectl logs -f deploy/{{.CLI_ARGS}} -n file-processor --kubeconfig={{.KUBECONFIG}} --tail=100
+        else
+          kubectl logs -f -l app.kubernetes.io/part-of=file-processor -n file-processor --kubeconfig={{.KUBECONFIG}} --prefix --tail=50
+        fi
 
-  "prod:logs:api":
+  "logs:api":
     desc: Tail API logs
     cmds:
       - kubectl logs -f deploy/api -n file-processor --kubeconfig={{.KUBECONFIG}} --tail=100
 
-  "prod:logs:worker":
+  "logs:worker":
     desc: Tail worker logs
     cmds:
       - kubectl logs -f deploy/worker -n file-processor --kubeconfig={{.KUBECONFIG}} --tail=100
 
-  "prod:shell":
+  shell:
     desc: Open shell in API pod
     aliases: [sh]
     cmds:
       - kubectl exec -it deploy/api -n file-processor --kubeconfig={{.KUBECONFIG}} -- /bin/sh
 
-  "prod:shell:worker":
+  "shell:worker":
     desc: Open shell in worker pod
     cmds:
       - kubectl exec -it deploy/worker -n file-processor --kubeconfig={{.KUBECONFIG}} -- /bin/sh
 
-  "prod:psql":
+  psql:
     desc: Connect to production PostgreSQL
     cmds:
       - kubectl exec -it postgres-0 -n file-processor --kubeconfig={{.KUBECONFIG}} -- psql -U fileprocessor -d fileprocessor
 
-  "prod:migrate:status":
+  "migrate:prod":
     desc: Show production migration status
     cmds:
       - |
@@ -657,12 +666,12 @@ tasks:
         done
         echo ""
 
-  "prod:redis":
+  "redis:prod":
     desc: Connect to production Redis
     cmds:
       - kubectl exec -it sts/redis -n file-processor --kubeconfig={{.KUBECONFIG}} -- redis-cli
 
-  "prod:grafana":
+  grafana:
     desc: Port-forward Grafana (http://localhost:3001)
     cmds:
       - |
@@ -670,7 +679,7 @@ tasks:
         echo "  Press Ctrl+C to stop"
       - kubectl port-forward svc/grafana 3001:3000 -n monitoring --kubeconfig={{.KUBECONFIG}}
 
-  "prod:minio":
+  minio:
     desc: Port-forward MinIO console (http://localhost:9001)
     cmds:
       - |
@@ -739,8 +748,15 @@ tasks:
         curl -sf --max-time 5 https://api.{{.DOMAIN}}/health >/dev/null 2>&1 && echo "    ✓ api.{{.DOMAIN}} reachable" || echo "    ✗ api.{{.DOMAIN}} not reachable"
         echo ""
 
+  kick:
+    desc: Restart all production pods
+    aliases: [restart-prod]
+    cmds:
+      - kubectl rollout restart deploy -n file-processor --kubeconfig={{.KUBECONFIG}}
+      - echo "  ✓ Pods restarting. Run 'task status' to check."
+
   fix:
-    desc: Common fixes - restart stuck pods
+    desc: Common fixes - restart stuck pods and clear failed
     cmds:
       - 'echo "  Restarting deployments..."'
       - kubectl rollout restart deploy -n file-processor --kubeconfig={{.KUBECONFIG}}
