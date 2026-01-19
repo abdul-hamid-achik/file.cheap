@@ -29,14 +29,14 @@ type CurrentUserResponse struct {
 }
 
 type UsageResponse struct {
-	FilesUsed           int64   `json:"files_used"`
-	FilesLimit          int32   `json:"files_limit"`
-	TransformsUsed      int32   `json:"transforms_used"`
-	TransformsLimit     int32   `json:"transforms_limit"`
-	StorageUsedBytes    int64   `json:"storage_used_bytes"`
-	StorageLimitBytes   int64   `json:"storage_limit_bytes"`
-	PlanName            string  `json:"plan_name"`
-	PlanRenewsAt        *string `json:"plan_renews_at,omitempty"`
+	FilesUsed         int64   `json:"files_used"`
+	FilesLimit        int32   `json:"files_limit"`
+	TransformsUsed    int32   `json:"transforms_used"`
+	TransformsLimit   int32   `json:"transforms_limit"`
+	StorageUsedBytes  int64   `json:"storage_used_bytes"`
+	StorageLimitBytes int64   `json:"storage_limit_bytes"`
+	PlanName          string  `json:"plan_name"`
+	PlanRenewsAt      *string `json:"plan_renews_at,omitempty"`
 }
 
 func GetCurrentUserHandler(cfg *UserConfig) http.HandlerFunc {
@@ -148,13 +148,13 @@ func GetUsageHandler(cfg *UserConfig) http.HandlerFunc {
 		}
 
 		response := UsageResponse{
-			FilesUsed:           filesCount,
-			FilesLimit:          user.FilesLimit,
-			TransformsUsed:      user.TransformationsCount,
-			TransformsLimit:     user.TransformationsLimit,
-			StorageUsedBytes:    storageUsed,
-			StorageLimitBytes:   user.StorageLimitBytes,
-			PlanName:            string(user.SubscriptionTier),
+			FilesUsed:         filesCount,
+			FilesLimit:        user.FilesLimit,
+			TransformsUsed:    user.TransformationsCount,
+			TransformsLimit:   user.TransformationsLimit,
+			StorageUsedBytes:  storageUsed,
+			StorageLimitBytes: user.StorageLimitBytes,
+			PlanName:          string(user.SubscriptionTier),
 		}
 
 		if user.SubscriptionPeriodEnd.Valid {

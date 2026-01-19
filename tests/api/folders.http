@@ -1,0 +1,69 @@
+### List Folders Without Auth
+# @name listFoldersWithoutAuth
+# @tags folders, errors
+# @description Verify listing folders without auth returns 401
+
+GET {{baseUrl}}/folders
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Get Folder Without Auth
+# @name getFolderWithoutAuth
+# @tags folders, errors
+# @description Verify getting folder without auth returns 401
+
+GET {{baseUrl}}/folders/{{$uuid()}}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Update Folder Without Auth
+# @name updateFolderWithoutAuth
+# @tags folders, errors
+# @description Verify updating folder without auth returns 401
+
+PUT {{baseUrl}}/folders/{{$uuid()}}
+Content-Type: application/json
+
+{
+  "name": "renamed-folder"
+}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Delete Folder Without Auth
+# @name deleteFolderWithoutAuth
+# @tags folders, errors
+# @description Verify deleting folder without auth returns 401
+
+DELETE {{baseUrl}}/folders/{{$uuid()}}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Move File Without Auth
+# @name moveFileWithoutAuth
+# @tags folders, errors
+# @description Verify moving file without auth returns 401
+
+POST {{baseUrl}}/files/{{$uuid()}}/move
+Content-Type: application/json
+
+{
+  "folder_id": null
+}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<

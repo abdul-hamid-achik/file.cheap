@@ -1,0 +1,11 @@
+### Health Check
+# @name healthCheck
+# @tags smoke, health
+# @description Verify API is healthy and responding
+
+GET {{apiRoot}}/health
+
+>>>
+expect status 200
+expect body.status == "healthy"
+<<<

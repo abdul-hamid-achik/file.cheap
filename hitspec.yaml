@@ -1,0 +1,28 @@
+# hitspec configuration
+# https://github.com/abdul-hamid-achik/hitspec
+
+# Settings
+defaultEnvironment: local
+timeout: 30000
+retries: 0
+followRedirects: true
+maxRedirects: 10
+validateSSL: true
+verbose: false
+colors: true
+headers:
+  User-Agent: hitspec/1.0
+
+# Environments
+environments:
+  prod:
+    baseUrl: https://api.file.cheap/v1
+    apiRoot: https://api.file.cheap
+    webUrl: https://file.cheap
+    apiToken: "${FILECHEAP_API_TOKEN}"
+
+  local:
+    baseUrl: http://localhost:8080/v1
+    apiRoot: http://localhost:8080
+    webUrl: http://localhost:3000
+    apiToken: "${FILECHEAP_API_TOKEN}"

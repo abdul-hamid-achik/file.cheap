@@ -243,7 +243,7 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 		}
 
 		if billingInfo != nil {
-			if billingInfo.FilesCount >= int64(billingInfo.FilesLimit) {
+			if billingInfo.FilesLimit >= 0 && billingInfo.FilesCount >= int64(billingInfo.FilesLimit) {
 				limits := billing.GetTierLimits(billingInfo.Tier)
 				apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "file_limit_reached",
 					fmt.Sprintf("File limit of %d reached. Upgrade to Pro for %d files.", limits.FilesLimit, billing.ProFilesLimit),

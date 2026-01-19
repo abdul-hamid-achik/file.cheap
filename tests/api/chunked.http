@@ -1,0 +1,58 @@
+### Initialize Chunked Upload Without Auth
+# @name initChunkedWithoutAuth
+# @tags chunked, errors
+# @description Verify initializing chunked upload without auth returns 401
+
+POST {{baseUrl}}/upload/chunked
+Content-Type: application/json
+
+{
+  "filename": "test-file.zip",
+  "content_type": "application/zip",
+  "total_size": 10485760
+}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Upload Chunk Without Auth
+# @name uploadChunkWithoutAuth
+# @tags chunked, errors
+# @description Verify uploading chunk without auth returns 401
+
+PUT {{baseUrl}}/upload/chunked/{{$uuid()}}
+? chunk = 0
+Content-Type: application/octet-stream
+
+test-chunk-data
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Get Chunked Upload Status Without Auth
+# @name getChunkedStatusWithoutAuth
+# @tags chunked, errors
+# @description Verify getting chunked upload status without auth returns 401
+
+GET {{baseUrl}}/upload/chunked/{{$uuid()}}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Cancel Chunked Upload Without Auth
+# @name cancelChunkedWithoutAuth
+# @tags chunked, errors
+# @description Verify canceling chunked upload without auth returns 401
+
+DELETE {{baseUrl}}/upload/chunked/{{$uuid()}}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<

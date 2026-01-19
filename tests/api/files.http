@@ -1,0 +1,60 @@
+### List Files Without Auth
+# @name listFilesWithoutAuth
+# @tags files, errors
+# @description Verify listing files without auth returns 401
+
+GET {{baseUrl}}/files
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Get File Without Auth
+# @name getFileWithoutAuth
+# @tags files, errors
+# @description Verify getting file details without auth returns 401
+
+GET {{baseUrl}}/files/{{$uuid()}}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Download File Without Auth
+# @name downloadFileWithoutAuth
+# @tags files, errors
+# @description Verify downloading file without auth returns 401
+
+GET {{baseUrl}}/files/{{$uuid()}}/download
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Transform File Without Auth
+# @name transformFileWithoutAuth
+# @tags files, transformations, errors
+# @description Verify transforming file without auth returns 401
+
+GET {{baseUrl}}/files/{{$uuid()}}/transform
+? preset = thumbnail
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Delete File Without Auth
+# @name deleteFileWithoutAuth
+# @tags files, errors
+# @description Verify deleting file without auth returns 401
+
+DELETE {{baseUrl}}/files/{{$uuid()}}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<

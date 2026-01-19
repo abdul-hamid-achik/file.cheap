@@ -1,0 +1,23 @@
+### Get Current User Without Auth
+# @name getCurrentUserWithoutAuth
+# @tags users, errors
+# @description Verify getting current user without auth returns 401
+
+GET {{baseUrl}}/me
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Get Usage Without Auth
+# @name getUsageWithoutAuth
+# @tags users, errors
+# @description Verify getting usage statistics without auth returns 401
+
+GET {{baseUrl}}/me/usage
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<

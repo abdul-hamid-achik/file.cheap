@@ -1,0 +1,112 @@
+### Unauthorized - Missing Auth Header
+# @name missingAuthHeader
+# @tags auth, errors
+# @description Verify missing auth returns 401
+
+GET {{baseUrl}}/files
+
+>>>
+expect status 401
+expect body.error exists
+expect body.error.code exists
+expect body.error.message contains "authorization"
+<<<
+
+### Unauthorized - Invalid Bearer Token
+# @name invalidBearerToken
+# @tags auth, errors
+# @description Verify invalid bearer token returns 401
+
+GET {{baseUrl}}/files
+Authorization: Bearer invalid-token-here
+
+>>>
+expect status 401
+expect body.error exists
+expect body.error.code exists
+<<<
+
+### Unauthorized - Invalid API Key
+# @name invalidApiKey
+# @tags auth, errors
+# @description Verify invalid API key returns 401
+
+GET {{baseUrl}}/files
+X-API-Key: invalid-api-key-here
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Unauthorized - Upload Without Auth
+# @name uploadWithoutAuth
+# @tags auth, errors
+# @description Verify upload without auth returns 401
+
+POST {{baseUrl}}/upload
+Content-Type: multipart/form-data
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Unauthorized - Create Folder Without Auth
+# @name createFolderWithoutAuth
+# @tags auth, errors
+# @description Verify folder creation without auth returns 401
+
+POST {{baseUrl}}/folders
+Content-Type: application/json
+
+{
+  "name": "test-folder"
+}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Unauthorized - Create Webhook Without Auth
+# @name createWebhookWithoutAuth
+# @tags auth, errors
+# @description Verify webhook creation without auth returns 401
+
+POST {{baseUrl}}/webhooks
+Content-Type: application/json
+
+{
+  "url": "https://example.com/webhook",
+  "events": ["file.uploaded"]
+}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Unauthorized - Get User Profile Without Auth
+# @name getUserWithoutAuth
+# @tags auth, errors
+# @description Verify getting user profile without auth returns 401
+
+GET {{baseUrl}}/me
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Unauthorized - Delete File Without Auth
+# @name deleteFileWithoutAuth
+# @tags auth, errors
+# @description Verify file deletion without auth returns 401
+
+DELETE {{baseUrl}}/files/{{$uuid()}}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<

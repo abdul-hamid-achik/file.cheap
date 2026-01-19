@@ -1,0 +1,52 @@
+### List Webhooks Without Auth
+# @name listWebhooksWithoutAuth
+# @tags webhooks, errors
+# @description Verify listing webhooks without auth returns 401
+
+GET {{baseUrl}}/webhooks
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Get Webhook Without Auth
+# @name getWebhookWithoutAuth
+# @tags webhooks, errors
+# @description Verify getting webhook without auth returns 401
+
+GET {{baseUrl}}/webhooks/{{$uuid()}}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Update Webhook Without Auth
+# @name updateWebhookWithoutAuth
+# @tags webhooks, errors
+# @description Verify updating webhook without auth returns 401
+
+PUT {{baseUrl}}/webhooks/{{$uuid()}}
+Content-Type: application/json
+
+{
+  "active": false
+}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Delete Webhook Without Auth
+# @name deleteWebhookWithoutAuth
+# @tags webhooks, errors
+# @description Verify deleting webhook without auth returns 401
+
+DELETE {{baseUrl}}/webhooks/{{$uuid()}}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<

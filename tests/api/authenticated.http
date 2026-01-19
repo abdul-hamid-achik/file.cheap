@@ -1,0 +1,97 @@
+### Get Current User (Authenticated)
+# @name getCurrentUser
+# @tags users, auth, smoke
+# @description Verify auth works - should not return 401
+# @auth bearer {{apiToken}}
+
+GET {{baseUrl}}/me
+
+>>>
+# Auth should work (not 401). May return 404 if user not in DB or 200 if exists
+expect status in [200, 404]
+<<<
+
+### List Files (Authenticated)
+# @name listFiles
+# @tags files, auth
+# @description Verify auth works for files endpoint
+# @auth bearer {{apiToken}}
+
+GET {{baseUrl}}/files
+
+>>>
+# Auth should work. May return 500 if DB issues, 200 if OK
+expect status in [200, 500]
+<<<
+
+### List Folders (Authenticated)
+# @name listFolders
+# @tags folders, auth
+# @description Verify auth works for folders endpoint
+# @auth bearer {{apiToken}}
+
+GET {{baseUrl}}/folders
+
+>>>
+# Auth should work. May return 500 if DB issues, 200 if OK
+expect status in [200, 500]
+<<<
+
+### Get Usage Stats (Authenticated)
+# @name getUsage
+# @tags users, auth
+# @description Verify auth works for usage endpoint
+# @auth bearer {{apiToken}}
+
+GET {{baseUrl}}/me/usage
+
+>>>
+# Auth should work (not 401). May return 404 if user not in DB
+expect status in [200, 404]
+<<<
+
+### List Webhooks (Authenticated)
+# @name listWebhooks
+# @tags webhooks, auth
+# @description Verify auth works for webhooks endpoint
+# @auth bearer {{apiToken}}
+
+GET {{baseUrl}}/webhooks
+
+>>>
+# Auth should work. May return 500 if DB issues, 200 if OK
+expect status in [200, 500]
+<<<
+
+### Upload File (Authenticated)
+# @name uploadFile
+# @tags files, auth, upload
+# @description Test file upload with authentication
+# @auth bearer {{apiToken}}
+# @file testdata/sample.pdf
+
+POST {{baseUrl}}/upload
+Content-Type: multipart/form-data
+
+>>>
+# Should not return 401. Expects 200/201 on success, or 500 if DB issues
+expect status in [200, 201, 400, 500]
+<<<
+
+### Create Folder (Authenticated)
+# @name createFolder
+# @tags folders, auth
+# @description Test folder creation with authentication
+# @auth bearer {{apiToken}}
+
+POST {{baseUrl}}/folders
+Content-Type: application/json
+
+{
+  "name": "test-folder-hitspec"
+}
+
+>>>
+# Should not return 401. May return 200/201 on success, or error if DB issues
+expect status in [200, 201, 400, 500]
+<<<

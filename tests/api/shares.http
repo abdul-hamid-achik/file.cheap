@@ -1,0 +1,73 @@
+### CDN Share Access - Invalid Token
+# @name cdnInvalidToken
+# @tags shares, cdn
+# @description CDN endpoint is public - invalid token should return 404
+
+GET {{apiRoot}}/cdn/invalid-token-here/_/test.jpg
+
+>>>
+expect status 404
+expect body contains "not_found"
+<<<
+
+### CDN Share Access - Random Token
+# @name cdnRandomToken
+# @tags shares, cdn
+# @description CDN endpoint with random base64-like token should return 404
+
+GET {{apiRoot}}/cdn/{{$randomString(43)}}/_/test.jpg
+
+>>>
+expect status 404
+expect body contains "not_found"
+<<<
+
+### CDN Share Access - Missing Token
+# @name cdnMissingToken
+# @tags shares, cdn
+# @description CDN endpoint with empty token should return 400
+
+GET {{apiRoot}}/cdn//_/test.jpg
+
+>>>
+expect status in [400, 404]
+<<<
+
+### Create Share Without Auth
+# @name createShareWithoutAuth
+# @tags shares, errors
+# @description Creating share requires authentication
+
+POST {{baseUrl}}/files/{{$uuid()}}/share
+Content-Type: application/json
+
+{}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### List Shares Without Auth
+# @name listSharesWithoutAuth
+# @tags shares, errors
+# @description Listing shares requires authentication
+
+GET {{baseUrl}}/files/{{$uuid()}}/shares
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<
+
+### Delete Share Without Auth
+# @name deleteShareWithoutAuth
+# @tags shares, errors
+# @description Deleting share requires authentication
+
+DELETE {{baseUrl}}/shares/{{$uuid()}}
+
+>>>
+expect status 401
+expect body.error.code exists
+<<<

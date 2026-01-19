@@ -175,7 +175,7 @@ func InitChunkedUploadHandler(cfg *ChunkedUploadConfig) http.HandlerFunc {
 
 		billingInfo := GetBilling(r.Context())
 		if billingInfo != nil {
-			if billingInfo.FilesCount >= int64(billingInfo.FilesLimit) {
+			if billingInfo.FilesLimit >= 0 && billingInfo.FilesCount >= int64(billingInfo.FilesLimit) {
 				apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "file_limit_reached", "File limit reached", http.StatusForbidden))
 				return
 			}

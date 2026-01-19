@@ -1,0 +1,93 @@
+### Invalid JSON Body
+# @name invalidJsonBody
+# @tags validation, errors
+# @description Verify invalid JSON returns error
+
+POST {{baseUrl}}/folders
+Content-Type: application/json
+Authorization: Bearer fake-token
+
+{invalid json here
+
+>>>
+expect status in [400, 401]
+expect body.error.code exists
+<<<
+
+### Missing Content-Type for JSON
+# @name missingContentType
+# @tags validation, errors
+# @description Verify requests work even without explicit content-type
+
+POST {{baseUrl}}/webhooks
+Authorization: Bearer fake-token
+
+{
+  "url": "https://example.com/webhook",
+  "events": ["file.uploaded"]
+}
+
+>>>
+expect status in [400, 401]
+<<<
+
+### Empty Request Body
+# @name emptyRequestBody
+# @tags validation, errors
+# @description Verify empty body is handled gracefully
+
+POST {{baseUrl}}/folders
+Content-Type: application/json
+Authorization: Bearer fake-token
+
+>>>
+expect status in [400, 401]
+<<<
+
+### Invalid UUID Format in Path
+# @name invalidUuidInPath
+# @tags validation, errors
+# @description Verify invalid UUID format returns appropriate error
+
+GET {{baseUrl}}/files/not-a-valid-uuid
+
+>>>
+expect status in [400, 401, 404]
+expect body.error.code exists
+<<<
+
+### Invalid Query Parameter
+# @name invalidQueryParam
+# @tags validation, errors
+# @description Verify invalid query params are handled
+
+GET {{baseUrl}}/files
+? limit = not-a-number
+
+>>>
+expect status in [400, 401]
+<<<
+
+### Negative Limit
+# @name negativeLimit
+# @tags validation, errors
+# @description Verify negative limit is handled
+
+GET {{baseUrl}}/files
+? limit = -1
+
+>>>
+expect status in [400, 401]
+<<<
+
+### Excessive Limit
+# @name excessiveLimit
+# @tags validation, errors
+# @description Verify excessive limit is handled (max is 100)
+
+GET {{baseUrl}}/files
+? limit = 1000
+
+>>>
+expect status in [400, 401]
+<<<

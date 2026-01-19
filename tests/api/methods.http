@@ -1,0 +1,63 @@
+### Health - POST Not Allowed
+# @name healthPostNotAllowed
+# @tags methods, errors
+# @description Verify POST to health returns 405 or similar
+
+POST {{apiRoot}}/health
+Content-Type: application/json
+
+{}
+
+>>>
+expect status in [404, 405]
+<<<
+
+### Health - PUT Not Allowed
+# @name healthPutNotAllowed
+# @tags methods, errors
+# @description Verify PUT to health returns 405 or similar
+
+PUT {{apiRoot}}/health
+Content-Type: application/json
+
+{}
+
+>>>
+expect status in [404, 405]
+<<<
+
+### Health - DELETE Not Allowed
+# @name healthDeleteNotAllowed
+# @tags methods, errors
+# @description Verify DELETE to health returns 405 or similar
+
+DELETE {{apiRoot}}/health
+
+>>>
+expect status in [404, 405]
+<<<
+
+### Files List - PUT Not Allowed
+# @name filesListPutNotAllowed
+# @tags methods, errors
+# @description Verify PUT to files list returns 405 or 401
+
+PUT {{baseUrl}}/files
+Content-Type: application/json
+
+{}
+
+>>>
+expect status in [401, 404, 405]
+<<<
+
+### Files List - DELETE Not Allowed
+# @name filesListDeleteNotAllowed
+# @tags methods, errors
+# @description Verify DELETE to files list returns 405 or 401
+
+DELETE {{baseUrl}}/files
+
+>>>
+expect status in [401, 404, 405]
+<<<
