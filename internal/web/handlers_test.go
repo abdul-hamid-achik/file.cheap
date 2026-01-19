@@ -638,7 +638,7 @@ func TestVideoEmbedHandler(t *testing.T) {
 		if !strings.Contains(bodyLower, "<!doctype html>") {
 			t.Error("should render HTML document")
 		}
-		if !strings.Contains(body, "tailwind") {
+		if !strings.Contains(body, "output.css") {
 			t.Error("should include Tailwind CSS")
 		}
 		if !strings.Contains(body, "plyr") {
