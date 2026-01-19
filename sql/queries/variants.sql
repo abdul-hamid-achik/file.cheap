@@ -43,3 +43,17 @@ SELECT EXISTS(
     SELECT 1 FROM file_variants
     WHERE file_id = $1 AND variant_type = $2
 ) AS exists;
+
+-- name: CreateVideoVariant :one
+INSERT INTO file_variants (
+    file_id, variant_type, content_type, size_bytes, storage_key,
+    width, height, duration_seconds, bitrate_bps, video_codec, audio_codec, frame_rate, resolution
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+)
+RETURNING *;
+
+-- name: GetVideoDurationByFile :one
+SELECT duration_seconds FROM file_variants
+WHERE file_id = $1 AND duration_seconds IS NOT NULL
+LIMIT 1;

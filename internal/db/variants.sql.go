@@ -67,6 +67,69 @@ func (q *Queries) CreateVariant(ctx context.Context, arg CreateVariantParams) (F
 	return i, err
 }
 
+const createVideoVariant = `-- name: CreateVideoVariant :one
+INSERT INTO file_variants (
+    file_id, variant_type, content_type, size_bytes, storage_key,
+    width, height, duration_seconds, bitrate_bps, video_codec, audio_codec, frame_rate, resolution
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+)
+RETURNING id, file_id, variant_type, content_type, size_bytes, storage_key, width, height, duration_seconds, bitrate_bps, video_codec, audio_codec, frame_rate, resolution, created_at
+`
+
+type CreateVideoVariantParams struct {
+	FileID          pgtype.UUID    `json:"file_id"`
+	VariantType     VariantType    `json:"variant_type"`
+	ContentType     string         `json:"content_type"`
+	SizeBytes       int64          `json:"size_bytes"`
+	StorageKey      string         `json:"storage_key"`
+	Width           *int32         `json:"width"`
+	Height          *int32         `json:"height"`
+	DurationSeconds pgtype.Numeric `json:"duration_seconds"`
+	BitrateBps      *int64         `json:"bitrate_bps"`
+	VideoCodec      *string        `json:"video_codec"`
+	AudioCodec      *string        `json:"audio_codec"`
+	FrameRate       pgtype.Numeric `json:"frame_rate"`
+	Resolution      *string        `json:"resolution"`
+}
+
+func (q *Queries) CreateVideoVariant(ctx context.Context, arg CreateVideoVariantParams) (FileVariant, error) {
+	row := q.db.QueryRow(ctx, createVideoVariant,
+		arg.FileID,
+		arg.VariantType,
+		arg.ContentType,
+		arg.SizeBytes,
+		arg.StorageKey,
+		arg.Width,
+		arg.Height,
+		arg.DurationSeconds,
+		arg.BitrateBps,
+		arg.VideoCodec,
+		arg.AudioCodec,
+		arg.FrameRate,
+		arg.Resolution,
+	)
+	var i FileVariant
+	err := row.Scan(
+		&i.ID,
+		&i.FileID,
+		&i.VariantType,
+		&i.ContentType,
+		&i.SizeBytes,
+		&i.StorageKey,
+		&i.Width,
+		&i.Height,
+		&i.DurationSeconds,
+		&i.BitrateBps,
+		&i.VideoCodec,
+		&i.AudioCodec,
+		&i.FrameRate,
+		&i.Resolution,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const deleteVariant = `-- name: DeleteVariant :exec
 DELETE FROM file_variants
 WHERE id = $1
@@ -181,6 +244,19 @@ func (q *Queries) GetVariantTypes(ctx context.Context, fileID pgtype.UUID) ([]Va
 		return nil, err
 	}
 	return items, nil
+}
+
+const getVideoDurationByFile = `-- name: GetVideoDurationByFile :one
+SELECT duration_seconds FROM file_variants
+WHERE file_id = $1 AND duration_seconds IS NOT NULL
+LIMIT 1
+`
+
+func (q *Queries) GetVideoDurationByFile(ctx context.Context, fileID pgtype.UUID) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, getVideoDurationByFile, fileID)
+	var duration_seconds pgtype.Numeric
+	err := row.Scan(&duration_seconds)
+	return duration_seconds, err
 }
 
 const hasVariant = `-- name: HasVariant :one

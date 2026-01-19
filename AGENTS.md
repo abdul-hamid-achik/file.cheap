@@ -95,6 +95,48 @@ The `BASE_URL` environment variable should be set to `https://api.file.cheap` in
 - `/internal/web` - Server-rendered HTML UI with session authentication (served from `file.cheap`)
 - Both can coexist and share business logic through internal packages
 
+### API vs Worker Responsibilities (CRITICAL)
+
+**The API and Web containers must NOT call external processing tools directly.** All file processing that requires external binaries (ffmpeg, ffprobe, poppler-utils, etc.) must happen in the Worker.
+
+| Layer | Allowed | NOT Allowed |
+|-------|---------|-------------|
+| API/Web | DB queries, storage read/write, job enqueueing | `exec.Command()` for ffmpeg, ffprobe, pdfinfo, pdftoppm |
+| Worker | All processing with external tools | N/A - workers have all tools installed |
+
+**Why this matters:**
+- API containers are lightweight and don't have ffmpeg/poppler installed
+- Calling external tools from API causes production failures
+- Worker containers have all processing tools in their Docker image
+
+**Pattern for file metadata:**
+```go
+// WRONG - calling ffprobe from API
+duration, err := exec.Command("ffprobe", ...).Output()
+
+// CORRECT - read from database (worker saved it during processing)
+duration, err := queries.GetVideoDurationByFile(ctx, fileID)
+```
+
+**Pattern for on-demand previews:**
+```go
+// WRONG - generating preview in API handler
+cmd := exec.Command("ffmpeg", "-i", video, "-vframes", "1", ...)
+
+// CORRECT - read pre-generated variant from storage
+variant, err := queries.GetVariant(ctx, fileID, "video_thumbnail")
+data, err := storage.Download(ctx, variant.StorageKey)
+```
+
+**Current known issues (TODO: fix these):**
+- `internal/web/handlers.go` still calls `pdfinfo` for PDF page count
+- `internal/web/handlers.go` still calls `pdftoppm` for PDF previews
+- `internal/web/handlers.go` still calls `ffmpeg` for video frame extraction
+
+These should be refactored to either:
+1. Store metadata in DB during worker processing, read from DB in API
+2. Pre-generate variants in worker, serve from storage in API
+
 ### Authentication Flows
 - Web UI: session-based with httpOnly cookies
 - API: JWT tokens via `Authorization: Bearer <token>` header

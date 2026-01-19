@@ -1,7 +1,6 @@
 package web
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -759,7 +758,7 @@ func (h *Handlers) FileDetail(w http.ResponseWriter, r *http.Request) {
 				data.PageCount = pageCount
 			}
 		} else if strings.HasPrefix(file.ContentType, "video/") {
-			if duration, err := h.getVideoDuration(r.Context(), file.StorageKey); err == nil {
+			if duration, err := h.getVideoDurationFromDB(r.Context(), pgFileID); err == nil {
 				data.Duration = duration
 			}
 		}
@@ -2277,9 +2276,9 @@ func (h *Handlers) FileInfo(w http.ResponseWriter, r *http.Request) {
 			metadata["page_count"] = pageCount
 		}
 	} else if strings.HasPrefix(file.ContentType, "video/") {
-		duration, err := h.getVideoDuration(r.Context(), file.StorageKey)
+		duration, err := h.getVideoDurationFromDB(r.Context(), pgFileID)
 		if err != nil {
-			log.Error("failed to get video duration", "file_id", fileIDStr, "error", err)
+			log.Debug("video duration not yet available", "file_id", fileIDStr, "error", err)
 		} else {
 			metadata["duration"] = duration
 		}
@@ -2331,46 +2330,24 @@ func (h *Handlers) getPDFPageCount(ctx context.Context, storageKey string) (int,
 	return 0, fmt.Errorf("could not determine page count")
 }
 
-// getVideoDuration downloads the video and extracts duration using ffprobe
-func (h *Handlers) getVideoDuration(ctx context.Context, storageKey string) (float64, error) {
-	tmpFile, err := os.CreateTemp("", "video-*")
+// getVideoDurationFromDB reads the video duration from the file_variants table
+func (h *Handlers) getVideoDurationFromDB(ctx context.Context, fileID pgtype.UUID) (float64, error) {
+	durationNumeric, err := h.cfg.Queries.GetVideoDurationByFile(ctx, fileID)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create temp file: %w", err)
+		return 0, fmt.Errorf("duration not available: %w", err)
 	}
-	defer func() { _ = os.Remove(tmpFile.Name()) }()
-	defer func() { _ = tmpFile.Close() }()
 
-	reader, err := h.cfg.Storage.Download(ctx, storageKey)
+	if !durationNumeric.Valid {
+		return 0, fmt.Errorf("duration is null")
+	}
+
+	// Convert pgtype.Numeric to float64
+	f, err := durationNumeric.Float64Value()
 	if err != nil {
-		return 0, fmt.Errorf("failed to download file: %w", err)
-	}
-	defer func() { _ = reader.Close() }()
-
-	if _, err := io.Copy(tmpFile, reader); err != nil {
-		return 0, fmt.Errorf("failed to copy file: %w", err)
-	}
-	_ = tmpFile.Close()
-
-	args := []string{
-		"-v", "error",
-		"-select_streams", "v:0",
-		"-show_entries", "format=duration",
-		"-of", "default=noprint_wrappers=1:nokey=1",
-		tmpFile.Name(),
+		return 0, fmt.Errorf("failed to convert duration: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "ffprobe", args...)
-	output, err := cmd.Output()
-	if err != nil {
-		return 0, fmt.Errorf("ffprobe failed: %w", err)
-	}
-
-	duration, err := strconv.ParseFloat(string(bytes.TrimSpace(output)), 64)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse duration: %w", err)
-	}
-
-	return duration, nil
+	return f.Float64, nil
 }
 
 // FilePreview generates a preview image for a file (PDF page or video frame)
@@ -2433,7 +2410,7 @@ func (h *Handlers) FilePreview(w http.ResponseWriter, r *http.Request) {
 				percent = parsed
 			}
 		}
-		h.serveVideoPreview(w, r, file.StorageKey, percent/100.0, width)
+		h.serveVideoPreview(w, r, pgFileID, file.StorageKey, percent/100.0, width)
 	} else {
 		http.Error(w, "Preview not available for this file type", http.StatusBadRequest)
 	}
@@ -2508,8 +2485,15 @@ func (h *Handlers) servePDFPreview(w http.ResponseWriter, r *http.Request, stora
 }
 
 // serveVideoPreview generates a preview frame from a video
-func (h *Handlers) serveVideoPreview(w http.ResponseWriter, r *http.Request, storageKey string, percent float64, width int) {
+func (h *Handlers) serveVideoPreview(w http.ResponseWriter, r *http.Request, fileID pgtype.UUID, storageKey string, percent float64, width int) {
 	log := logger.FromContext(r.Context())
+
+	duration, err := h.getVideoDurationFromDB(r.Context(), fileID)
+	if err != nil {
+		log.Debug("video duration not yet available, video may not be processed", "error", err)
+		http.Error(w, "Video not yet processed", http.StatusServiceUnavailable)
+		return
+	}
 
 	tmpFile, err := os.CreateTemp("", "video-*")
 	if err != nil {
@@ -2534,13 +2518,6 @@ func (h *Handlers) serveVideoPreview(w http.ResponseWriter, r *http.Request, sto
 		return
 	}
 	_ = tmpFile.Close()
-
-	duration, err := h.getVideoDuration(r.Context(), storageKey)
-	if err != nil {
-		log.Error("failed to get video duration", "error", err)
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
 
 	timestamp := duration * percent
 

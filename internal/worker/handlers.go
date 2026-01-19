@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/big"
 	"os"
 	"path/filepath"
 	"time"
@@ -1019,7 +1020,8 @@ func VideoTranscodeHandler(deps *Dependencies) func(context.Context, *job.Job) e
 
 		width := int32(result.Metadata.Width)
 		height := int32(result.Metadata.Height)
-		_, err = deps.Queries.CreateVariant(ctx, db.CreateVariantParams{
+		resolution := fmt.Sprintf("%dx%d", result.Metadata.Width, result.Metadata.Height)
+		_, err = deps.Queries.CreateVideoVariant(ctx, db.CreateVideoVariantParams{
 			FileID:      file.ID,
 			VariantType: db.VariantType(payload.VariantType),
 			ContentType: result.ContentType,
@@ -1027,6 +1029,12 @@ func VideoTranscodeHandler(deps *Dependencies) func(context.Context, *job.Job) e
 			StorageKey:  variantKey,
 			Width:       &width,
 			Height:      &height,
+			DurationSeconds: pgtype.Numeric{
+				Int:   big.NewInt(int64(result.Metadata.Duration * 100)),
+				Exp:   -2,
+				Valid: true,
+			},
+			Resolution: &resolution,
 		})
 		if err != nil {
 			log.Error("failed to save variant record", "error", err)
@@ -1175,12 +1183,17 @@ func VideoHLSHandler(deps *Dependencies) func(context.Context, *job.Job) error {
 			}
 		}
 
-		_, err = deps.Queries.CreateVariant(ctx, db.CreateVariantParams{
+		_, err = deps.Queries.CreateVideoVariant(ctx, db.CreateVideoVariantParams{
 			FileID:      file.ID,
 			VariantType: db.VariantType("hls_master"),
 			ContentType: "application/x-mpegURL",
 			SizeBytes:   int64(len(manifestData)),
 			StorageKey:  manifestKey,
+			DurationSeconds: pgtype.Numeric{
+				Int:   big.NewInt(int64(hlsResult.TotalDuration * 100)),
+				Exp:   -2,
+				Valid: true,
+			},
 		})
 		if err != nil {
 			log.Error("failed to save variant record", "error", err)
