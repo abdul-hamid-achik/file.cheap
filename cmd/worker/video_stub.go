@@ -10,9 +10,6 @@ import (
 	jobqueueworker "github.com/abdul-hamid-achik/job-queue/pkg/worker"
 )
 
-func registerVideoProcessors(procRegistry *processor.Registry, log *slog.Logger) {
-	log.Debug("video processors disabled (image-only worker)")
-}
+func registerVideoProcessors(_ *processor.Registry, _ *slog.Logger) {}
 
-func registerVideoHandlers(registry *jobqueueworker.Registry, deps *fpworker.Dependencies) {
-}
+func registerVideoHandlers(_ *jobqueueworker.Registry, _ *fpworker.Dependencies) {}
