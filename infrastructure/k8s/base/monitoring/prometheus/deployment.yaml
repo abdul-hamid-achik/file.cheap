@@ -76,13 +76,12 @@ kind: ServiceAccount
 metadata:
   name: prometheus
 ---
-# Scoped Role for Prometheus - only allows scraping pods in specific namespaces
-# with the prometheus.io/scrape annotation
+# Scoped Role for Prometheus to scrape the file-processor namespace
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: prometheus
-  namespace: default
+  name: prometheus-scraper
+  namespace: file-processor
 rules:
   - apiGroups: [""]
     resources: ["services", "endpoints", "pods"]
@@ -91,12 +90,12 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: prometheus
-  namespace: default
+  name: prometheus-scraper
+  namespace: file-processor
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: prometheus
+  name: prometheus-scraper
 subjects:
   - kind: ServiceAccount
     name: prometheus

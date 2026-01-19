@@ -17,6 +17,7 @@ resources:
   - jaeger/deployment.yaml
   - jaeger/service.yaml
   - loki/configmap.yaml
+  - loki/pvc.yaml
   - loki/deployment.yaml
   - loki/service.yaml
   - promtail/configmap.yaml
