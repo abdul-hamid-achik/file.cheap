@@ -94,6 +94,7 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 			mux.Handle("GET /dashboard/analytics/chart/usage", requireAuth(http.HandlerFunc(analyticsHandlers.UsageChart)))
 			mux.Handle("GET /dashboard/analytics/chart/transforms", requireAuth(http.HandlerFunc(analyticsHandlers.TransformsChart)))
 			mux.Handle("GET /dashboard/analytics/activity", requireAuth(http.HandlerFunc(analyticsHandlers.ActivityFeed)))
+			mux.Handle("GET /dashboard/analytics/export", requireAuth(http.HandlerFunc(analyticsHandlers.ExportData)))
 		}
 
 		// Admin routes
@@ -107,6 +108,7 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 			mux.Handle("GET /admin/signups", requireAdmin(http.HandlerFunc(adminHandlers.RecentSignups)))
 			mux.Handle("GET /admin/jobs", requireAdmin(http.HandlerFunc(adminHandlers.Jobs)))
 			mux.Handle("POST /admin/jobs/{id}/retry", requireAdmin(http.HandlerFunc(adminHandlers.RetryJob)))
+			mux.Handle("GET /admin/dashboard/export", requireAdmin(http.HandlerFunc(adminHandlers.ExportDashboard)))
 		}
 	} else {
 		redirectToLogin := func(w http.ResponseWriter, r *http.Request) {
@@ -148,12 +150,14 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 		mux.HandleFunc("GET /dashboard/analytics/chart/usage", redirectToLogin)
 		mux.HandleFunc("GET /dashboard/analytics/chart/transforms", redirectToLogin)
 		mux.HandleFunc("GET /dashboard/analytics/activity", redirectToLogin)
+		mux.HandleFunc("GET /dashboard/analytics/export", redirectToLogin)
 		mux.HandleFunc("GET /admin", redirectToLogin)
 		mux.HandleFunc("GET /admin/chart/revenue", redirectToLogin)
 		mux.HandleFunc("GET /admin/health", redirectToLogin)
 		mux.HandleFunc("GET /admin/signups", redirectToLogin)
 		mux.HandleFunc("GET /admin/jobs", redirectToLogin)
 		mux.HandleFunc("POST /admin/jobs/{id}/retry", redirectToLogin)
+		mux.HandleFunc("GET /admin/dashboard/export", redirectToLogin)
 	}
 
 	// Stripe webhook (no auth required - Stripe sends directly)

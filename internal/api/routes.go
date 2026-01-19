@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/apperror"
 	"github.com/abdul-hamid-achik/file.cheap/internal/billing"
@@ -67,6 +68,15 @@ type Querier interface {
 	CountDeliveriesByWebhook(ctx context.Context, webhookID pgtype.UUID) (int64, error)
 	CreateWebhookDelivery(ctx context.Context, arg db.CreateWebhookDeliveryParams) (db.WebhookDelivery, error)
 	ListActiveWebhooksByUserAndEvent(ctx context.Context, arg db.ListActiveWebhooksByUserAndEventParams) ([]db.Webhook, error)
+	SearchFilesByUser(ctx context.Context, arg db.SearchFilesByUserParams) ([]db.SearchFilesByUserRow, error)
+	GetJobByUser(ctx context.Context, arg db.GetJobByUserParams) (db.GetJobByUserRow, error)
+	GetJob(ctx context.Context, id pgtype.UUID) (db.ProcessingJob, error)
+	RetryJob(ctx context.Context, id pgtype.UUID) error
+	CancelJob(ctx context.Context, id pgtype.UUID) error
+	BulkRetryFailedJobs(ctx context.Context, userID pgtype.UUID) error
+	ListJobsByUserWithStatus(ctx context.Context, arg db.ListJobsByUserWithStatusParams) ([]db.ListJobsByUserWithStatusRow, error)
+	CountJobsByUser(ctx context.Context, arg db.CountJobsByUserParams) (int64, error)
+	GetUserRole(ctx context.Context, id pgtype.UUID) (db.UserRole, error)
 }
 
 type Broker interface {
@@ -159,6 +169,12 @@ func NewRouter(cfg *Config) http.Handler {
 	apiMux.HandleFunc("DELETE /v1/webhooks/{id}", DeleteWebhookHandler(webhookCfg))
 	apiMux.HandleFunc("GET /v1/webhooks/{id}/deliveries", ListDeliveriesHandler(webhookCfg))
 	apiMux.HandleFunc("POST /v1/webhooks/{id}/test", TestWebhookHandler(webhookCfg))
+
+	jobCfg := &JobConfig{Queries: cfg.Queries}
+	apiMux.HandleFunc("GET /v1/jobs", ListJobsHandler(jobCfg))
+	apiMux.HandleFunc("POST /v1/jobs/{id}/retry", RetryJobHandler(jobCfg))
+	apiMux.HandleFunc("POST /v1/jobs/{id}/cancel", CancelJobHandler(jobCfg))
+	apiMux.HandleFunc("POST /v1/jobs/retry-all", BulkRetryJobsHandler(jobCfg))
 
 	rateLimit := cfg.RateLimit
 	if rateLimit <= 0 {
@@ -352,6 +368,10 @@ func listFilesHandler(cfg *Config) http.HandlerFunc {
 
 		limitStr := r.URL.Query().Get("limit")
 		offsetStr := r.URL.Query().Get("offset")
+		query := r.URL.Query().Get("q")
+		typeFilter := r.URL.Query().Get("type")
+		fromStr := r.URL.Query().Get("from")
+		toStr := r.URL.Query().Get("to")
 
 		limit := int32(20)
 		offset := int32(0)
@@ -386,7 +406,67 @@ func listFilesHandler(cfg *Config) http.HandlerFunc {
 
 		pgUserID := pgtype.UUID{Bytes: userID, Valid: true}
 
-		// Single query with window function for both files and total count
+		hasSearchFilters := query != "" || typeFilter != "" || fromStr != "" || toStr != ""
+
+		if hasSearchFilters {
+			contentTypePrefix := ""
+			switch typeFilter {
+			case "image":
+				contentTypePrefix = "image/"
+			case "video":
+				contentTypePrefix = "video/"
+			case "audio":
+				contentTypePrefix = "audio/"
+			case "pdf":
+				contentTypePrefix = "application/pdf"
+			}
+
+			var fromTime, toTime pgtype.Timestamptz
+			if fromStr != "" {
+				if t, err := parseDateTime(fromStr); err == nil {
+					fromTime = pgtype.Timestamptz{Time: t, Valid: true}
+				}
+			}
+			if toStr != "" {
+				if t, err := parseDateTime(toStr); err == nil {
+					toTime = pgtype.Timestamptz{Time: t, Valid: true}
+				}
+			}
+
+			files, err := cfg.Queries.SearchFilesByUser(r.Context(), db.SearchFilesByUserParams{
+				UserID:  pgUserID,
+				Column2: query,
+				Column3: contentTypePrefix,
+				Column4: fromTime,
+				Column5: toTime,
+				Column6: "", // no status filter from API
+				Limit:   limit,
+				Offset:  offset,
+			})
+			if err != nil {
+				http.Error(w, "database error", http.StatusInternalServerError)
+				return
+			}
+
+			var total int64
+			if len(files) > 0 {
+				total = files[0].TotalCount
+			}
+
+			filesList := make([]map[string]any, len(files))
+			for i, f := range files {
+				filesList[i] = searchFileToJSON(f)
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"files":    filesList,
+				"total":    total,
+				"has_more": int64(offset)+int64(len(files)) < total,
+			})
+			return
+		}
+
 		files, err := cfg.Queries.ListFilesByUserWithCount(r.Context(), db.ListFilesByUserWithCountParams{
 			UserID: pgUserID,
 			Limit:  limit,
@@ -613,6 +693,31 @@ func fileWithCountToJSON(f db.ListFilesByUserWithCountRow) map[string]any {
 		"status":       string(f.Status),
 		"created_at":   f.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
 	}
+}
+
+func searchFileToJSON(f db.SearchFilesByUserRow) map[string]any {
+	return map[string]any{
+		"id":           uuidFromPgtype(f.ID),
+		"filename":     f.Filename,
+		"content_type": f.ContentType,
+		"size_bytes":   f.SizeBytes,
+		"status":       string(f.Status),
+		"created_at":   f.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+	}
+}
+
+func parseDateTime(s string) (time.Time, error) {
+	formats := []string{
+		"2006-01-02T15:04:05Z07:00",
+		"2006-01-02T15:04:05Z",
+		"2006-01-02",
+	}
+	for _, format := range formats {
+		if t, err := time.Parse(format, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("invalid date format")
 }
 
 func uuidFromPgtype(id pgtype.UUID) string {

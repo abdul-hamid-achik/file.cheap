@@ -79,3 +79,15 @@ DELETE FROM files WHERE id = $1;
 UPDATE files
 SET storage_key = '', updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: SearchFilesByUser :many
+SELECT *, COUNT(*) OVER() AS total_count FROM files
+WHERE user_id = $1
+  AND deleted_at IS NULL
+  AND ($2::text = '' OR filename ILIKE '%' || $2 || '%')
+  AND ($3::text = '' OR content_type LIKE $3 || '%')
+  AND ($4::timestamptz IS NULL OR created_at >= $4)
+  AND ($5::timestamptz IS NULL OR created_at <= $5)
+  AND ($6::text = '' OR status = $6::file_status)
+ORDER BY created_at DESC
+LIMIT $7 OFFSET $8;

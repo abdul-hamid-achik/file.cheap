@@ -529,6 +529,8 @@ func (h *Handlers) FileList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	offset := (currentPage - 1) * pageSize
+	query := r.URL.Query().Get("q")
+	filter := r.URL.Query().Get("filter")
 
 	data := pages.FileListPageData{
 		Files:       []pages.FileItem{},
@@ -536,8 +538,8 @@ func (h *Handlers) FileList(w http.ResponseWriter, r *http.Request) {
 		CurrentPage: int(currentPage),
 		TotalPages:  1,
 		PageSize:    int(pageSize),
-		Query:       r.URL.Query().Get("q"),
-		Filter:      r.URL.Query().Get("filter"),
+		Query:       query,
+		Filter:      filter,
 	}
 
 	if h.cfg.Queries != nil {
@@ -546,16 +548,37 @@ func (h *Handlers) FileList(w http.ResponseWriter, r *http.Request) {
 			Valid: true,
 		}
 
-		files, err := h.cfg.Queries.ListFilesByUser(r.Context(), db.ListFilesByUserParams{
-			UserID: pgUserID,
-			Limit:  pageSize,
-			Offset: offset,
+		// Map filter to content type prefix or status
+		var contentTypeFilter string
+		var statusFilter string
+		switch filter {
+		case "images":
+			contentTypeFilter = "image/"
+		case "videos":
+			contentTypeFilter = "video/"
+		case "documents":
+			contentTypeFilter = "application/"
+		case "processing":
+			statusFilter = string(db.FileStatusProcessing)
+		case "completed":
+			statusFilter = string(db.FileStatusCompleted)
+		}
+
+		searchFiles, err := h.cfg.Queries.SearchFilesByUser(r.Context(), db.SearchFilesByUserParams{
+			UserID:  pgUserID,
+			Column2: query,
+			Column3: contentTypeFilter,
+			Column4: pgtype.Timestamptz{}, // no date filter from UI
+			Column5: pgtype.Timestamptz{}, // no date filter from UI
+			Column6: statusFilter,
+			Limit:   pageSize,
+			Offset:  offset,
 		})
 		if err != nil {
-			log.Error("failed to list files", "error", err)
+			log.Error("failed to search files", "error", err)
 		} else {
-			fileIDs := make([]pgtype.UUID, len(files))
-			for i, f := range files {
+			fileIDs := make([]pgtype.UUID, len(searchFiles))
+			for i, f := range searchFiles {
 				fileIDs[i] = f.ID
 			}
 
@@ -571,8 +594,8 @@ func (h *Handlers) FileList(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			data.Files = make([]pages.FileItem, len(files))
-			for i, f := range files {
+			data.Files = make([]pages.FileItem, len(searchFiles))
+			for i, f := range searchFiles {
 				fileIDStr := uuidToString(f.ID)
 				data.Files[i] = pages.FileItem{
 					ID:           fileIDStr,
@@ -584,15 +607,13 @@ func (h *Handlers) FileList(w http.ResponseWriter, r *http.Request) {
 					CreatedAt:    f.CreatedAt.Time.Format("Jan 2, 2006"),
 				}
 			}
-		}
 
-		total, err := h.cfg.Queries.CountFilesByUser(r.Context(), pgUserID)
-		if err != nil {
-			log.Error("failed to count files", "error", err)
-		} else {
-			data.TotalCount = total
-			if total > 0 {
-				data.TotalPages = int((total + int64(pageSize) - 1) / int64(pageSize))
+			// Get total from first result's window function
+			if len(searchFiles) > 0 {
+				data.TotalCount = searchFiles[0].TotalCount
+			}
+			if data.TotalCount > 0 {
+				data.TotalPages = int((data.TotalCount + int64(pageSize) - 1) / int64(pageSize))
 			}
 		}
 	}

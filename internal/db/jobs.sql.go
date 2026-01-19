@@ -11,6 +11,56 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const bulkRetryFailedJobs = `-- name: BulkRetryFailedJobs :exec
+UPDATE processing_jobs
+SET status = 'pending',
+    error_message = NULL,
+    started_at = NULL,
+    completed_at = NULL
+WHERE file_id IN (
+    SELECT id FROM files WHERE user_id = $1 AND deleted_at IS NULL
+) AND status = 'failed'
+`
+
+func (q *Queries) BulkRetryFailedJobs(ctx context.Context, userID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, bulkRetryFailedJobs, userID)
+	return err
+}
+
+const cancelJob = `-- name: CancelJob :exec
+UPDATE processing_jobs
+SET status = 'failed',
+    error_message = 'Cancelled by user',
+    completed_at = NOW()
+WHERE id = $1 AND status IN ('pending', 'running')
+`
+
+func (q *Queries) CancelJob(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, cancelJob, id)
+	return err
+}
+
+const countJobsByUser = `-- name: CountJobsByUser :one
+SELECT COUNT(*)
+FROM processing_jobs pj
+JOIN files f ON f.id = pj.file_id
+WHERE f.user_id = $1
+  AND f.deleted_at IS NULL
+  AND ($2::job_status IS NULL OR pj.status = $2)
+`
+
+type CountJobsByUserParams struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	Column2 JobStatus   `json:"column_2"`
+}
+
+func (q *Queries) CountJobsByUser(ctx context.Context, arg CountJobsByUserParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countJobsByUser, arg.UserID, arg.Column2)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createJob = `-- name: CreateJob :one
 INSERT INTO processing_jobs (
     file_id,
@@ -79,6 +129,57 @@ func (q *Queries) GetJob(ctx context.Context, id pgtype.UUID) (ProcessingJob, er
 	return i, err
 }
 
+const getJobByUser = `-- name: GetJobByUser :one
+SELECT pj.id, pj.file_id, pj.job_type, pj.status, pj.priority, pj.attempts, pj.error_message, pj.created_at, pj.started_at, pj.completed_at, f.filename, f.content_type, f.user_id
+FROM processing_jobs pj
+JOIN files f ON f.id = pj.file_id
+WHERE pj.id = $1
+  AND f.user_id = $2
+  AND f.deleted_at IS NULL
+`
+
+type GetJobByUserParams struct {
+	ID     pgtype.UUID `json:"id"`
+	UserID pgtype.UUID `json:"user_id"`
+}
+
+type GetJobByUserRow struct {
+	ID           pgtype.UUID        `json:"id"`
+	FileID       pgtype.UUID        `json:"file_id"`
+	JobType      JobType            `json:"job_type"`
+	Status       JobStatus          `json:"status"`
+	Priority     int32              `json:"priority"`
+	Attempts     int32              `json:"attempts"`
+	ErrorMessage *string            `json:"error_message"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	StartedAt    pgtype.Timestamptz `json:"started_at"`
+	CompletedAt  pgtype.Timestamptz `json:"completed_at"`
+	Filename     string             `json:"filename"`
+	ContentType  string             `json:"content_type"`
+	UserID       pgtype.UUID        `json:"user_id"`
+}
+
+func (q *Queries) GetJobByUser(ctx context.Context, arg GetJobByUserParams) (GetJobByUserRow, error) {
+	row := q.db.QueryRow(ctx, getJobByUser, arg.ID, arg.UserID)
+	var i GetJobByUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.FileID,
+		&i.JobType,
+		&i.Status,
+		&i.Priority,
+		&i.Attempts,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.Filename,
+		&i.ContentType,
+		&i.UserID,
+	)
+	return i, err
+}
+
 const listJobsByFileID = `-- name: ListJobsByFileID :many
 SELECT id, file_id, job_type, status, priority, attempts, error_message, created_at, started_at, completed_at FROM processing_jobs
 WHERE file_id = $1
@@ -105,6 +206,77 @@ func (q *Queries) ListJobsByFileID(ctx context.Context, fileID pgtype.UUID) ([]P
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listJobsByUserWithStatus = `-- name: ListJobsByUserWithStatus :many
+SELECT pj.id, pj.file_id, pj.job_type, pj.status, pj.priority, pj.attempts, pj.error_message, pj.created_at, pj.started_at, pj.completed_at, f.filename, f.content_type
+FROM processing_jobs pj
+JOIN files f ON f.id = pj.file_id
+WHERE f.user_id = $1
+  AND f.deleted_at IS NULL
+  AND ($2::job_status IS NULL OR pj.status = $2)
+ORDER BY pj.created_at DESC
+LIMIT $3 OFFSET $4
+`
+
+type ListJobsByUserWithStatusParams struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	Column2 JobStatus   `json:"column_2"`
+	Limit   int32       `json:"limit"`
+	Offset  int32       `json:"offset"`
+}
+
+type ListJobsByUserWithStatusRow struct {
+	ID           pgtype.UUID        `json:"id"`
+	FileID       pgtype.UUID        `json:"file_id"`
+	JobType      JobType            `json:"job_type"`
+	Status       JobStatus          `json:"status"`
+	Priority     int32              `json:"priority"`
+	Attempts     int32              `json:"attempts"`
+	ErrorMessage *string            `json:"error_message"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	StartedAt    pgtype.Timestamptz `json:"started_at"`
+	CompletedAt  pgtype.Timestamptz `json:"completed_at"`
+	Filename     string             `json:"filename"`
+	ContentType  string             `json:"content_type"`
+}
+
+func (q *Queries) ListJobsByUserWithStatus(ctx context.Context, arg ListJobsByUserWithStatusParams) ([]ListJobsByUserWithStatusRow, error) {
+	rows, err := q.db.Query(ctx, listJobsByUserWithStatus,
+		arg.UserID,
+		arg.Column2,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListJobsByUserWithStatusRow
+	for rows.Next() {
+		var i ListJobsByUserWithStatusRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.FileID,
+			&i.JobType,
+			&i.Status,
+			&i.Priority,
+			&i.Attempts,
+			&i.ErrorMessage,
+			&i.CreatedAt,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.Filename,
+			&i.ContentType,
 		); err != nil {
 			return nil, err
 		}
@@ -194,5 +366,19 @@ WHERE id = $1
 
 func (q *Queries) MarkJobRunning(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, markJobRunning, id)
+	return err
+}
+
+const retryJob = `-- name: RetryJob :exec
+UPDATE processing_jobs
+SET status = 'pending',
+    error_message = NULL,
+    started_at = NULL,
+    completed_at = NULL
+WHERE id = $1 AND status = 'failed'
+`
+
+func (q *Queries) RetryJob(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, retryJob, id)
 	return err
 }

@@ -130,3 +130,7 @@ WHERE id = $1 AND deleted_at IS NULL;
 -- name: GetUserFilesCount :one
 SELECT COUNT(*) FROM files
 WHERE user_id = $1 AND deleted_at IS NULL;
+
+-- name: GetUserRole :one
+SELECT role FROM users
+WHERE id = $1 AND deleted_at IS NULL;

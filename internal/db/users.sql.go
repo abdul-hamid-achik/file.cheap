@@ -307,6 +307,18 @@ func (q *Queries) GetUserFilesCount(ctx context.Context, userID pgtype.UUID) (in
 	return count, err
 }
 
+const getUserRole = `-- name: GetUserRole :one
+SELECT role FROM users
+WHERE id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) GetUserRole(ctx context.Context, id pgtype.UUID) (UserRole, error) {
+	row := q.db.QueryRow(ctx, getUserRole, id)
+	var role UserRole
+	err := row.Scan(&role)
+	return role, err
+}
+
 const getUserSubscriptionTier = `-- name: GetUserSubscriptionTier :one
 SELECT subscription_tier FROM users
 WHERE id = $1 AND deleted_at IS NULL

@@ -754,6 +754,42 @@ func (m *MockQuerier) ListActiveWebhooksByUserAndEvent(ctx context.Context, arg 
 	return []db.Webhook{}, nil
 }
 
+func (m *MockQuerier) SearchFilesByUser(ctx context.Context, arg db.SearchFilesByUserParams) ([]db.SearchFilesByUserRow, error) {
+	return []db.SearchFilesByUserRow{}, nil
+}
+
+func (m *MockQuerier) GetJobByUser(ctx context.Context, arg db.GetJobByUserParams) (db.GetJobByUserRow, error) {
+	return db.GetJobByUserRow{}, nil
+}
+
+func (m *MockQuerier) GetJob(ctx context.Context, id pgtype.UUID) (db.ProcessingJob, error) {
+	return db.ProcessingJob{}, nil
+}
+
+func (m *MockQuerier) RetryJob(ctx context.Context, id pgtype.UUID) error {
+	return nil
+}
+
+func (m *MockQuerier) CancelJob(ctx context.Context, id pgtype.UUID) error {
+	return nil
+}
+
+func (m *MockQuerier) BulkRetryFailedJobs(ctx context.Context, userID pgtype.UUID) error {
+	return nil
+}
+
+func (m *MockQuerier) ListJobsByUserWithStatus(ctx context.Context, arg db.ListJobsByUserWithStatusParams) ([]db.ListJobsByUserWithStatusRow, error) {
+	return []db.ListJobsByUserWithStatusRow{}, nil
+}
+
+func (m *MockQuerier) CountJobsByUser(ctx context.Context, arg db.CountJobsByUserParams) (int64, error) {
+	return 0, nil
+}
+
+func (m *MockQuerier) GetUserRole(ctx context.Context, id pgtype.UUID) (db.UserRole, error) {
+	return db.UserRoleUser, nil
+}
+
 var _ Querier = (*MockQuerier)(nil)
 
 type MockStorage struct {

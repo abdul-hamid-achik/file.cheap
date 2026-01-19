@@ -205,3 +205,30 @@ type ExportData struct {
 	TopFiles      []FileUsage    `json:"top_files,omitempty"`
 	ExportedAt    time.Time      `json:"exported_at"`
 }
+
+type StorageBreakdownByType struct {
+	FileType   string `json:"file_type"`
+	FileCount  int64  `json:"file_count"`
+	TotalBytes int64  `json:"total_bytes"`
+}
+
+type StorageBreakdownByVariant struct {
+	VariantType  string `json:"variant_type"`
+	VariantCount int64  `json:"variant_count"`
+	TotalBytes   int64  `json:"total_bytes"`
+}
+
+type LargestFile struct {
+	ID          string    `json:"id"`
+	Filename    string    `json:"filename"`
+	ContentType string    `json:"content_type"`
+	SizeBytes   int64     `json:"size_bytes"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type StorageAnalytics struct {
+	BreakdownByType    []StorageBreakdownByType    `json:"breakdown_by_type"`
+	BreakdownByVariant []StorageBreakdownByVariant `json:"breakdown_by_variant"`
+	LargestFiles       []LargestFile               `json:"largest_files"`
+	TotalBytes         int64                       `json:"total_bytes"`
+}

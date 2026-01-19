@@ -350,6 +350,85 @@ func (q *Queries) MarkOriginalDeleted(ctx context.Context, id pgtype.UUID) error
 	return err
 }
 
+const searchFilesByUser = `-- name: SearchFilesByUser :many
+SELECT id, user_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at, COUNT(*) OVER() AS total_count FROM files
+WHERE user_id = $1
+  AND deleted_at IS NULL
+  AND ($2::text = '' OR filename ILIKE '%' || $2 || '%')
+  AND ($3::text = '' OR content_type LIKE $3 || '%')
+  AND ($4::timestamptz IS NULL OR created_at >= $4)
+  AND ($5::timestamptz IS NULL OR created_at <= $5)
+  AND ($6::text = '' OR status = $6::file_status)
+ORDER BY created_at DESC
+LIMIT $7 OFFSET $8
+`
+
+type SearchFilesByUserParams struct {
+	UserID  pgtype.UUID        `json:"user_id"`
+	Column2 string             `json:"column_2"`
+	Column3 string             `json:"column_3"`
+	Column4 pgtype.Timestamptz `json:"column_4"`
+	Column5 pgtype.Timestamptz `json:"column_5"`
+	Column6 string             `json:"column_6"`
+	Limit   int32              `json:"limit"`
+	Offset  int32              `json:"offset"`
+}
+
+type SearchFilesByUserRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	Filename    string             `json:"filename"`
+	ContentType string             `json:"content_type"`
+	SizeBytes   int64              `json:"size_bytes"`
+	StorageKey  string             `json:"storage_key"`
+	Status      FileStatus         `json:"status"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt   pgtype.Timestamptz `json:"deleted_at"`
+	TotalCount  int64              `json:"total_count"`
+}
+
+func (q *Queries) SearchFilesByUser(ctx context.Context, arg SearchFilesByUserParams) ([]SearchFilesByUserRow, error) {
+	rows, err := q.db.Query(ctx, searchFilesByUser,
+		arg.UserID,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+		arg.Column6,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchFilesByUserRow
+	for rows.Next() {
+		var i SearchFilesByUserRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Filename,
+			&i.ContentType,
+			&i.SizeBytes,
+			&i.StorageKey,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const softDeleteFile = `-- name: SoftDeleteFile :exec
 UPDATE files
 SET deleted_at = NOW(), updated_at = NOW()

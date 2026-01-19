@@ -123,3 +123,53 @@ LIMIT 20;
 SELECT COALESCE(SUM(size_bytes), 0)::bigint as total_bytes
 FROM files
 WHERE user_id = $1 AND deleted_at IS NULL;
+
+-- name: GetStorageBreakdownByType :many
+SELECT
+    CASE
+        WHEN content_type LIKE 'image/%' THEN 'image'
+        WHEN content_type LIKE 'video/%' THEN 'video'
+        WHEN content_type LIKE 'audio/%' THEN 'audio'
+        WHEN content_type = 'application/pdf' THEN 'pdf'
+        ELSE 'other'
+    END as file_type,
+    COUNT(*) as file_count,
+    COALESCE(SUM(size_bytes), 0)::bigint as total_bytes
+FROM files
+WHERE user_id = $1 AND deleted_at IS NULL
+GROUP BY 1
+ORDER BY total_bytes DESC;
+
+-- name: GetStorageBreakdownByVariant :many
+SELECT
+    variant_type::text,
+    COUNT(*) as variant_count,
+    COALESCE(SUM(size_bytes), 0)::bigint as total_bytes
+FROM file_variants fv
+JOIN files f ON f.id = fv.file_id
+WHERE f.user_id = $1 AND f.deleted_at IS NULL
+GROUP BY 1
+ORDER BY total_bytes DESC;
+
+-- name: GetLargestFiles :many
+SELECT id, filename, content_type, size_bytes, created_at
+FROM files
+WHERE user_id = $1 AND deleted_at IS NULL
+ORDER BY size_bytes DESC
+LIMIT $2;
+
+-- name: GetAdminStorageBreakdown :many
+SELECT
+    CASE
+        WHEN content_type LIKE 'image/%' THEN 'image'
+        WHEN content_type LIKE 'video/%' THEN 'video'
+        WHEN content_type LIKE 'audio/%' THEN 'audio'
+        WHEN content_type = 'application/pdf' THEN 'pdf'
+        ELSE 'other'
+    END as file_type,
+    COUNT(*) as file_count,
+    COALESCE(SUM(size_bytes), 0)::bigint as total_bytes
+FROM files
+WHERE deleted_at IS NULL
+GROUP BY 1
+ORDER BY total_bytes DESC;

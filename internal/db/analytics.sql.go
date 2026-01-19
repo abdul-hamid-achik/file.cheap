@@ -11,6 +11,49 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getAdminStorageBreakdown = `-- name: GetAdminStorageBreakdown :many
+SELECT
+    CASE
+        WHEN content_type LIKE 'image/%' THEN 'image'
+        WHEN content_type LIKE 'video/%' THEN 'video'
+        WHEN content_type LIKE 'audio/%' THEN 'audio'
+        WHEN content_type = 'application/pdf' THEN 'pdf'
+        ELSE 'other'
+    END as file_type,
+    COUNT(*) as file_count,
+    COALESCE(SUM(size_bytes), 0)::bigint as total_bytes
+FROM files
+WHERE deleted_at IS NULL
+GROUP BY 1
+ORDER BY total_bytes DESC
+`
+
+type GetAdminStorageBreakdownRow struct {
+	FileType   string `json:"file_type"`
+	FileCount  int64  `json:"file_count"`
+	TotalBytes int64  `json:"total_bytes"`
+}
+
+func (q *Queries) GetAdminStorageBreakdown(ctx context.Context) ([]GetAdminStorageBreakdownRow, error) {
+	rows, err := q.db.Query(ctx, getAdminStorageBreakdown)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAdminStorageBreakdownRow
+	for rows.Next() {
+		var i GetAdminStorageBreakdownRow
+		if err := rows.Scan(&i.FileType, &i.FileCount, &i.TotalBytes); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDailyUsage = `-- name: GetDailyUsage :many
 SELECT 
     dates.date::date as date,
@@ -56,6 +99,53 @@ func (q *Queries) GetDailyUsage(ctx context.Context, arg GetDailyUsageParams) ([
 	for rows.Next() {
 		var i GetDailyUsageRow
 		if err := rows.Scan(&i.Date, &i.Uploads, &i.Transforms); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getLargestFiles = `-- name: GetLargestFiles :many
+SELECT id, filename, content_type, size_bytes, created_at
+FROM files
+WHERE user_id = $1 AND deleted_at IS NULL
+ORDER BY size_bytes DESC
+LIMIT $2
+`
+
+type GetLargestFilesParams struct {
+	UserID pgtype.UUID `json:"user_id"`
+	Limit  int32       `json:"limit"`
+}
+
+type GetLargestFilesRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	Filename    string             `json:"filename"`
+	ContentType string             `json:"content_type"`
+	SizeBytes   int64              `json:"size_bytes"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) GetLargestFiles(ctx context.Context, arg GetLargestFilesParams) ([]GetLargestFilesRow, error) {
+	rows, err := q.db.Query(ctx, getLargestFiles, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetLargestFilesRow
+	for rows.Next() {
+		var i GetLargestFilesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Filename,
+			&i.ContentType,
+			&i.SizeBytes,
+			&i.CreatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -148,6 +238,87 @@ func (q *Queries) GetRecentActivity(ctx context.Context, userID pgtype.UUID) ([]
 			&i.Status,
 			&i.CreatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getStorageBreakdownByType = `-- name: GetStorageBreakdownByType :many
+SELECT
+    CASE
+        WHEN content_type LIKE 'image/%' THEN 'image'
+        WHEN content_type LIKE 'video/%' THEN 'video'
+        WHEN content_type LIKE 'audio/%' THEN 'audio'
+        WHEN content_type = 'application/pdf' THEN 'pdf'
+        ELSE 'other'
+    END as file_type,
+    COUNT(*) as file_count,
+    COALESCE(SUM(size_bytes), 0)::bigint as total_bytes
+FROM files
+WHERE user_id = $1 AND deleted_at IS NULL
+GROUP BY 1
+ORDER BY total_bytes DESC
+`
+
+type GetStorageBreakdownByTypeRow struct {
+	FileType   string `json:"file_type"`
+	FileCount  int64  `json:"file_count"`
+	TotalBytes int64  `json:"total_bytes"`
+}
+
+func (q *Queries) GetStorageBreakdownByType(ctx context.Context, userID pgtype.UUID) ([]GetStorageBreakdownByTypeRow, error) {
+	rows, err := q.db.Query(ctx, getStorageBreakdownByType, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetStorageBreakdownByTypeRow
+	for rows.Next() {
+		var i GetStorageBreakdownByTypeRow
+		if err := rows.Scan(&i.FileType, &i.FileCount, &i.TotalBytes); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getStorageBreakdownByVariant = `-- name: GetStorageBreakdownByVariant :many
+SELECT
+    variant_type::text,
+    COUNT(*) as variant_count,
+    COALESCE(SUM(size_bytes), 0)::bigint as total_bytes
+FROM file_variants fv
+JOIN files f ON f.id = fv.file_id
+WHERE f.user_id = $1 AND f.deleted_at IS NULL
+GROUP BY 1
+ORDER BY total_bytes DESC
+`
+
+type GetStorageBreakdownByVariantRow struct {
+	VariantType  string `json:"variant_type"`
+	VariantCount int64  `json:"variant_count"`
+	TotalBytes   int64  `json:"total_bytes"`
+}
+
+func (q *Queries) GetStorageBreakdownByVariant(ctx context.Context, userID pgtype.UUID) ([]GetStorageBreakdownByVariantRow, error) {
+	rows, err := q.db.Query(ctx, getStorageBreakdownByVariant, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetStorageBreakdownByVariantRow
+	for rows.Next() {
+		var i GetStorageBreakdownByVariantRow
+		if err := rows.Scan(&i.VariantType, &i.VariantCount, &i.TotalBytes); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

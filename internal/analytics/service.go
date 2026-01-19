@@ -541,6 +541,69 @@ func (s *Service) UpdateAlertThreshold(ctx context.Context, metricName string, t
 	})
 }
 
+func (s *Service) GetStorageAnalytics(ctx context.Context, userID uuid.UUID) (*StorageAnalytics, error) {
+	pgUserID := pgtype.UUID{Bytes: userID, Valid: true}
+
+	byType, err := s.queries.GetStorageBreakdownByType(ctx, pgUserID)
+	if err != nil {
+		return nil, fmt.Errorf("get storage breakdown by type: %w", err)
+	}
+
+	byVariant, err := s.queries.GetStorageBreakdownByVariant(ctx, pgUserID)
+	if err != nil {
+		return nil, fmt.Errorf("get storage breakdown by variant: %w", err)
+	}
+
+	largest, err := s.queries.GetLargestFiles(ctx, db.GetLargestFilesParams{
+		UserID: pgUserID,
+		Limit:  10,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get largest files: %w", err)
+	}
+
+	total, err := s.queries.GetTotalStorageByUser(ctx, pgUserID)
+	if err != nil {
+		return nil, fmt.Errorf("get total storage: %w", err)
+	}
+
+	typeBreakdown := make([]StorageBreakdownByType, len(byType))
+	for i, t := range byType {
+		typeBreakdown[i] = StorageBreakdownByType{
+			FileType:   t.FileType,
+			FileCount:  t.FileCount,
+			TotalBytes: t.TotalBytes,
+		}
+	}
+
+	variantBreakdown := make([]StorageBreakdownByVariant, len(byVariant))
+	for i, v := range byVariant {
+		variantBreakdown[i] = StorageBreakdownByVariant{
+			VariantType:  v.VariantType,
+			VariantCount: v.VariantCount,
+			TotalBytes:   v.TotalBytes,
+		}
+	}
+
+	largestFiles := make([]LargestFile, len(largest))
+	for i, f := range largest {
+		largestFiles[i] = LargestFile{
+			ID:          uuidToString(f.ID),
+			Filename:    f.Filename,
+			ContentType: f.ContentType,
+			SizeBytes:   f.SizeBytes,
+			CreatedAt:   f.CreatedAt.Time,
+		}
+	}
+
+	return &StorageAnalytics{
+		BreakdownByType:    typeBreakdown,
+		BreakdownByVariant: variantBreakdown,
+		LargestFiles:       largestFiles,
+		TotalBytes:         total,
+	}, nil
+}
+
 func (s *Service) GetJobsList(ctx context.Context, status string, page, pageSize int) (*JobsListPage, error) {
 	if page < 1 {
 		page = 1
