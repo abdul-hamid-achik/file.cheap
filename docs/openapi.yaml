@@ -38,6 +38,8 @@ tags:
     description: Folder organization
   - name: Shares
     description: File sharing
+  - name: CDN
+    description: Public CDN endpoints for shared file access
   - name: Webhooks
     description: Webhook management
   - name: Users
@@ -249,6 +251,9 @@ paths:
   /files/{id}/share:
     post:
       summary: Create a file share
+      description: |
+        Creates a shareable CDN link for the file. The returned `share_url` can be
+        shared publicly and supports on-the-fly image transformations.
       tags: [Shares]
       security:
         - bearerAuth: []
@@ -260,21 +265,13 @@ paths:
           schema:
             type: string
             format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                expires_at:
-                  type: string
-                  format: date-time
-                password:
-                  type: string
-                  description: Optional password protection
-                max_downloads:
-                  type: integer
-                  description: Maximum download count
+        - name: expires
+          in: query
+          required: false
+          description: Duration until expiration (e.g., "24h", "7d", "168h")
+          schema:
+            type: string
+            example: "24h"
       responses:
         '201':
           description: Share created
@@ -316,33 +313,59 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /share/{token}:
+  /cdn/{token}/{transforms}/{filename}:
     get:
-      summary: Access shared file
-      tags: [Shares]
+      summary: Access shared file via CDN
+      description: |
+        Public endpoint to access shared files. The share URL is provided when creating a share.
+
+        **Transform formats:**
+        - `_` or `original` - serve original file
+        - `w{width}` - resize to width (e.g., `w300`)
+        - `h{height}` - resize to height (e.g., `h200`)
+        - `w{width}_h{height}` - resize to specific dimensions
+        - `q{quality}` - set quality 1-100 (e.g., `q80`)
+        - `f{format}` - convert format: webp, jpeg, png (e.g., `fwebp`)
+
+        Examples:
+        - `/cdn/abc123/_/photo.jpg` - original file
+        - `/cdn/abc123/w300/photo.jpg` - resized to 300px width
+        - `/cdn/abc123/w300_q80_fwebp/photo.jpg` - 300px, 80% quality, WebP
+      tags: [Shares, CDN]
       parameters:
         - name: token
           in: path
           required: true
+          description: Share token from POST /files/{id}/share
           schema:
             type: string
-        - name: X-Share-Password
-          in: header
+        - name: transforms
+          in: path
+          required: true
+          description: Transform string or "_" for original
           schema:
             type: string
-          description: Password for protected shares
+            example: "_"
+        - name: filename
+          in: path
+          required: true
+          description: Filename for Content-Disposition header
+          schema:
+            type: string
       responses:
         '200':
-          description: File content
+          description: File content (or redirect to presigned URL)
           content:
             application/octet-stream:
               schema:
                 type: string
                 format: binary
-        '401':
-          description: Password required
+        '307':
+          description: Redirect to presigned storage URL
+        '400':
+          description: Invalid transform parameters
         '403':
-          description: Download limit reached
+          description: Transform not allowed for this share
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -859,20 +882,18 @@ components:
           format: uuid
         token:
           type: string
-        url:
+          description: Share token for CDN URL
+        share_url:
           type: string
           format: uri
+          description: Full CDN URL for accessing the shared file
         expires_at:
           type: string
           format: date-time
           nullable: true
-        has_password:
-          type: boolean
-        max_downloads:
+        access_count:
           type: integer
-          nullable: true
-        download_count:
-          type: integer
+          description: Number of times the share has been accessed
         created_at:
           type: string
           format: date-time
