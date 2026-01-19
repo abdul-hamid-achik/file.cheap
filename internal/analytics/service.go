@@ -381,6 +381,10 @@ func (s *Service) RetryJob(ctx context.Context, jobID uuid.UUID) error {
 	return s.queries.RetryFailedJob(ctx, pgtype.UUID{Bytes: jobID, Valid: true})
 }
 
+func (s *Service) CancelJob(ctx context.Context, jobID uuid.UUID) error {
+	return s.queries.CancelJob(ctx, pgtype.UUID{Bytes: jobID, Valid: true})
+}
+
 func TimeAgo(t time.Time) string {
 	d := time.Since(t)
 	switch {

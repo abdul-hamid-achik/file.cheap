@@ -219,6 +219,29 @@ func (h *AdminHandlers) RetryJob(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`<div class="flex items-center justify-center py-2 px-3 bg-nord-14/10 rounded-lg text-nord-14 text-sm">Job queued for retry</div>`))
 }
 
+func (h *AdminHandlers) CancelJob(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
+
+	jobIDStr := r.PathValue("id")
+	jobID, err := uuid.Parse(jobIDStr)
+	if err != nil {
+		log.Error("invalid job ID", "job_id", jobIDStr, "error", err)
+		http.Error(w, "Invalid job ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.service.CancelJob(r.Context(), jobID); err != nil {
+		log.Error("failed to cancel job", "job_id", jobIDStr, "error", err)
+		http.Error(w, "Failed to cancel job", http.StatusInternalServerError)
+		return
+	}
+
+	log.Info("job cancelled", "job_id", jobIDStr)
+
+	w.Header().Set("Content-Type", "text/html")
+	_, _ = w.Write([]byte(`<div class="flex items-center justify-center py-2 px-3 bg-nord-11/10 rounded-lg text-nord-11 text-sm">Job cancelled</div>`))
+}
+
 func (h *AdminHandlers) Jobs(w http.ResponseWriter, r *http.Request) {
 	log := logger.FromContext(r.Context())
 	user := auth.GetUserFromContext(r.Context())

@@ -575,7 +575,17 @@ templ adminJobRow(job analytics.JobListItem) {
 			<span class="text-sm text-nord-4">{ analytics.TimeAgo(job.CreatedAt) }</span>
 		</td>
 		<td class="py-3 px-4">
-			if job.Status == "failed" && job.Attempts < 3 {
+			if job.Status == "pending" || job.Status == "running" {
+				<button
+					class="text-xs px-2 py-1 bg-nord-11/10 border border-nord-11/30 rounded hover:bg-nord-11/20 text-nord-11"
+					hx-post={ fmt.Sprintf("/admin/jobs/%s/cancel", job.ID) }
+					hx-swap="outerHTML"
+					hx-target="closest tr"
+					hx-confirm="Cancel this job?"
+				>
+					Cancel
+				</button>
+			} else if job.Status == "failed" && job.Attempts < 3 {
 				<button
 					class="text-xs px-2 py-1 bg-nord-1 border border-nord-3 rounded hover:bg-nord-2 text-nord-5"
 					hx-post={ fmt.Sprintf("/admin/jobs/%s/retry", job.ID) }
