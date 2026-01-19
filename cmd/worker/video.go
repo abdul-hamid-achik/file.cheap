@@ -1,5 +1,4 @@
-//go:build !workers_basic
-// +build !workers_basic
+//go:build !workers_image
 
 package main
 

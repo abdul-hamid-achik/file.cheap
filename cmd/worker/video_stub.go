@@ -1,5 +1,4 @@
 //go:build workers_image
-// +build workers_image
 
 package main
 
@@ -11,9 +10,9 @@ import (
 	jobqueueworker "github.com/abdul-hamid-achik/job-queue/pkg/worker"
 )
 
-func registerVideoProcessorsStub(procRegistry *processor.Registry, log *slog.Logger) {
-	log.Info("video processors disabled (workers_basic build tag)")
+func registerVideoProcessors(procRegistry *processor.Registry, log *slog.Logger) {
+	log.Debug("video processors disabled (image-only worker)")
 }
 
-func registerVideoHandlersStub(registry *jobqueueworker.Registry, deps *fpworker.Dependencies) {
+func registerVideoHandlers(registry *jobqueueworker.Registry, deps *fpworker.Dependencies) {
 }
