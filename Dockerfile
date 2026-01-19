@@ -4,17 +4,16 @@ COPY go.mod go.sum ./
 RUN go mod download && go mod verify
 
 FROM golang:1.25-alpine AS builder
-RUN apk add --no-cache git ca-certificates curl
+RUN apk add --no-cache git ca-certificates nodejs npm
 RUN go install github.com/a-h/templ/cmd/templ@v0.3.977
-# Install Tailwind CSS standalone CLI
-RUN curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/download/v4.1.3/tailwindcss-linux-arm64 && \
-    chmod +x tailwindcss-linux-arm64 && \
-    mv tailwindcss-linux-arm64 /usr/local/bin/tailwindcss
+RUN npm install -g @tailwindcss/cli@4.1.8
 WORKDIR /app
 COPY --from=deps /app/go.mod /app/go.sum ./
 COPY . .
 RUN templ generate
-RUN tailwindcss -i static/css/input.css -o static/css/output.css --minify
+RUN cd static/css && npm init -y && npm install tailwindcss@4.1.8 && cd ../.. && \
+    tailwindcss -i static/css/input.css -o static/css/output.css --minify && \
+    rm -rf static/css/node_modules static/css/package.json static/css/package-lock.json
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o /api ./cmd/api && \
     CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -tags=workers_image -o /worker-image ./cmd/worker && \
