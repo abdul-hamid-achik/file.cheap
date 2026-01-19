@@ -543,7 +543,7 @@ func TestHandlersWithTemplRendering(t *testing.T) {
 		h.Home(rec, req)
 
 		body := rec.Body.String()
-		if !strings.Contains(body, "tailwind") {
+		if !strings.Contains(body, "output.css") {
 			t.Error("pages should include Tailwind CSS")
 		}
 	})
