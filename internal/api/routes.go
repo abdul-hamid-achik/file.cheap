@@ -39,6 +39,8 @@ type Querier interface {
 	UpdateAPITokenLastUsed(ctx context.Context, id pgtype.UUID) error
 	GetFileShareByToken(ctx context.Context, token string) (db.GetFileShareByTokenRow, error)
 	IncrementShareAccessCount(ctx context.Context, id pgtype.UUID) error
+	IsShareDownloadLimitReached(ctx context.Context, id pgtype.UUID) (bool, error)
+	IncrementShareDownloadCount(ctx context.Context, id pgtype.UUID) error
 	GetTransformCache(ctx context.Context, arg db.GetTransformCacheParams) (db.TransformCache, error)
 	CreateTransformCache(ctx context.Context, arg db.CreateTransformCacheParams) (db.TransformCache, error)
 	IncrementTransformCacheCount(ctx context.Context, arg db.IncrementTransformCacheCountParams) error
@@ -77,6 +79,18 @@ type Querier interface {
 	ListJobsByUserWithStatus(ctx context.Context, arg db.ListJobsByUserWithStatusParams) ([]db.ListJobsByUserWithStatusRow, error)
 	CountJobsByUser(ctx context.Context, arg db.CountJobsByUserParams) (int64, error)
 	GetUserRole(ctx context.Context, id pgtype.UUID) (db.UserRole, error)
+	// Folder management
+	CreateFolder(ctx context.Context, arg db.CreateFolderParams) (db.Folder, error)
+	GetFolder(ctx context.Context, arg db.GetFolderParams) (db.Folder, error)
+	ListRootFolders(ctx context.Context, userID pgtype.UUID) ([]db.Folder, error)
+	ListFolderChildren(ctx context.Context, arg db.ListFolderChildrenParams) ([]db.Folder, error)
+	ListFilesInFolder(ctx context.Context, arg db.ListFilesInFolderParams) ([]db.File, error)
+	ListFilesInRoot(ctx context.Context, userID pgtype.UUID) ([]db.File, error)
+	UpdateFolder(ctx context.Context, arg db.UpdateFolderParams) (db.Folder, error)
+	DeleteFolder(ctx context.Context, arg db.DeleteFolderParams) error
+	DeleteFolderRecursive(ctx context.Context, arg db.DeleteFolderRecursiveParams) error
+	MoveFileToFolder(ctx context.Context, arg db.MoveFileToFolderParams) error
+	MoveFileToRoot(ctx context.Context, arg db.MoveFileToRootParams) error
 }
 
 type Broker interface {
@@ -175,6 +189,14 @@ func NewRouter(cfg *Config) http.Handler {
 	apiMux.HandleFunc("POST /v1/jobs/{id}/retry", RetryJobHandler(jobCfg))
 	apiMux.HandleFunc("POST /v1/jobs/{id}/cancel", CancelJobHandler(jobCfg))
 	apiMux.HandleFunc("POST /v1/jobs/retry-all", BulkRetryJobsHandler(jobCfg))
+
+	foldersCfg := &FoldersConfig{Queries: cfg.Queries}
+	apiMux.HandleFunc("POST /v1/folders", CreateFolderHandler(foldersCfg))
+	apiMux.HandleFunc("GET /v1/folders", ListFoldersHandler(foldersCfg))
+	apiMux.HandleFunc("GET /v1/folders/{id}", GetFolderHandler(foldersCfg))
+	apiMux.HandleFunc("PUT /v1/folders/{id}", UpdateFolderHandler(foldersCfg))
+	apiMux.HandleFunc("DELETE /v1/folders/{id}", DeleteFolderHandler(foldersCfg))
+	apiMux.HandleFunc("POST /v1/files/{id}/move", MoveFileToFolderHandler(foldersCfg))
 
 	rateLimit := cfg.RateLimit
 	if rateLimit <= 0 {

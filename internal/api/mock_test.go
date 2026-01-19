@@ -790,6 +790,71 @@ func (m *MockQuerier) GetUserRole(ctx context.Context, id pgtype.UUID) (db.UserR
 	return db.UserRoleUser, nil
 }
 
+func (m *MockQuerier) IsShareDownloadLimitReached(ctx context.Context, id pgtype.UUID) (bool, error) {
+	return false, nil
+}
+
+func (m *MockQuerier) IncrementShareDownloadCount(ctx context.Context, id pgtype.UUID) error {
+	return nil
+}
+
+func (m *MockQuerier) CreateFolder(ctx context.Context, arg db.CreateFolderParams) (db.Folder, error) {
+	return db.Folder{
+		ID:     pgtype.UUID{Bytes: [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}, Valid: true},
+		UserID: arg.UserID,
+		Name:   arg.Name,
+		Path:   arg.Path,
+	}, nil
+}
+
+func (m *MockQuerier) GetFolder(ctx context.Context, arg db.GetFolderParams) (db.Folder, error) {
+	return db.Folder{
+		ID:     arg.ID,
+		UserID: arg.UserID,
+	}, nil
+}
+
+func (m *MockQuerier) ListRootFolders(ctx context.Context, userID pgtype.UUID) ([]db.Folder, error) {
+	return []db.Folder{}, nil
+}
+
+func (m *MockQuerier) ListFolderChildren(ctx context.Context, arg db.ListFolderChildrenParams) ([]db.Folder, error) {
+	return []db.Folder{}, nil
+}
+
+func (m *MockQuerier) ListFilesInFolder(ctx context.Context, arg db.ListFilesInFolderParams) ([]db.File, error) {
+	return []db.File{}, nil
+}
+
+func (m *MockQuerier) ListFilesInRoot(ctx context.Context, userID pgtype.UUID) ([]db.File, error) {
+	return []db.File{}, nil
+}
+
+func (m *MockQuerier) UpdateFolder(ctx context.Context, arg db.UpdateFolderParams) (db.Folder, error) {
+	return db.Folder{
+		ID:     arg.ID,
+		UserID: arg.UserID,
+		Name:   arg.Name,
+		Path:   arg.Path,
+	}, nil
+}
+
+func (m *MockQuerier) DeleteFolder(ctx context.Context, arg db.DeleteFolderParams) error {
+	return nil
+}
+
+func (m *MockQuerier) DeleteFolderRecursive(ctx context.Context, arg db.DeleteFolderRecursiveParams) error {
+	return nil
+}
+
+func (m *MockQuerier) MoveFileToFolder(ctx context.Context, arg db.MoveFileToFolderParams) error {
+	return nil
+}
+
+func (m *MockQuerier) MoveFileToRoot(ctx context.Context, arg db.MoveFileToRootParams) error {
+	return nil
+}
+
 var _ Querier = (*MockQuerier)(nil)
 
 type MockStorage struct {

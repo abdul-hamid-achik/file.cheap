@@ -89,3 +89,6 @@ static/css/output.css
 
 # Generated templ files
 *_templ.go
+
+# Claude Code
+.claude/

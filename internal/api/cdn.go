@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,6 +20,7 @@ import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -49,6 +51,8 @@ func getCacheControl(contentType string) string {
 type CDNQuerier interface {
 	GetFileShareByToken(ctx context.Context, token string) (db.GetFileShareByTokenRow, error)
 	IncrementShareAccessCount(ctx context.Context, id pgtype.UUID) error
+	IsShareDownloadLimitReached(ctx context.Context, id pgtype.UUID) (bool, error)
+	IncrementShareDownloadCount(ctx context.Context, id pgtype.UUID) error
 	GetTransformCache(ctx context.Context, arg db.GetTransformCacheParams) (db.TransformCache, error)
 	CreateTransformCache(ctx context.Context, arg db.CreateTransformCacheParams) (db.TransformCache, error)
 	IncrementTransformCacheCount(ctx context.Context, arg db.IncrementTransformCacheCountParams) error
@@ -110,6 +114,26 @@ func CDNHandler(cfg *CDNConfig) http.HandlerFunc {
 			return
 		}
 
+		if share.PasswordHash != nil && *share.PasswordHash != "" {
+			password := r.Header.Get("X-Share-Password")
+			if password == "" {
+				http.Error(w, `{"error":{"code":"password_required","message":"This share is password protected"}}`, http.StatusUnauthorized)
+				return
+			}
+			if err := bcrypt.CompareHashAndPassword([]byte(*share.PasswordHash), []byte(password)); err != nil {
+				http.Error(w, `{"error":{"code":"invalid_password","message":"Invalid password"}}`, http.StatusUnauthorized)
+				return
+			}
+		}
+
+		if share.MaxDownloads != nil {
+			limitReached, err := cfg.Queries.IsShareDownloadLimitReached(r.Context(), share.ID)
+			if err == nil && limitReached {
+				http.Error(w, `{"error":{"code":"download_limit_reached","message":"Download limit reached for this share"}}`, http.StatusForbidden)
+				return
+			}
+		}
+
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
@@ -136,6 +160,11 @@ func CDNHandler(cfg *CDNConfig) http.HandlerFunc {
 		}
 
 		if !opts.RequiresProcessing() {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = cfg.Queries.IncrementShareDownloadCount(ctx, share.ID)
+			}()
 			serveOriginal(w, r, cfg, share.StorageKey, share.ContentType, filename)
 			return
 		}
@@ -155,6 +184,7 @@ func CDNHandler(cfg *CDNConfig) http.HandlerFunc {
 					FileID:   fileID,
 					CacheKey: cacheKey,
 				})
+				_ = cfg.Queries.IncrementShareDownloadCount(ctx, share.ID)
 			}()
 
 			// Generate ETag from cache key and cache entry timestamp
@@ -180,6 +210,12 @@ func CDNHandler(cfg *CDNConfig) http.HandlerFunc {
 		if shouldCache {
 			cacheResult(r.Context(), cfg, fileID, cacheKey, transforms, result, log)
 		}
+
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = cfg.Queries.IncrementShareDownloadCount(ctx, share.ID)
+		}()
 
 		// Generate ETag from cache key and current time (freshly processed)
 		etag := generateETag(cacheKey, time.Now())
@@ -317,6 +353,11 @@ func serveResult(w http.ResponseWriter, r *http.Request, result *processor.Resul
 	_, _ = io.Copy(w, result.Data)
 }
 
+type CreateShareRequest struct {
+	Password     string `json:"password,omitempty"`
+	MaxDownloads *int32 `json:"max_downloads,omitempty"`
+}
+
 func CreateShareHandler(cfg *CDNConfig, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
@@ -347,6 +388,23 @@ func CreateShareHandler(cfg *CDNConfig, baseURL string) http.HandlerFunc {
 			return
 		}
 
+		var req CreateShareRequest
+		if r.Body != nil && r.ContentLength > 0 {
+			_ = json.NewDecoder(r.Body).Decode(&req)
+		}
+
+		var passwordHash *string
+		if req.Password != "" {
+			hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+			if err != nil {
+				log.Error("failed to hash password", "error", err)
+				http.Error(w, `{"error":{"code":"internal","message":"failed to hash password"}}`, http.StatusInternalServerError)
+				return
+			}
+			h := string(hash)
+			passwordHash = &h
+		}
+
 		token, err := GenerateShareToken()
 		if err != nil {
 			log.Error("failed to generate share token", "error", err)
@@ -362,9 +420,11 @@ func CreateShareHandler(cfg *CDNConfig, baseURL string) http.HandlerFunc {
 		}
 
 		share, err := cfg.Queries.CreateFileShare(r.Context(), db.CreateFileShareParams{
-			FileID:    pgFileID,
-			Token:     token,
-			ExpiresAt: expiresAt,
+			FileID:       pgFileID,
+			Token:        token,
+			ExpiresAt:    expiresAt,
+			PasswordHash: passwordHash,
+			MaxDownloads: req.MaxDownloads,
 		})
 		if err != nil {
 			log.Error("failed to create share", "error", err)
@@ -379,6 +439,12 @@ func CreateShareHandler(cfg *CDNConfig, baseURL string) http.HandlerFunc {
 		_, _ = fmt.Fprintf(w, `{"id":"%s","token":"%s","share_url":"%s"`, uuidFromPgtype(share.ID), token, shareURL)
 		if expiresAt.Valid {
 			_, _ = fmt.Fprintf(w, `,"expires_at":"%s"`, expiresAt.Time.Format(time.RFC3339))
+		}
+		if passwordHash != nil {
+			_, _ = fmt.Fprint(w, `,"has_password":true`)
+		}
+		if req.MaxDownloads != nil {
+			_, _ = fmt.Fprintf(w, `,"max_downloads":%d`, *req.MaxDownloads)
 		}
 		_, _ = fmt.Fprint(w, "}")
 	}
