@@ -3,7 +3,8 @@ kind: Kustomization
 
 resources:
   - ../../base/monitoring
-  - secrets/grafana-credentials.yaml
+  # Note: grafana-credentials secret should be created manually before deployment
+  # kubectl create secret generic grafana-credentials --namespace=monitoring --from-literal=admin-password="YOUR_PASSWORD"
 
 labels:
   - pairs:
