@@ -52,7 +52,14 @@ func HashToken(token string) string {
 	return base64.RawURLEncoding.EncodeToString(hash[:])
 }
 
-// ValidatePassword checks if a password meets minimum requirements.
+// ValidatePassword checks if a password meets security requirements.
+// Requirements:
+// - At least 8 characters
+// - At most 128 characters
+// - At least one uppercase letter
+// - At least one lowercase letter
+// - At least one digit
+// - At least one special character
 func ValidatePassword(password string) error {
 	if len(password) < 8 {
 		return fmt.Errorf("password must be at least 8 characters")
@@ -60,5 +67,45 @@ func ValidatePassword(password string) error {
 	if len(password) > 128 {
 		return fmt.Errorf("password must be at most 128 characters")
 	}
+
+	var hasUpper, hasLower, hasDigit, hasSpecial bool
+
+	for _, c := range password {
+		switch {
+		case c >= 'A' && c <= 'Z':
+			hasUpper = true
+		case c >= 'a' && c <= 'z':
+			hasLower = true
+		case c >= '0' && c <= '9':
+			hasDigit = true
+		case isSpecialChar(c):
+			hasSpecial = true
+		}
+	}
+
+	if !hasUpper {
+		return fmt.Errorf("password must contain at least one uppercase letter")
+	}
+	if !hasLower {
+		return fmt.Errorf("password must contain at least one lowercase letter")
+	}
+	if !hasDigit {
+		return fmt.Errorf("password must contain at least one digit")
+	}
+	if !hasSpecial {
+		return fmt.Errorf("password must contain at least one special character (!@#$%%^&*()-_=+[]{}|;:',.<>?/`~)")
+	}
+
 	return nil
+}
+
+// isSpecialChar checks if a rune is a special character.
+func isSpecialChar(c rune) bool {
+	specialChars := "!@#$%^&*()-_=+[]{}|;:',.<>?/`~\"\\"
+	for _, sc := range specialChars {
+		if c == sc {
+			return true
+		}
+	}
+	return false
 }

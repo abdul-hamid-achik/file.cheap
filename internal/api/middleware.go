@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -129,6 +130,11 @@ func GetUserID(ctx context.Context) (uuid.UUID, bool) {
 
 func parseToken(tokenString, secret string) (*jwt.Token, error) {
 	return jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Validate the signing method to prevent algorithm substitution attacks.
+		// Only HMAC algorithms (HS256, HS384, HS512) are allowed.
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
 		return []byte(secret), nil
 	})
 }
@@ -140,20 +146,57 @@ func extractBearerToken(authHeader string) string {
 	return ""
 }
 
+// allowedOrigins defines the origins permitted to access the API.
+// This prevents CSRF attacks from unauthorized websites.
+var allowedOrigins = map[string]bool{
+	"https://file.cheap":     true,
+	"https://api.file.cheap": true,
+	"https://www.file.cheap": true,
+}
+
+// CORSWithOrigins creates a CORS middleware that validates origins.
+// In development, set devMode to true to allow localhost origins.
+func CORSWithOrigins(devMode bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+
+			// Check if origin is allowed
+			allowed := false
+			if origin != "" {
+				if allowedOrigins[origin] {
+					allowed = true
+				} else if devMode && (strings.HasPrefix(origin, "http://localhost") || strings.HasPrefix(origin, "http://127.0.0.1")) {
+					allowed = true
+				}
+			}
+
+			if allowed {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
+
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type")
+			w.Header().Set("Access-Control-Max-Age", "3600")
+
+			if r.Method == "OPTIONS" {
+				if allowed {
+					w.WriteHeader(http.StatusNoContent)
+				} else {
+					w.WriteHeader(http.StatusForbidden)
+				}
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// CORS is a backward-compatible wrapper that uses production settings.
 func CORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type")
-		w.Header().Set("Access-Control-Max-Age", "3600")
-
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
+	return CORSWithOrigins(false)(next)
 }
 
 type RateLimiter struct {

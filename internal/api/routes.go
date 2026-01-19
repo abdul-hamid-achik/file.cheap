@@ -225,12 +225,33 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 		}
 		defer func() { _ = file.Close() }()
 
+		// Validate MIME type
+		contentType := header.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		if !IsAllowedMIMEType(contentType) {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "invalid_file_type",
+				"This file type is not allowed", http.StatusBadRequest))
+			return
+		}
+
+		// Check for blocked extensions
+		if IsBlockedExtension(header.Filename) {
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "blocked_file_type",
+				"This file type is not allowed for security reasons", http.StatusBadRequest))
+			return
+		}
+
+		// Sanitize filename to prevent path traversal
+		sanitizedFilename := SanitizeFilename(header.Filename)
+
 		fileID := uuid.New()
-		storageKey := fmt.Sprintf("uploads/%s/%s/%s", userID.String(), fileID.String(), header.Filename)
+		storageKey := fmt.Sprintf("uploads/%s/%s/%s", userID.String(), fileID.String(), sanitizedFilename)
 
-		log.Info("uploading file", "filename", header.Filename, "size", header.Size, "content_type", header.Header.Get("Content-Type"))
+		log.Info("uploading file", "filename", sanitizedFilename, "original_filename", header.Filename, "size", header.Size, "content_type", contentType)
 
-		if err := cfg.Storage.Upload(r.Context(), storageKey, file, header.Header.Get("Content-Type"), header.Size); err != nil {
+		if err := cfg.Storage.Upload(r.Context(), storageKey, file, contentType, header.Size); err != nil {
 			apperror.WriteJSON(w, r, apperror.Wrap(err, apperror.ErrInternal))
 			return
 		}
@@ -239,14 +260,9 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 			var pgUserID pgtype.UUID
 			_ = pgUserID.Scan(userID)
 
-			contentType := header.Header.Get("Content-Type")
-			if contentType == "" {
-				contentType = "application/octet-stream"
-			}
-
 			dbFile, err := cfg.Queries.CreateFile(r.Context(), db.CreateFileParams{
 				UserID:      pgUserID,
-				Filename:    header.Filename,
+				Filename:    sanitizedFilename,
 				ContentType: contentType,
 				SizeBytes:   header.Size,
 				StorageKey:  storageKey,
@@ -320,7 +336,7 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 		w.WriteHeader(http.StatusAccepted)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":       fileID.String(),
-			"filename": header.Filename,
+			"filename": sanitizedFilename,
 			"status":   "pending",
 		})
 	}

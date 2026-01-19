@@ -176,6 +176,16 @@ func LivenessHandler() http.HandlerFunc {
 	}
 }
 
+// SimpleHealthResponse is a minimal health response that doesn't expose
+// internal infrastructure details.
+type SimpleHealthResponse struct {
+	Status    Status    `json:"status"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// ReadinessHandler returns detailed health info.
+// This should only be exposed internally (e.g., via Kubernetes probes)
+// and not to the public internet.
 func ReadinessHandler(checker *Checker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		resp := checker.CheckAll(r.Context())
@@ -186,7 +196,19 @@ func ReadinessHandler(checker *Checker) http.HandlerFunc {
 		} else {
 			w.WriteHeader(http.StatusOK)
 		}
-		_ = json.NewEncoder(w).Encode(resp)
+
+		// Only return detailed info for internal requests (identified by header)
+		// This header should be set by the ingress/load balancer for internal requests
+		if r.Header.Get("X-Internal-Request") == "true" {
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		// For external requests, return minimal information
+		_ = json.NewEncoder(w).Encode(SimpleHealthResponse{
+			Status:    resp.Status,
+			Timestamp: resp.Timestamp,
+		})
 	}
 }
 

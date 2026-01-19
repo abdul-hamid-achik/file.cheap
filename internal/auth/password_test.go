@@ -123,12 +123,16 @@ func TestValidatePassword(t *testing.T) {
 		password string
 		wantErr  bool
 	}{
-		{"valid 8 chars", "12345678", false},
-		{"valid 20 chars", "12345678901234567890", false},
-		{"too short", "1234567", true},
+		{"valid password", "Password1!", false},
+		{"valid complex", "MyP@ssw0rd123", false},
+		{"too short", "Pass1!", true},
 		{"empty", "", true},
-		{"max length", strings.Repeat("a", 128), false},
-		{"too long", strings.Repeat("a", 129), true},
+		{"no uppercase", "password1!", true},
+		{"no lowercase", "PASSWORD1!", true},
+		{"no digit", "Password!!", true},
+		{"no special char", "Password12", true},
+		{"max length valid", "Aa1!" + strings.Repeat("x", 124), false},
+		{"too long", "Aa1!" + strings.Repeat("x", 125), true},
 	}
 
 	for _, tt := range tests {

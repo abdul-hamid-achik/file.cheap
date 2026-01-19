@@ -200,61 +200,88 @@ func TestAuthMiddleware(t *testing.T) {
 	}
 }
 
-// TestCORS tests CORS middleware.
+// TestCORS tests CORS middleware with origin validation.
 func TestCORS(t *testing.T) {
 	tests := []struct {
 		name        string
 		method      string
 		origin      string
+		devMode     bool
 		wantHeaders map[string]string
 		wantStatus  int
 	}{
 		{
-			name:   "preflight OPTIONS request",
-			method: "OPTIONS",
-			origin: "http://localhost:3000",
+			name:    "preflight OPTIONS request from allowed origin",
+			method:  "OPTIONS",
+			origin:  "https://file.cheap",
+			devMode: false,
 			wantHeaders: map[string]string{
-				"Access-Control-Allow-Origin":  "*",
+				"Access-Control-Allow-Origin":  "https://file.cheap",
 				"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
 				"Access-Control-Allow-Headers": "Accept, Authorization, Content-Type",
 			},
 			wantStatus: http.StatusNoContent,
 		},
 		{
-			name:   "regular GET request",
-			method: "GET",
-			origin: "http://localhost:3000",
+			name:    "preflight OPTIONS from localhost in dev mode",
+			method:  "OPTIONS",
+			origin:  "http://localhost:3000",
+			devMode: true,
 			wantHeaders: map[string]string{
-				"Access-Control-Allow-Origin": "*",
+				"Access-Control-Allow-Origin":  "http://localhost:3000",
+				"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+			},
+			wantStatus: http.StatusNoContent,
+		},
+		{
+			name:    "regular GET request from allowed origin",
+			method:  "GET",
+			origin:  "https://api.file.cheap",
+			devMode: false,
+			wantHeaders: map[string]string{
+				"Access-Control-Allow-Origin": "https://api.file.cheap",
 			},
 			wantStatus: http.StatusOK,
 		},
 		{
-			name:   "POST request with origin",
-			method: "POST",
-			origin: "https://example.com",
+			name:    "POST request from disallowed origin",
+			method:  "POST",
+			origin:  "https://example.com",
+			devMode: false,
 			wantHeaders: map[string]string{
-				"Access-Control-Allow-Origin": "*",
+				"Access-Control-Allow-Origin": "",
 			},
 			wantStatus: http.StatusOK,
 		},
 		{
-			name:   "request without origin header",
-			method: "GET",
-			origin: "",
+			name:    "request without origin header",
+			method:  "GET",
+			origin:  "",
+			devMode: false,
 			wantHeaders: map[string]string{
-				"Access-Control-Allow-Origin": "*",
+				"Access-Control-Allow-Origin": "",
 			},
 			wantStatus: http.StatusOK,
 		},
 		{
-			name:   "DELETE request",
-			method: "DELETE",
-			origin: "http://localhost:8080",
+			name:    "DELETE request from allowed origin",
+			method:  "DELETE",
+			origin:  "https://www.file.cheap",
+			devMode: false,
 			wantHeaders: map[string]string{
-				"Access-Control-Allow-Origin": "*",
+				"Access-Control-Allow-Origin": "https://www.file.cheap",
 			},
 			wantStatus: http.StatusOK,
+		},
+		{
+			name:    "preflight OPTIONS from disallowed origin",
+			method:  "OPTIONS",
+			origin:  "https://evil.com",
+			devMode: false,
+			wantHeaders: map[string]string{
+				"Access-Control-Allow-Origin": "",
+			},
+			wantStatus: http.StatusForbidden,
 		},
 	}
 
@@ -265,7 +292,7 @@ func TestCORS(t *testing.T) {
 				_, _ = w.Write([]byte("OK"))
 			})
 
-			handler := CORS(nextHandler)
+			handler := CORSWithOrigins(tt.devMode)(nextHandler)
 
 			req := httptest.NewRequest(tt.method, "/test", nil)
 			if tt.origin != "" {
@@ -295,7 +322,8 @@ func TestCORSWithMaxAge(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	handler := CORS(nextHandler)
+	// Use dev mode to allow localhost
+	handler := CORSWithOrigins(true)(nextHandler)
 
 	req := httptest.NewRequest("OPTIONS", "/test", nil)
 	req.Header.Set("Origin", "http://localhost:3000")

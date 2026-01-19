@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/apperror"
@@ -200,28 +201,66 @@ func (sm *SessionManager) GetFlash(w http.ResponseWriter, r *http.Request, key s
 	return cookie.Value
 }
 
+// trustedProxies defines the IP ranges that are trusted to set X-Forwarded-For.
+// In production, this should be configured to match your load balancer/proxy IPs.
+// Common ranges include:
+// - 10.0.0.0/8 (private class A)
+// - 172.16.0.0/12 (private class B)
+// - 192.168.0.0/16 (private class C)
+// - 127.0.0.0/8 (localhost)
+var trustedProxies = []netip.Prefix{
+	netip.MustParsePrefix("10.0.0.0/8"),
+	netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("127.0.0.0/8"),
+	netip.MustParsePrefix("::1/128"),
+}
+
+// isTrustedProxy checks if an IP address belongs to a trusted proxy network.
+func isTrustedProxy(ip netip.Addr) bool {
+	for _, prefix := range trustedProxies {
+		if prefix.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 // getClientIP extracts the client IP from the request.
+// X-Forwarded-For and X-Real-IP headers are only trusted when the request
+// comes from a known proxy IP to prevent header spoofing.
 func getClientIP(r *http.Request) *netip.Addr {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if ip, err := netip.ParseAddr(xff); err == nil {
-			return &ip
-		}
-	}
-
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		if ip, err := netip.ParseAddr(xri); err == nil {
-			return &ip
-		}
-	}
-
+	// First, get the remote address (the direct connection)
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return nil
 	}
 
-	if ip, err := netip.ParseAddr(host); err == nil {
-		return &ip
+	remoteIP, err := netip.ParseAddr(host)
+	if err != nil {
+		return nil
 	}
 
-	return nil
+	// Only trust proxy headers if the request comes from a trusted proxy
+	if isTrustedProxy(remoteIP) {
+		// X-Forwarded-For may contain multiple IPs; take the first (client) IP
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			// Take the first IP in the chain (leftmost)
+			parts := strings.Split(xff, ",")
+			if len(parts) > 0 {
+				clientIP := strings.TrimSpace(parts[0])
+				if ip, err := netip.ParseAddr(clientIP); err == nil {
+					return &ip
+				}
+			}
+		}
+
+		if xri := r.Header.Get("X-Real-IP"); xri != "" {
+			if ip, err := netip.ParseAddr(xri); err == nil {
+				return &ip
+			}
+		}
+	}
+
+	return &remoteIP
 }

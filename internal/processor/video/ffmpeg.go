@@ -327,8 +327,12 @@ func (p *FFmpegProcessor) AddWatermark(ctx context.Context, input io.Reader, tex
 	x, y := p.getWatermarkPosition(position)
 	fontsize := max(metadata.Height/20, 16)
 
+	// Escape single quotes to prevent FFmpeg filter injection
+	// In FFmpeg drawtext, single quotes are escaped by replacing ' with '\''
+	escapedText := escapeFFmpegText(text)
+
 	drawtext := fmt.Sprintf("drawtext=text='%s':fontsize=%d:fontcolor=white@%.1f:x=%s:y=%s",
-		text, fontsize, opacity, x, y)
+		escapedText, fontsize, opacity, x, y)
 
 	args := []string{
 		"-i", inputPath,
@@ -381,6 +385,18 @@ func (p *FFmpegProcessor) getWatermarkPosition(position string) (x, y string) {
 	default:
 		return fmt.Sprintf("w-tw-%d", padding), fmt.Sprintf("h-th-%d", padding)
 	}
+}
+
+// escapeFFmpegText escapes text for use in FFmpeg drawtext filter.
+// This prevents command injection through the watermark text parameter.
+// FFmpeg drawtext escaping: single quotes become '\” and backslashes become '\\\\'
+func escapeFFmpegText(text string) string {
+	// First escape backslashes, then escape single quotes
+	escaped := strings.ReplaceAll(text, "\\", "\\\\\\\\")
+	escaped = strings.ReplaceAll(escaped, "'", "'\\''")
+	// Escape colons which are FFmpeg filter separators
+	escaped = strings.ReplaceAll(escaped, ":", "\\:")
+	return escaped
 }
 
 // Helper methods

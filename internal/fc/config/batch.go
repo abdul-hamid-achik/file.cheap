@@ -9,8 +9,8 @@ import (
 )
 
 type BatchConfig struct {
-	Defaults BatchDefaults      `yaml:"defaults,omitempty"`
-	Files    []BatchFileConfig  `yaml:"files,omitempty"`
+	Defaults BatchDefaults     `yaml:"defaults,omitempty"`
+	Files    []BatchFileConfig `yaml:"files,omitempty"`
 }
 
 type BatchDefaults struct {
