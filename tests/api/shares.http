@@ -8,6 +8,7 @@ GET {{apiRoot}}/cdn/invalid-token-here/_/test.jpg
 >>>
 expect status 404
 expect body contains "not_found"
+expect duration < 2000
 <<<
 
 ### CDN Share Access - Random Token
@@ -20,6 +21,7 @@ GET {{apiRoot}}/cdn/{{$randomString(43)}}/_/test.jpg
 >>>
 expect status 404
 expect body contains "not_found"
+expect duration < 2000
 <<<
 
 ### CDN Share Access - Missing Token

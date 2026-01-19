@@ -10,6 +10,7 @@ expect status 401
 expect body.error exists
 expect body.error.code exists
 expect body.error.message contains "authorization"
+expect duration < 2000
 <<<
 
 ### Unauthorized - Invalid Bearer Token
@@ -24,6 +25,7 @@ Authorization: Bearer invalid-token-here
 expect status 401
 expect body.error exists
 expect body.error.code exists
+expect duration < 2000
 <<<
 
 ### Unauthorized - Invalid API Key

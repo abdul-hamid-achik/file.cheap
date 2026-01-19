@@ -59,7 +59,7 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "app_up{service=\"api\"}",
+          "expr": "up{job=\"api\"}",
           "refId": "A"
         }
       ],
@@ -116,7 +116,7 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "app_up{service=~\"worker-image|worker-video\"}",
+          "expr": "sum(up{job=~\"worker-image|worker-video\"})",
           "refId": "A"
         }
       ],

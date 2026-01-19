@@ -8,4 +8,5 @@ GET {{apiRoot}}/health
 >>>
 expect status 200
 expect body.status == "healthy"
+expect duration < 2000
 <<<

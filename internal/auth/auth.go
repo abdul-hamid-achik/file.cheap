@@ -21,13 +21,13 @@ const (
 
 // API Token Permissions
 const (
-	PermFilesRead    = "files:read"
-	PermFilesWrite   = "files:write"
-	PermFilesDelete  = "files:delete"
-	PermTransform    = "transform"
-	PermSharesRead   = "shares:read"
-	PermSharesWrite  = "shares:write"
-	PermWebhooksRead = "webhooks:read"
+	PermFilesRead     = "files:read"
+	PermFilesWrite    = "files:write"
+	PermFilesDelete   = "files:delete"
+	PermTransform     = "transform"
+	PermSharesRead    = "shares:read"
+	PermSharesWrite   = "shares:write"
+	PermWebhooksRead  = "webhooks:read"
 	PermWebhooksWrite = "webhooks:write"
 )
 

@@ -9,18 +9,18 @@ import (
 )
 
 type AdminUserRow struct {
-	ID                    string
-	Email                 string
-	Name                  string
-	Role                  db.UserRole
-	Tier                  db.SubscriptionTier
-	Status                string
-	FilesLimit            int
-	StorageUsedBytes      int64
-	StorageLimitBytes     int64
-	TransformationsCount  int
-	TransformationsLimit  int
-	CreatedAt             string
+	ID                   string
+	Email                string
+	Name                 string
+	Role                 db.UserRole
+	Tier                 db.SubscriptionTier
+	Status               string
+	FilesLimit           int
+	StorageUsedBytes     int64
+	StorageLimitBytes    int64
+	TransformationsCount int
+	TransformationsLimit int
+	CreatedAt            string
 }
 
 type AdminUsersPageData struct {

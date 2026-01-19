@@ -9,6 +9,7 @@ GET {{baseUrl}}/me
 >>>
 # Auth should work (not 401). May return 404 if user not in DB or 200 if exists
 expect status in [200, 404]
+expect duration < 3000
 <<<
 
 ### List Files (Authenticated)
@@ -22,6 +23,7 @@ GET {{baseUrl}}/files
 >>>
 # Auth should work. May return 500 if DB issues, 200 if OK
 expect status in [200, 500]
+expect duration < 5000
 <<<
 
 ### List Folders (Authenticated)
@@ -35,6 +37,7 @@ GET {{baseUrl}}/folders
 >>>
 # Auth should work. May return 500 if DB issues, 200 if OK
 expect status in [200, 500]
+expect duration < 5000
 <<<
 
 ### Get Usage Stats (Authenticated)
@@ -48,6 +51,7 @@ GET {{baseUrl}}/me/usage
 >>>
 # Auth should work (not 401). May return 404 if user not in DB
 expect status in [200, 404]
+expect duration < 3000
 <<<
 
 ### List Webhooks (Authenticated)
@@ -61,6 +65,7 @@ GET {{baseUrl}}/webhooks
 >>>
 # Auth should work. May return 500 if DB issues, 200 if OK
 expect status in [200, 500]
+expect duration < 5000
 <<<
 
 ### Upload File (Authenticated)
@@ -74,8 +79,9 @@ POST {{baseUrl}}/upload
 Content-Type: multipart/form-data
 
 >>>
-# Should not return 401. Expects 200/201 on success, or 500 if DB issues
-expect status in [200, 201, 400, 500]
+# Should not return 401. Expects 200/201 on success, 413 if no body, 500 if DB issues
+expect status in [200, 201, 400, 413, 500]
+expect duration < 10000
 <<<
 
 ### Create Folder (Authenticated)
@@ -94,4 +100,5 @@ Content-Type: application/json
 >>>
 # Should not return 401. May return 200/201 on success, or error if DB issues
 expect status in [200, 201, 400, 500]
+expect duration < 5000
 <<<

@@ -1,0 +1,435 @@
+### Health Endpoint Stress - Rapid Sequential Requests
+# @name healthStress1
+# @tags stress, health, smoke
+# @description Rapid health check 1 - measures baseline latency under load
+
+GET {{apiRoot}}/health
+
+>>>
+expect status 200
+expect duration < 2000
+expect body.status == "healthy"
+<<<
+
+### Health Endpoint Stress - Rapid Sequential Requests 2
+# @name healthStress2
+# @tags stress, health
+# @description Rapid health check 2 - validates consistent response time
+
+GET {{apiRoot}}/health
+
+>>>
+expect status 200
+expect duration < 2000
+expect body.status == "healthy"
+<<<
+
+### Health Endpoint Stress - Rapid Sequential Requests 3
+# @name healthStress3
+# @tags stress, health
+# @description Rapid health check 3 - ensures no degradation under sustained load
+
+GET {{apiRoot}}/health
+
+>>>
+expect status 200
+expect duration < 2000
+expect body.status == "healthy"
+<<<
+
+### Health Endpoint Stress - Rapid Sequential Requests 4
+# @name healthStress4
+# @tags stress, health
+# @description Rapid health check 4
+
+GET {{apiRoot}}/health
+
+>>>
+expect status 200
+expect duration < 2000
+<<<
+
+### Health Endpoint Stress - Rapid Sequential Requests 5
+# @name healthStress5
+# @tags stress, health
+# @description Rapid health check 5
+
+GET {{apiRoot}}/health
+
+>>>
+expect status 200
+expect duration < 2000
+<<<
+
+### Auth Brute Force Protection 1
+# @name authBruteForce1
+# @tags stress, auth, security
+# @description Test auth under rapid invalid attempts - should not crash
+
+GET {{baseUrl}}/files
+Authorization: Bearer invalid-token-{{$random(1, 100000)}}
+
+>>>
+expect status 401
+expect duration < 3000
+<<<
+
+### Auth Brute Force Protection 2
+# @name authBruteForce2
+# @tags stress, auth, security
+# @description Repeated invalid auth attempts - verifies no rate limit lockout
+
+GET {{baseUrl}}/files
+Authorization: Bearer invalid-token-{{$random(1, 100000)}}
+
+>>>
+expect status 401
+expect duration < 3000
+<<<
+
+### Auth Brute Force Protection 3
+# @name authBruteForce3
+# @tags stress, auth, security
+# @description Continued invalid auth - server stays responsive
+
+GET {{baseUrl}}/files
+Authorization: Bearer invalid-token-{{$random(1, 100000)}}
+
+>>>
+expect status 401
+expect duration < 3000
+<<<
+
+### Auth Brute Force Protection 4
+# @name authBruteForce4
+# @tags stress, auth, security
+# @description Fourth invalid auth attempt
+
+GET {{baseUrl}}/files
+Authorization: Bearer invalid-token-{{$random(1, 100000)}}
+
+>>>
+expect status 401
+expect duration < 3000
+<<<
+
+### Auth Brute Force Protection 5
+# @name authBruteForce5
+# @tags stress, auth, security
+# @description Fifth invalid auth attempt
+
+GET {{baseUrl}}/files
+Authorization: Bearer invalid-token-{{$random(1, 100000)}}
+
+>>>
+expect status 401
+expect duration < 3000
+<<<
+
+### Authenticated List Files Stress 1
+# @name listFilesStress1
+# @tags stress, files, auth
+# @description List files under load - measures API response time
+# @auth bearer {{apiToken}}
+
+GET {{baseUrl}}/files
+? limit = 50
+
+>>>
+expect status in [200, 500]
+expect duration < 5000
+<<<
+
+### Authenticated List Files Stress 2
+# @name listFilesStress2
+# @tags stress, files, auth
+# @description List files repeated call - validates consistency
+# @auth bearer {{apiToken}}
+
+GET {{baseUrl}}/files
+? limit = 50
+
+>>>
+expect status in [200, 500]
+expect duration < 5000
+<<<
+
+### Authenticated List Files Stress 3
+# @name listFilesStress3
+# @tags stress, files, auth
+# @description List files third call - measures stability
+# @auth bearer {{apiToken}}
+
+GET {{baseUrl}}/files
+? limit = 50
+
+>>>
+expect status in [200, 500]
+expect duration < 5000
+<<<
+
+### Authenticated List Folders Stress 1
+# @name listFoldersStress1
+# @tags stress, folders, auth
+# @description List folders stress test
+# @auth bearer {{apiToken}}
+
+GET {{baseUrl}}/folders
+
+>>>
+expect status in [200, 500]
+expect duration < 5000
+<<<
+
+### Authenticated List Folders Stress 2
+# @name listFoldersStress2
+# @tags stress, folders, auth
+# @description List folders repeated
+# @auth bearer {{apiToken}}
+
+GET {{baseUrl}}/folders
+
+>>>
+expect status in [200, 500]
+expect duration < 5000
+<<<
+
+### Large JSON Payload Stress
+# @name largeJsonPayload
+# @tags stress, validation, security
+# @description Test server handles large but valid JSON gracefully
+
+POST {{baseUrl}}/webhooks
+Content-Type: application/json
+Authorization: Bearer fake-token
+
+{
+  "url": "https://example-{{$random(1, 999999)}}.com/webhook/endpoint/that/is/quite/long/for/testing/purposes/here",
+  "events": ["file.uploaded", "file.processed", "file.deleted", "file.downloaded", "file.shared"],
+  "metadata": {
+    "key1": "value1-{{$randomString(100)}}",
+    "key2": "value2-{{$randomString(100)}}",
+    "key3": "value3-{{$randomString(100)}}",
+    "key4": "value4-{{$randomString(100)}}",
+    "key5": "value5-{{$randomString(100)}}"
+  }
+}
+
+>>>
+expect status in [400, 401]
+expect duration < 3000
+<<<
+
+### Rapid Folder Operations Stress 1
+# @name folderOpsStress1
+# @tags stress, folders, auth
+# @description Create folder stress test 1
+# @auth bearer {{apiToken}}
+
+POST {{baseUrl}}/folders
+Content-Type: application/json
+
+{
+  "name": "stress-test-folder-{{$random(1, 999999)}}"
+}
+
+>>>
+expect status in [200, 201, 400, 500]
+expect duration < 5000
+<<<
+
+### Rapid Folder Operations Stress 2
+# @name folderOpsStress2
+# @tags stress, folders, auth
+# @description Create folder stress test 2
+# @auth bearer {{apiToken}}
+
+POST {{baseUrl}}/folders
+Content-Type: application/json
+
+{
+  "name": "stress-test-folder-{{$random(1, 999999)}}"
+}
+
+>>>
+expect status in [200, 201, 400, 500]
+expect duration < 5000
+<<<
+
+### CDN Access Stress 1
+# @name cdnStress1
+# @tags stress, cdn, shares
+# @description CDN endpoint stress test with random tokens
+
+GET {{apiRoot}}/cdn/{{$randomString(43)}}/_/test.jpg
+
+>>>
+expect status 404
+expect duration < 2000
+<<<
+
+### CDN Access Stress 2
+# @name cdnStress2
+# @tags stress, cdn, shares
+# @description CDN endpoint stress test repeated
+
+GET {{apiRoot}}/cdn/{{$randomString(43)}}/_/test.jpg
+
+>>>
+expect status 404
+expect duration < 2000
+<<<
+
+### CDN Access Stress 3
+# @name cdnStress3
+# @tags stress, cdn, shares
+# @description CDN endpoint stress test third call
+
+GET {{apiRoot}}/cdn/{{$randomString(43)}}/_/test.jpg
+
+>>>
+expect status 404
+expect duration < 2000
+<<<
+
+### Mixed Endpoint Stress - Get User
+# @name mixedStressUser
+# @tags stress, users, auth
+# @description Mixed endpoint stress - user profile
+# @auth bearer {{apiToken}}
+
+GET {{baseUrl}}/me
+
+>>>
+expect status in [200, 404]
+expect duration < 3000
+<<<
+
+### Mixed Endpoint Stress - Get Usage
+# @name mixedStressUsage
+# @tags stress, users, auth
+# @description Mixed endpoint stress - usage stats
+# @auth bearer {{apiToken}}
+
+GET {{baseUrl}}/me/usage
+
+>>>
+expect status in [200, 404]
+expect duration < 3000
+<<<
+
+### Mixed Endpoint Stress - Webhooks
+# @name mixedStressWebhooks
+# @tags stress, webhooks, auth
+# @description Mixed endpoint stress - webhooks list
+# @auth bearer {{apiToken}}
+
+GET {{baseUrl}}/webhooks
+
+>>>
+expect status in [200, 500]
+expect duration < 3000
+<<<
+
+### Connection Resilience Test 1
+# @name connectionResilience1
+# @tags stress, reliability
+# @description Test API responds consistently to multiple health checks
+# @timeout 10000
+# @retry 3
+# @retryDelay 500
+
+GET {{apiRoot}}/health
+
+>>>
+expect status 200
+expect body.status == "healthy"
+<<<
+
+### Connection Resilience Test 2
+# @name connectionResilience2
+# @tags stress, reliability
+# @description Retry mechanism test for transient failures
+# @timeout 10000
+# @retry 3
+# @retryDelay 500
+
+GET {{apiRoot}}/health
+
+>>>
+expect status 200
+expect body.status == "healthy"
+<<<
+
+### Pagination Stress - Low Offset
+# @name paginationStress1
+# @tags stress, files, pagination
+# @description Pagination with low offset
+# @auth bearer {{apiToken}}
+
+GET {{baseUrl}}/files
+? limit = 10
+? offset = 0
+
+>>>
+expect status in [200, 500]
+expect duration < 5000
+<<<
+
+### Pagination Stress - Medium Offset
+# @name paginationStress2
+# @tags stress, files, pagination
+# @description Pagination with medium offset
+# @auth bearer {{apiToken}}
+
+GET {{baseUrl}}/files
+? limit = 10
+? offset = 50
+
+>>>
+expect status in [200, 500]
+expect duration < 5000
+<<<
+
+### Pagination Stress - High Offset
+# @name paginationStress3
+# @tags stress, files, pagination
+# @description Pagination with high offset
+# @auth bearer {{apiToken}}
+
+GET {{baseUrl}}/files
+? limit = 10
+? offset = 100
+
+>>>
+expect status in [200, 500]
+expect duration < 5000
+<<<
+
+### Special Characters in Query
+# @name specialCharsStress
+# @tags stress, validation, security
+# @description Test URL encoding with special characters
+
+GET {{baseUrl}}/files
+? search = test%20file%26name%3Dspecial
+
+>>>
+expect status in [200, 400, 401]
+expect duration < 3000
+<<<
+
+### Unicode Headers Stress
+# @name unicodeHeaderStress
+# @tags stress, validation, security
+# @description Test handling of unusual header values
+
+GET {{apiRoot}}/health
+User-Agent: hitspec-stress-test-{{$randomString(20)}}
+Accept-Language: en-US,en;q=0.9
+
+>>>
+expect status 200
+expect duration < 2000
+<<<
+

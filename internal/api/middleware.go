@@ -20,9 +20,9 @@ import (
 type contextKey string
 
 const (
-	UserIDKey       contextKey = "user_id"
-	BillingKey      contextKey = "billing"
-	PermissionsKey  contextKey = "permissions"
+	UserIDKey      contextKey = "user_id"
+	BillingKey     contextKey = "billing"
+	PermissionsKey contextKey = "permissions"
 )
 
 type BillingInfo struct {

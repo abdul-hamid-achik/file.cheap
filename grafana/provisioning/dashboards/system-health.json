@@ -157,7 +157,7 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "up{job=~\"worker-image|worker-video\"}",
+          "expr": "sum(up{job=~\"worker-image|worker-video\"})",
           "legendFormat": "Workers",
           "refId": "A"
         }

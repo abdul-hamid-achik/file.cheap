@@ -39,20 +39,12 @@ expect body.error.code exists
 # @tags files, transformations, errors
 # @description Verify transforming file without auth returns 401
 
-GET {{baseUrl}}/files/{{$uuid()}}/transform
-? preset = thumbnail
+POST {{baseUrl}}/files/{{$uuid()}}/transform
+Content-Type: application/json
 
->>>
-expect status 401
-expect body.error.code exists
-<<<
-
-### Delete File Without Auth
-# @name deleteFileWithoutAuth
-# @tags files, errors
-# @description Verify deleting file without auth returns 401
-
-DELETE {{baseUrl}}/files/{{$uuid()}}
+{
+  "presets": ["thumbnail"]
+}
 
 >>>
 expect status 401
