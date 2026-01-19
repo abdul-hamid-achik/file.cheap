@@ -20,6 +20,7 @@ RUN apk --no-cache add ca-certificates
 RUN adduser -D -g '' appuser
 WORKDIR /app
 COPY --from=builder /api .
+COPY --from=builder /app/static ./static
 USER appuser
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
