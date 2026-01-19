@@ -30,6 +30,7 @@ configMapGenerator:
       - grafana/dashboards/worker-performance.json
       - grafana/dashboards/system-health.json
       - grafana/dashboards/user-activity.json
+      - grafana/dashboards/logs-explorer.json
 
 labels:
   - pairs:

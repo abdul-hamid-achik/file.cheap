@@ -17,19 +17,22 @@ data:
       - url: http://loki:3100/loki/api/v1/push
 
     scrape_configs:
-      - job_name: system
+      - job_name: pods
         static_configs:
           - targets:
               - localhost
             labels:
-              job: varlogs
+              job: pods
               __path__: /var/log/pods/*/*/*.log
-
-      - job_name: kubernetes-pods
-        kubernetes_sd_configs:
-          - role: pod
         pipeline_stages:
           - cri: {}
+          - regex:
+              source: filename
+              expression: '/var/log/pods/(?P<namespace>[^_]+)_(?P<pod>[^_]+)_[^/]+/(?P<container>[^/]+)/.*'
+          - labels:
+              namespace:
+              pod:
+              container:
           - json:
               expressions:
                 level: level
@@ -47,25 +50,3 @@ data:
           - labels:
               level:
               job_type:
-              method:
-              status:
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_node_name]
-            target_label: __host__
-          - action: labelmap
-            regex: __meta_kubernetes_pod_label_(.+)
-          - source_labels: [__meta_kubernetes_namespace]
-            target_label: namespace
-          - source_labels: [__meta_kubernetes_pod_name]
-            target_label: pod
-          - source_labels: [__meta_kubernetes_pod_container_name]
-            target_label: container
-          - source_labels:
-              - __meta_kubernetes_namespace
-              - __meta_kubernetes_pod_name
-              - __meta_kubernetes_pod_uid
-              - __meta_kubernetes_pod_container_name
-            separator: /
-            regex: (.+)/(.+)/(.+)/(.+)
-            replacement: /var/log/pods/$1_$2_$3/$4/*.log
-            target_label: __path__
