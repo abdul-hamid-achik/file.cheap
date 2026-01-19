@@ -164,3 +164,67 @@ WHERE id = $1 AND deleted_at IS NULL;
 UPDATE users
 SET storage_limit_bytes = $2, updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: UpdateUserToEnterprise :one
+UPDATE users
+SET
+    subscription_tier = 'enterprise',
+    subscription_status = 'active',
+    files_limit = -1,
+    max_file_size = 10737418240,
+    storage_limit_bytes = 1099511627776,
+    transformations_limit = -1,
+    updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING *;
+
+-- name: ListUsersForAdmin :many
+SELECT
+    id, email, name, avatar_url, role,
+    subscription_tier, subscription_status,
+    files_limit, storage_used_bytes, storage_limit_bytes,
+    transformations_count, transformations_limit,
+    created_at
+FROM users
+WHERE deleted_at IS NULL
+    AND ($1::text = '' OR email ILIKE '%' || $1 || '%' OR name ILIKE '%' || $1 || '%')
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3;
+
+-- name: CountUsersForAdmin :one
+SELECT COUNT(*)
+FROM users
+WHERE deleted_at IS NULL
+    AND ($1::text = '' OR email ILIKE '%' || $1 || '%' OR name ILIKE '%' || $1 || '%');
+
+-- name: UpdateUserTier :one
+UPDATE users
+SET
+    subscription_tier = $2,
+    subscription_status = CASE
+        WHEN $2 = 'free' THEN 'none'
+        ELSE 'active'
+    END,
+    files_limit = CASE
+        WHEN $2 = 'free' THEN 100
+        WHEN $2 = 'pro' THEN 2000
+        WHEN $2 = 'enterprise' THEN -1
+    END,
+    max_file_size = CASE
+        WHEN $2 = 'free' THEN 10485760
+        WHEN $2 = 'pro' THEN 104857600
+        WHEN $2 = 'enterprise' THEN 10737418240
+    END,
+    storage_limit_bytes = CASE
+        WHEN $2 = 'free' THEN 1073741824
+        WHEN $2 = 'pro' THEN 107374182400
+        WHEN $2 = 'enterprise' THEN 1099511627776
+    END,
+    transformations_limit = CASE
+        WHEN $2 = 'free' THEN 100
+        WHEN $2 = 'pro' THEN 10000
+        WHEN $2 = 'enterprise' THEN -1
+    END,
+    updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING *;

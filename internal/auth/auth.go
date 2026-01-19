@@ -19,6 +19,44 @@ const (
 	EmailVerificationExpiry = 24 * time.Hour
 )
 
+// API Token Permissions
+const (
+	PermFilesRead    = "files:read"
+	PermFilesWrite   = "files:write"
+	PermFilesDelete  = "files:delete"
+	PermTransform    = "transform"
+	PermSharesRead   = "shares:read"
+	PermSharesWrite  = "shares:write"
+	PermWebhooksRead = "webhooks:read"
+	PermWebhooksWrite = "webhooks:write"
+)
+
+// AllPermissions contains all available permissions
+var AllPermissions = []string{
+	PermFilesRead,
+	PermFilesWrite,
+	PermFilesDelete,
+	PermTransform,
+	PermSharesRead,
+	PermSharesWrite,
+	PermWebhooksRead,
+	PermWebhooksWrite,
+}
+
+// PermissionPresets defines common permission combinations
+var PermissionPresets = map[string][]string{
+	"read_only": {PermFilesRead, PermSharesRead},
+	"standard":  {PermFilesRead, PermFilesWrite, PermTransform, PermSharesRead, PermSharesWrite},
+	"full":      AllPermissions,
+}
+
+// CreateAPITokenInput contains parameters for creating an API token
+type CreateAPITokenInput struct {
+	Name        string
+	Permissions []string
+	ExpiresAt   *time.Time
+}
+
 // Service provides authentication operations.
 type Service struct {
 	queries *db.Queries
@@ -429,7 +467,7 @@ const APITokenPrefix = "fp_"
 
 // CreateAPIToken creates a new API token for a user.
 // The returned token is prefixed with "fp_" for easy identification.
-func (s *Service) CreateAPIToken(ctx context.Context, userID uuid.UUID, name string) (string, *db.ApiToken, error) {
+func (s *Service) CreateAPIToken(ctx context.Context, userID uuid.UUID, input CreateAPITokenInput) (string, *db.ApiToken, error) {
 	pgID := pgtype.UUID{Bytes: userID, Valid: true}
 
 	rawToken, tokenHash, err := GenerateToken()
@@ -440,11 +478,24 @@ func (s *Service) CreateAPIToken(ctx context.Context, userID uuid.UUID, name str
 	prefixedToken := APITokenPrefix + rawToken
 	prefix := prefixedToken[:10]
 
+	// Default to full permissions if none specified
+	permissions := input.Permissions
+	if len(permissions) == 0 {
+		permissions = AllPermissions
+	}
+
+	var expiresAt pgtype.Timestamptz
+	if input.ExpiresAt != nil {
+		expiresAt = pgtype.Timestamptz{Time: *input.ExpiresAt, Valid: true}
+	}
+
 	token, err := s.queries.CreateAPIToken(ctx, db.CreateAPITokenParams{
 		UserID:      pgID,
-		Name:        name,
+		Name:        input.Name,
 		TokenHash:   tokenHash,
 		TokenPrefix: prefix,
+		Permissions: permissions,
+		ExpiresAt:   expiresAt,
 	})
 	if err != nil {
 		return "", nil, apperror.Wrap(err, apperror.ErrInternal)

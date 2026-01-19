@@ -1,0 +1,220 @@
+package pages
+
+import (
+	"fmt"
+	"github.com/abdul-hamid-achik/file.cheap/internal/auth"
+	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/components"
+	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/layouts"
+)
+
+type EnterpriseInquiryRow struct {
+	ID             string
+	UserID         string
+	UserEmail      string
+	CompanyName    string
+	ContactName    string
+	Email          string
+	Phone          string
+	CompanySize    string
+	EstimatedUsage string
+	Message        string
+	Status         string
+	AdminNotes     string
+	ProcessedAt    string
+	ProcessedBy    string
+	CreatedAt      string
+}
+
+type AdminEnterprisePageData struct {
+	Inquiries  []EnterpriseInquiryRow
+	Status     string
+	Page       int
+	TotalPages int
+	Total      int
+}
+
+templ AdminEnterprise(user *auth.SessionUser, data *AdminEnterprisePageData) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Enterprise Inquiries - Admin",
+		Description: "Manage enterprise inquiries",
+	}, user) {
+		<div class="py-8">
+			<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+				@adminNavTabs("enterprise")
+				<div class="mb-6 flex items-center justify-between">
+					<div>
+						<h1 class="text-2xl font-bold text-nord-5">Enterprise Inquiries</h1>
+						<p class="text-nord-4 mt-1">{ fmt.Sprintf("%d total inquiries", data.Total) }</p>
+					</div>
+				</div>
+				<div class="mb-6 flex gap-2">
+					@inquiryStatusFilter("pending", "Pending", data.Status)
+					@inquiryStatusFilter("approved", "Approved", data.Status)
+					@inquiryStatusFilter("rejected", "Rejected", data.Status)
+					@inquiryStatusFilter("all", "All", data.Status)
+				</div>
+				<div class="space-y-4">
+					if len(data.Inquiries) == 0 {
+						@components.Card("") {
+							@components.CardBody() {
+								<p class="text-nord-4 text-center py-8">No inquiries found</p>
+							}
+						}
+					} else {
+						for _, inquiry := range data.Inquiries {
+							@enterpriseInquiryCard(inquiry)
+						}
+					}
+				</div>
+				if data.TotalPages > 1 {
+					<div class="flex items-center justify-center gap-4 mt-8">
+						if data.Page > 1 {
+							<a
+								href={ templ.SafeURL(fmt.Sprintf("/admin/enterprise?status=%s&page=%d", data.Status, data.Page-1)) }
+								class="px-3 py-1 bg-nord-2 hover:bg-nord-3 text-nord-5 rounded text-sm"
+							>
+								Previous
+							</a>
+						}
+						<span class="text-sm text-nord-4">
+							Page { fmt.Sprintf("%d", data.Page) } of { fmt.Sprintf("%d", data.TotalPages) }
+						</span>
+						if data.Page < data.TotalPages {
+							<a
+								href={ templ.SafeURL(fmt.Sprintf("/admin/enterprise?status=%s&page=%d", data.Status, data.Page+1)) }
+								class="px-3 py-1 bg-nord-2 hover:bg-nord-3 text-nord-5 rounded text-sm"
+							>
+								Next
+							</a>
+						}
+					</div>
+				}
+			</div>
+		</div>
+	}
+}
+
+templ inquiryStatusFilter(value, label, current string) {
+	if current == value || (current == "" && value == "pending") {
+		<span class="px-3 py-1 bg-nord-15 text-nord-0 rounded-full text-sm font-medium">
+			{ label }
+		</span>
+	} else {
+		<a
+			href={ templ.SafeURL(fmt.Sprintf("/admin/enterprise?status=%s", value)) }
+			class="px-3 py-1 bg-nord-2 hover:bg-nord-3 text-nord-4 rounded-full text-sm"
+		>
+			{ label }
+		</a>
+	}
+}
+
+templ enterpriseInquiryCard(inquiry EnterpriseInquiryRow) {
+	@components.Card("") {
+		@components.CardHeader() {
+			<div class="flex items-start justify-between">
+				<div>
+					<h3 class="text-lg font-semibold text-nord-5">{ inquiry.CompanyName }</h3>
+					<p class="text-nord-4 text-sm">{ inquiry.ContactName } - { inquiry.Email }</p>
+				</div>
+				<div class="flex items-center gap-2">
+					@inquiryStatusBadge(inquiry.Status)
+					<span class="text-xs text-nord-4">{ inquiry.CreatedAt }</span>
+				</div>
+			</div>
+		}
+		@components.CardBody() {
+			<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm">
+				<div>
+					<p class="text-nord-4">Company Size</p>
+					<p class="text-nord-5 font-medium">{ inquiry.CompanySize }</p>
+				</div>
+				<div>
+					<p class="text-nord-4">Estimated Usage</p>
+					<p class="text-nord-5 font-medium">{ inquiry.EstimatedUsage }</p>
+				</div>
+				<div>
+					<p class="text-nord-4">User Email</p>
+					<p class="text-nord-5 font-medium">{ inquiry.UserEmail }</p>
+				</div>
+				if inquiry.Phone != "" {
+					<div>
+						<p class="text-nord-4">Phone</p>
+						<p class="text-nord-5 font-medium">{ inquiry.Phone }</p>
+					</div>
+				}
+			</div>
+			<div class="mb-4">
+				<p class="text-nord-4 text-sm mb-1">Message</p>
+				<p class="text-nord-5 text-sm bg-nord-2 p-3 rounded-lg">{ inquiry.Message }</p>
+			</div>
+			if inquiry.AdminNotes != "" {
+				<div class="mb-4">
+					<p class="text-nord-4 text-sm mb-1">Admin Notes</p>
+					<p class="text-nord-5 text-sm bg-nord-2 p-3 rounded-lg">{ inquiry.AdminNotes }</p>
+				</div>
+			}
+			if inquiry.ProcessedAt != "" {
+				<p class="text-xs text-nord-4">
+					Processed { inquiry.ProcessedAt }
+					if inquiry.ProcessedBy != "" {
+						by { inquiry.ProcessedBy }
+					}
+				</p>
+			}
+			if inquiry.Status == "pending" {
+				<div class="flex items-center gap-4 pt-4 border-t border-nord-2 mt-4">
+					<form
+						hx-post={ fmt.Sprintf("/admin/enterprise/%s/process", inquiry.ID) }
+						hx-target="closest .card"
+						hx-swap="outerHTML"
+						class="flex-1"
+					>
+						<input type="hidden" name="action" value="approved"/>
+						<div class="mb-3">
+							<label class="block text-xs text-nord-4 mb-1">Admin Notes (optional)</label>
+							<input
+								type="text"
+								name="admin_notes"
+								placeholder="Internal notes..."
+								class="w-full px-2 py-1 text-sm bg-nord-2 border border-nord-3 rounded text-nord-5 placeholder-nord-4"
+							/>
+						</div>
+						<button
+							type="submit"
+							class="px-4 py-2 bg-nord-14 hover:bg-nord-14/80 text-nord-0 rounded-lg text-sm font-medium transition-colors"
+						>
+							Approve & Enable Enterprise
+						</button>
+					</form>
+					<form
+						hx-post={ fmt.Sprintf("/admin/enterprise/%s/process", inquiry.ID) }
+						hx-target="closest .card"
+						hx-swap="outerHTML"
+					>
+						<input type="hidden" name="action" value="rejected"/>
+						<button
+							type="submit"
+							class="px-4 py-2 bg-nord-11/20 hover:bg-nord-11/30 text-nord-11 rounded-lg text-sm font-medium transition-colors"
+						>
+							Reject
+						</button>
+					</form>
+				</div>
+			}
+		}
+	}
+}
+
+templ inquiryStatusBadge(status string) {
+	switch status {
+		case "pending":
+			<span class="px-2 py-1 bg-nord-13/20 text-nord-13 rounded text-xs">Pending</span>
+		case "approved":
+			<span class="px-2 py-1 bg-nord-14/20 text-nord-14 rounded text-xs">Approved</span>
+		case "rejected":
+			<span class="px-2 py-1 bg-nord-11/20 text-nord-11 rounded text-xs">Rejected</span>
+		default:
+			<span class="px-2 py-1 bg-nord-3 text-nord-4 rounded text-xs">{ status }</span>
+	}
+}

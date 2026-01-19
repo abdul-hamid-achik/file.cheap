@@ -536,6 +536,7 @@ type ApiToken struct {
 	Name        string             `json:"name"`
 	TokenHash   string             `json:"token_hash"`
 	TokenPrefix string             `json:"token_prefix"`
+	Permissions []string           `json:"permissions"`
 	LastUsedAt  pgtype.Timestamptz `json:"last_used_at"`
 	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
@@ -588,6 +589,23 @@ type EmailVerification struct {
 	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
 	VerifiedAt pgtype.Timestamptz `json:"verified_at"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
+type EnterpriseInquiry struct {
+	ID             pgtype.UUID        `json:"id"`
+	UserID         pgtype.UUID        `json:"user_id"`
+	CompanyName    string             `json:"company_name"`
+	ContactName    string             `json:"contact_name"`
+	Email          string             `json:"email"`
+	Phone          *string            `json:"phone"`
+	CompanySize    string             `json:"company_size"`
+	EstimatedUsage string             `json:"estimated_usage"`
+	Message        string             `json:"message"`
+	Status         string             `json:"status"`
+	AdminNotes     *string            `json:"admin_notes"`
+	ProcessedAt    pgtype.Timestamptz `json:"processed_at"`
+	ProcessedBy    pgtype.UUID        `json:"processed_by"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
 type File struct {

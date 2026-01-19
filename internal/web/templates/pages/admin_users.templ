@@ -1,0 +1,245 @@
+package pages
+
+import (
+	"fmt"
+	"github.com/abdul-hamid-achik/file.cheap/internal/auth"
+	"github.com/abdul-hamid-achik/file.cheap/internal/db"
+	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/components"
+	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/layouts"
+)
+
+type AdminUserRow struct {
+	ID                    string
+	Email                 string
+	Name                  string
+	Role                  db.UserRole
+	Tier                  db.SubscriptionTier
+	Status                string
+	FilesLimit            int
+	StorageUsedBytes      int64
+	StorageLimitBytes     int64
+	TransformationsCount  int
+	TransformationsLimit  int
+	CreatedAt             string
+}
+
+type AdminUsersPageData struct {
+	Users      []AdminUserRow
+	Search     string
+	Page       int
+	TotalPages int
+	Total      int
+}
+
+templ AdminUsers(user *auth.SessionUser, data *AdminUsersPageData) {
+	@layouts.Base(layouts.PageMeta{
+		Title:       "Users - Admin",
+		Description: "Manage platform users",
+	}, user) {
+		<div class="py-8">
+			<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+				@adminNavTabs("users")
+				<div class="mb-6 flex items-center justify-between">
+					<div>
+						<h1 class="text-2xl font-bold text-nord-5">Users</h1>
+						<p class="text-nord-4 mt-1">{ fmt.Sprintf("%d total users", data.Total) }</p>
+					</div>
+				</div>
+				<div class="mb-6">
+					<form method="GET" action="/admin/users" class="flex gap-4">
+						<input
+							type="text"
+							name="search"
+							value={ data.Search }
+							placeholder="Search by email or name..."
+							class="flex-1 max-w-sm px-3 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 placeholder-nord-4 focus:ring-2 focus:ring-nord-8 focus:border-nord-8"
+						/>
+						@components.Button(components.ButtonProps{
+							Variant: components.ButtonSecondary,
+							Size:    components.ButtonSm,
+							Type:    "submit",
+						}) {
+							Search
+						}
+					</form>
+				</div>
+				@components.Card("") {
+					<div class="overflow-x-auto">
+						<table class="w-full">
+							<thead>
+								<tr class="border-b border-nord-2">
+									<th class="text-left py-3 px-4 text-xs font-medium text-nord-4 uppercase">User</th>
+									<th class="text-left py-3 px-4 text-xs font-medium text-nord-4 uppercase">Role</th>
+									<th class="text-left py-3 px-4 text-xs font-medium text-nord-4 uppercase">Tier</th>
+									<th class="text-left py-3 px-4 text-xs font-medium text-nord-4 uppercase">Files</th>
+									<th class="text-left py-3 px-4 text-xs font-medium text-nord-4 uppercase">Storage</th>
+									<th class="text-left py-3 px-4 text-xs font-medium text-nord-4 uppercase">Transforms</th>
+									<th class="text-left py-3 px-4 text-xs font-medium text-nord-4 uppercase">Joined</th>
+									<th class="text-left py-3 px-4 text-xs font-medium text-nord-4 uppercase">Actions</th>
+								</tr>
+							</thead>
+							<tbody class="divide-y divide-nord-2">
+								if len(data.Users) == 0 {
+									<tr>
+										<td colspan="8" class="py-8 text-center text-nord-4">
+											No users found
+										</td>
+									</tr>
+								} else {
+									for _, u := range data.Users {
+										@adminUserRow(u)
+									}
+								}
+							</tbody>
+						</table>
+					</div>
+					if data.TotalPages > 1 {
+						<div class="flex items-center justify-between border-t border-nord-2 px-4 py-3">
+							<div class="text-sm text-nord-4">
+								Page { fmt.Sprintf("%d", data.Page) } of { fmt.Sprintf("%d", data.TotalPages) }
+							</div>
+							<div class="flex gap-2">
+								if data.Page > 1 {
+									<a
+										href={ templ.SafeURL(fmt.Sprintf("/admin/users?search=%s&page=%d", data.Search, data.Page-1)) }
+										class="px-3 py-1 bg-nord-2 hover:bg-nord-3 text-nord-5 rounded text-sm"
+									>
+										Previous
+									</a>
+								}
+								if data.Page < data.TotalPages {
+									<a
+										href={ templ.SafeURL(fmt.Sprintf("/admin/users?search=%s&page=%d", data.Search, data.Page+1)) }
+										class="px-3 py-1 bg-nord-2 hover:bg-nord-3 text-nord-5 rounded text-sm"
+									>
+										Next
+									</a>
+								}
+							</div>
+						</div>
+					}
+				}
+			</div>
+		</div>
+	}
+}
+
+templ adminUserRow(u AdminUserRow) {
+	<tr class="hover:bg-nord-1/50">
+		<td class="py-3 px-4">
+			<div>
+				<p class="text-sm font-medium text-nord-5">{ u.Email }</p>
+				if u.Name != "" {
+					<p class="text-xs text-nord-4">{ u.Name }</p>
+				}
+			</div>
+		</td>
+		<td class="py-3 px-4">
+			@adminRoleBadge(u.Role)
+		</td>
+		<td class="py-3 px-4">
+			@adminTierBadge(u.Tier)
+		</td>
+		<td class="py-3 px-4">
+			<span class="text-sm text-nord-4">
+				if u.FilesLimit == -1 {
+					Unlimited
+				} else {
+					{ fmt.Sprintf("%d", u.FilesLimit) }
+				}
+			</span>
+		</td>
+		<td class="py-3 px-4">
+			<span class="text-sm text-nord-4">{ formatBytesShort(u.StorageUsedBytes) } / { formatBytesShort(u.StorageLimitBytes) }</span>
+		</td>
+		<td class="py-3 px-4">
+			<span class="text-sm text-nord-4">
+				if u.TransformationsLimit == -1 {
+					{ fmt.Sprintf("%d", u.TransformationsCount) }
+				} else {
+					{ fmt.Sprintf("%d / %d", u.TransformationsCount, u.TransformationsLimit) }
+				}
+			</span>
+		</td>
+		<td class="py-3 px-4">
+			<span class="text-sm text-nord-4">{ u.CreatedAt }</span>
+		</td>
+		<td class="py-3 px-4">
+			<form
+				hx-post={ fmt.Sprintf("/admin/users/%s/tier", u.ID) }
+				hx-swap="outerHTML"
+				hx-target="this"
+				class="flex items-center gap-2"
+			>
+				<select
+					name="tier"
+					class="text-xs bg-nord-2 border-nord-3 text-nord-5 rounded focus:ring-nord-8 focus:border-nord-8 py-1 px-2"
+					onchange="this.form.requestSubmit()"
+				>
+					<option value="free" selected?={ u.Tier == "free" }>Free</option>
+					<option value="pro" selected?={ u.Tier == "pro" }>Pro</option>
+					<option value="enterprise" selected?={ u.Tier == "enterprise" }>Enterprise</option>
+				</select>
+			</form>
+		</td>
+	</tr>
+}
+
+templ adminRoleBadge(role db.UserRole) {
+	switch role {
+		case "admin":
+			<span class="px-2 py-1 bg-nord-11/20 text-nord-11 rounded text-xs">Admin</span>
+		default:
+			<span class="px-2 py-1 bg-nord-3/20 text-nord-4 rounded text-xs">User</span>
+	}
+}
+
+templ adminTierBadge(tier db.SubscriptionTier) {
+	switch tier {
+		case "pro":
+			<span class="px-2 py-1 bg-nord-8/20 text-nord-8 rounded text-xs">Pro</span>
+		case "enterprise":
+			<span class="px-2 py-1 bg-nord-15/20 text-nord-15 rounded text-xs">Enterprise</span>
+		default:
+			<span class="px-2 py-1 bg-nord-3/20 text-nord-4 rounded text-xs">Free</span>
+	}
+}
+
+templ adminNavTabs(active string) {
+	<div class="mb-6 border-b border-nord-2">
+		<nav class="-mb-px flex gap-4">
+			<a
+				href="/admin"
+				class={ "py-3 px-1 border-b-2 text-sm font-medium transition-colors",
+					templ.KV("border-nord-8 text-nord-8", active == "dashboard"),
+					templ.KV("border-transparent text-nord-4 hover:text-nord-5 hover:border-nord-3", active != "dashboard") }
+			>
+				Dashboard
+			</a>
+			<a
+				href="/admin/users"
+				class={ "py-3 px-1 border-b-2 text-sm font-medium transition-colors",
+					templ.KV("border-nord-8 text-nord-8", active == "users"),
+					templ.KV("border-transparent text-nord-4 hover:text-nord-5 hover:border-nord-3", active != "users") }
+			>
+				Users
+			</a>
+			<a
+				href="/admin/enterprise"
+				class={ "py-3 px-1 border-b-2 text-sm font-medium transition-colors",
+					templ.KV("border-nord-8 text-nord-8", active == "enterprise"),
+					templ.KV("border-transparent text-nord-4 hover:text-nord-5 hover:border-nord-3", active != "enterprise") }
+			>
+				Enterprise Inquiries
+			</a>
+			<a
+				href="/admin/jobs"
+				class={ "py-3 px-1 border-b-2 text-sm font-medium transition-colors",
+					templ.KV("border-nord-8 text-nord-8", active == "jobs"),
+					templ.KV("border-transparent text-nord-4 hover:text-nord-5 hover:border-nord-3", active != "jobs") }
+			>
+				Jobs
+			</a>
+		</nav>
+	</div>
+}

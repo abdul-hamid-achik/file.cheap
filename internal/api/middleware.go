@@ -20,8 +20,9 @@ import (
 type contextKey string
 
 const (
-	UserIDKey  contextKey = "user_id"
-	BillingKey contextKey = "billing"
+	UserIDKey       contextKey = "user_id"
+	BillingKey      contextKey = "billing"
+	PermissionsKey  contextKey = "permissions"
 )
 
 type BillingInfo struct {
@@ -87,6 +88,7 @@ func handleAPIKeyAuth(w http.ResponseWriter, r *http.Request, next http.Handler,
 	}
 
 	ctx := context.WithValue(r.Context(), UserIDKey, userID)
+	ctx = context.WithValue(ctx, PermissionsKey, row.Permissions)
 	next.ServeHTTP(w, r.WithContext(ctx))
 }
 
@@ -126,6 +128,43 @@ func AuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 func GetUserID(ctx context.Context) (uuid.UUID, bool) {
 	id, ok := ctx.Value(UserIDKey).(uuid.UUID)
 	return id, ok
+}
+
+// GetPermissions returns the permissions from context (for API tokens)
+func GetPermissions(ctx context.Context) []string {
+	perms, ok := ctx.Value(PermissionsKey).([]string)
+	if !ok {
+		return nil
+	}
+	return perms
+}
+
+// HasPermission checks if the request has the specified permission
+// Returns true if using JWT auth (full access) or if API token has the permission
+func HasPermission(ctx context.Context, perm string) bool {
+	perms := GetPermissions(ctx)
+	if perms == nil {
+		return true
+	}
+	for _, p := range perms {
+		if p == perm {
+			return true
+		}
+	}
+	return false
+}
+
+// RequirePermission returns middleware that checks for a specific permission
+func RequirePermission(perm string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !HasPermission(r.Context(), perm) {
+				writeJSONError(w, "forbidden", fmt.Sprintf("Missing required permission: %s", perm), http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func parseToken(tokenString, secret string) (*jwt.Token, error) {

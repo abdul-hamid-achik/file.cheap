@@ -21,7 +21,7 @@ type Config struct {
 	Secure  bool
 }
 
-func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oauthSvc *auth.OAuthService, emailSvc *email.Service, billingHandlers *BillingHandlers, analyticsHandlers *AnalyticsHandlers, adminHandlers *AdminHandlers) http.Handler {
+func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oauthSvc *auth.OAuthService, emailSvc *email.Service, billingHandlers *BillingHandlers, analyticsHandlers *AnalyticsHandlers, adminHandlers *AdminHandlers, enterpriseHandlers *EnterpriseHandlers) http.Handler {
 	mux := http.NewServeMux()
 	h := NewHandlers(cfg, sm, authSvc, oauthSvc, emailSvc)
 
@@ -97,6 +97,12 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 			mux.Handle("GET /dashboard/analytics/export", requireAuth(http.HandlerFunc(analyticsHandlers.ExportData)))
 		}
 
+		// Enterprise contact routes
+		if enterpriseHandlers != nil {
+			mux.Handle("GET /enterprise/contact", requireAuth(http.HandlerFunc(enterpriseHandlers.ContactModal)))
+			mux.Handle("POST /enterprise/contact", requireAuth(http.HandlerFunc(enterpriseHandlers.ContactPost)))
+		}
+
 		// Admin routes
 		if adminHandlers != nil {
 			requireAdmin := func(next http.Handler) http.Handler {
@@ -109,6 +115,10 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 			mux.Handle("GET /admin/jobs", requireAdmin(http.HandlerFunc(adminHandlers.Jobs)))
 			mux.Handle("POST /admin/jobs/{id}/retry", requireAdmin(http.HandlerFunc(adminHandlers.RetryJob)))
 			mux.Handle("GET /admin/dashboard/export", requireAdmin(http.HandlerFunc(adminHandlers.ExportDashboard)))
+			mux.Handle("GET /admin/users", requireAdmin(http.HandlerFunc(adminHandlers.Users)))
+			mux.Handle("POST /admin/users/{id}/tier", requireAdmin(http.HandlerFunc(adminHandlers.UpdateUserTier)))
+			mux.Handle("GET /admin/enterprise", requireAdmin(http.HandlerFunc(adminHandlers.EnterpriseInquiries)))
+			mux.Handle("POST /admin/enterprise/{id}/process", requireAdmin(http.HandlerFunc(adminHandlers.ProcessInquiry)))
 		}
 	} else {
 		redirectToLogin := func(w http.ResponseWriter, r *http.Request) {
@@ -158,6 +168,12 @@ func NewRouter(cfg *Config, sm *auth.SessionManager, authSvc *auth.Service, oaut
 		mux.HandleFunc("GET /admin/jobs", redirectToLogin)
 		mux.HandleFunc("POST /admin/jobs/{id}/retry", redirectToLogin)
 		mux.HandleFunc("GET /admin/dashboard/export", redirectToLogin)
+		mux.HandleFunc("GET /admin/users", redirectToLogin)
+		mux.HandleFunc("POST /admin/users/{id}/tier", redirectToLogin)
+		mux.HandleFunc("GET /admin/enterprise", redirectToLogin)
+		mux.HandleFunc("POST /admin/enterprise/{id}/process", redirectToLogin)
+		mux.HandleFunc("GET /enterprise/contact", redirectToLogin)
+		mux.HandleFunc("POST /enterprise/contact", redirectToLogin)
 	}
 
 	// Stripe webhook (no auth required - Stripe sends directly)

@@ -670,3 +670,68 @@ func (s *Service) GetJobsList(ctx context.Context, status string, page, pageSize
 		Status:     status,
 	}, nil
 }
+
+func (s *Service) ListUsersForAdmin(ctx context.Context, search string, limit, offset int32) ([]db.ListUsersForAdminRow, error) {
+	return s.queries.ListUsersForAdmin(ctx, db.ListUsersForAdminParams{
+		Column1: search,
+		Limit:   limit,
+		Offset:  offset,
+	})
+}
+
+func (s *Service) CountUsersForAdmin(ctx context.Context, search string) (int64, error) {
+	return s.queries.CountUsersForAdmin(ctx, search)
+}
+
+func (s *Service) UpdateUserTier(ctx context.Context, userID pgtype.UUID, tier db.SubscriptionTier) (*db.User, error) {
+	user, err := s.queries.UpdateUserTier(ctx, db.UpdateUserTierParams{
+		ID:               userID,
+		SubscriptionTier: tier,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("update user tier: %w", err)
+	}
+	return &user, nil
+}
+
+func (s *Service) UpdateUserToEnterprise(ctx context.Context, userID pgtype.UUID) (*db.User, error) {
+	user, err := s.queries.UpdateUserToEnterprise(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("update user to enterprise: %w", err)
+	}
+	return &user, nil
+}
+
+func (s *Service) ListEnterpriseInquiries(ctx context.Context, status string, limit, offset int32) ([]db.EnterpriseInquiry, error) {
+	if status == "" || status == "all" {
+		return s.queries.ListEnterpriseInquiries(ctx, db.ListEnterpriseInquiriesParams{
+			Limit:  limit,
+			Offset: offset,
+		})
+	}
+	return s.queries.ListEnterpriseInquiriesByStatus(ctx, db.ListEnterpriseInquiriesByStatusParams{
+		Status: status,
+		Limit:  limit,
+		Offset: offset,
+	})
+}
+
+func (s *Service) CountEnterpriseInquiries(ctx context.Context, status string) (int64, error) {
+	if status == "" || status == "all" {
+		return s.queries.CountEnterpriseInquiries(ctx)
+	}
+	return s.queries.CountEnterpriseInquiriesByStatus(ctx, status)
+}
+
+func (s *Service) UpdateEnterpriseInquiryStatus(ctx context.Context, inquiryID pgtype.UUID, status string, notes *string, processedBy pgtype.UUID) (*db.EnterpriseInquiry, error) {
+	inquiry, err := s.queries.UpdateEnterpriseInquiryStatus(ctx, db.UpdateEnterpriseInquiryStatusParams{
+		ID:          inquiryID,
+		Status:      status,
+		AdminNotes:  notes,
+		ProcessedBy: processedBy,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("update inquiry status: %w", err)
+	}
+	return &inquiry, nil
+}

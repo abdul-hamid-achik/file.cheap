@@ -1112,3 +1112,631 @@ On upload:
 - **PDFs**: `pdf_thumbnail` job enqueued
 - **Videos**: `video_thumbnail` job enqueued (extracts frame at 10%)
 - **Other**: No automatic processing
+
+## Job Management
+
+### List Jobs
+
+**GET** `/v1/jobs`
+
+Authentication: API key or JWT required
+
+List processing jobs for the authenticated user.
+
+**Query Parameters:**
+- `status` (string, optional): Filter by status (`pending`, `processing`, `completed`, `failed`)
+- `limit` (int, optional): Number of jobs to return (default: 20, max: 100)
+- `offset` (int, optional): Pagination offset (default: 0)
+
+**Response:** `200 OK`
+```json
+{
+  "jobs": [
+    {
+      "id": "j23e4567-e89b-12d3-a456-426614174000",
+      "file_id": "123e4567-e89b-12d3-a456-426614174000",
+      "job_type": "thumbnail",
+      "status": "completed",
+      "priority": 0,
+      "attempts": 1,
+      "error_message": null,
+      "created_at": "2026-01-06T12:00:00Z",
+      "started_at": "2026-01-06T12:00:01Z",
+      "completed_at": "2026-01-06T12:00:05Z"
+    }
+  ],
+  "total": 42,
+  "has_more": true
+}
+```
+
+### Retry Failed Job
+
+**POST** `/v1/jobs/{id}/retry`
+
+Authentication: API key or JWT required
+
+Retry a failed job.
+
+**Path Parameters:**
+- `id` (uuid): Job ID
+
+**Response:** `200 OK`
+```json
+{
+  "message": "Job queued for retry",
+  "job_id": "j23e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+**Error Responses:**
+- `400 Bad Request` - Job not in failed status
+- `404 Not Found` - Job not found or not owned by user
+
+### Cancel Job
+
+**POST** `/v1/jobs/{id}/cancel`
+
+Authentication: API key or JWT required
+
+Cancel a pending or running job.
+
+**Path Parameters:**
+- `id` (uuid): Job ID
+
+**Response:** `200 OK`
+```json
+{
+  "message": "Job cancelled",
+  "job_id": "j23e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+**Error Responses:**
+- `400 Bad Request` - Job already completed or failed
+- `404 Not Found` - Job not found or not owned by user
+
+### Bulk Retry Failed Jobs
+
+**POST** `/v1/jobs/retry-all`
+
+Authentication: API key or JWT required
+
+Retry all failed jobs for the authenticated user.
+
+**Response:** `200 OK`
+```json
+{
+  "message": "Jobs queued for retry",
+  "count": 5
+}
+```
+
+## Folder Management
+
+### Create Folder
+
+**POST** `/v1/folders`
+
+Authentication: API key or JWT required
+
+**Request Body:**
+```json
+{
+  "name": "My Folder",
+  "parent_id": null
+}
+```
+
+**Request Parameters:**
+- `name` (string, required): Folder name
+- `parent_id` (uuid, optional): Parent folder ID (null for root)
+
+**Response:** `201 Created`
+```json
+{
+  "id": "f23e4567-e89b-12d3-a456-426614174000",
+  "name": "My Folder",
+  "parent_id": null,
+  "created_at": "2026-01-06T12:00:00Z"
+}
+```
+
+### List Folders
+
+**GET** `/v1/folders`
+
+Authentication: API key or JWT required
+
+List root-level folders.
+
+**Response:** `200 OK`
+```json
+{
+  "folders": [
+    {
+      "id": "f23e4567-e89b-12d3-a456-426614174000",
+      "name": "My Folder",
+      "parent_id": null,
+      "file_count": 10,
+      "created_at": "2026-01-06T12:00:00Z"
+    }
+  ]
+}
+```
+
+### Get Folder Contents
+
+**GET** `/v1/folders/{id}`
+
+Authentication: API key or JWT required
+
+Get folder details and contents.
+
+**Path Parameters:**
+- `id` (uuid): Folder ID
+
+**Response:** `200 OK`
+```json
+{
+  "id": "f23e4567-e89b-12d3-a456-426614174000",
+  "name": "My Folder",
+  "parent_id": null,
+  "created_at": "2026-01-06T12:00:00Z",
+  "subfolders": [],
+  "files": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "filename": "example.jpg",
+      "content_type": "image/jpeg",
+      "size_bytes": 1024000,
+      "created_at": "2026-01-06T12:00:00Z"
+    }
+  ]
+}
+```
+
+### Update Folder
+
+**PUT** `/v1/folders/{id}`
+
+Authentication: API key or JWT required
+
+**Path Parameters:**
+- `id` (uuid): Folder ID
+
+**Request Body:**
+```json
+{
+  "name": "Renamed Folder"
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "id": "f23e4567-e89b-12d3-a456-426614174000",
+  "name": "Renamed Folder",
+  "parent_id": null,
+  "created_at": "2026-01-06T12:00:00Z"
+}
+```
+
+### Delete Folder
+
+**DELETE** `/v1/folders/{id}`
+
+Authentication: API key or JWT required
+
+**Path Parameters:**
+- `id` (uuid): Folder ID
+
+**Query Parameters:**
+- `recursive` (boolean, optional): Delete folder and all contents (default: false)
+
+**Response:** `204 No Content`
+
+**Error Responses:**
+- `400 Bad Request` - Folder not empty and recursive=false
+- `404 Not Found` - Folder not found
+
+### Move File to Folder
+
+**POST** `/v1/files/{id}/move`
+
+Authentication: API key or JWT required
+
+**Path Parameters:**
+- `id` (uuid): File ID
+
+**Request Body:**
+```json
+{
+  "folder_id": "f23e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+**Request Parameters:**
+- `folder_id` (uuid, optional): Target folder ID (null to move to root)
+
+**Response:** `200 OK`
+```json
+{
+  "message": "File moved successfully"
+}
+```
+
+## Webhooks
+
+Webhooks allow you to receive real-time notifications when events occur.
+
+### Create Webhook
+
+**POST** `/v1/webhooks`
+
+Authentication: API key or JWT required
+
+**Request Body:**
+```json
+{
+  "url": "https://example.com/webhook",
+  "events": ["file.uploaded", "processing.completed", "processing.failed"],
+  "secret": "your_webhook_secret"
+}
+```
+
+**Request Parameters:**
+- `url` (string, required): Webhook endpoint URL
+- `events` (array[string], required): Events to subscribe to
+- `secret` (string, optional): Secret for signing webhook payloads
+
+**Response:** `201 Created`
+```json
+{
+  "id": "w23e4567-e89b-12d3-a456-426614174000",
+  "url": "https://example.com/webhook",
+  "events": ["file.uploaded", "processing.completed", "processing.failed"],
+  "enabled": true,
+  "created_at": "2026-01-06T12:00:00Z"
+}
+```
+
+### List Webhooks
+
+**GET** `/v1/webhooks`
+
+Authentication: API key or JWT required
+
+**Response:** `200 OK`
+```json
+{
+  "webhooks": [
+    {
+      "id": "w23e4567-e89b-12d3-a456-426614174000",
+      "url": "https://example.com/webhook",
+      "events": ["file.uploaded", "processing.completed", "processing.failed"],
+      "enabled": true,
+      "created_at": "2026-01-06T12:00:00Z",
+      "last_triggered_at": "2026-01-06T14:30:00Z"
+    }
+  ]
+}
+```
+
+### Get Webhook
+
+**GET** `/v1/webhooks/{id}`
+
+Authentication: API key or JWT required
+
+**Path Parameters:**
+- `id` (uuid): Webhook ID
+
+**Response:** `200 OK`
+```json
+{
+  "id": "w23e4567-e89b-12d3-a456-426614174000",
+  "url": "https://example.com/webhook",
+  "events": ["file.uploaded", "processing.completed", "processing.failed"],
+  "enabled": true,
+  "created_at": "2026-01-06T12:00:00Z",
+  "last_triggered_at": "2026-01-06T14:30:00Z"
+}
+```
+
+### Update Webhook
+
+**PUT** `/v1/webhooks/{id}`
+
+Authentication: API key or JWT required
+
+**Path Parameters:**
+- `id` (uuid): Webhook ID
+
+**Request Body:**
+```json
+{
+  "url": "https://example.com/new-webhook",
+  "events": ["file.uploaded"],
+  "enabled": false
+}
+```
+
+**Response:** `200 OK`
+
+### Delete Webhook
+
+**DELETE** `/v1/webhooks/{id}`
+
+Authentication: API key or JWT required
+
+**Path Parameters:**
+- `id` (uuid): Webhook ID
+
+**Response:** `204 No Content`
+
+### List Webhook Deliveries
+
+**GET** `/v1/webhooks/{id}/deliveries`
+
+Authentication: API key or JWT required
+
+Get delivery history for a webhook.
+
+**Path Parameters:**
+- `id` (uuid): Webhook ID
+
+**Query Parameters:**
+- `limit` (int, optional): Number of deliveries to return (default: 20)
+- `offset` (int, optional): Pagination offset
+
+**Response:** `200 OK`
+```json
+{
+  "deliveries": [
+    {
+      "id": "d23e4567-e89b-12d3-a456-426614174000",
+      "event": "file.uploaded",
+      "status_code": 200,
+      "success": true,
+      "delivered_at": "2026-01-06T14:30:00Z",
+      "response_time_ms": 150
+    }
+  ]
+}
+```
+
+### Test Webhook
+
+**POST** `/v1/webhooks/{id}/test`
+
+Authentication: API key or JWT required
+
+Send a test event to the webhook.
+
+**Path Parameters:**
+- `id` (uuid): Webhook ID
+
+**Response:** `200 OK`
+```json
+{
+  "success": true,
+  "status_code": 200,
+  "response_time_ms": 120
+}
+```
+
+### Webhook Event Types
+
+| Event | Description |
+|-------|-------------|
+| `file.uploaded` | File has been uploaded |
+| `processing.started` | Processing job has started |
+| `processing.completed` | Processing job completed successfully |
+| `processing.failed` | Processing job failed |
+
+### Webhook Payload Example
+
+```json
+{
+  "event": "processing.completed",
+  "timestamp": "2026-01-06T14:30:00Z",
+  "data": {
+    "file_id": "123e4567-e89b-12d3-a456-426614174000",
+    "filename": "example.jpg",
+    "job_type": "thumbnail",
+    "variant_id": "223e4567-e89b-12d3-a456-426614174000"
+  }
+}
+```
+
+### Webhook Security
+
+When a webhook secret is configured, payloads are signed with HMAC-SHA256:
+
+```
+X-Webhook-Signature: sha256=abc123...
+```
+
+Verify the signature by computing HMAC-SHA256 of the raw payload body with your secret.
+
+## User Profile
+
+### Get Current User
+
+**GET** `/v1/me`
+
+Authentication: API key or JWT required
+
+**Response:** `200 OK`
+```json
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "email": "user@example.com",
+  "name": "John Doe",
+  "avatar_url": "https://...",
+  "subscription_tier": "pro",
+  "subscription_status": "active",
+  "created_at": "2026-01-01T00:00:00Z"
+}
+```
+
+### Get Usage Statistics
+
+**GET** `/v1/me/usage`
+
+Authentication: API key or JWT required
+
+**Response:** `200 OK`
+```json
+{
+  "files": {
+    "used": 150,
+    "limit": 10000
+  },
+  "storage": {
+    "used_bytes": 1073741824,
+    "limit_bytes": 107374182400
+  },
+  "transformations": {
+    "used": 500,
+    "limit": 100000,
+    "resets_at": "2026-02-01T00:00:00Z"
+  }
+}
+```
+
+## Real-time Updates
+
+### File Status Polling
+
+**GET** `/v1/files/{id}/status`
+
+Authentication: API key or JWT required
+
+Lightweight polling endpoint for file processing status.
+
+**Path Parameters:**
+- `id` (uuid): File ID
+
+**Response:** `200 OK`
+```json
+{
+  "status": "processing",
+  "progress": 0.75,
+  "variants_completed": 3,
+  "variants_total": 4
+}
+```
+
+### File Events (SSE)
+
+**GET** `/v1/files/{id}/events`
+
+Authentication: API key or JWT required
+
+Server-Sent Events stream for real-time file updates.
+
+**Path Parameters:**
+- `id` (uuid): File ID
+
+**Event Types:**
+- `status` - File status changed
+- `variant` - Variant processing completed
+- `error` - Processing error occurred
+- `complete` - All processing completed
+
+**Example Events:**
+```
+event: status
+data: {"status": "processing", "progress": 0.5}
+
+event: variant
+data: {"variant_type": "thumbnail", "variant_id": "223e4567-..."}
+
+event: complete
+data: {"status": "completed", "variants_count": 4}
+```
+
+### Upload Progress (SSE)
+
+**GET** `/v1/upload/progress`
+
+Authentication: API key or JWT required
+
+Server-Sent Events stream for upload progress tracking.
+
+**Event Types:**
+- `progress` - Upload progress update
+- `complete` - Upload completed
+- `error` - Upload error
+
+**Example Events:**
+```
+event: progress
+data: {"file_id": "123e4567-...", "progress": 0.75, "bytes_uploaded": 75000000}
+
+event: complete
+data: {"file_id": "123e4567-...", "status": "pending"}
+```
+
+### JavaScript SSE Example
+
+```javascript
+const eventSource = new EventSource('/v1/files/123e4567-.../events', {
+  headers: {
+    'Authorization': 'Bearer fp_your_api_key'
+  }
+});
+
+eventSource.addEventListener('status', (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Status:', data.status, 'Progress:', data.progress);
+});
+
+eventSource.addEventListener('variant', (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Variant ready:', data.variant_type);
+});
+
+eventSource.addEventListener('complete', (event) => {
+  console.log('Processing complete');
+  eventSource.close();
+});
+
+eventSource.addEventListener('error', (event) => {
+  console.error('SSE error:', event);
+  eventSource.close();
+});
+```
+
+## API Token Permissions
+
+API tokens can be created with specific permissions to limit access.
+
+### Available Permissions
+
+| Permission | Description |
+|------------|-------------|
+| `files:read` | View and download files |
+| `files:write` | Upload files |
+| `files:delete` | Delete files |
+| `transform` | Create transformations |
+| `shares:read` | View share links |
+| `shares:write` | Create and delete share links |
+| `webhooks:read` | View webhooks |
+| `webhooks:write` | Create, update, and delete webhooks |
+
+### Permission Presets
+
+| Preset | Permissions |
+|--------|-------------|
+| Read-only | `files:read`, `shares:read` |
+| Standard | `files:read`, `files:write`, `transform`, `shares:read`, `shares:write` |
+| Full | All permissions |
+
+### Token Expiration
+
+API tokens can be created with an expiration date. Expired tokens will be rejected with a `401 Unauthorized` response.
+
+Tokens without expiration are valid indefinitely (not recommended for production use).

@@ -224,7 +224,10 @@ func run() error {
 	})
 	log.Info("email service configured")
 
-	webRouter := web.NewRouter(webCfg, sessionManager, authService, oauthService, emailService, billingHandlers, analyticsHandlers, adminHandlers)
+	enterpriseHandlers := web.NewEnterpriseHandlers(queries, emailService)
+	log.Info("enterprise handlers configured")
+
+	webRouter := web.NewRouter(webCfg, sessionManager, authService, oauthService, emailService, billingHandlers, analyticsHandlers, adminHandlers, enterpriseHandlers)
 	mux.Handle("/", webRouter)
 
 	handler := api.SecurityHeaders(metrics.HTTPMetricsMiddleware(web.Recovery(web.RequestID(web.RequestLogger(mux)))))

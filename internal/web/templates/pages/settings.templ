@@ -27,11 +27,14 @@ type SettingsPageData struct {
 
 // APIToken represents an API token
 type APIToken struct {
-	ID        string
-	Name      string
-	LastUsed  string
-	CreatedAt string
-	Prefix    string
+	ID          string
+	Name        string
+	LastUsed    string
+	CreatedAt   string
+	Prefix      string
+	ExpiresAt   string
+	IsExpired   bool
+	Permissions []string
 }
 
 func getTabInitScript(activeTab string) string {
@@ -348,14 +351,29 @@ templ Settings(user *auth.SessionUser, data SettingsPageData) {
 								} else {
 									<div class="space-y-4">
 										for _, token := range data.APITokens {
-											<div class="flex items-center justify-between p-4 bg-nord-2 rounded-lg">
+											<div class={ "flex items-start justify-between p-4 bg-nord-2 rounded-lg", templ.KV("border border-nord-11/50", token.IsExpired) }>
 												<div class="min-w-0 flex-1">
-													<p class="text-nord-5 font-medium truncate">{ token.Name }</p>
+													<div class="flex items-center gap-2 flex-wrap">
+														<p class="text-nord-5 font-medium truncate">{ token.Name }</p>
+														if token.IsExpired {
+															<span class="px-2 py-0.5 bg-nord-11/20 text-nord-11 rounded text-xs font-medium">Expired</span>
+														}
+													</div>
 													<div class="flex flex-wrap items-center gap-2 sm:gap-4 text-nord-4 text-sm mt-1">
 														<span class="font-mono">{ token.Prefix }...</span>
 														<span class="hidden sm:inline">Last used: { token.LastUsed }</span>
 														<span>Created: { token.CreatedAt }</span>
+														if token.ExpiresAt != "" && !token.IsExpired {
+															<span>Expires: { token.ExpiresAt }</span>
+														}
 													</div>
+													if len(token.Permissions) > 0 {
+														<div class="flex flex-wrap gap-1 mt-2">
+															for _, perm := range token.Permissions {
+																<span class="px-2 py-0.5 bg-nord-3 text-nord-4 rounded text-xs">{ perm }</span>
+															}
+														</div>
+													}
 												</div>
 												<button
 													type="button"
@@ -395,10 +413,10 @@ templ Settings(user *auth.SessionUser, data SettingsPageData) {
 				@components.Modal(components.ModalProps{
 					ID:          "new-token-modal",
 					Title:       "Create API Token",
-					Description: "Give your token a name to help you remember what it's used for.",
+					Description: "Configure your token's name, permissions, and expiration.",
 					Size:        "md",
 				}) {
-					<form action="/settings/tokens" method="POST" class="space-y-4">
+					<form action="/settings/tokens" method="POST" class="space-y-4" x-data="{ permPreset: 'full', showCustom: false }">
 						@components.FormField("Token Name", components.InputProps{
 							Type:        "text",
 							Name:        "name",
@@ -406,6 +424,73 @@ templ Settings(user *auth.SessionUser, data SettingsPageData) {
 							Placeholder: "e.g., Production Server",
 							Required:    true,
 						})
+						<div class="space-y-1">
+							<label class="block text-sm font-medium text-nord-4">
+								Expiration
+							</label>
+							<select
+								name="expires_in"
+								class="w-full px-4 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 focus:outline-none focus:ring-2 focus:ring-nord-8"
+							>
+								<option value="30">30 days</option>
+								<option value="90">90 days</option>
+								<option value="365">1 year</option>
+								<option value="">Never (not recommended)</option>
+							</select>
+						</div>
+						<div class="space-y-1">
+							<label class="block text-sm font-medium text-nord-4">
+								Permissions
+							</label>
+							<select
+								name="permission_preset"
+								x-model="permPreset"
+								@change="showCustom = (permPreset === 'custom')"
+								class="w-full px-4 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 focus:outline-none focus:ring-2 focus:ring-nord-8"
+							>
+								<option value="full">Full Access (all permissions)</option>
+								<option value="standard">Standard (read, write, transform, shares)</option>
+								<option value="read_only">Read Only (files:read, shares:read)</option>
+								<option value="custom">Custom (select below)</option>
+							</select>
+						</div>
+						<div x-show="showCustom" x-cloak class="space-y-2 p-3 bg-nord-2 rounded-lg">
+							<p class="text-sm text-nord-4 mb-2">Select permissions:</p>
+							<div class="grid grid-cols-2 gap-2">
+								<label class="flex items-center gap-2 text-sm">
+									<input type="checkbox" name="permissions" value="files:read" class="rounded border-nord-3 bg-nord-3 text-nord-8"/>
+									<span class="text-nord-5">files:read</span>
+								</label>
+								<label class="flex items-center gap-2 text-sm">
+									<input type="checkbox" name="permissions" value="files:write" class="rounded border-nord-3 bg-nord-3 text-nord-8"/>
+									<span class="text-nord-5">files:write</span>
+								</label>
+								<label class="flex items-center gap-2 text-sm">
+									<input type="checkbox" name="permissions" value="files:delete" class="rounded border-nord-3 bg-nord-3 text-nord-8"/>
+									<span class="text-nord-5">files:delete</span>
+								</label>
+								<label class="flex items-center gap-2 text-sm">
+									<input type="checkbox" name="permissions" value="transform" class="rounded border-nord-3 bg-nord-3 text-nord-8"/>
+									<span class="text-nord-5">transform</span>
+								</label>
+								<label class="flex items-center gap-2 text-sm">
+									<input type="checkbox" name="permissions" value="shares:read" class="rounded border-nord-3 bg-nord-3 text-nord-8"/>
+									<span class="text-nord-5">shares:read</span>
+								</label>
+								<label class="flex items-center gap-2 text-sm">
+									<input type="checkbox" name="permissions" value="shares:write" class="rounded border-nord-3 bg-nord-3 text-nord-8"/>
+									<span class="text-nord-5">shares:write</span>
+								</label>
+								<label class="flex items-center gap-2 text-sm">
+									<input type="checkbox" name="permissions" value="webhooks:read" class="rounded border-nord-3 bg-nord-3 text-nord-8"/>
+									<span class="text-nord-5">webhooks:read</span>
+								</label>
+								<label class="flex items-center gap-2 text-sm">
+									<input type="checkbox" name="permissions" value="webhooks:write" class="rounded border-nord-3 bg-nord-3 text-nord-8"/>
+									<span class="text-nord-5">webhooks:write</span>
+								</label>
+							</div>
+						</div>
 						@components.ModalFooter() {
 							@components.ModalCancelButton("new-token-modal")
 							@components.Button(components.ButtonProps{

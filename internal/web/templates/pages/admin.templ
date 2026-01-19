@@ -15,6 +15,7 @@ templ AdminDashboard(user *auth.SessionUser, data *analytics.AdminDashboard) {
 	}, user) {
 		<div class="py-8">
 			<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+				@adminNavTabs("dashboard")
 				<div class="mb-8 flex items-center justify-between">
 					<div>
 						<h1 class="text-2xl font-bold text-nord-5">Admin Dashboard</h1>
@@ -460,14 +461,12 @@ templ AdminJobs(user *auth.SessionUser, data *analytics.JobsListPage) {
 	}, user) {
 		<div class="py-8">
 			<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+				@adminNavTabs("jobs")
 				<div class="mb-8 flex items-center justify-between">
 					<div>
 						<h1 class="text-2xl font-bold text-nord-5">Processing Jobs</h1>
 						<p class="text-nord-4 mt-1">{ fmt.Sprintf("%d total jobs", data.Total) }</p>
 					</div>
-					<a href="/admin" class="text-nord-8 hover:text-nord-9 text-sm">
-						Back to Dashboard
-					</a>
 				</div>
 				<div class="mb-6 flex gap-2">
 					@jobStatusFilter("all", "All", data.Status)

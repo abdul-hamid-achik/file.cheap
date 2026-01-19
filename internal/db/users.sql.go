@@ -68,6 +68,20 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const countUsersForAdmin = `-- name: CountUsersForAdmin :one
+SELECT COUNT(*)
+FROM users
+WHERE deleted_at IS NULL
+    AND ($1::text = '' OR email ILIKE '%' || $1 || '%' OR name ILIKE '%' || $1 || '%')
+`
+
+func (q *Queries) CountUsersForAdmin(ctx context.Context, dollar_1 string) (int64, error) {
+	row := q.db.QueryRow(ctx, countUsersForAdmin, dollar_1)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, name, avatar_url, role)
 VALUES ($1, $2, $3, $4, $5)
@@ -463,6 +477,76 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 	return items, nil
 }
 
+const listUsersForAdmin = `-- name: ListUsersForAdmin :many
+SELECT
+    id, email, name, avatar_url, role,
+    subscription_tier, subscription_status,
+    files_limit, storage_used_bytes, storage_limit_bytes,
+    transformations_count, transformations_limit,
+    created_at
+FROM users
+WHERE deleted_at IS NULL
+    AND ($1::text = '' OR email ILIKE '%' || $1 || '%' OR name ILIKE '%' || $1 || '%')
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3
+`
+
+type ListUsersForAdminParams struct {
+	Column1 string `json:"column_1"`
+	Limit   int32  `json:"limit"`
+	Offset  int32  `json:"offset"`
+}
+
+type ListUsersForAdminRow struct {
+	ID                   pgtype.UUID        `json:"id"`
+	Email                string             `json:"email"`
+	Name                 string             `json:"name"`
+	AvatarUrl            *string            `json:"avatar_url"`
+	Role                 UserRole           `json:"role"`
+	SubscriptionTier     SubscriptionTier   `json:"subscription_tier"`
+	SubscriptionStatus   SubscriptionStatus `json:"subscription_status"`
+	FilesLimit           int32              `json:"files_limit"`
+	StorageUsedBytes     int64              `json:"storage_used_bytes"`
+	StorageLimitBytes    int64              `json:"storage_limit_bytes"`
+	TransformationsCount int32              `json:"transformations_count"`
+	TransformationsLimit int32              `json:"transformations_limit"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) ListUsersForAdmin(ctx context.Context, arg ListUsersForAdminParams) ([]ListUsersForAdminRow, error) {
+	rows, err := q.db.Query(ctx, listUsersForAdmin, arg.Column1, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUsersForAdminRow
+	for rows.Next() {
+		var i ListUsersForAdminRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.Name,
+			&i.AvatarUrl,
+			&i.Role,
+			&i.SubscriptionTier,
+			&i.SubscriptionStatus,
+			&i.FilesLimit,
+			&i.StorageUsedBytes,
+			&i.StorageLimitBytes,
+			&i.TransformationsCount,
+			&i.TransformationsLimit,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const startUserTrial = `-- name: StartUserTrial :one
 UPDATE users
 SET 
@@ -784,6 +868,124 @@ type UpdateUserSubscriptionTierParams struct {
 
 func (q *Queries) UpdateUserSubscriptionTier(ctx context.Context, arg UpdateUserSubscriptionTierParams) (User, error) {
 	row := q.db.QueryRow(ctx, updateUserSubscriptionTier, arg.ID, arg.SubscriptionTier)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Name,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.SubscriptionTier,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionPeriodEnd,
+		&i.TrialEndsAt,
+		&i.FilesLimit,
+		&i.MaxFileSize,
+		&i.StorageLimitBytes,
+		&i.StorageUsedBytes,
+		&i.TransformationsCount,
+		&i.TransformationsLimit,
+		&i.TransformationsResetAt,
+		&i.EmailVerifiedAt,
+		&i.OnboardingCompletedAt,
+		&i.OnboardingSteps,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateUserTier = `-- name: UpdateUserTier :one
+UPDATE users
+SET
+    subscription_tier = $2,
+    subscription_status = CASE
+        WHEN $2 = 'free' THEN 'none'
+        ELSE 'active'
+    END,
+    files_limit = CASE
+        WHEN $2 = 'free' THEN 100
+        WHEN $2 = 'pro' THEN 2000
+        WHEN $2 = 'enterprise' THEN -1
+    END,
+    max_file_size = CASE
+        WHEN $2 = 'free' THEN 10485760
+        WHEN $2 = 'pro' THEN 104857600
+        WHEN $2 = 'enterprise' THEN 10737418240
+    END,
+    storage_limit_bytes = CASE
+        WHEN $2 = 'free' THEN 1073741824
+        WHEN $2 = 'pro' THEN 107374182400
+        WHEN $2 = 'enterprise' THEN 1099511627776
+    END,
+    transformations_limit = CASE
+        WHEN $2 = 'free' THEN 100
+        WHEN $2 = 'pro' THEN 10000
+        WHEN $2 = 'enterprise' THEN -1
+    END,
+    updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, created_at, updated_at, deleted_at
+`
+
+type UpdateUserTierParams struct {
+	ID               pgtype.UUID      `json:"id"`
+	SubscriptionTier SubscriptionTier `json:"subscription_tier"`
+}
+
+func (q *Queries) UpdateUserTier(ctx context.Context, arg UpdateUserTierParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserTier, arg.ID, arg.SubscriptionTier)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Name,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.SubscriptionTier,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionPeriodEnd,
+		&i.TrialEndsAt,
+		&i.FilesLimit,
+		&i.MaxFileSize,
+		&i.StorageLimitBytes,
+		&i.StorageUsedBytes,
+		&i.TransformationsCount,
+		&i.TransformationsLimit,
+		&i.TransformationsResetAt,
+		&i.EmailVerifiedAt,
+		&i.OnboardingCompletedAt,
+		&i.OnboardingSteps,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateUserToEnterprise = `-- name: UpdateUserToEnterprise :one
+UPDATE users
+SET
+    subscription_tier = 'enterprise',
+    subscription_status = 'active',
+    files_limit = -1,
+    max_file_size = 10737418240,
+    storage_limit_bytes = 1099511627776,
+    transformations_limit = -1,
+    updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, created_at, updated_at, deleted_at
+`
+
+func (q *Queries) UpdateUserToEnterprise(ctx context.Context, id pgtype.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserToEnterprise, id)
 	var i User
 	err := row.Scan(
 		&i.ID,

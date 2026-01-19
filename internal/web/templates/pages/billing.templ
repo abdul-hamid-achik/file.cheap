@@ -98,6 +98,7 @@ templ Billing(user *auth.SessionUser, data BillingPageData) {
 						}
 					</div>
 				}
+				<div id="enterprise-modal"></div>
 			</div>
 		</div>
 	}
@@ -232,7 +233,7 @@ templ usageCard(data BillingPageData) {
 }
 
 templ pricingSection(data BillingPageData) {
-	<div class="grid gap-6 lg:grid-cols-2">
+	<div class="grid gap-6 lg:grid-cols-3">
 		@components.Card("border-2 border-nord-3") {
 			@components.CardHeader() {
 				@components.CardTitle("Free")
@@ -381,6 +382,212 @@ templ pricingSection(data BillingPageData) {
 				</div>
 			}
 		}
+		@enterprisePlanCard()
+	</div>
+}
+
+templ enterprisePlanCard() {
+	@components.Card("border-2 border-nord-15") {
+		@components.CardHeader() {
+			<div class="flex items-center justify-between">
+				<div>
+					@components.CardTitle("Enterprise")
+					@components.CardDescription("For organizations")
+				</div>
+				<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-nord-15/20 text-nord-15">
+					Custom
+				</span>
+			</div>
+		}
+		@components.CardBody() {
+			<div class="mb-6">
+				<span class="text-3xl font-bold text-nord-5">Custom</span>
+				<span class="text-nord-4">/month</span>
+			</div>
+			<ul class="space-y-3 text-sm mb-6">
+				<li class="flex items-center gap-2 text-nord-4">
+					<svg class="w-4 h-4 text-nord-15" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+					</svg>
+					<strong class="text-nord-5">Unlimited files</strong>
+				</li>
+				<li class="flex items-center gap-2 text-nord-4">
+					<svg class="w-4 h-4 text-nord-15" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+					</svg>
+					<strong class="text-nord-5">10 GB</strong> max file size
+				</li>
+				<li class="flex items-center gap-2 text-nord-4">
+					<svg class="w-4 h-4 text-nord-15" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+					</svg>
+					<strong class="text-nord-5">Unlimited transformations</strong>
+				</li>
+				<li class="flex items-center gap-2 text-nord-4">
+					<svg class="w-4 h-4 text-nord-15" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+					</svg>
+					1 TB storage
+				</li>
+				<li class="flex items-center gap-2 text-nord-4">
+					<svg class="w-4 h-4 text-nord-15" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+					</svg>
+					Priority support
+				</li>
+				<li class="flex items-center gap-2 text-nord-4">
+					<svg class="w-4 h-4 text-nord-15" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+					</svg>
+					Custom integrations
+				</li>
+				<li class="flex items-center gap-2 text-nord-4">
+					<svg class="w-4 h-4 text-nord-15" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+					</svg>
+					SLA guarantee
+				</li>
+				<li class="flex items-center gap-2 text-nord-4">
+					<svg class="w-4 h-4 text-nord-15" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+					</svg>
+					Dedicated account manager
+				</li>
+			</ul>
+			<div class="pt-4 border-t border-nord-2">
+				<button
+					type="button"
+					class="w-full px-4 py-2 bg-nord-15 hover:bg-nord-15/80 text-nord-0 rounded-lg text-sm font-medium transition-colors"
+					hx-get="/enterprise/contact"
+					hx-target="#enterprise-modal"
+					hx-swap="innerHTML"
+				>
+					Contact Sales
+				</button>
+			</div>
+		}
+	}
+}
+
+templ EnterpriseContactModal(user *auth.SessionUser) {
+	<div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-nord-0/80" id="enterprise-modal-backdrop">
+		<div class="bg-nord-1 rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+			<div class="p-6 border-b border-nord-2">
+				<div class="flex items-center justify-between">
+					<h2 class="text-xl font-semibold text-nord-5">Contact Sales</h2>
+					<button
+						type="button"
+						class="text-nord-4 hover:text-nord-5"
+						onclick="document.getElementById('enterprise-modal').innerHTML = ''"
+					>
+						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+						</svg>
+					</button>
+				</div>
+				<p class="text-nord-4 text-sm mt-1">Tell us about your organization and we'll get back to you within 1-2 business days.</p>
+			</div>
+			<form hx-post="/enterprise/contact" hx-swap="outerHTML" class="p-6 space-y-4">
+				<div id="enterprise-modal-error"></div>
+				<div class="grid grid-cols-2 gap-4">
+					<div>
+						<label class="block text-sm font-medium text-nord-4 mb-1">Company Name *</label>
+						<input
+							type="text"
+							name="company_name"
+							required
+							class="w-full px-3 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 placeholder-nord-4 focus:ring-2 focus:ring-nord-8 focus:border-nord-8"
+						/>
+					</div>
+					<div>
+						<label class="block text-sm font-medium text-nord-4 mb-1">Contact Name *</label>
+						<input
+							type="text"
+							name="contact_name"
+							required
+							value={ user.Name }
+							class="w-full px-3 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 placeholder-nord-4 focus:ring-2 focus:ring-nord-8 focus:border-nord-8"
+						/>
+					</div>
+				</div>
+				<div class="grid grid-cols-2 gap-4">
+					<div>
+						<label class="block text-sm font-medium text-nord-4 mb-1">Email *</label>
+						<input
+							type="email"
+							name="email"
+							required
+							value={ user.Email }
+							class="w-full px-3 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 placeholder-nord-4 focus:ring-2 focus:ring-nord-8 focus:border-nord-8"
+						/>
+					</div>
+					<div>
+						<label class="block text-sm font-medium text-nord-4 mb-1">Phone</label>
+						<input
+							type="tel"
+							name="phone"
+							class="w-full px-3 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 placeholder-nord-4 focus:ring-2 focus:ring-nord-8 focus:border-nord-8"
+						/>
+					</div>
+				</div>
+				<div class="grid grid-cols-2 gap-4">
+					<div>
+						<label class="block text-sm font-medium text-nord-4 mb-1">Company Size *</label>
+						<select
+							name="company_size"
+							required
+							class="w-full px-3 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 focus:ring-2 focus:ring-nord-8 focus:border-nord-8"
+						>
+							<option value="">Select size</option>
+							<option value="1-10">1-10 employees</option>
+							<option value="11-50">11-50 employees</option>
+							<option value="51-200">51-200 employees</option>
+							<option value="201-500">201-500 employees</option>
+							<option value="500+">500+ employees</option>
+						</select>
+					</div>
+					<div>
+						<label class="block text-sm font-medium text-nord-4 mb-1">Estimated Usage *</label>
+						<select
+							name="estimated_usage"
+							required
+							class="w-full px-3 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 focus:ring-2 focus:ring-nord-8 focus:border-nord-8"
+						>
+							<option value="">Select usage</option>
+							<option value="<1TB">Less than 1 TB</option>
+							<option value="1-5TB">1-5 TB</option>
+							<option value="5-10TB">5-10 TB</option>
+							<option value="10TB+">10 TB+</option>
+						</select>
+					</div>
+				</div>
+				<div>
+					<label class="block text-sm font-medium text-nord-4 mb-1">Message *</label>
+					<textarea
+						name="message"
+						required
+						rows="4"
+						class="w-full px-3 py-2 bg-nord-2 border border-nord-3 rounded-lg text-nord-5 placeholder-nord-4 focus:ring-2 focus:ring-nord-8 focus:border-nord-8"
+						placeholder="Tell us about your use case and requirements..."
+					></textarea>
+				</div>
+				<div class="flex justify-end gap-3 pt-4">
+					<button
+						type="button"
+						class="px-4 py-2 text-nord-4 hover:text-nord-5"
+						onclick="document.getElementById('enterprise-modal').innerHTML = ''"
+					>
+						Cancel
+					</button>
+					<button
+						type="submit"
+						class="px-4 py-2 bg-nord-15 hover:bg-nord-15/80 text-nord-0 rounded-lg font-medium transition-colors"
+					>
+						Send Inquiry
+					</button>
+				</div>
+			</form>
+		</div>
 	</div>
 }
 

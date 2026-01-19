@@ -115,6 +115,17 @@ type Config struct {
 	RedisClient       *redis.Client
 }
 
+// withPerm wraps a handler with a permission check
+func withPerm(perm string, handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !HasPermission(r.Context(), perm) {
+			writeJSONError(w, "forbidden", fmt.Sprintf("Missing required permission: %s", perm), http.StatusForbidden)
+			return
+		}
+		handler(w, r)
+	}
+}
+
 func NewRouter(cfg *Config) http.Handler {
 	mux := http.NewServeMux()
 
@@ -125,7 +136,7 @@ func NewRouter(cfg *Config) http.Handler {
 
 	apiMux := http.NewServeMux()
 
-	apiMux.HandleFunc("POST /v1/upload", uploadHandler(cfg))
+	apiMux.HandleFunc("POST /v1/upload", withPerm("files:write", uploadHandler(cfg)))
 
 	chunkedCfg := &ChunkedUploadConfig{
 		Storage:       cfg.Storage,
@@ -134,32 +145,32 @@ func NewRouter(cfg *Config) http.Handler {
 		MaxUploadSize: cfg.MaxUploadSize,
 		ChunkSize:     5 * 1024 * 1024, // 5MB default chunk size
 	}
-	apiMux.HandleFunc("POST /v1/upload/chunked", InitChunkedUploadHandler(chunkedCfg))
-	apiMux.HandleFunc("PUT /v1/upload/chunked/{uploadId}", UploadChunkHandler(chunkedCfg))
-	apiMux.HandleFunc("GET /v1/upload/chunked/{uploadId}", GetUploadStatusHandler(chunkedCfg))
-	apiMux.HandleFunc("DELETE /v1/upload/chunked/{uploadId}", CancelUploadHandler(chunkedCfg))
+	apiMux.HandleFunc("POST /v1/upload/chunked", withPerm("files:write", InitChunkedUploadHandler(chunkedCfg)))
+	apiMux.HandleFunc("PUT /v1/upload/chunked/{uploadId}", withPerm("files:write", UploadChunkHandler(chunkedCfg)))
+	apiMux.HandleFunc("GET /v1/upload/chunked/{uploadId}", withPerm("files:read", GetUploadStatusHandler(chunkedCfg)))
+	apiMux.HandleFunc("DELETE /v1/upload/chunked/{uploadId}", withPerm("files:write", CancelUploadHandler(chunkedCfg)))
 
-	apiMux.HandleFunc("GET /v1/files", listFilesHandler(cfg))
-	apiMux.HandleFunc("GET /v1/files/{id}", getFileHandler(cfg))
-	apiMux.HandleFunc("GET /v1/files/{id}/download", downloadHandler(cfg))
-	apiMux.HandleFunc("DELETE /v1/files/{id}", deleteHandler(cfg))
+	apiMux.HandleFunc("GET /v1/files", withPerm("files:read", listFilesHandler(cfg)))
+	apiMux.HandleFunc("GET /v1/files/{id}", withPerm("files:read", getFileHandler(cfg)))
+	apiMux.HandleFunc("GET /v1/files/{id}/download", withPerm("files:read", downloadHandler(cfg)))
+	apiMux.HandleFunc("DELETE /v1/files/{id}", withPerm("files:delete", deleteHandler(cfg)))
 
 	cdnCfg := &CDNConfig{
 		Storage:  cfg.Storage,
 		Queries:  cfg.Queries,
 		Registry: cfg.Registry,
 	}
-	apiMux.HandleFunc("POST /v1/files/{id}/share", CreateShareHandler(cdnCfg, cfg.BaseURL))
-	apiMux.HandleFunc("GET /v1/files/{id}/shares", ListSharesHandler(cdnCfg))
-	apiMux.HandleFunc("DELETE /v1/shares/{shareId}", DeleteShareHandler(cdnCfg))
+	apiMux.HandleFunc("POST /v1/files/{id}/share", withPerm("shares:write", CreateShareHandler(cdnCfg, cfg.BaseURL)))
+	apiMux.HandleFunc("GET /v1/files/{id}/shares", withPerm("shares:read", ListSharesHandler(cdnCfg)))
+	apiMux.HandleFunc("DELETE /v1/shares/{shareId}", withPerm("shares:write", DeleteShareHandler(cdnCfg)))
 
-	apiMux.HandleFunc("POST /v1/files/{id}/transform", transformHandler(cfg))
-	apiMux.HandleFunc("POST /v1/files/{id}/video/transcode", videoTranscodeHandler(cfg))
-	apiMux.HandleFunc("POST /v1/files/{id}/video/hls", videoHLSHandler(cfg))
-	apiMux.HandleFunc("GET /v1/files/{id}/hls/{segment}", hlsStreamHandler(cfg))
+	apiMux.HandleFunc("POST /v1/files/{id}/transform", withPerm("transform", transformHandler(cfg)))
+	apiMux.HandleFunc("POST /v1/files/{id}/video/transcode", withPerm("transform", videoTranscodeHandler(cfg)))
+	apiMux.HandleFunc("POST /v1/files/{id}/video/hls", withPerm("transform", videoHLSHandler(cfg)))
+	apiMux.HandleFunc("GET /v1/files/{id}/hls/{segment}", withPerm("files:read", hlsStreamHandler(cfg)))
 
-	apiMux.HandleFunc("POST /v1/batch/transform", batchTransformHandler(cfg))
-	apiMux.HandleFunc("GET /v1/batch/{id}", getBatchHandler(cfg))
+	apiMux.HandleFunc("POST /v1/batch/transform", withPerm("transform", batchTransformHandler(cfg)))
+	apiMux.HandleFunc("GET /v1/batch/{id}", withPerm("files:read", getBatchHandler(cfg)))
 
 	sseCfg := &SSEConfig{Queries: cfg.Queries}
 	apiMux.HandleFunc("GET /v1/files/{id}/status", FileStatusHandler(sseCfg))
@@ -179,27 +190,27 @@ func NewRouter(cfg *Config) http.Handler {
 		Queries: cfg.Queries,
 		Broker:  cfg.Broker,
 	}
-	apiMux.HandleFunc("POST /v1/webhooks", CreateWebhookHandler(webhookCfg))
-	apiMux.HandleFunc("GET /v1/webhooks", ListWebhooksHandler(webhookCfg))
-	apiMux.HandleFunc("GET /v1/webhooks/{id}", GetWebhookHandler(webhookCfg))
-	apiMux.HandleFunc("PUT /v1/webhooks/{id}", UpdateWebhookHandler(webhookCfg))
-	apiMux.HandleFunc("DELETE /v1/webhooks/{id}", DeleteWebhookHandler(webhookCfg))
-	apiMux.HandleFunc("GET /v1/webhooks/{id}/deliveries", ListDeliveriesHandler(webhookCfg))
-	apiMux.HandleFunc("POST /v1/webhooks/{id}/test", TestWebhookHandler(webhookCfg))
+	apiMux.HandleFunc("POST /v1/webhooks", withPerm("webhooks:write", CreateWebhookHandler(webhookCfg)))
+	apiMux.HandleFunc("GET /v1/webhooks", withPerm("webhooks:read", ListWebhooksHandler(webhookCfg)))
+	apiMux.HandleFunc("GET /v1/webhooks/{id}", withPerm("webhooks:read", GetWebhookHandler(webhookCfg)))
+	apiMux.HandleFunc("PUT /v1/webhooks/{id}", withPerm("webhooks:write", UpdateWebhookHandler(webhookCfg)))
+	apiMux.HandleFunc("DELETE /v1/webhooks/{id}", withPerm("webhooks:write", DeleteWebhookHandler(webhookCfg)))
+	apiMux.HandleFunc("GET /v1/webhooks/{id}/deliveries", withPerm("webhooks:read", ListDeliveriesHandler(webhookCfg)))
+	apiMux.HandleFunc("POST /v1/webhooks/{id}/test", withPerm("webhooks:write", TestWebhookHandler(webhookCfg)))
 
 	jobCfg := &JobConfig{Queries: cfg.Queries}
-	apiMux.HandleFunc("GET /v1/jobs", ListJobsHandler(jobCfg))
-	apiMux.HandleFunc("POST /v1/jobs/{id}/retry", RetryJobHandler(jobCfg))
-	apiMux.HandleFunc("POST /v1/jobs/{id}/cancel", CancelJobHandler(jobCfg))
-	apiMux.HandleFunc("POST /v1/jobs/retry-all", BulkRetryJobsHandler(jobCfg))
+	apiMux.HandleFunc("GET /v1/jobs", withPerm("files:read", ListJobsHandler(jobCfg)))
+	apiMux.HandleFunc("POST /v1/jobs/{id}/retry", withPerm("transform", RetryJobHandler(jobCfg)))
+	apiMux.HandleFunc("POST /v1/jobs/{id}/cancel", withPerm("transform", CancelJobHandler(jobCfg)))
+	apiMux.HandleFunc("POST /v1/jobs/retry-all", withPerm("transform", BulkRetryJobsHandler(jobCfg)))
 
 	foldersCfg := &FoldersConfig{Queries: cfg.Queries}
-	apiMux.HandleFunc("POST /v1/folders", CreateFolderHandler(foldersCfg))
-	apiMux.HandleFunc("GET /v1/folders", ListFoldersHandler(foldersCfg))
-	apiMux.HandleFunc("GET /v1/folders/{id}", GetFolderHandler(foldersCfg))
-	apiMux.HandleFunc("PUT /v1/folders/{id}", UpdateFolderHandler(foldersCfg))
-	apiMux.HandleFunc("DELETE /v1/folders/{id}", DeleteFolderHandler(foldersCfg))
-	apiMux.HandleFunc("POST /v1/files/{id}/move", MoveFileToFolderHandler(foldersCfg))
+	apiMux.HandleFunc("POST /v1/folders", withPerm("files:write", CreateFolderHandler(foldersCfg)))
+	apiMux.HandleFunc("GET /v1/folders", withPerm("files:read", ListFoldersHandler(foldersCfg)))
+	apiMux.HandleFunc("GET /v1/folders/{id}", withPerm("files:read", GetFolderHandler(foldersCfg)))
+	apiMux.HandleFunc("PUT /v1/folders/{id}", withPerm("files:write", UpdateFolderHandler(foldersCfg)))
+	apiMux.HandleFunc("DELETE /v1/folders/{id}", withPerm("files:delete", DeleteFolderHandler(foldersCfg)))
+	apiMux.HandleFunc("POST /v1/files/{id}/move", withPerm("files:write", MoveFileToFolderHandler(foldersCfg)))
 
 	userCfg := &UserConfig{Queries: cfg.Queries}
 	apiMux.HandleFunc("GET /v1/me", GetCurrentUserHandler(userCfg))

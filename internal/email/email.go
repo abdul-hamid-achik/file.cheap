@@ -350,6 +350,202 @@ const welcomeEmailTemplate = `
 </html>
 `
 
+// EnterpriseInquiryEmailData contains data for the enterprise inquiry notification email.
+type EnterpriseInquiryEmailData struct {
+	EmailData
+	CompanyName    string
+	ContactName    string
+	ContactEmail   string
+	CompanySize    string
+	EstimatedUsage string
+	Message        string
+	AdminURL       string
+}
+
+// SendEnterpriseInquiryEmail sends a notification email to admin about a new enterprise inquiry.
+func (s *Service) SendEnterpriseInquiryEmail(companyName, contactName, contactEmail, companySize, estimatedUsage, message string) error {
+	data := EnterpriseInquiryEmailData{
+		EmailData: EmailData{
+			RecipientName: "Admin",
+			BaseURL:       s.cfg.BaseURL,
+			Year:          time.Now().Year(),
+		},
+		CompanyName:    companyName,
+		ContactName:    contactName,
+		ContactEmail:   contactEmail,
+		CompanySize:    companySize,
+		EstimatedUsage: estimatedUsage,
+		Message:        message,
+		AdminURL:       fmt.Sprintf("%s/admin/enterprise", s.cfg.BaseURL),
+	}
+
+	html, err := s.renderTemplate(enterpriseInquiryEmailTemplate, data)
+	if err != nil {
+		return err
+	}
+
+	adminEmail := s.cfg.FromAddress
+	return s.Send(adminEmail, "New Enterprise Inquiry: "+companyName, html)
+}
+
+// EnterpriseEnabledEmailData contains data for the enterprise enabled notification email.
+type EnterpriseEnabledEmailData struct {
+	EmailData
+	DashboardURL string
+}
+
+// SendEnterpriseEnabledEmail sends a notification to user when their enterprise plan is enabled.
+func (s *Service) SendEnterpriseEnabledEmail(to, name string) error {
+	data := EnterpriseEnabledEmailData{
+		EmailData: EmailData{
+			RecipientName: name,
+			BaseURL:       s.cfg.BaseURL,
+			Year:          time.Now().Year(),
+		},
+		DashboardURL: fmt.Sprintf("%s/dashboard", s.cfg.BaseURL),
+	}
+
+	html, err := s.renderTemplate(enterpriseEnabledEmailTemplate, data)
+	if err != nil {
+		return err
+	}
+
+	return s.Send(to, "Your Enterprise plan is now active!", html)
+}
+
+const enterpriseInquiryEmailTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #2E3440;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #3B4252; border-radius: 8px; overflow: hidden;">
+                    <tr>
+                        <td style="padding: 40px; text-align: center; background-color: #434C5E;">
+                            <h1 style="margin: 0; color: #B48EAD; font-size: 24px;">New Enterprise Inquiry</h1>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 40px;">
+                            <p style="margin: 0 0 20px; color: #D8DEE9; line-height: 1.6;">
+                                A new enterprise inquiry has been submitted.
+                            </p>
+                            <table style="width: 100%; margin-bottom: 20px;">
+                                <tr>
+                                    <td style="padding: 10px 0; color: #4C566A; border-bottom: 1px solid #434C5E;">Company</td>
+                                    <td style="padding: 10px 0; color: #ECEFF4; border-bottom: 1px solid #434C5E; font-weight: 600;">{{.CompanyName}}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 10px 0; color: #4C566A; border-bottom: 1px solid #434C5E;">Contact</td>
+                                    <td style="padding: 10px 0; color: #ECEFF4; border-bottom: 1px solid #434C5E;">{{.ContactName}}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 10px 0; color: #4C566A; border-bottom: 1px solid #434C5E;">Email</td>
+                                    <td style="padding: 10px 0; color: #88C0D0; border-bottom: 1px solid #434C5E;">{{.ContactEmail}}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 10px 0; color: #4C566A; border-bottom: 1px solid #434C5E;">Company Size</td>
+                                    <td style="padding: 10px 0; color: #ECEFF4; border-bottom: 1px solid #434C5E;">{{.CompanySize}}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 10px 0; color: #4C566A; border-bottom: 1px solid #434C5E;">Est. Usage</td>
+                                    <td style="padding: 10px 0; color: #ECEFF4; border-bottom: 1px solid #434C5E;">{{.EstimatedUsage}}</td>
+                                </tr>
+                            </table>
+                            <div style="background-color: #434C5E; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                                <p style="margin: 0 0 5px; color: #4C566A; font-size: 12px; text-transform: uppercase;">Message</p>
+                                <p style="margin: 0; color: #D8DEE9; line-height: 1.6;">{{.Message}}</p>
+                            </div>
+                            <table role="presentation" style="margin: 0 auto;">
+                                <tr>
+                                    <td style="border-radius: 4px; background-color: #B48EAD;">
+                                        <a href="{{.AdminURL}}" style="display: inline-block; padding: 14px 28px; color: #2E3440; text-decoration: none; font-weight: 600;">
+                                            View in Admin
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 20px 40px; background-color: #434C5E; text-align: center;">
+                            <p style="margin: 0; color: #4C566A; font-size: 12px;">
+                                &copy; {{.Year}} file.cheap. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+`
+
+const enterpriseEnabledEmailTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #2E3440;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #3B4252; border-radius: 8px; overflow: hidden;">
+                    <tr>
+                        <td style="padding: 40px; text-align: center; background-color: #434C5E;">
+                            <h1 style="margin: 0; color: #B48EAD; font-size: 24px;">file.cheap</h1>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 40px;">
+                            <h2 style="margin: 0 0 20px; color: #ECEFF4; font-size: 20px;">Welcome to Enterprise!</h2>
+                            <p style="margin: 0 0 20px; color: #D8DEE9; line-height: 1.6;">
+                                Hi {{.RecipientName}},
+                            </p>
+                            <p style="margin: 0 0 30px; color: #D8DEE9; line-height: 1.6;">
+                                Your Enterprise plan is now active! You now have access to:
+                            </p>
+                            <ul style="margin: 0 0 30px; padding-left: 20px; color: #D8DEE9; line-height: 1.8;">
+                                <li>Unlimited file storage (1TB)</li>
+                                <li>Unlimited transformations</li>
+                                <li>10GB max file size</li>
+                                <li>Priority support</li>
+                                <li>Custom integrations</li>
+                            </ul>
+                            <table role="presentation" style="margin: 0 auto;">
+                                <tr>
+                                    <td style="border-radius: 4px; background-color: #B48EAD;">
+                                        <a href="{{.DashboardURL}}" style="display: inline-block; padding: 14px 28px; color: #2E3440; text-decoration: none; font-weight: 600;">
+                                            Go to Dashboard
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 20px 40px; background-color: #434C5E; text-align: center;">
+                            <p style="margin: 0; color: #4C566A; font-size: 12px;">
+                                &copy; {{.Year}} file.cheap. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+`
+
 const oauthLinkedEmailTemplate = `
 <!DOCTYPE html>
 <html>

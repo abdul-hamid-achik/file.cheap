@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/apperror"
 	"github.com/abdul-hamid-achik/file.cheap/internal/auth"
@@ -1664,7 +1665,39 @@ func (h *Handlers) SettingsCreateToken(w http.ResponseWriter, r *http.Request) {
 		name = "Unnamed Token"
 	}
 
-	rawToken, _, err := h.authService.CreateAPIToken(r.Context(), user.ID, name)
+	var expiresAt *time.Time
+	expiresIn := r.FormValue("expires_in")
+	if expiresIn != "" {
+		days, err := strconv.Atoi(expiresIn)
+		if err == nil && days > 0 {
+			t := time.Now().AddDate(0, 0, days)
+			expiresAt = &t
+		}
+	}
+
+	var permissions []string
+	preset := r.FormValue("permission_preset")
+	switch preset {
+	case "read_only":
+		permissions = auth.PermissionPresets["read_only"]
+	case "standard":
+		permissions = auth.PermissionPresets["standard"]
+	case "custom":
+		permissions = r.Form["permissions"]
+		if len(permissions) == 0 {
+			permissions = auth.AllPermissions
+		}
+	default:
+		permissions = auth.AllPermissions
+	}
+
+	input := auth.CreateAPITokenInput{
+		Name:        name,
+		Permissions: permissions,
+		ExpiresAt:   expiresAt,
+	}
+
+	rawToken, _, err := h.authService.CreateAPIToken(r.Context(), user.ID, input)
 	if err != nil {
 		http.Redirect(w, r, "/settings?error=1", http.StatusFound)
 		return
