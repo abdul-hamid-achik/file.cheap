@@ -596,11 +596,13 @@ tasks:
   # ════════════════════════════════════════════════════════════════════════════
 
   logs:
-    desc: "Tail production logs (usage: task logs, task logs -- api)"
+    desc: "Tail production logs (usage: task logs, task logs -- api, task logs -- worker)"
     aliases: [pl]
     cmds:
       - |
-        if [ -n "{{.CLI_ARGS}}" ]; then
+        if [ "{{.CLI_ARGS}}" = "worker" ]; then
+          kubectl logs -f -l 'app in (worker-image, worker-video)' -n file-processor --kubeconfig={{.KUBECONFIG}} --prefix --tail=50
+        elif [ -n "{{.CLI_ARGS}}" ]; then
           kubectl logs -f deploy/{{.CLI_ARGS}} -n file-processor --kubeconfig={{.KUBECONFIG}} --tail=100
         else
           kubectl logs -f -l app.kubernetes.io/part-of=file-processor -n file-processor --kubeconfig={{.KUBECONFIG}} --prefix --tail=50
@@ -612,9 +614,9 @@ tasks:
       - kubectl logs -f deploy/api -n file-processor --kubeconfig={{.KUBECONFIG}} --tail=100
 
   "logs:worker":
-    desc: Tail worker logs
+    desc: Tail worker logs (image + video)
     cmds:
-      - kubectl logs -f deploy/worker -n file-processor --kubeconfig={{.KUBECONFIG}} --tail=100
+      - kubectl logs -f -l 'app in (worker-image, worker-video)' -n file-processor --kubeconfig={{.KUBECONFIG}} --prefix --tail=50
 
   shell:
     desc: Open shell in API pod
