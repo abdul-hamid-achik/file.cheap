@@ -400,7 +400,7 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		// Content Security Policy
 		w.Header().Set("Content-Security-Policy",
 			"default-src 'self'; "+
-				"script-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com; "+
+				"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.plyr.io; "+
 				"style-src 'self' 'unsafe-inline' https://cdn.plyr.io https://cdnjs.cloudflare.com; "+
 				"img-src 'self' data: https:; "+
 				"connect-src 'self'; "+
