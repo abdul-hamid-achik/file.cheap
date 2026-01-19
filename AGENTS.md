@@ -342,6 +342,39 @@ Use HTMX for auto-refresh:
 <div hx-get="/endpoint" hx-trigger="every 30s" hx-swap="innerHTML">
 ```
 
+## Security
+
+### Content Security Policy (CSP)
+
+CSP is configured in `internal/api/middleware.go` in the `SecurityHeaders` function. When adding new external scripts or styles, you must update the CSP.
+
+**Current allowed sources:**
+
+| Directive | Sources |
+|-----------|---------|
+| `script-src` | `'self'`, `'unsafe-inline'`, `'unsafe-eval'`, unpkg.com, cdnjs.cloudflare.com, cdn.jsdelivr.net, cdn.plyr.io |
+| `style-src` | `'self'`, `'unsafe-inline'`, cdn.plyr.io, cdnjs.cloudflare.com |
+| `img-src` | `'self'`, `data:`, `https:` |
+| `connect-src` | `'self'` |
+| `font-src` | `'self'` |
+
+**When to update CSP:**
+- Adding a new CDN for JavaScript libraries → add to `script-src`
+- Adding a new CDN for CSS/fonts → add to `style-src` or `font-src`
+- Using libraries that require `eval()` (like Alpine.js) → ensure `'unsafe-eval'` is present
+
+**Common CDNs and their purposes:**
+- `unpkg.com` - HTMX
+- `cdnjs.cloudflare.com` - Alpine.js
+- `cdn.jsdelivr.net` - hls.js (video streaming)
+- `cdn.plyr.io` - Plyr video player (scripts and styles)
+
+**Debugging CSP issues:**
+1. Open browser DevTools → Console tab
+2. Look for "Refused to load" or "Refused to evaluate" errors
+3. The error message tells you which directive needs updating
+4. Update CSP in `internal/api/middleware.go` around line 401
+
 ## Database
 
 Schema managed via migrations in `migrations/`. Apply with `task migrate`.
