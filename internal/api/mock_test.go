@@ -790,6 +790,29 @@ func (m *MockQuerier) GetUserRole(ctx context.Context, id pgtype.UUID) (db.UserR
 	return db.UserRoleUser, nil
 }
 
+func (m *MockQuerier) GetUserByID(ctx context.Context, id pgtype.UUID) (db.User, error) {
+	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+	return db.User{
+		ID:                   id,
+		Email:                "test@example.com",
+		Name:                 "Test User",
+		SubscriptionTier:     m.BillingTier,
+		SubscriptionStatus:   db.SubscriptionStatusActive,
+		FilesLimit:           100,
+		MaxFileSize:          10485760,
+		StorageLimitBytes:    1073741824,
+		StorageUsedBytes:     0,
+		TransformationsCount: 0,
+		TransformationsLimit: 100,
+		CreatedAt:            now,
+		UpdatedAt:            now,
+	}, nil
+}
+
+func (m *MockQuerier) GetUserTotalStorageUsage(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	return 0, nil
+}
+
 func (m *MockQuerier) IsShareDownloadLimitReached(ctx context.Context, id pgtype.UUID) (bool, error) {
 	return false, nil
 }

@@ -79,6 +79,9 @@ type Querier interface {
 	ListJobsByUserWithStatus(ctx context.Context, arg db.ListJobsByUserWithStatusParams) ([]db.ListJobsByUserWithStatusRow, error)
 	CountJobsByUser(ctx context.Context, arg db.CountJobsByUserParams) (int64, error)
 	GetUserRole(ctx context.Context, id pgtype.UUID) (db.UserRole, error)
+	// User profile
+	GetUserByID(ctx context.Context, id pgtype.UUID) (db.User, error)
+	GetUserTotalStorageUsage(ctx context.Context, userID pgtype.UUID) (int64, error)
 	// Folder management
 	CreateFolder(ctx context.Context, arg db.CreateFolderParams) (db.Folder, error)
 	GetFolder(ctx context.Context, arg db.GetFolderParams) (db.Folder, error)
@@ -197,6 +200,10 @@ func NewRouter(cfg *Config) http.Handler {
 	apiMux.HandleFunc("PUT /v1/folders/{id}", UpdateFolderHandler(foldersCfg))
 	apiMux.HandleFunc("DELETE /v1/folders/{id}", DeleteFolderHandler(foldersCfg))
 	apiMux.HandleFunc("POST /v1/files/{id}/move", MoveFileToFolderHandler(foldersCfg))
+
+	userCfg := &UserConfig{Queries: cfg.Queries}
+	apiMux.HandleFunc("GET /v1/me", GetCurrentUserHandler(userCfg))
+	apiMux.HandleFunc("GET /v1/me/usage", GetUsageHandler(userCfg))
 
 	rateLimit := cfg.RateLimit
 	if rateLimit <= 0 {
