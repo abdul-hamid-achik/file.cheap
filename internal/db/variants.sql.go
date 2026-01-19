@@ -23,7 +23,7 @@ INSERT INTO file_variants (
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7
 )
-RETURNING id, file_id, variant_type, content_type, size_bytes, storage_key, width, height, created_at
+RETURNING id, file_id, variant_type, content_type, size_bytes, storage_key, width, height, duration_seconds, bitrate_bps, video_codec, audio_codec, frame_rate, resolution, created_at
 `
 
 type CreateVariantParams struct {
@@ -56,6 +56,12 @@ func (q *Queries) CreateVariant(ctx context.Context, arg CreateVariantParams) (F
 		&i.StorageKey,
 		&i.Width,
 		&i.Height,
+		&i.DurationSeconds,
+		&i.BitrateBps,
+		&i.VideoCodec,
+		&i.AudioCodec,
+		&i.FrameRate,
+		&i.Resolution,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -120,7 +126,7 @@ func (q *Queries) GetThumbnailsForFiles(ctx context.Context, dollar_1 []pgtype.U
 }
 
 const getVariant = `-- name: GetVariant :one
-SELECT id, file_id, variant_type, content_type, size_bytes, storage_key, width, height, created_at FROM file_variants
+SELECT id, file_id, variant_type, content_type, size_bytes, storage_key, width, height, duration_seconds, bitrate_bps, video_codec, audio_codec, frame_rate, resolution, created_at FROM file_variants
 WHERE file_id = $1 AND variant_type = $2
 `
 
@@ -141,6 +147,12 @@ func (q *Queries) GetVariant(ctx context.Context, arg GetVariantParams) (FileVar
 		&i.StorageKey,
 		&i.Width,
 		&i.Height,
+		&i.DurationSeconds,
+		&i.BitrateBps,
+		&i.VideoCodec,
+		&i.AudioCodec,
+		&i.FrameRate,
+		&i.Resolution,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -191,7 +203,7 @@ func (q *Queries) HasVariant(ctx context.Context, arg HasVariantParams) (bool, e
 }
 
 const listVariantsByFile = `-- name: ListVariantsByFile :many
-SELECT id, file_id, variant_type, content_type, size_bytes, storage_key, width, height, created_at FROM file_variants
+SELECT id, file_id, variant_type, content_type, size_bytes, storage_key, width, height, duration_seconds, bitrate_bps, video_codec, audio_codec, frame_rate, resolution, created_at FROM file_variants
 WHERE file_id = $1
 ORDER BY created_at DESC
 `
@@ -214,6 +226,12 @@ func (q *Queries) ListVariantsByFile(ctx context.Context, fileID pgtype.UUID) ([
 			&i.StorageKey,
 			&i.Width,
 			&i.Height,
+			&i.DurationSeconds,
+			&i.BitrateBps,
+			&i.VideoCodec,
+			&i.AudioCodec,
+			&i.FrameRate,
+			&i.Resolution,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err

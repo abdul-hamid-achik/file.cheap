@@ -52,7 +52,7 @@ spec:
               command:
                 - pg_isready
                 - -U
-                - postgres
+                - fileprocessor
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
@@ -60,7 +60,7 @@ spec:
               command:
                 - pg_isready
                 - -U
-                - postgres
+                - fileprocessor
             initialDelaySeconds: 30
             periodSeconds: 10
       volumes:

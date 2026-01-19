@@ -68,6 +68,8 @@ spec:
               value: "5m"
             - name: MAX_RETRIES
               value: "3"
+            - name: TRACING_ENABLED
+              value: "false"
           resources:
             requests:
               cpu: 100m

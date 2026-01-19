@@ -440,6 +440,21 @@ const (
 	VariantTypeWatermarked       VariantType = "watermarked"
 	VariantTypeOptimized         VariantType = "optimized"
 	VariantTypePdfPreview        VariantType = "pdf_preview"
+	VariantTypeVideoThumbnail    VariantType = "video_thumbnail"
+	VariantTypeVideoSprite       VariantType = "video_sprite"
+	VariantTypeMp4360p           VariantType = "mp4_360p"
+	VariantTypeMp4480p           VariantType = "mp4_480p"
+	VariantTypeMp4720p           VariantType = "mp4_720p"
+	VariantTypeMp41080p          VariantType = "mp4_1080p"
+	VariantTypeMp42160p          VariantType = "mp4_2160p"
+	VariantTypeWebm720p          VariantType = "webm_720p"
+	VariantTypeWebm1080p         VariantType = "webm_1080p"
+	VariantTypeHlsMaster         VariantType = "hls_master"
+	VariantTypeHls360p           VariantType = "hls_360p"
+	VariantTypeHls480p           VariantType = "hls_480p"
+	VariantTypeHls720p           VariantType = "hls_720p"
+	VariantTypeHls1080p          VariantType = "hls_1080p"
+	VariantTypeVideoWatermarked  VariantType = "video_watermarked"
 )
 
 func (e *VariantType) Scan(src interface{}) error {
@@ -636,15 +651,21 @@ type FileShare struct {
 }
 
 type FileVariant struct {
-	ID          pgtype.UUID        `json:"id"`
-	FileID      pgtype.UUID        `json:"file_id"`
-	VariantType VariantType        `json:"variant_type"`
-	ContentType string             `json:"content_type"`
-	SizeBytes   int64              `json:"size_bytes"`
-	StorageKey  string             `json:"storage_key"`
-	Width       *int32             `json:"width"`
-	Height      *int32             `json:"height"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	ID              pgtype.UUID        `json:"id"`
+	FileID          pgtype.UUID        `json:"file_id"`
+	VariantType     VariantType        `json:"variant_type"`
+	ContentType     string             `json:"content_type"`
+	SizeBytes       int64              `json:"size_bytes"`
+	StorageKey      string             `json:"storage_key"`
+	Width           *int32             `json:"width"`
+	Height          *int32             `json:"height"`
+	DurationSeconds pgtype.Numeric     `json:"duration_seconds"`
+	BitrateBps      *int64             `json:"bitrate_bps"`
+	VideoCodec      *string            `json:"video_codec"`
+	AudioCodec      *string            `json:"audio_codec"`
+	FrameRate       pgtype.Numeric     `json:"frame_rate"`
+	Resolution      *string            `json:"resolution"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 }
 
 type Folder struct {
@@ -761,6 +782,9 @@ type User struct {
 	EmailVerifiedAt        pgtype.Timestamptz `json:"email_verified_at"`
 	OnboardingCompletedAt  pgtype.Timestamptz `json:"onboarding_completed_at"`
 	OnboardingSteps        []byte             `json:"onboarding_steps"`
+	VideoMinutesUsed       int32              `json:"video_minutes_used"`
+	VideoMinutesResetAt    pgtype.Timestamptz `json:"video_minutes_reset_at"`
+	VideoStorageBytesUsed  int64              `json:"video_storage_bytes_used"`
 	CreatedAt              pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt              pgtype.Timestamptz `json:"deleted_at"`

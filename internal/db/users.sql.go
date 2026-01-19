@@ -21,7 +21,7 @@ SET
     max_file_size = 10485760,
     updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, created_at, updated_at, deleted_at
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, video_minutes_used, video_minutes_reset_at, video_storage_bytes_used, created_at, updated_at, deleted_at
 `
 
 func (q *Queries) CancelUserSubscription(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -50,6 +50,9 @@ func (q *Queries) CancelUserSubscription(ctx context.Context, id pgtype.UUID) (U
 		&i.EmailVerifiedAt,
 		&i.OnboardingCompletedAt,
 		&i.OnboardingSteps,
+		&i.VideoMinutesUsed,
+		&i.VideoMinutesResetAt,
+		&i.VideoStorageBytesUsed,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -85,7 +88,7 @@ func (q *Queries) CountUsersForAdmin(ctx context.Context, dollar_1 string) (int6
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, name, avatar_url, role)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, created_at, updated_at, deleted_at
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, video_minutes_used, video_minutes_reset_at, video_storage_bytes_used, created_at, updated_at, deleted_at
 `
 
 type CreateUserParams struct {
@@ -128,6 +131,9 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.EmailVerifiedAt,
 		&i.OnboardingCompletedAt,
 		&i.OnboardingSteps,
+		&i.VideoMinutesUsed,
+		&i.VideoMinutesResetAt,
+		&i.VideoStorageBytesUsed,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -222,7 +228,7 @@ func (q *Queries) GetUserBillingInfo(ctx context.Context, id pgtype.UUID) (GetUs
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, created_at, updated_at, deleted_at FROM users
+SELECT id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, video_minutes_used, video_minutes_reset_at, video_storage_bytes_used, created_at, updated_at, deleted_at FROM users
 WHERE email = $1 AND deleted_at IS NULL
 `
 
@@ -252,6 +258,9 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.EmailVerifiedAt,
 		&i.OnboardingCompletedAt,
 		&i.OnboardingSteps,
+		&i.VideoMinutesUsed,
+		&i.VideoMinutesResetAt,
+		&i.VideoStorageBytesUsed,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -260,7 +269,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, created_at, updated_at, deleted_at FROM users
+SELECT id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, video_minutes_used, video_minutes_reset_at, video_storage_bytes_used, created_at, updated_at, deleted_at FROM users
 WHERE id = $1 AND deleted_at IS NULL
 `
 
@@ -290,6 +299,9 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.EmailVerifiedAt,
 		&i.OnboardingCompletedAt,
 		&i.OnboardingSteps,
+		&i.VideoMinutesUsed,
+		&i.VideoMinutesResetAt,
+		&i.VideoStorageBytesUsed,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -298,7 +310,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 }
 
 const getUserByStripeCustomerID = `-- name: GetUserByStripeCustomerID :one
-SELECT id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, created_at, updated_at, deleted_at FROM users
+SELECT id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, video_minutes_used, video_minutes_reset_at, video_storage_bytes_used, created_at, updated_at, deleted_at FROM users
 WHERE stripe_customer_id = $1 AND deleted_at IS NULL
 `
 
@@ -328,6 +340,9 @@ func (q *Queries) GetUserByStripeCustomerID(ctx context.Context, stripeCustomerI
 		&i.EmailVerifiedAt,
 		&i.OnboardingCompletedAt,
 		&i.OnboardingSteps,
+		&i.VideoMinutesUsed,
+		&i.VideoMinutesResetAt,
+		&i.VideoStorageBytesUsed,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -420,7 +435,7 @@ func (q *Queries) IncrementUserStorageUsed(ctx context.Context, arg IncrementUse
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, created_at, updated_at, deleted_at FROM users
+SELECT id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, video_minutes_used, video_minutes_reset_at, video_storage_bytes_used, created_at, updated_at, deleted_at FROM users
 WHERE deleted_at IS NULL
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2
@@ -463,6 +478,9 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 			&i.EmailVerifiedAt,
 			&i.OnboardingCompletedAt,
 			&i.OnboardingSteps,
+			&i.VideoMinutesUsed,
+			&i.VideoMinutesResetAt,
+			&i.VideoStorageBytesUsed,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -557,7 +575,7 @@ SET
     max_file_size = 104857600,
     updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, created_at, updated_at, deleted_at
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, video_minutes_used, video_minutes_reset_at, video_storage_bytes_used, created_at, updated_at, deleted_at
 `
 
 type StartUserTrialParams struct {
@@ -591,6 +609,9 @@ func (q *Queries) StartUserTrial(ctx context.Context, arg StartUserTrialParams) 
 		&i.EmailVerifiedAt,
 		&i.OnboardingCompletedAt,
 		&i.OnboardingSteps,
+		&i.VideoMinutesUsed,
+		&i.VideoMinutesResetAt,
+		&i.VideoStorageBytesUsed,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -602,7 +623,7 @@ const updateUser = `-- name: UpdateUser :one
 UPDATE users
 SET name = $2, avatar_url = $3, updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, created_at, updated_at, deleted_at
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, video_minutes_used, video_minutes_reset_at, video_storage_bytes_used, created_at, updated_at, deleted_at
 `
 
 type UpdateUserParams struct {
@@ -637,6 +658,9 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.EmailVerifiedAt,
 		&i.OnboardingCompletedAt,
 		&i.OnboardingSteps,
+		&i.VideoMinutesUsed,
+		&i.VideoMinutesResetAt,
+		&i.VideoStorageBytesUsed,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -696,7 +720,7 @@ const updateUserStripeCustomer = `-- name: UpdateUserStripeCustomer :one
 UPDATE users
 SET stripe_customer_id = $2, updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, created_at, updated_at, deleted_at
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, video_minutes_used, video_minutes_reset_at, video_storage_bytes_used, created_at, updated_at, deleted_at
 `
 
 type UpdateUserStripeCustomerParams struct {
@@ -730,6 +754,9 @@ func (q *Queries) UpdateUserStripeCustomer(ctx context.Context, arg UpdateUserSt
 		&i.EmailVerifiedAt,
 		&i.OnboardingCompletedAt,
 		&i.OnboardingSteps,
+		&i.VideoMinutesUsed,
+		&i.VideoMinutesResetAt,
+		&i.VideoStorageBytesUsed,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -749,7 +776,7 @@ SET
     max_file_size = $8,
     updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, created_at, updated_at, deleted_at
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, video_minutes_used, video_minutes_reset_at, video_storage_bytes_used, created_at, updated_at, deleted_at
 `
 
 type UpdateUserSubscriptionParams struct {
@@ -798,6 +825,9 @@ func (q *Queries) UpdateUserSubscription(ctx context.Context, arg UpdateUserSubs
 		&i.EmailVerifiedAt,
 		&i.OnboardingCompletedAt,
 		&i.OnboardingSteps,
+		&i.VideoMinutesUsed,
+		&i.VideoMinutesResetAt,
+		&i.VideoStorageBytesUsed,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -812,7 +842,7 @@ SET
     subscription_period_end = $3,
     updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, created_at, updated_at, deleted_at
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, video_minutes_used, video_minutes_reset_at, video_storage_bytes_used, created_at, updated_at, deleted_at
 `
 
 type UpdateUserSubscriptionStatusParams struct {
@@ -847,6 +877,9 @@ func (q *Queries) UpdateUserSubscriptionStatus(ctx context.Context, arg UpdateUs
 		&i.EmailVerifiedAt,
 		&i.OnboardingCompletedAt,
 		&i.OnboardingSteps,
+		&i.VideoMinutesUsed,
+		&i.VideoMinutesResetAt,
+		&i.VideoStorageBytesUsed,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -858,7 +891,7 @@ const updateUserSubscriptionTier = `-- name: UpdateUserSubscriptionTier :one
 UPDATE users
 SET subscription_tier = $2, updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, created_at, updated_at, deleted_at
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, video_minutes_used, video_minutes_reset_at, video_storage_bytes_used, created_at, updated_at, deleted_at
 `
 
 type UpdateUserSubscriptionTierParams struct {
@@ -892,6 +925,9 @@ func (q *Queries) UpdateUserSubscriptionTier(ctx context.Context, arg UpdateUser
 		&i.EmailVerifiedAt,
 		&i.OnboardingCompletedAt,
 		&i.OnboardingSteps,
+		&i.VideoMinutesUsed,
+		&i.VideoMinutesResetAt,
+		&i.VideoStorageBytesUsed,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -929,7 +965,7 @@ SET
     END,
     updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, created_at, updated_at, deleted_at
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, video_minutes_used, video_minutes_reset_at, video_storage_bytes_used, created_at, updated_at, deleted_at
 `
 
 type UpdateUserTierParams struct {
@@ -963,6 +999,9 @@ func (q *Queries) UpdateUserTier(ctx context.Context, arg UpdateUserTierParams) 
 		&i.EmailVerifiedAt,
 		&i.OnboardingCompletedAt,
 		&i.OnboardingSteps,
+		&i.VideoMinutesUsed,
+		&i.VideoMinutesResetAt,
+		&i.VideoStorageBytesUsed,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -981,7 +1020,7 @@ SET
     transformations_limit = -1,
     updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, created_at, updated_at, deleted_at
+RETURNING id, email, password_hash, name, avatar_url, role, subscription_tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, trial_ends_at, files_limit, max_file_size, storage_limit_bytes, storage_used_bytes, transformations_count, transformations_limit, transformations_reset_at, email_verified_at, onboarding_completed_at, onboarding_steps, video_minutes_used, video_minutes_reset_at, video_storage_bytes_used, created_at, updated_at, deleted_at
 `
 
 func (q *Queries) UpdateUserToEnterprise(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -1010,6 +1049,9 @@ func (q *Queries) UpdateUserToEnterprise(ctx context.Context, id pgtype.UUID) (U
 		&i.EmailVerifiedAt,
 		&i.OnboardingCompletedAt,
 		&i.OnboardingSteps,
+		&i.VideoMinutesUsed,
+		&i.VideoMinutesResetAt,
+		&i.VideoStorageBytesUsed,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,

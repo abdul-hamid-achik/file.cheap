@@ -29,7 +29,22 @@ CREATE TYPE variant_type AS ENUM (
     'webp',
     'watermarked',
     'optimized',
-    'pdf_preview'
+    'pdf_preview',
+    'video_thumbnail',
+    'video_sprite',
+    'mp4_360p',
+    'mp4_480p',
+    'mp4_720p',
+    'mp4_1080p',
+    'mp4_2160p',
+    'webm_720p',
+    'webm_1080p',
+    'hls_master',
+    'hls_360p',
+    'hls_480p',
+    'hls_720p',
+    'hls_1080p',
+    'video_watermarked'
 );
 
 -- User roles
@@ -72,6 +87,9 @@ CREATE TABLE users (
     email_verified_at TIMESTAMPTZ,
     onboarding_completed_at TIMESTAMPTZ,
     onboarding_steps JSONB NOT NULL DEFAULT '{}',
+    video_minutes_used INTEGER NOT NULL DEFAULT 0,
+    video_minutes_reset_at TIMESTAMPTZ,
+    video_storage_bytes_used BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ
@@ -139,8 +157,14 @@ CREATE TABLE file_variants (
     storage_key VARCHAR(500) NOT NULL,
     width INTEGER,
     height INTEGER,
+    duration_seconds NUMERIC(10, 2),
+    bitrate_bps BIGINT,
+    video_codec VARCHAR(50),
+    audio_codec VARCHAR(50),
+    frame_rate NUMERIC(6, 2),
+    resolution VARCHAR(20),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
+
     -- Foreign key constraint
     CONSTRAINT fk_file_variants_file_id
         FOREIGN KEY (file_id)
@@ -245,6 +269,9 @@ CREATE INDEX idx_processing_jobs_pending ON processing_jobs(priority DESC, creat
 -- File variants indexes (for listing variants by file)
 CREATE INDEX idx_file_variants_file_id ON file_variants(file_id);
 CREATE INDEX idx_file_variants_type ON file_variants(file_id, variant_type);
+CREATE INDEX idx_file_variants_video ON file_variants(file_id)
+    WHERE variant_type IN ('mp4_360p', 'mp4_480p', 'mp4_720p', 'mp4_1080p', 'mp4_2160p',
+                           'webm_720p', 'webm_1080p', 'hls_master');
 
 -- OAuth accounts indexes
 CREATE INDEX idx_oauth_accounts_user_id ON oauth_accounts(user_id);

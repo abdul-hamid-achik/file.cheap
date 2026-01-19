@@ -26,3 +26,4 @@ configMapGenerator:
       - ENVIRONMENT=production
       - LOG_LEVEL=info
       - LOG_FORMAT=json
+      - TRACING_ENABLED=false
