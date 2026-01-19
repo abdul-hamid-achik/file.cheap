@@ -20,6 +20,7 @@ import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
 	"github.com/abdul-hamid-achik/file.cheap/internal/email"
 	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
+	"github.com/abdul-hamid-achik/file.cheap/internal/metrics"
 	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/components"
 	"github.com/abdul-hamid-achik/file.cheap/internal/web/templates/pages"
 	"github.com/abdul-hamid-achik/file.cheap/internal/worker"
@@ -426,12 +427,15 @@ func (h *Handlers) UploadFileAPI(w http.ResponseWriter, r *http.Request) {
 
 		log.Info("uploading file", "filename", fileHeader.Filename, "size", fileHeader.Size)
 
+		uploadStart := time.Now()
 		if err := h.cfg.Storage.Upload(r.Context(), storageKey, file, fileHeader.Header.Get("Content-Type"), fileHeader.Size); err != nil {
 			_ = file.Close()
+			metrics.RecordFileUpload("error", 0, 0)
 			log.Error("storage upload failed", "filename", fileHeader.Filename, "error", err)
 			continue
 		}
 		_ = file.Close()
+		metrics.RecordFileUpload("success", fileHeader.Size, time.Since(uploadStart).Seconds())
 
 		if h.cfg.Queries != nil {
 			contentType := fileHeader.Header.Get("Content-Type")
@@ -476,6 +480,7 @@ func (h *Handlers) UploadFileAPI(w http.ResponseWriter, r *http.Request) {
 					if err != nil {
 						log.Error("failed to enqueue thumbnail job", "error", err)
 					} else {
+						metrics.RecordJobEnqueued("thumbnail")
 						log.Info("thumbnail job enqueued", "job_id", jobID, "file_id", dbFileID.String())
 					}
 				case contentType == "application/pdf":
@@ -484,6 +489,7 @@ func (h *Handlers) UploadFileAPI(w http.ResponseWriter, r *http.Request) {
 					if err != nil {
 						log.Error("failed to enqueue pdf_thumbnail job", "error", err)
 					} else {
+						metrics.RecordJobEnqueued("pdf_thumbnail")
 						log.Info("pdf_thumbnail job enqueued", "job_id", jobID, "file_id", dbFileID.String())
 					}
 				default:
@@ -808,10 +814,12 @@ func (h *Handlers) DeleteFile(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.cfg.Queries.SoftDeleteFile(r.Context(), pgFileID); err != nil {
 		log.Error("failed to delete file", "file_id", fileIDStr, "error", err)
+		metrics.RecordFileDeletion("error")
 		http.Redirect(w, r, "/files?error=delete_failed", http.StatusFound)
 		return
 	}
 
+	metrics.RecordFileDeletion("success")
 	log.Info("file deleted", "file_id", fileIDStr, "user_id", user.ID.String())
 	http.Redirect(w, r, "/files?success=deleted", http.StatusFound)
 }
@@ -1035,6 +1043,7 @@ func (h *Handlers) ProcessFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to start processing", http.StatusInternalServerError)
 		return
 	}
+	metrics.RecordJobEnqueued(string(dbJobType))
 
 	log.Info("processing job enqueued", "file_id", fileIDStr, "job_type", dbJobType, "job_id", jobID)
 
@@ -1148,6 +1157,7 @@ func (h *Handlers) ProcessBundle(w http.ResponseWriter, r *http.Request) {
 			log.Error("failed to enqueue job", "job_type", db.JobTypeResize, "action", action, "error", err)
 			continue
 		}
+		metrics.RecordJobEnqueued("resize")
 		enqueuedCount++
 	}
 
@@ -1991,9 +2001,11 @@ func (h *Handlers) BatchDeleteFiles(w http.ResponseWriter, r *http.Request) {
 		// Soft delete file record
 		if err := h.cfg.Queries.SoftDeleteFile(r.Context(), pgFileID); err != nil {
 			log.Error("failed to delete file in batch", "file_id", fileIDStr, "error", err)
+			metrics.RecordFileDeletion("error")
 			continue
 		}
 
+		metrics.RecordFileDeletion("success")
 		deletedCount++
 	}
 
@@ -2103,6 +2115,7 @@ func (h *Handlers) BatchProcessFiles(w http.ResponseWriter, r *http.Request) {
 			log.Error("failed to enqueue job in batch process", "file_id", fileIDStr, "action", action, "error", err)
 			continue
 		}
+		metrics.RecordJobEnqueued(string(dbJobType))
 
 		queuedCount++
 	}

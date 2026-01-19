@@ -9,6 +9,7 @@ import (
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/apperror"
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
+	"github.com/abdul-hamid-achik/file.cheap/internal/metrics"
 	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
@@ -93,14 +94,17 @@ func (s *OAuthService) ExchangeGoogleCode(ctx context.Context, code string) (*OA
 
 	token, err := s.googleConfig.Exchange(ctx, code)
 	if err != nil {
+		metrics.RecordAuthOperation("oauth_google_exchange", "error")
 		return nil, nil, apperror.Wrap(err, apperror.ErrUnauthorized)
 	}
 
 	userInfo, err := s.getGoogleUserInfo(ctx, token)
 	if err != nil {
+		metrics.RecordAuthOperation("oauth_google_exchange", "error")
 		return nil, nil, err
 	}
 
+	metrics.RecordAuthOperation("oauth_google_exchange", "success")
 	return userInfo, token, nil
 }
 
@@ -112,14 +116,17 @@ func (s *OAuthService) ExchangeGitHubCode(ctx context.Context, code string) (*OA
 
 	token, err := s.githubConfig.Exchange(ctx, code)
 	if err != nil {
+		metrics.RecordAuthOperation("oauth_github_exchange", "error")
 		return nil, nil, apperror.Wrap(err, apperror.ErrUnauthorized)
 	}
 
 	userInfo, err := s.getGitHubUserInfo(ctx, token)
 	if err != nil {
+		metrics.RecordAuthOperation("oauth_github_exchange", "error")
 		return nil, nil, err
 	}
 
+	metrics.RecordAuthOperation("oauth_github_exchange", "success")
 	return userInfo, token, nil
 }
 
@@ -260,9 +267,11 @@ func (s *OAuthService) FindOrCreateUser(ctx context.Context, info *OAuthUserInfo
 
 		user, err := s.queries.GetUserByID(ctx, oauthAccount.UserID)
 		if err != nil {
+			metrics.RecordAuthOperation("oauth_login", "error")
 			return nil, apperror.Wrap(err, apperror.ErrInternal)
 		}
 
+		metrics.RecordAuthOperation("oauth_login", "success")
 		return &OAuthLoginResult{
 			User:       &user,
 			IsNewUser:  false,
@@ -288,9 +297,11 @@ func (s *OAuthService) FindOrCreateUser(ctx context.Context, info *OAuthUserInfo
 			ExpiresAt:      expiresAt,
 		})
 		if err != nil {
+			metrics.RecordAuthOperation("oauth_login", "error")
 			return nil, apperror.Wrap(err, apperror.ErrInternal)
 		}
 
+		metrics.RecordAuthOperation("oauth_login", "success")
 		return &OAuthLoginResult{
 			User:       &existingUser,
 			IsNewUser:  false,
@@ -311,10 +322,12 @@ func (s *OAuthService) FindOrCreateUser(ctx context.Context, info *OAuthUserInfo
 		Role:         db.UserRoleUser,
 	})
 	if err != nil {
+		metrics.RecordAuthOperation("oauth_login", "error")
 		return nil, apperror.Wrap(err, apperror.ErrInternal)
 	}
 
 	if err := s.queries.VerifyUserEmail(ctx, newUser.ID); err != nil {
+		metrics.RecordAuthOperation("oauth_login", "error")
 		return nil, apperror.Wrap(err, apperror.ErrInternal)
 	}
 
@@ -334,14 +347,17 @@ func (s *OAuthService) FindOrCreateUser(ctx context.Context, info *OAuthUserInfo
 		ExpiresAt:      expiresAt,
 	})
 	if err != nil {
+		metrics.RecordAuthOperation("oauth_login", "error")
 		return nil, apperror.Wrap(err, apperror.ErrInternal)
 	}
 
 	newUser, err = s.queries.GetUserByID(ctx, newUser.ID)
 	if err != nil {
+		metrics.RecordAuthOperation("oauth_login", "error")
 		return nil, apperror.Wrap(err, apperror.ErrInternal)
 	}
 
+	metrics.RecordAuthOperation("oauth_login", "success")
 	return &OAuthLoginResult{
 		User:       &newUser,
 		IsNewUser:  true,
@@ -379,8 +395,10 @@ func (s *OAuthService) LinkOAuthAccount(ctx context.Context, userID pgtype.UUID,
 	})
 	if err == nil {
 		if existing.UserID == userID {
+			metrics.RecordAuthOperation("link_oauth", "error")
 			return ErrOAuthAlreadyLinked
 		}
+		metrics.RecordAuthOperation("link_oauth", "error")
 		return ErrOAuthLinkedToOther
 	}
 
@@ -398,9 +416,11 @@ func (s *OAuthService) LinkOAuthAccount(ctx context.Context, userID pgtype.UUID,
 		ExpiresAt:      expiresAt,
 	})
 	if err != nil {
+		metrics.RecordAuthOperation("link_oauth", "error")
 		return apperror.Wrap(err, apperror.ErrInternal)
 	}
 
+	metrics.RecordAuthOperation("link_oauth", "success")
 	return nil
 }
 
@@ -415,10 +435,16 @@ func (s *OAuthService) ListUserOAuthAccounts(ctx context.Context, userID pgtype.
 
 // DeleteOAuthAccount removes an OAuth account link from a user.
 func (s *OAuthService) DeleteOAuthAccount(ctx context.Context, userID pgtype.UUID, provider db.OauthProvider) error {
-	return s.queries.DeleteOAuthAccount(ctx, db.DeleteOAuthAccountParams{
+	err := s.queries.DeleteOAuthAccount(ctx, db.DeleteOAuthAccountParams{
 		UserID:   userID,
 		Provider: provider,
 	})
+	if err != nil {
+		metrics.RecordAuthOperation("unlink_oauth", "error")
+		return err
+	}
+	metrics.RecordAuthOperation("unlink_oauth", "success")
+	return nil
 }
 
 // CanDisconnectOAuth checks if a user can disconnect an OAuth provider.

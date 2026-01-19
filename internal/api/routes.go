@@ -14,6 +14,7 @@ import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
 	"github.com/abdul-hamid-achik/file.cheap/internal/health"
 	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
+	"github.com/abdul-hamid-achik/file.cheap/internal/metrics"
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor/video"
 	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
@@ -307,10 +308,13 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 
 		log.Info("uploading file", "filename", sanitizedFilename, "original_filename", header.Filename, "size", header.Size, "content_type", contentType)
 
+		uploadStart := time.Now()
 		if err := cfg.Storage.Upload(r.Context(), storageKey, file, contentType, header.Size); err != nil {
+			metrics.RecordFileUpload("error", 0, 0)
 			apperror.WriteJSON(w, r, apperror.Wrap(err, apperror.ErrInternal))
 			return
 		}
+		metrics.RecordFileUpload("success", header.Size, time.Since(uploadStart).Seconds())
 
 		if cfg.Queries != nil {
 			var pgUserID pgtype.UUID
@@ -343,6 +347,7 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 					if err != nil {
 						log.Error("failed to enqueue thumbnail job", "error", err)
 					} else {
+						metrics.RecordJobEnqueued("thumbnail")
 						log.Info("thumbnail job enqueued", "job_id", jobID)
 					}
 				case contentType == "application/pdf":
@@ -351,6 +356,7 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 					if err != nil {
 						log.Error("failed to enqueue pdf_thumbnail job", "error", err)
 					} else {
+						metrics.RecordJobEnqueued("pdf_thumbnail")
 						log.Info("pdf_thumbnail job enqueued", "job_id", jobID)
 					}
 				case video.IsVideoType(contentType):
@@ -359,6 +365,7 @@ func uploadHandler(cfg *Config) http.HandlerFunc {
 					if err != nil {
 						log.Error("failed to enqueue video_thumbnail job", "error", err)
 					} else {
+						metrics.RecordJobEnqueued("video_thumbnail")
 						log.Info("video_thumbnail job enqueued", "job_id", jobID)
 					}
 				default:
@@ -704,10 +711,12 @@ func deleteHandler(cfg *Config) http.HandlerFunc {
 
 		if err := cfg.Queries.SoftDeleteFile(r.Context(), pgFileID); err != nil {
 			log.Error("soft delete failed", "error", err)
+			metrics.RecordFileDeletion("error")
 			http.Error(w, "delete failed", http.StatusInternalServerError)
 			return
 		}
 
+		metrics.RecordFileDeletion("success")
 		log.Info("file deleted")
 		w.WriteHeader(http.StatusNoContent)
 	}
@@ -911,6 +920,7 @@ func transformHandler(cfg *Config) http.HandlerFunc {
 				log.Error("failed to enqueue job", "preset", preset, "error", err)
 				continue
 			}
+			metrics.RecordJobEnqueued(string(dbJobType))
 			jobIDs = append(jobIDs, jobID)
 
 			if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
@@ -924,6 +934,7 @@ func transformHandler(cfg *Config) http.HandlerFunc {
 			if err != nil {
 				log.Error("failed to enqueue webp job", "error", err)
 			} else {
+				metrics.RecordJobEnqueued("webp")
 				jobIDs = append(jobIDs, jobID)
 				if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
 					log.Error("failed to increment transformation count", "error", err)
@@ -938,6 +949,7 @@ func transformHandler(cfg *Config) http.HandlerFunc {
 			if err != nil {
 				log.Error("failed to enqueue watermark job", "error", err)
 			} else {
+				metrics.RecordJobEnqueued("watermark")
 				jobIDs = append(jobIDs, jobID)
 				if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
 					log.Error("failed to increment transformation count", "error", err)
@@ -1153,6 +1165,7 @@ func batchTransformHandler(cfg *Config) http.HandlerFunc {
 					log.Error("failed to enqueue job", "file_id", fileID, "preset", preset, "error", err)
 					continue
 				}
+				metrics.RecordJobEnqueued(string(dbJobType))
 				jobIDs = append(jobIDs, jobID)
 
 				if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
@@ -1166,6 +1179,7 @@ func batchTransformHandler(cfg *Config) http.HandlerFunc {
 				if err != nil {
 					log.Error("failed to enqueue webp job", "file_id", fileID, "error", err)
 				} else {
+					metrics.RecordJobEnqueued("webp")
 					jobIDs = append(jobIDs, jobID)
 					if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
 						log.Error("failed to increment transformation count", "error", err)
@@ -1179,6 +1193,7 @@ func batchTransformHandler(cfg *Config) http.HandlerFunc {
 				if err != nil {
 					log.Error("failed to enqueue watermark job", "file_id", fileID, "error", err)
 				} else {
+					metrics.RecordJobEnqueued("watermark")
 					jobIDs = append(jobIDs, jobID)
 					if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
 						log.Error("failed to increment transformation count", "error", err)
@@ -1458,6 +1473,7 @@ func videoTranscodeHandler(cfg *Config) http.HandlerFunc {
 				log.Error("failed to enqueue video transcode job", "resolution", resolution, "error", err)
 				continue
 			}
+			metrics.RecordJobEnqueued("video_transcode")
 			jobIDs = append(jobIDs, jobID)
 
 			if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
@@ -1472,6 +1488,7 @@ func videoTranscodeHandler(cfg *Config) http.HandlerFunc {
 			if err != nil {
 				log.Error("failed to enqueue video thumbnail job", "error", err)
 			} else {
+				metrics.RecordJobEnqueued("video_thumbnail")
 				jobIDs = append(jobIDs, jobID)
 				if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
 					log.Error("failed to increment transformation count", "error", err)
@@ -1579,6 +1596,7 @@ func videoHLSHandler(cfg *Config) http.HandlerFunc {
 			apperror.WriteJSON(w, r, apperror.ErrInternal)
 			return
 		}
+		metrics.RecordJobEnqueued("video_hls")
 
 		if err := cfg.Queries.IncrementTransformationCount(r.Context(), pgUserID); err != nil {
 			log.Error("failed to increment transformation count", "error", err)

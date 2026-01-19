@@ -7,6 +7,7 @@ import (
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
 	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
+	"github.com/abdul-hamid-achik/file.cheap/internal/metrics"
 	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
 )
 
@@ -80,9 +81,11 @@ func cleanupSoftDeletedFiles(ctx context.Context, deps *CleanupDependencies, sta
 					"error", err,
 				)
 				stats.DatabaseDeleteErrors++
+				metrics.RecordFileDeletion("error")
 				continue
 			}
 
+			metrics.RecordFileDeletion("success")
 			stats.SoftDeletedCleaned++
 		}
 
@@ -126,9 +129,11 @@ func cleanupRetentionExpiredFiles(ctx context.Context, deps *CleanupDependencies
 					"error", err,
 				)
 				stats.DatabaseDeleteErrors++
+				metrics.RecordFileDeletion("error")
 				continue
 			}
 
+			metrics.RecordFileDeletion("success")
 			stats.RetentionExpired++
 		}
 

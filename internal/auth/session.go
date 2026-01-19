@@ -10,6 +10,7 @@ import (
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/apperror"
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
+	"github.com/abdul-hamid-achik/file.cheap/internal/metrics"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -51,6 +52,7 @@ type SessionUser struct {
 func (sm *SessionManager) CreateSession(ctx context.Context, w http.ResponseWriter, r *http.Request, userID uuid.UUID) error {
 	token, tokenHash, err := GenerateToken()
 	if err != nil {
+		metrics.RecordAuthOperation("create_session", "error")
 		return apperror.Wrap(err, apperror.ErrInternal)
 	}
 
@@ -72,6 +74,7 @@ func (sm *SessionManager) CreateSession(ctx context.Context, w http.ResponseWrit
 		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(SessionDuration), Valid: true},
 	})
 	if err != nil {
+		metrics.RecordAuthOperation("create_session", "error")
 		return apperror.Wrap(err, apperror.ErrInternal)
 	}
 
@@ -85,6 +88,7 @@ func (sm *SessionManager) CreateSession(ctx context.Context, w http.ResponseWrit
 		MaxAge:   int(SessionDuration.Seconds()),
 	})
 
+	metrics.RecordAuthOperation("create_session", "success")
 	return nil
 }
 
@@ -141,6 +145,7 @@ func (sm *SessionManager) DeleteSession(ctx context.Context, w http.ResponseWrit
 	tokenHash := HashToken(cookie.Value)
 
 	if err := sm.queries.DeleteSessionByTokenHash(ctx, tokenHash); err != nil {
+		metrics.RecordAuthOperation("delete_session", "error")
 		return apperror.Wrap(err, apperror.ErrInternal)
 	}
 
@@ -154,6 +159,7 @@ func (sm *SessionManager) DeleteSession(ctx context.Context, w http.ResponseWrit
 		MaxAge:   -1,
 	})
 
+	metrics.RecordAuthOperation("delete_session", "success")
 	return nil
 }
 

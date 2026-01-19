@@ -14,6 +14,7 @@ import (
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/apperror"
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
+	"github.com/abdul-hamid-achik/file.cheap/internal/metrics"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -218,6 +219,7 @@ func DeviceApproveHandler(cfg *DeviceAuthConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, ok := GetUserID(r.Context())
 		if !ok {
+			metrics.RecordAuthOperation("device_approval", "error")
 			apperror.WriteJSON(w, r, apperror.ErrUnauthorized)
 			return
 		}
@@ -233,18 +235,21 @@ func DeviceApproveHandler(cfg *DeviceAuthConfig) http.HandlerFunc {
 		}
 
 		if userCode == "" {
+			metrics.RecordAuthOperation("device_approval", "error")
 			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "missing_code", "User code is required", http.StatusBadRequest))
 			return
 		}
 
 		code := deviceAuthStore.GetByUserCode(userCode)
 		if code == nil || time.Now().After(code.ExpiresAt) {
+			metrics.RecordAuthOperation("device_approval", "error")
 			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "invalid_code", "Invalid or expired code", http.StatusBadRequest))
 			return
 		}
 
 		tokenBytes := make([]byte, 32)
 		if _, err := rand.Read(tokenBytes); err != nil {
+			metrics.RecordAuthOperation("device_approval", "error")
 			apperror.WriteJSON(w, r, apperror.ErrInternal)
 			return
 		}
@@ -261,6 +266,7 @@ func DeviceApproveHandler(cfg *DeviceAuthConfig) http.HandlerFunc {
 				TokenHash: tokenHashStr,
 			})
 			if err != nil {
+				metrics.RecordAuthOperation("device_approval", "error")
 				apperror.WriteJSON(w, r, apperror.ErrInternal)
 				return
 			}
@@ -268,6 +274,7 @@ func DeviceApproveHandler(cfg *DeviceAuthConfig) http.HandlerFunc {
 
 		deviceAuthStore.Approve(code.DeviceCode, userID, apiKey)
 
+		metrics.RecordAuthOperation("device_approval", "success")
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"status":  "approved",

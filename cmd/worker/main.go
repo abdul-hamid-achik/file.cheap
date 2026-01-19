@@ -173,6 +173,24 @@ func run() error {
 		worker.WithPoolLogger(zerologger),
 	)
 
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				queueLen, err := redisClient.XLen(ctx, "default").Result()
+				if err != nil {
+					log.Warn("failed to get queue length", "error", err)
+					continue
+				}
+				metrics.SetJobsInQueue("default", queueLen)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	metricsPort := os.Getenv("METRICS_PORT")
 	if metricsPort == "" {
 		metricsPort = "9090"

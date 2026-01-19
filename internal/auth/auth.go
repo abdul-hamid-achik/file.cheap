@@ -8,6 +8,7 @@ import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/apperror"
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
 	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
+	"github.com/abdul-hamid-achik/file.cheap/internal/metrics"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -86,11 +87,13 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (*RegisterR
 
 	if err := ValidatePassword(input.Password); err != nil {
 		log.Debug("registration failed: invalid password", "email", input.Email)
+		metrics.RecordAuthOperation("register", "error")
 		return nil, apperror.Wrap(err, apperror.ErrWeakPassword)
 	}
 
 	passwordHash, err := HashPassword(input.Password)
 	if err != nil {
+		metrics.RecordAuthOperation("register", "error")
 		return nil, apperror.Wrap(err, apperror.ErrInternal)
 	}
 
@@ -103,6 +106,7 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (*RegisterR
 	})
 	if err != nil {
 		log.Warn("registration failed: could not create user", "email", input.Email, "error", err)
+		metrics.RecordAuthOperation("register", "error")
 		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
 			return nil, apperror.Wrap(err, apperror.ErrEmailTaken)
 		}
@@ -111,6 +115,7 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (*RegisterR
 
 	token, tokenHash, err := GenerateToken()
 	if err != nil {
+		metrics.RecordAuthOperation("register", "error")
 		return nil, apperror.Wrap(err, apperror.ErrInternal)
 	}
 
@@ -120,10 +125,12 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (*RegisterR
 		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(EmailVerificationExpiry), Valid: true},
 	})
 	if err != nil {
+		metrics.RecordAuthOperation("register", "error")
 		return nil, apperror.Wrap(err, apperror.ErrInternal)
 	}
 
 	log.Info("user registered", "email", input.Email)
+	metrics.RecordAuthOperation("register", "success")
 
 	return &RegisterResult{
 		User:                   &user,
@@ -144,20 +151,24 @@ func (s *Service) Login(ctx context.Context, input LoginInput) (*db.User, error)
 	user, err := s.queries.GetUserByEmail(ctx, input.Email)
 	if err != nil {
 		log.Debug("login failed: user not found", "email", input.Email)
+		metrics.RecordAuthOperation("login", "error")
 		return nil, apperror.ErrInvalidCredentials
 	}
 
 	if user.PasswordHash == nil {
 		log.Debug("login failed: no password set", "email", input.Email)
+		metrics.RecordAuthOperation("login", "error")
 		return nil, apperror.ErrOAuthOnly
 	}
 
 	if err := CheckPassword(input.Password, *user.PasswordHash); err != nil {
 		log.Warn("login failed: invalid password", "email", input.Email)
+		metrics.RecordAuthOperation("login", "error")
 		return nil, apperror.ErrInvalidCredentials
 	}
 
 	log.Info("user logged in", "email", input.Email)
+	metrics.RecordAuthOperation("login", "success")
 	return &user, nil
 }
 
@@ -169,18 +180,22 @@ func (s *Service) VerifyEmail(ctx context.Context, token string) error {
 	verification, err := s.queries.GetEmailVerificationByTokenHash(ctx, tokenHash)
 	if err != nil {
 		log.Debug("email verification failed: invalid token")
+		metrics.RecordAuthOperation("verify_email", "error")
 		return apperror.ErrInvalidToken
 	}
 
 	if err := s.queries.MarkEmailVerified(ctx, verification.ID); err != nil {
+		metrics.RecordAuthOperation("verify_email", "error")
 		return apperror.Wrap(err, apperror.ErrInternal)
 	}
 
 	if err := s.queries.VerifyUserEmail(ctx, verification.UserID); err != nil {
+		metrics.RecordAuthOperation("verify_email", "error")
 		return apperror.Wrap(err, apperror.ErrInternal)
 	}
 
 	log.Info("email verified")
+	metrics.RecordAuthOperation("verify_email", "success")
 	return nil
 }
 
@@ -201,11 +216,13 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) (*Requ
 	}
 
 	if err := s.queries.DeleteUserPasswordResets(ctx, user.ID); err != nil {
+		metrics.RecordAuthOperation("request_password_reset", "error")
 		return nil, apperror.Wrap(err, apperror.ErrInternal)
 	}
 
 	token, tokenHash, err := GenerateToken()
 	if err != nil {
+		metrics.RecordAuthOperation("request_password_reset", "error")
 		return nil, apperror.Wrap(err, apperror.ErrInternal)
 	}
 
@@ -215,10 +232,12 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) (*Requ
 		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(PasswordResetExpiry), Valid: true},
 	})
 	if err != nil {
+		metrics.RecordAuthOperation("request_password_reset", "error")
 		return nil, apperror.Wrap(err, apperror.ErrInternal)
 	}
 
 	log.Info("password reset requested", "email", email)
+	metrics.RecordAuthOperation("request_password_reset", "success")
 
 	return &RequestPasswordResetResult{
 		Token: token,
@@ -231,6 +250,7 @@ func (s *Service) ResetPassword(ctx context.Context, token, newPassword string) 
 	log := logger.FromContext(ctx)
 
 	if err := ValidatePassword(newPassword); err != nil {
+		metrics.RecordAuthOperation("reset_password", "error")
 		return apperror.Wrap(err, apperror.ErrWeakPassword)
 	}
 
@@ -239,11 +259,13 @@ func (s *Service) ResetPassword(ctx context.Context, token, newPassword string) 
 	reset, err := s.queries.GetPasswordResetByTokenHash(ctx, tokenHash)
 	if err != nil {
 		log.Debug("password reset failed: invalid token")
+		metrics.RecordAuthOperation("reset_password", "error")
 		return apperror.ErrInvalidToken
 	}
 
 	passwordHash, err := HashPassword(newPassword)
 	if err != nil {
+		metrics.RecordAuthOperation("reset_password", "error")
 		return apperror.Wrap(err, apperror.ErrInternal)
 	}
 
@@ -251,14 +273,17 @@ func (s *Service) ResetPassword(ctx context.Context, token, newPassword string) 
 		ID:           reset.UserID,
 		PasswordHash: &passwordHash,
 	}); err != nil {
+		metrics.RecordAuthOperation("reset_password", "error")
 		return apperror.Wrap(err, apperror.ErrInternal)
 	}
 
 	if err := s.queries.MarkPasswordResetUsed(ctx, reset.ID); err != nil {
+		metrics.RecordAuthOperation("reset_password", "error")
 		return apperror.Wrap(err, apperror.ErrInternal)
 	}
 
 	log.Info("password reset completed")
+	metrics.RecordAuthOperation("reset_password", "success")
 	return nil
 }
 
@@ -368,23 +393,28 @@ func (s *Service) ChangePassword(ctx context.Context, userID uuid.UUID, currentP
 
 	user, err := s.queries.GetUserByID(ctx, pgID)
 	if err != nil {
+		metrics.RecordAuthOperation("change_password", "error")
 		return apperror.Wrap(err, apperror.ErrNotFound)
 	}
 
 	if user.PasswordHash == nil {
+		metrics.RecordAuthOperation("change_password", "error")
 		return apperror.ErrOAuthOnly
 	}
 
 	if err := CheckPassword(currentPassword, *user.PasswordHash); err != nil {
+		metrics.RecordAuthOperation("change_password", "error")
 		return apperror.ErrInvalidCredentials
 	}
 
 	if err := ValidatePassword(newPassword); err != nil {
+		metrics.RecordAuthOperation("change_password", "error")
 		return apperror.Wrap(err, apperror.ErrWeakPassword)
 	}
 
 	passwordHash, err := HashPassword(newPassword)
 	if err != nil {
+		metrics.RecordAuthOperation("change_password", "error")
 		return apperror.Wrap(err, apperror.ErrInternal)
 	}
 
@@ -392,9 +422,11 @@ func (s *Service) ChangePassword(ctx context.Context, userID uuid.UUID, currentP
 		ID:           pgID,
 		PasswordHash: &passwordHash,
 	}); err != nil {
+		metrics.RecordAuthOperation("change_password", "error")
 		return apperror.Wrap(err, apperror.ErrInternal)
 	}
 
+	metrics.RecordAuthOperation("change_password", "success")
 	return nil
 }
 
@@ -472,6 +504,7 @@ func (s *Service) CreateAPIToken(ctx context.Context, userID uuid.UUID, input Cr
 
 	rawToken, tokenHash, err := GenerateToken()
 	if err != nil {
+		metrics.RecordAuthOperation("create_api_token", "error")
 		return "", nil, apperror.Wrap(err, apperror.ErrInternal)
 	}
 
@@ -498,9 +531,11 @@ func (s *Service) CreateAPIToken(ctx context.Context, userID uuid.UUID, input Cr
 		ExpiresAt:   expiresAt,
 	})
 	if err != nil {
+		metrics.RecordAuthOperation("create_api_token", "error")
 		return "", nil, apperror.Wrap(err, apperror.ErrInternal)
 	}
 
+	metrics.RecordAuthOperation("create_api_token", "success")
 	return prefixedToken, &token, nil
 }
 
@@ -514,7 +549,9 @@ func (s *Service) DeleteAPIToken(ctx context.Context, userID, tokenID uuid.UUID)
 		UserID: pgUserID,
 	})
 	if err != nil {
+		metrics.RecordAuthOperation("delete_api_token", "error")
 		return apperror.Wrap(err, apperror.ErrInternal)
 	}
+	metrics.RecordAuthOperation("delete_api_token", "success")
 	return nil
 }

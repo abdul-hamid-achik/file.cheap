@@ -12,6 +12,7 @@ import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/auth"
 	"github.com/abdul-hamid-achik/file.cheap/internal/billing"
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
+	"github.com/abdul-hamid-achik/file.cheap/internal/metrics"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -335,6 +336,11 @@ func RateLimit(limiter *RateLimiter) func(http.Handler) http.Handler {
 			}
 
 			if !limiter.Allow(key) {
+				tier := "unknown"
+				if billingInfo := GetBilling(r.Context()); billingInfo != nil {
+					tier = string(billingInfo.Tier)
+				}
+				metrics.RecordRateLimitHit(tier)
 				w.Header().Set("Content-Type", "application/json")
 				http.Error(w, `{"error":{"code":"rate_limit_exceeded","message":"too many requests"}}`, http.StatusTooManyRequests)
 				return

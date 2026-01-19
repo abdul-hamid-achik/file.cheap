@@ -16,6 +16,7 @@ import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/billing"
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
 	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
+	"github.com/abdul-hamid-achik/file.cheap/internal/metrics"
 	"github.com/abdul-hamid-achik/file.cheap/internal/processor/video"
 	"github.com/abdul-hamid-achik/file.cheap/internal/storage"
 	"github.com/abdul-hamid-achik/file.cheap/internal/worker"
@@ -328,6 +329,8 @@ func UploadChunkHandler(cfg *ChunkedUploadConfig) http.HandlerFunc {
 
 // assembleChunks combines all chunks into the final file using streaming
 func assembleChunks(ctx context.Context, cfg *ChunkedUploadConfig, session *uploadSession, log *slog.Logger) (string, error) {
+	startTime := time.Now()
+
 	// Create a pipe for streaming assembly
 	pr, pw := io.Pipe()
 
@@ -352,6 +355,7 @@ func assembleChunks(ctx context.Context, cfg *ChunkedUploadConfig, session *uplo
 
 	// Upload from pipe reader (streams directly to storage)
 	if err := cfg.Storage.Upload(ctx, session.StorageKey, pr, session.ContentType, session.TotalSize); err != nil {
+		metrics.RecordFileUpload("error", 0, time.Since(startTime).Seconds())
 		return "", fmt.Errorf("failed to upload combined file: %w", err)
 	}
 
@@ -378,9 +382,11 @@ func assembleChunks(ctx context.Context, cfg *ChunkedUploadConfig, session *uplo
 			Status:      db.FileStatusPending,
 		})
 		if err != nil {
+			metrics.RecordFileUpload("error", 0, time.Since(startTime).Seconds())
 			return "", fmt.Errorf("failed to create file record: %w", err)
 		}
 
+		metrics.RecordFileUpload("success", session.TotalSize, time.Since(startTime).Seconds())
 		fileIDStr := uuidFromPgtype(dbFile.ID)
 		log.Info("file record created from chunked upload", "file_id", fileIDStr, "filename", session.Filename)
 
@@ -394,6 +400,7 @@ func assembleChunks(ctx context.Context, cfg *ChunkedUploadConfig, session *uplo
 				if jobID, err := worker.EnqueueWithTracking(ctx, cfg.Queries, cfg.Broker, &payload, db.JobTypeThumbnail); err != nil {
 					log.Error("failed to enqueue thumbnail job", "error", err)
 				} else {
+					metrics.RecordJobEnqueued("thumbnail")
 					log.Info("thumbnail job enqueued", "job_id", jobID)
 				}
 			case contentType == "application/pdf":
@@ -401,6 +408,7 @@ func assembleChunks(ctx context.Context, cfg *ChunkedUploadConfig, session *uplo
 				if jobID, err := worker.EnqueueWithTracking(ctx, cfg.Queries, cfg.Broker, &payload, db.JobTypePdfThumbnail); err != nil {
 					log.Error("failed to enqueue pdf_thumbnail job", "error", err)
 				} else {
+					metrics.RecordJobEnqueued("pdf_thumbnail")
 					log.Info("pdf_thumbnail job enqueued", "job_id", jobID)
 				}
 			case video.IsVideoType(contentType):
@@ -408,6 +416,7 @@ func assembleChunks(ctx context.Context, cfg *ChunkedUploadConfig, session *uplo
 				if jobID, err := worker.EnqueueWithTracking(ctx, cfg.Queries, cfg.Broker, &payload, db.JobTypeVideoThumbnail); err != nil {
 					log.Error("failed to enqueue video_thumbnail job", "error", err)
 				} else {
+					metrics.RecordJobEnqueued("video_thumbnail")
 					log.Info("video_thumbnail job enqueued", "job_id", jobID)
 				}
 			}
