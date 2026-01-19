@@ -12,9 +12,9 @@ import (
 )
 
 const createFileShare = `-- name: CreateFileShare :one
-INSERT INTO file_shares (file_id, token, expires_at, allowed_transforms)
-VALUES ($1, $2, $3, $4)
-RETURNING id, file_id, token, expires_at, allowed_transforms, access_count, created_at
+INSERT INTO file_shares (file_id, token, expires_at, allowed_transforms, password_hash, max_downloads)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, file_id, token, expires_at, allowed_transforms, access_count, password_hash, max_downloads, download_count, created_at
 `
 
 type CreateFileShareParams struct {
@@ -22,6 +22,8 @@ type CreateFileShareParams struct {
 	Token             string             `json:"token"`
 	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
 	AllowedTransforms []string           `json:"allowed_transforms"`
+	PasswordHash      *string            `json:"password_hash"`
+	MaxDownloads      *int32             `json:"max_downloads"`
 }
 
 func (q *Queries) CreateFileShare(ctx context.Context, arg CreateFileShareParams) (FileShare, error) {
@@ -30,6 +32,8 @@ func (q *Queries) CreateFileShare(ctx context.Context, arg CreateFileShareParams
 		arg.Token,
 		arg.ExpiresAt,
 		arg.AllowedTransforms,
+		arg.PasswordHash,
+		arg.MaxDownloads,
 	)
 	var i FileShare
 	err := row.Scan(
@@ -39,6 +43,9 @@ func (q *Queries) CreateFileShare(ctx context.Context, arg CreateFileShareParams
 		&i.ExpiresAt,
 		&i.AllowedTransforms,
 		&i.AccessCount,
+		&i.PasswordHash,
+		&i.MaxDownloads,
+		&i.DownloadCount,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -130,7 +137,7 @@ func (q *Queries) DeleteOldTransformCache(ctx context.Context) error {
 }
 
 const getFileShareByToken = `-- name: GetFileShareByToken :one
-SELECT s.id, s.file_id, s.token, s.expires_at, s.allowed_transforms, s.access_count, s.created_at, f.storage_key, f.content_type, f.user_id, f.filename
+SELECT s.id, s.file_id, s.token, s.expires_at, s.allowed_transforms, s.access_count, s.password_hash, s.max_downloads, s.download_count, s.created_at, f.storage_key, f.content_type, f.user_id, f.filename
 FROM file_shares s
 JOIN files f ON f.id = s.file_id
 WHERE s.token = $1
@@ -145,6 +152,9 @@ type GetFileShareByTokenRow struct {
 	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
 	AllowedTransforms []string           `json:"allowed_transforms"`
 	AccessCount       int32              `json:"access_count"`
+	PasswordHash      *string            `json:"password_hash"`
+	MaxDownloads      *int32             `json:"max_downloads"`
+	DownloadCount     int32              `json:"download_count"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	StorageKey        string             `json:"storage_key"`
 	ContentType       string             `json:"content_type"`
@@ -162,6 +172,9 @@ func (q *Queries) GetFileShareByToken(ctx context.Context, token string) (GetFil
 		&i.ExpiresAt,
 		&i.AllowedTransforms,
 		&i.AccessCount,
+		&i.PasswordHash,
+		&i.MaxDownloads,
+		&i.DownloadCount,
 		&i.CreatedAt,
 		&i.StorageKey,
 		&i.ContentType,
@@ -231,6 +244,17 @@ func (q *Queries) IncrementShareAccessCount(ctx context.Context, id pgtype.UUID)
 	return err
 }
 
+const incrementShareDownloadCount = `-- name: IncrementShareDownloadCount :exec
+UPDATE file_shares
+SET download_count = download_count + 1
+WHERE id = $1
+`
+
+func (q *Queries) IncrementShareDownloadCount(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, incrementShareDownloadCount, id)
+	return err
+}
+
 const incrementTransformCacheCount = `-- name: IncrementTransformCacheCount :exec
 UPDATE transform_cache
 SET request_count = request_count + 1, last_accessed_at = NOW()
@@ -247,8 +271,25 @@ func (q *Queries) IncrementTransformCacheCount(ctx context.Context, arg Incremen
 	return err
 }
 
+const isShareDownloadLimitReached = `-- name: IsShareDownloadLimitReached :one
+SELECT CASE
+    WHEN max_downloads IS NULL THEN false
+    WHEN download_count >= max_downloads THEN true
+    ELSE false
+END AS limit_reached
+FROM file_shares
+WHERE id = $1
+`
+
+func (q *Queries) IsShareDownloadLimitReached(ctx context.Context, id pgtype.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, isShareDownloadLimitReached, id)
+	var limit_reached bool
+	err := row.Scan(&limit_reached)
+	return limit_reached, err
+}
+
 const listFileSharesByFile = `-- name: ListFileSharesByFile :many
-SELECT id, file_id, token, expires_at, allowed_transforms, access_count, created_at FROM file_shares
+SELECT id, file_id, token, expires_at, allowed_transforms, access_count, password_hash, max_downloads, download_count, created_at FROM file_shares
 WHERE file_id = $1
 ORDER BY created_at DESC
 `
@@ -269,6 +310,9 @@ func (q *Queries) ListFileSharesByFile(ctx context.Context, fileID pgtype.UUID) 
 			&i.ExpiresAt,
 			&i.AllowedTransforms,
 			&i.AccessCount,
+			&i.PasswordHash,
+			&i.MaxDownloads,
+			&i.DownloadCount,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err

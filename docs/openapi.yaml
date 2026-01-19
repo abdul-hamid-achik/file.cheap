@@ -1,0 +1,975 @@
+openapi: 3.0.3
+info:
+  title: file.cheap API
+  description: |
+    REST API for file.cheap - a file hosting and transformation service.
+
+    ## Authentication
+    - **JWT Bearer**: Pass `Authorization: Bearer <token>` header for API access
+    - **API Keys**: Pass `X-API-Key: <key>` header for programmatic access
+
+    ## Rate Limiting
+    - Free tier: 100 requests/minute
+    - Pro tier: 1000 requests/minute
+    - Enterprise tier: 10000 requests/minute
+
+    Rate limit headers are included in responses:
+    - `X-RateLimit-Limit`: Request limit
+    - `X-RateLimit-Remaining`: Remaining requests
+    - `X-RateLimit-Reset`: Reset timestamp
+  version: 1.0.0
+  contact:
+    email: support@file.cheap
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.file.cheap/v1
+    description: Production API
+  - url: http://localhost:8080/v1
+    description: Local development
+
+tags:
+  - name: Files
+    description: File upload, download, and management
+  - name: Transformations
+    description: Image and video transformations
+  - name: Folders
+    description: Folder organization
+  - name: Shares
+    description: File sharing
+  - name: Webhooks
+    description: Webhook management
+  - name: Users
+    description: User management
+  - name: Auth
+    description: Authentication
+
+paths:
+  /files:
+    get:
+      summary: List files
+      tags: [Files]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: folder_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of files
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  files:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/File'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /upload:
+    post:
+      summary: Upload a file
+      tags: [Files]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                folder_id:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/File'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          description: File too large
+
+  /files/{id}:
+    get:
+      summary: Get file details
+      tags: [Files]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: File details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/File'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete a file
+      tags: [Files]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: File deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /files/{id}/download:
+    get:
+      summary: Download a file
+      tags: [Files]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /files/{id}/transform:
+    get:
+      summary: Get transformed file
+      tags: [Transformations]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: w
+          in: query
+          description: Width in pixels
+          schema:
+            type: integer
+        - name: h
+          in: query
+          description: Height in pixels
+          schema:
+            type: integer
+        - name: format
+          in: query
+          description: Output format
+          schema:
+            type: string
+            enum: [webp, jpeg, png]
+        - name: quality
+          in: query
+          description: Quality (1-100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: preset
+          in: query
+          description: Preset transformation
+          schema:
+            type: string
+            enum: [thumbnail, sm, md, lg, xl, og, twitter]
+      responses:
+        '200':
+          description: Transformed file
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /files/{id}/share:
+    post:
+      summary: Create a file share
+      tags: [Shares]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expires_at:
+                  type: string
+                  format: date-time
+                password:
+                  type: string
+                  description: Optional password protection
+                max_downloads:
+                  type: integer
+                  description: Maximum download count
+      responses:
+        '201':
+          description: Share created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileShare'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /files/{id}/move:
+    post:
+      summary: Move file to folder
+      tags: [Files, Folders]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                folder_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Target folder ID (null for root)
+      responses:
+        '204':
+          description: File moved
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /share/{token}:
+    get:
+      summary: Access shared file
+      tags: [Shares]
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-Share-Password
+          in: header
+          schema:
+            type: string
+          description: Password for protected shares
+      responses:
+        '200':
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Password required
+        '403':
+          description: Download limit reached
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chunked/init:
+    post:
+      summary: Initialize chunked upload
+      tags: [Files]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - filename
+                - total_size
+              properties:
+                filename:
+                  type: string
+                content_type:
+                  type: string
+                total_size:
+                  type: integer
+                  format: int64
+      responses:
+        '200':
+          description: Upload session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_id:
+                    type: string
+                  chunk_size:
+                    type: integer
+                  chunks_total:
+                    type: integer
+
+  /chunked/{uploadId}:
+    post:
+      summary: Upload chunk
+      tags: [Files]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      parameters:
+        - name: uploadId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: chunk
+          in: query
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Chunk uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_id:
+                    type: string
+                  chunk_index:
+                    type: integer
+                  chunks_loaded:
+                    type: integer
+                  chunks_total:
+                    type: integer
+                  complete:
+                    type: boolean
+                  file_id:
+                    type: string
+
+    get:
+      summary: Get upload status
+      tags: [Files]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      parameters:
+        - name: uploadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Upload status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_id:
+                    type: string
+                  filename:
+                    type: string
+                  total_size:
+                    type: integer
+                  chunks_total:
+                    type: integer
+                  chunks_loaded:
+                    type: integer
+                  complete:
+                    type: boolean
+
+    delete:
+      summary: Cancel upload
+      tags: [Files]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      parameters:
+        - name: uploadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Upload cancelled
+
+  /folders:
+    get:
+      summary: List root folders
+      tags: [Folders]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      responses:
+        '200':
+          description: Folder contents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FolderContents'
+
+    post:
+      summary: Create folder
+      tags: [Folders]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                parent_id:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Folder created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Folder'
+
+  /folders/{id}:
+    get:
+      summary: Get folder contents
+      tags: [Folders]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Folder contents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FolderContents'
+
+    patch:
+      summary: Update folder
+      tags: [Folders]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                parent_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Folder updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Folder'
+
+    delete:
+      summary: Delete folder
+      tags: [Folders]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: recursive
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '204':
+          description: Folder deleted
+
+  /webhooks:
+    get:
+      summary: List webhooks
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      responses:
+        '200':
+          description: List of webhooks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Webhook'
+
+    post:
+      summary: Create webhook
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+                - events
+              properties:
+                url:
+                  type: string
+                  format: uri
+                events:
+                  type: array
+                  items:
+                    type: string
+                    enum: [file.uploaded, file.processed, file.deleted]
+      responses:
+        '201':
+          description: Webhook created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+
+  /webhooks/{id}:
+    get:
+      summary: Get webhook
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Webhook details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+
+    patch:
+      summary: Update webhook
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                  format: uri
+                events:
+                  type: array
+                  items:
+                    type: string
+                active:
+                  type: boolean
+      responses:
+        '200':
+          description: Webhook updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+
+    delete:
+      summary: Delete webhook
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Webhook deleted
+
+  /me:
+    get:
+      summary: Get current user
+      tags: [Users]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /me/usage:
+    get:
+      summary: Get usage statistics
+      tags: [Users]
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      responses:
+        '200':
+          description: Usage statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  files_count:
+                    type: integer
+                  files_limit:
+                    type: integer
+                  storage_used_bytes:
+                    type: integer
+                    format: int64
+                  storage_limit_bytes:
+                    type: integer
+                    format: int64
+                  transformations_used:
+                    type: integer
+                  transformations_limit:
+                    type: integer
+
+  /health:
+    get:
+      summary: Health check
+      tags: [Auth]
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy]
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    File:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        filename:
+          type: string
+        content_type:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [pending, processing, ready, error]
+        folder_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Folder:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        path:
+          type: string
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    FolderContents:
+      type: object
+      properties:
+        folder:
+          $ref: '#/components/schemas/Folder'
+        folders:
+          type: array
+          items:
+            $ref: '#/components/schemas/Folder'
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/File'
+
+    FileShare:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        token:
+          type: string
+        url:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        has_password:
+          type: boolean
+        max_downloads:
+          type: integer
+          nullable: true
+        download_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    Webhook:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            type: string
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+        subscription_tier:
+          type: string
+          enum: [free, pro, enterprise]
+        created_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        message:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Forbidden:
+      description: Permission denied
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    TooManyRequests:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

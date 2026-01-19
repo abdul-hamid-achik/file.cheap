@@ -134,3 +134,33 @@ WHERE user_id = $1 AND deleted_at IS NULL;
 -- name: GetUserRole :one
 SELECT role FROM users
 WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: GetUserStorageQuota :one
+SELECT id, storage_limit_bytes, storage_used_bytes
+FROM users
+WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: GetUserTotalStorageUsage :one
+SELECT COALESCE(SUM(size_bytes), 0)::bigint AS total_bytes
+FROM files
+WHERE user_id = $1 AND deleted_at IS NULL;
+
+-- name: UpdateUserStorageUsed :exec
+UPDATE users
+SET storage_used_bytes = $2, updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: IncrementUserStorageUsed :exec
+UPDATE users
+SET storage_used_bytes = storage_used_bytes + $2, updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: DecrementUserStorageUsed :exec
+UPDATE users
+SET storage_used_bytes = GREATEST(0, storage_used_bytes - $2), updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: UpdateUserStorageLimit :exec
+UPDATE users
+SET storage_limit_bytes = $2, updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL;

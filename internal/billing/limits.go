@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
@@ -8,16 +9,19 @@ import (
 
 const (
 	FreeFilesLimit           = 100
-	FreeMaxFileSize          = 10 * 1024 * 1024 // 10 MB
+	FreeMaxFileSize          = 10 * 1024 * 1024       // 10 MB
+	FreeStorageLimit         = 1 * 1024 * 1024 * 1024 // 1 GB
 	FreeRetentionDays        = 7
 	FreeTransformationsLimit = 100
 
 	ProFilesLimit           = 2000
-	ProMaxFileSize          = 100 * 1024 * 1024 // 100 MB
+	ProMaxFileSize          = 100 * 1024 * 1024        // 100 MB
+	ProStorageLimit         = 100 * 1024 * 1024 * 1024 // 100 GB
 	ProRetentionDays        = 365
 	ProTransformationsLimit = 10000
 
-	EnterpriseTransformationsLimit = -1 // unlimited
+	EnterpriseStorageLimit         = 1024 * 1024 * 1024 * 1024 // 1 TB
+	EnterpriseTransformationsLimit = -1                        // unlimited
 
 	// Video limits - Free tier (very restrictive for cost control)
 	FreeVideoStorageBytes  = 200 * 1024 * 1024 // 200 MB
@@ -47,6 +51,7 @@ const (
 type TierLimits struct {
 	FilesLimit           int
 	MaxFileSize          int64
+	StorageLimitBytes    int64
 	MaxRetentionDays     int
 	TransformationsLimit int
 	AllowedProcessing    []string
@@ -78,6 +83,7 @@ func GetTierLimits(tier db.SubscriptionTier) TierLimits {
 		return TierLimits{
 			FilesLimit:           ProFilesLimit,
 			MaxFileSize:          ProMaxFileSize,
+			StorageLimitBytes:    EnterpriseStorageLimit,
 			MaxRetentionDays:     ProRetentionDays,
 			TransformationsLimit: EnterpriseTransformationsLimit,
 			AllowedProcessing: []string{
@@ -104,6 +110,7 @@ func GetTierLimits(tier db.SubscriptionTier) TierLimits {
 		return TierLimits{
 			FilesLimit:           ProFilesLimit,
 			MaxFileSize:          ProMaxFileSize,
+			StorageLimitBytes:    ProStorageLimit,
 			MaxRetentionDays:     ProRetentionDays,
 			TransformationsLimit: ProTransformationsLimit,
 			AllowedProcessing: []string{
@@ -130,6 +137,7 @@ func GetTierLimits(tier db.SubscriptionTier) TierLimits {
 		return TierLimits{
 			FilesLimit:           FreeFilesLimit,
 			MaxFileSize:          FreeMaxFileSize,
+			StorageLimitBytes:    FreeStorageLimit,
 			MaxRetentionDays:     FreeRetentionDays,
 			TransformationsLimit: FreeTransformationsLimit,
 			AllowedProcessing:    []string{"thumbnail", "sm", "video_thumbnail"},
@@ -156,6 +164,8 @@ type SubscriptionInfo struct {
 	FilesLimit             int
 	MaxFileSize            int64
 	FilesUsed              int64
+	StorageLimitBytes      int64
+	StorageUsedBytes       int64
 	TransformationsLimit   int
 	TransformationsUsed    int
 	TransformationsResetAt *time.Time
@@ -276,4 +286,36 @@ func (s *SubscriptionInfo) DaysUntilTransformationReset() int {
 		return 0
 	}
 	return int(remaining.Hours()/24) + 1
+}
+
+func (s *SubscriptionInfo) CanUploadStorage(size int64) bool {
+	return s.StorageUsedBytes+size <= s.StorageLimitBytes
+}
+
+func (s *SubscriptionInfo) RemainingStorage() int64 {
+	remaining := s.StorageLimitBytes - s.StorageUsedBytes
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
+func (s *SubscriptionInfo) StorageUsagePercent() int {
+	if s.StorageLimitBytes == 0 {
+		return 100
+	}
+	return int((s.StorageUsedBytes * 100) / s.StorageLimitBytes)
+}
+
+func FormatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }

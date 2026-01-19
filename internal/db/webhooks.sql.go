@@ -38,7 +38,7 @@ func (q *Queries) CountWebhooksByUser(ctx context.Context, userID pgtype.UUID) (
 const createWebhook = `-- name: CreateWebhook :one
 INSERT INTO webhooks (user_id, url, secret, events)
 VALUES ($1, $2, $3, $4)
-RETURNING id, user_id, url, secret, events, active, created_at, updated_at
+RETURNING id, user_id, url, secret, events, active, consecutive_failures, last_failure_at, circuit_state, created_at, updated_at
 `
 
 type CreateWebhookParams struct {
@@ -63,6 +63,9 @@ func (q *Queries) CreateWebhook(ctx context.Context, arg CreateWebhookParams) (W
 		&i.Secret,
 		&i.Events,
 		&i.Active,
+		&i.ConsecutiveFailures,
+		&i.LastFailureAt,
+		&i.CircuitState,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -116,7 +119,7 @@ func (q *Queries) DeleteWebhook(ctx context.Context, arg DeleteWebhookParams) er
 }
 
 const getWebhook = `-- name: GetWebhook :one
-SELECT id, user_id, url, secret, events, active, created_at, updated_at FROM webhooks
+SELECT id, user_id, url, secret, events, active, consecutive_failures, last_failure_at, circuit_state, created_at, updated_at FROM webhooks
 WHERE id = $1 AND user_id = $2
 `
 
@@ -135,6 +138,9 @@ func (q *Queries) GetWebhook(ctx context.Context, arg GetWebhookParams) (Webhook
 		&i.Secret,
 		&i.Events,
 		&i.Active,
+		&i.ConsecutiveFailures,
+		&i.LastFailureAt,
+		&i.CircuitState,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -142,7 +148,7 @@ func (q *Queries) GetWebhook(ctx context.Context, arg GetWebhookParams) (Webhook
 }
 
 const getWebhookByDeliveryID = `-- name: GetWebhookByDeliveryID :one
-SELECT w.id, w.user_id, w.url, w.secret, w.events, w.active, w.created_at, w.updated_at FROM webhooks w
+SELECT w.id, w.user_id, w.url, w.secret, w.events, w.active, w.consecutive_failures, w.last_failure_at, w.circuit_state, w.created_at, w.updated_at FROM webhooks w
 JOIN webhook_deliveries wd ON wd.webhook_id = w.id
 WHERE wd.id = $1
 `
@@ -157,6 +163,9 @@ func (q *Queries) GetWebhookByDeliveryID(ctx context.Context, id pgtype.UUID) (W
 		&i.Secret,
 		&i.Events,
 		&i.Active,
+		&i.ConsecutiveFailures,
+		&i.LastFailureAt,
+		&i.CircuitState,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -164,7 +173,7 @@ func (q *Queries) GetWebhookByDeliveryID(ctx context.Context, id pgtype.UUID) (W
 }
 
 const getWebhookByID = `-- name: GetWebhookByID :one
-SELECT id, user_id, url, secret, events, active, created_at, updated_at FROM webhooks
+SELECT id, user_id, url, secret, events, active, consecutive_failures, last_failure_at, circuit_state, created_at, updated_at FROM webhooks
 WHERE id = $1
 `
 
@@ -178,8 +187,38 @@ func (q *Queries) GetWebhookByID(ctx context.Context, id pgtype.UUID) (Webhook, 
 		&i.Secret,
 		&i.Events,
 		&i.Active,
+		&i.ConsecutiveFailures,
+		&i.LastFailureAt,
+		&i.CircuitState,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getWebhookCircuitState = `-- name: GetWebhookCircuitState :one
+SELECT id, url, consecutive_failures, last_failure_at, circuit_state
+FROM webhooks
+WHERE id = $1
+`
+
+type GetWebhookCircuitStateRow struct {
+	ID                  pgtype.UUID        `json:"id"`
+	Url                 string             `json:"url"`
+	ConsecutiveFailures *int32             `json:"consecutive_failures"`
+	LastFailureAt       pgtype.Timestamptz `json:"last_failure_at"`
+	CircuitState        *string            `json:"circuit_state"`
+}
+
+func (q *Queries) GetWebhookCircuitState(ctx context.Context, id pgtype.UUID) (GetWebhookCircuitStateRow, error) {
+	row := q.db.QueryRow(ctx, getWebhookCircuitState, id)
+	var i GetWebhookCircuitStateRow
+	err := row.Scan(
+		&i.ID,
+		&i.Url,
+		&i.ConsecutiveFailures,
+		&i.LastFailureAt,
+		&i.CircuitState,
 	)
 	return i, err
 }
@@ -208,8 +247,21 @@ func (q *Queries) GetWebhookDelivery(ctx context.Context, id pgtype.UUID) (Webho
 	return i, err
 }
 
+const incrementWebhookFailures = `-- name: IncrementWebhookFailures :exec
+UPDATE webhooks
+SET consecutive_failures = consecutive_failures + 1,
+    last_failure_at = NOW(),
+    circuit_state = CASE WHEN consecutive_failures >= 9 THEN 'open' ELSE circuit_state END
+WHERE id = $1
+`
+
+func (q *Queries) IncrementWebhookFailures(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, incrementWebhookFailures, id)
+	return err
+}
+
 const listActiveWebhooksByUserAndEvent = `-- name: ListActiveWebhooksByUserAndEvent :many
-SELECT id, user_id, url, secret, events, active, created_at, updated_at FROM webhooks
+SELECT id, user_id, url, secret, events, active, consecutive_failures, last_failure_at, circuit_state, created_at, updated_at FROM webhooks
 WHERE user_id = $1 AND active = true AND $2::text = ANY(events)
 `
 
@@ -234,6 +286,9 @@ func (q *Queries) ListActiveWebhooksByUserAndEvent(ctx context.Context, arg List
 			&i.Secret,
 			&i.Events,
 			&i.Active,
+			&i.ConsecutiveFailures,
+			&i.LastFailureAt,
+			&i.CircuitState,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -292,6 +347,47 @@ func (q *Queries) ListDeliveriesByWebhook(ctx context.Context, arg ListDeliverie
 	return items, nil
 }
 
+const listOpenCircuitWebhooks = `-- name: ListOpenCircuitWebhooks :many
+SELECT id, url, consecutive_failures, last_failure_at, circuit_state
+FROM webhooks
+WHERE circuit_state = 'open'
+  AND last_failure_at < NOW() - INTERVAL '1 hour'
+`
+
+type ListOpenCircuitWebhooksRow struct {
+	ID                  pgtype.UUID        `json:"id"`
+	Url                 string             `json:"url"`
+	ConsecutiveFailures *int32             `json:"consecutive_failures"`
+	LastFailureAt       pgtype.Timestamptz `json:"last_failure_at"`
+	CircuitState        *string            `json:"circuit_state"`
+}
+
+func (q *Queries) ListOpenCircuitWebhooks(ctx context.Context) ([]ListOpenCircuitWebhooksRow, error) {
+	rows, err := q.db.Query(ctx, listOpenCircuitWebhooks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOpenCircuitWebhooksRow
+	for rows.Next() {
+		var i ListOpenCircuitWebhooksRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Url,
+			&i.ConsecutiveFailures,
+			&i.LastFailureAt,
+			&i.CircuitState,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPendingDeliveries = `-- name: ListPendingDeliveries :many
 SELECT id, webhook_id, event_type, payload, status, attempts, last_attempt_at, next_retry_at, response_code, response_body, created_at FROM webhook_deliveries
 WHERE status IN ('pending', 'retrying')
@@ -333,7 +429,7 @@ func (q *Queries) ListPendingDeliveries(ctx context.Context, limit int32) ([]Web
 }
 
 const listWebhooksByUser = `-- name: ListWebhooksByUser :many
-SELECT id, user_id, url, secret, events, active, created_at, updated_at FROM webhooks
+SELECT id, user_id, url, secret, events, active, consecutive_failures, last_failure_at, circuit_state, created_at, updated_at FROM webhooks
 WHERE user_id = $1
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -361,6 +457,9 @@ func (q *Queries) ListWebhooksByUser(ctx context.Context, arg ListWebhooksByUser
 			&i.Secret,
 			&i.Events,
 			&i.Active,
+			&i.ConsecutiveFailures,
+			&i.LastFailureAt,
+			&i.CircuitState,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -410,6 +509,33 @@ func (q *Queries) MarkDeliverySuccess(ctx context.Context, arg MarkDeliverySucce
 	return err
 }
 
+const resetWebhookFailures = `-- name: ResetWebhookFailures :exec
+UPDATE webhooks
+SET consecutive_failures = 0, circuit_state = 'closed'
+WHERE id = $1
+`
+
+func (q *Queries) ResetWebhookFailures(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, resetWebhookFailures, id)
+	return err
+}
+
+const setWebhookCircuitState = `-- name: SetWebhookCircuitState :exec
+UPDATE webhooks
+SET circuit_state = $2
+WHERE id = $1
+`
+
+type SetWebhookCircuitStateParams struct {
+	ID           pgtype.UUID `json:"id"`
+	CircuitState *string     `json:"circuit_state"`
+}
+
+func (q *Queries) SetWebhookCircuitState(ctx context.Context, arg SetWebhookCircuitStateParams) error {
+	_, err := q.db.Exec(ctx, setWebhookCircuitState, arg.ID, arg.CircuitState)
+	return err
+}
+
 const updateDeliveryRetry = `-- name: UpdateDeliveryRetry :exec
 UPDATE webhook_deliveries
 SET status = 'retrying', attempts = attempts + 1, last_attempt_at = NOW(),
@@ -438,7 +564,7 @@ const updateWebhook = `-- name: UpdateWebhook :one
 UPDATE webhooks
 SET url = $3, events = $4, active = $5, updated_at = NOW()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, url, secret, events, active, created_at, updated_at
+RETURNING id, user_id, url, secret, events, active, consecutive_failures, last_failure_at, circuit_state, created_at, updated_at
 `
 
 type UpdateWebhookParams struct {
@@ -465,6 +591,9 @@ func (q *Queries) UpdateWebhook(ctx context.Context, arg UpdateWebhookParams) (W
 		&i.Secret,
 		&i.Events,
 		&i.Active,
+		&i.ConsecutiveFailures,
+		&i.LastFailureAt,
+		&i.CircuitState,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

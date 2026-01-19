@@ -12,6 +12,60 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AuditAction string
+
+const (
+	AuditActionFileupload         AuditAction = "file.upload"
+	AuditActionFiledownload       AuditAction = "file.download"
+	AuditActionFiledelete         AuditAction = "file.delete"
+	AuditActionFileshare          AuditAction = "file.share"
+	AuditActionShareaccess        AuditAction = "share.access"
+	AuditActionSharedelete        AuditAction = "share.delete"
+	AuditActionUserlogin          AuditAction = "user.login"
+	AuditActionUserlogout         AuditAction = "user.logout"
+	AuditActionUserpasswordChange AuditAction = "user.password_change"
+	AuditActionSettingsupdate     AuditAction = "settings.update"
+	AuditActionApiTokencreate     AuditAction = "api_token.create"
+	AuditActionApiTokendelete     AuditAction = "api_token.delete"
+	AuditActionWebhookcreate      AuditAction = "webhook.create"
+	AuditActionWebhookdelete      AuditAction = "webhook.delete"
+)
+
+func (e *AuditAction) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AuditAction(s)
+	case string:
+		*e = AuditAction(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AuditAction: %T", src)
+	}
+	return nil
+}
+
+type NullAuditAction struct {
+	AuditAction AuditAction `json:"audit_action"`
+	Valid       bool        `json:"valid"` // Valid is true if AuditAction is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAuditAction) Scan(value interface{}) error {
+	if value == nil {
+		ns.AuditAction, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AuditAction.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAuditAction) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AuditAction), nil
+}
+
 type BatchStatus string
 
 const (
@@ -487,6 +541,18 @@ type ApiToken struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+type AuditLog struct {
+	ID           pgtype.UUID        `json:"id"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	Action       AuditAction        `json:"action"`
+	ResourceType string             `json:"resource_type"`
+	ResourceID   pgtype.UUID        `json:"resource_id"`
+	IpAddress    *netip.Addr        `json:"ip_address"`
+	UserAgent    *string            `json:"user_agent"`
+	Metadata     []byte             `json:"metadata"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
 type BatchItem struct {
 	ID           pgtype.UUID        `json:"id"`
 	BatchID      pgtype.UUID        `json:"batch_id"`
@@ -527,6 +593,7 @@ type EmailVerification struct {
 type File struct {
 	ID          pgtype.UUID        `json:"id"`
 	UserID      pgtype.UUID        `json:"user_id"`
+	FolderID    pgtype.UUID        `json:"folder_id"`
 	Filename    string             `json:"filename"`
 	ContentType string             `json:"content_type"`
 	SizeBytes   int64              `json:"size_bytes"`
@@ -544,6 +611,9 @@ type FileShare struct {
 	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
 	AllowedTransforms []string           `json:"allowed_transforms"`
 	AccessCount       int32              `json:"access_count"`
+	PasswordHash      *string            `json:"password_hash"`
+	MaxDownloads      *int32             `json:"max_downloads"`
+	DownloadCount     int32              `json:"download_count"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 }
 
@@ -557,6 +627,16 @@ type FileVariant struct {
 	Width       *int32             `json:"width"`
 	Height      *int32             `json:"height"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type Folder struct {
+	ID        pgtype.UUID        `json:"id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	ParentID  pgtype.UUID        `json:"parent_id"`
+	Name      string             `json:"name"`
+	Path      string             `json:"path"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
 type MonthlyUsage struct {
@@ -655,6 +735,8 @@ type User struct {
 	TrialEndsAt            pgtype.Timestamptz `json:"trial_ends_at"`
 	FilesLimit             int32              `json:"files_limit"`
 	MaxFileSize            int64              `json:"max_file_size"`
+	StorageLimitBytes      int64              `json:"storage_limit_bytes"`
+	StorageUsedBytes       int64              `json:"storage_used_bytes"`
 	TransformationsCount   int32              `json:"transformations_count"`
 	TransformationsLimit   int32              `json:"transformations_limit"`
 	TransformationsResetAt pgtype.Timestamptz `json:"transformations_reset_at"`
@@ -679,14 +761,17 @@ type UserSetting struct {
 }
 
 type Webhook struct {
-	ID        pgtype.UUID        `json:"id"`
-	UserID    pgtype.UUID        `json:"user_id"`
-	Url       string             `json:"url"`
-	Secret    string             `json:"secret"`
-	Events    []string           `json:"events"`
-	Active    bool               `json:"active"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID                  pgtype.UUID        `json:"id"`
+	UserID              pgtype.UUID        `json:"user_id"`
+	Url                 string             `json:"url"`
+	Secret              string             `json:"secret"`
+	Events              []string           `json:"events"`
+	Active              bool               `json:"active"`
+	ConsecutiveFailures *int32             `json:"consecutive_failures"`
+	LastFailureAt       pgtype.Timestamptz `json:"last_failure_at"`
+	CircuitState        *string            `json:"circuit_state"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
 }
 
 type WebhookDelivery struct {

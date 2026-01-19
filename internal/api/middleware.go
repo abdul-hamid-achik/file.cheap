@@ -379,3 +379,28 @@ func writeJSONError(w http.ResponseWriter, code, message string, status int) {
 		},
 	})
 }
+
+// SecurityHeaders adds security headers to all responses
+func SecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Prevent clickjacking
+		w.Header().Set("X-Frame-Options", "DENY")
+		// Prevent MIME sniffing
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		// XSS protection (legacy but still useful)
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		// Referrer policy
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		// Permissions policy (restrict dangerous features)
+		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+		// HSTS (only if HTTPS)
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		// Content Security Policy
+		w.Header().Set("Content-Security-Policy",
+			"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'")
+
+		next.ServeHTTP(w, r)
+	})
+}

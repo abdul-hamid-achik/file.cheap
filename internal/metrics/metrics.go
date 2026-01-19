@@ -184,6 +184,101 @@ var (
 			Help: "Application is up and running",
 		},
 	)
+
+	// Business metrics
+	UploadsByTier = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "filecheap_uploads_by_tier_total",
+			Help: "Total file uploads by subscription tier",
+		},
+		[]string{"tier", "content_type"},
+	)
+
+	UploadBytesByTier = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "filecheap_upload_bytes_by_tier_total",
+			Help: "Total bytes uploaded by subscription tier",
+		},
+		[]string{"tier"},
+	)
+
+	TransformationsByTier = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "filecheap_transformations_by_tier_total",
+			Help: "Total transformations by subscription tier",
+		},
+		[]string{"tier", "type"},
+	)
+
+	WebhookDeliveriesTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "filecheap_webhook_deliveries_total",
+			Help: "Total webhook deliveries by status",
+		},
+		[]string{"status"},
+	)
+
+	WebhookDeliveryDuration = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "filecheap_webhook_delivery_duration_seconds",
+			Help:    "Webhook delivery duration in seconds",
+			Buckets: []float64{.1, .25, .5, 1, 2.5, 5, 10, 30},
+		},
+	)
+
+	StorageUsageByTier = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "filecheap_storage_usage_bytes",
+			Help: "Storage usage in bytes by tier",
+		},
+		[]string{"tier"},
+	)
+
+	ActiveUsersByTier = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "filecheap_active_users",
+			Help: "Number of active users by tier",
+		},
+		[]string{"tier"},
+	)
+
+	FileSharesTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "filecheap_file_shares_total",
+			Help: "Total number of file shares created",
+		},
+	)
+
+	FileShareAccessTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "filecheap_file_share_access_total",
+			Help: "Total number of file share accesses",
+		},
+	)
+
+	APIRequestsByTier = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "filecheap_api_requests_by_tier_total",
+			Help: "Total API requests by tier and endpoint",
+		},
+		[]string{"tier", "method", "endpoint"},
+	)
+
+	RateLimitHits = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "filecheap_rate_limit_hits_total",
+			Help: "Total rate limit hits by tier",
+		},
+		[]string{"tier"},
+	)
+
+	QuotaExceededTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "filecheap_quota_exceeded_total",
+			Help: "Total quota exceeded events by type",
+		},
+		[]string{"quota_type", "tier"},
+	)
 )
 
 func NormalizePath(path string) string {
@@ -230,4 +325,48 @@ func SetWorkerPoolSize(size int) {
 
 func SetJobsInQueue(queue string, count int64) {
 	JobsInQueue.WithLabelValues(queue).Set(float64(count))
+}
+
+// Business metric helper functions
+
+func RecordUploadByTier(tier, contentType string, sizeBytes int64) {
+	UploadsByTier.WithLabelValues(tier, contentType).Inc()
+	UploadBytesByTier.WithLabelValues(tier).Add(float64(sizeBytes))
+}
+
+func RecordTransformationByTier(tier, transformType string) {
+	TransformationsByTier.WithLabelValues(tier, transformType).Inc()
+}
+
+func RecordWebhookDelivery(status string, durationSeconds float64) {
+	WebhookDeliveriesTotal.WithLabelValues(status).Inc()
+	WebhookDeliveryDuration.Observe(durationSeconds)
+}
+
+func SetStorageUsageByTier(tier string, bytes int64) {
+	StorageUsageByTier.WithLabelValues(tier).Set(float64(bytes))
+}
+
+func SetActiveUsersByTier(tier string, count int64) {
+	ActiveUsersByTier.WithLabelValues(tier).Set(float64(count))
+}
+
+func RecordFileShare() {
+	FileSharesTotal.Inc()
+}
+
+func RecordFileShareAccess() {
+	FileShareAccessTotal.Inc()
+}
+
+func RecordAPIRequestByTier(tier, method, endpoint string) {
+	APIRequestsByTier.WithLabelValues(tier, method, endpoint).Inc()
+}
+
+func RecordRateLimitHit(tier string) {
+	RateLimitHits.WithLabelValues(tier).Inc()
+}
+
+func RecordQuotaExceeded(quotaType, tier string) {
+	QuotaExceededTotal.WithLabelValues(quotaType, tier).Inc()
 }

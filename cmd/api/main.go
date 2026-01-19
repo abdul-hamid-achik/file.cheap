@@ -227,7 +227,7 @@ func run() error {
 	webRouter := web.NewRouter(webCfg, sessionManager, authService, oauthService, emailService, billingHandlers, analyticsHandlers, adminHandlers)
 	mux.Handle("/", webRouter)
 
-	handler := metrics.HTTPMetricsMiddleware(web.Recovery(web.RequestID(web.RequestLogger(mux))))
+	handler := api.SecurityHeaders(metrics.HTTPMetricsMiddleware(web.Recovery(web.RequestID(web.RequestLogger(mux)))))
 	if cfg.TracingEnabled {
 		handler = tracing.HTTPMiddleware("api")(handler)
 	}
@@ -261,6 +261,26 @@ func run() error {
 		}
 	}()
 
+	// Start chunked upload session cleanup goroutine
+	uploadSessionStore := api.GetSessionStore()
+	go uploadSessionStore.StartCleanup(ctx, store)
+
+	// Start session cleanup goroutine
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if err := sessionManager.CleanupExpiredSessions(context.Background()); err != nil {
+					log.Error("session cleanup failed", "error", err)
+				}
+			case <-shutdown:
+				return
+			}
+		}
+	}()
+
 	go func() {
 		log.Info("server starting", "port", cfg.Port, "url", fmt.Sprintf("http://localhost:%d", cfg.Port))
 		serverErr <- server.ListenAndServe()
@@ -273,6 +293,9 @@ func run() error {
 		}
 	case sig := <-shutdown:
 		log.Info("shutdown signal received", "signal", sig)
+
+		// Stop background cleanup goroutines
+		uploadSessionStore.StopCleanup()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()

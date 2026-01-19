@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/abdul-hamid-achik/file.cheap/internal/apperror"
 	"github.com/abdul-hamid-achik/file.cheap/internal/billing"
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
 	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
@@ -50,10 +51,61 @@ type uploadSession struct {
 type uploadSessionStore struct {
 	sessions map[string]*uploadSession
 	mu       sync.RWMutex
+	done     chan struct{}
 }
 
 var sessionStore = &uploadSessionStore{
 	sessions: make(map[string]*uploadSession),
+	done:     make(chan struct{}),
+}
+
+// StartCleanup starts a background goroutine to clean up expired upload sessions
+func (s *uploadSessionStore) StartCleanup(ctx context.Context, storageClient storage.Storage) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			s.cleanupExpired(ctx, storageClient)
+		case <-s.done:
+			return
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// StopCleanup stops the cleanup goroutine
+func (s *uploadSessionStore) StopCleanup() {
+	select {
+	case <-s.done:
+		// already closed
+	default:
+		close(s.done)
+	}
+}
+
+// cleanupExpired removes sessions older than 1 hour and their orphaned chunks
+func (s *uploadSessionStore) cleanupExpired(ctx context.Context, storageClient storage.Storage) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cutoff := time.Now().Add(-1 * time.Hour)
+	for id, session := range s.sessions {
+		if session.CreatedAt.Before(cutoff) {
+			// Delete orphaned chunks from storage
+			for i := 0; i < session.ChunksTotal; i++ {
+				chunkKey := fmt.Sprintf("%s.chunk.%d", session.StorageKey, i)
+				_ = storageClient.Delete(ctx, chunkKey)
+			}
+			delete(s.sessions, id)
+		}
+	}
+}
+
+// GetSessionStore returns the global session store for cleanup initialization
+func GetSessionStore() *uploadSessionStore {
+	return sessionStore
 }
 
 func (s *uploadSessionStore) Get(id string) (*uploadSession, bool) {
@@ -106,25 +158,25 @@ func InitChunkedUploadHandler(cfg *ChunkedUploadConfig) http.HandlerFunc {
 
 		userID, ok := GetUserID(r.Context())
 		if !ok {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			apperror.WriteJSON(w, r, apperror.ErrUnauthorized)
 			return
 		}
 
 		var req InitUploadRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(err, "invalid_request", "Invalid request body", http.StatusBadRequest))
 			return
 		}
 
 		if req.Filename == "" || req.TotalSize <= 0 {
-			http.Error(w, `{"error":"filename and total_size are required"}`, http.StatusBadRequest)
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "missing_required_fields", "Filename and total_size are required", http.StatusBadRequest))
 			return
 		}
 
 		billingInfo := GetBilling(r.Context())
 		if billingInfo != nil {
 			if billingInfo.FilesCount >= int64(billingInfo.FilesLimit) {
-				http.Error(w, `{"error":"file limit reached"}`, http.StatusForbidden)
+				apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "file_limit_reached", "File limit reached", http.StatusForbidden))
 				return
 			}
 
@@ -138,13 +190,13 @@ func InitChunkedUploadHandler(cfg *ChunkedUploadConfig) http.HandlerFunc {
 				pgUserID := pgtype.UUID{Bytes: userID, Valid: true}
 				videoUsageBytes, err := cfg.Queries.GetUserVideoStorageUsage(r.Context(), pgUserID)
 				if err == nil && videoUsageBytes+req.TotalSize > limits.VideoStorageBytes {
-					http.Error(w, `{"error":"video storage quota exceeded, please upgrade or delete old videos"}`, http.StatusForbidden)
+					apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "video_storage_quota_exceeded", "Video storage quota exceeded, please upgrade or delete old videos", http.StatusForbidden))
 					return
 				}
 			}
 
 			if req.TotalSize > maxSize {
-				http.Error(w, fmt.Sprintf(`{"error":"file too large, max size: %d MB"}`, maxSize/(1024*1024)), http.StatusForbidden)
+				apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "file_too_large", fmt.Sprintf("File too large, max size: %d MB", maxSize/(1024*1024)), http.StatusForbidden))
 				return
 			}
 		}
@@ -195,7 +247,7 @@ func UploadChunkHandler(cfg *ChunkedUploadConfig) http.HandlerFunc {
 
 		userID, ok := GetUserID(r.Context())
 		if !ok {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			apperror.WriteJSON(w, r, apperror.ErrUnauthorized)
 			return
 		}
 
@@ -203,37 +255,37 @@ func UploadChunkHandler(cfg *ChunkedUploadConfig) http.HandlerFunc {
 		chunkIndexStr := r.URL.Query().Get("chunk")
 		chunkIndex, err := strconv.Atoi(chunkIndexStr)
 		if err != nil || chunkIndex < 0 {
-			http.Error(w, `{"error":"invalid chunk index"}`, http.StatusBadRequest)
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(err, "invalid_chunk_index", "Invalid chunk index", http.StatusBadRequest))
 			return
 		}
 
 		session, ok := sessionStore.Get(uploadID)
 		if !ok {
-			http.Error(w, `{"error":"upload session not found"}`, http.StatusNotFound)
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "session_not_found", "Upload session not found", http.StatusNotFound))
 			return
 		}
 
 		if session.UserID != userID {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusForbidden)
+			apperror.WriteJSON(w, r, apperror.ErrForbidden)
 			return
 		}
 
 		if chunkIndex >= session.ChunksTotal {
-			http.Error(w, `{"error":"chunk index out of range"}`, http.StatusBadRequest)
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "chunk_out_of_range", "Chunk index out of range", http.StatusBadRequest))
 			return
 		}
 
 		chunkData, err := io.ReadAll(r.Body)
 		if err != nil {
 			log.Error("failed to read chunk data", "error", err)
-			http.Error(w, `{"error":"failed to read chunk data"}`, http.StatusBadRequest)
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(err, "read_chunk_failed", "Failed to read chunk data", http.StatusBadRequest))
 			return
 		}
 
 		chunkKey := fmt.Sprintf("%s.chunk.%d", session.StorageKey, chunkIndex)
 		if err := cfg.Storage.Upload(r.Context(), chunkKey, strings.NewReader(string(chunkData)), "application/octet-stream", int64(len(chunkData))); err != nil {
 			log.Error("failed to store chunk", "error", err)
-			http.Error(w, `{"error":"failed to store chunk"}`, http.StatusInternalServerError)
+			apperror.WriteJSON(w, r, apperror.Wrap(err, apperror.ErrInternal))
 			return
 		}
 
@@ -262,7 +314,7 @@ func UploadChunkHandler(cfg *ChunkedUploadConfig) http.HandlerFunc {
 			fileID, err := assembleChunks(r.Context(), cfg, session, log)
 			if err != nil {
 				log.Error("failed to assemble chunks", "error", err)
-				http.Error(w, `{"error":"failed to assemble file"}`, http.StatusInternalServerError)
+				apperror.WriteJSON(w, r, apperror.WrapWithMessage(err, "assemble_failed", "Failed to assemble file", http.StatusInternalServerError))
 				return
 			}
 			response.FileID = fileID
@@ -274,29 +326,39 @@ func UploadChunkHandler(cfg *ChunkedUploadConfig) http.HandlerFunc {
 	}
 }
 
-// assembleChunks combines all chunks into the final file
+// assembleChunks combines all chunks into the final file using streaming
 func assembleChunks(ctx context.Context, cfg *ChunkedUploadConfig, session *uploadSession, log *slog.Logger) (string, error) {
-	// For simplicity, we'll read all chunks and combine them
-	// In production, you'd use MinIO's ComposeObject or multipart upload
+	// Create a pipe for streaming assembly
+	pr, pw := io.Pipe()
 
-	var combinedData []byte
-	for i := 0; i < session.ChunksTotal; i++ {
-		chunkKey := fmt.Sprintf("%s.chunk.%d", session.StorageKey, i)
-		reader, err := cfg.Storage.Download(ctx, chunkKey)
-		if err != nil {
-			return "", fmt.Errorf("failed to download chunk %d: %w", i, err)
+	// Writer goroutine - streams chunks sequentially to the pipe
+	go func() {
+		defer func() { _ = pw.Close() }()
+		for i := 0; i < session.ChunksTotal; i++ {
+			chunkKey := fmt.Sprintf("%s.chunk.%d", session.StorageKey, i)
+			reader, err := cfg.Storage.Download(ctx, chunkKey)
+			if err != nil {
+				pw.CloseWithError(fmt.Errorf("failed to download chunk %d: %w", i, err))
+				return
+			}
+			if _, err := io.Copy(pw, reader); err != nil {
+				_ = reader.Close()
+				pw.CloseWithError(fmt.Errorf("failed to copy chunk %d: %w", i, err))
+				return
+			}
+			_ = reader.Close()
 		}
-		chunkData, err := io.ReadAll(reader)
-		_ = reader.Close()
-		if err != nil {
-			return "", fmt.Errorf("failed to read chunk %d: %w", i, err)
-		}
-		combinedData = append(combinedData, chunkData...)
-		_ = cfg.Storage.Delete(ctx, chunkKey)
+	}()
+
+	// Upload from pipe reader (streams directly to storage)
+	if err := cfg.Storage.Upload(ctx, session.StorageKey, pr, session.ContentType, session.TotalSize); err != nil {
+		return "", fmt.Errorf("failed to upload combined file: %w", err)
 	}
 
-	if err := cfg.Storage.Upload(ctx, session.StorageKey, strings.NewReader(string(combinedData)), session.ContentType, int64(len(combinedData))); err != nil {
-		return "", fmt.Errorf("failed to upload combined file: %w", err)
+	// Clean up chunks after successful assembly
+	for i := 0; i < session.ChunksTotal; i++ {
+		chunkKey := fmt.Sprintf("%s.chunk.%d", session.StorageKey, i)
+		_ = cfg.Storage.Delete(ctx, chunkKey)
 	}
 
 	if cfg.Queries != nil {
@@ -362,19 +424,19 @@ func GetUploadStatusHandler(cfg *ChunkedUploadConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, ok := GetUserID(r.Context())
 		if !ok {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			apperror.WriteJSON(w, r, apperror.ErrUnauthorized)
 			return
 		}
 
 		uploadID := r.PathValue("uploadId")
 		session, ok := sessionStore.Get(uploadID)
 		if !ok {
-			http.Error(w, `{"error":"upload session not found"}`, http.StatusNotFound)
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "session_not_found", "Upload session not found", http.StatusNotFound))
 			return
 		}
 
 		if session.UserID != userID {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusForbidden)
+			apperror.WriteJSON(w, r, apperror.ErrForbidden)
 			return
 		}
 
@@ -401,19 +463,19 @@ func CancelUploadHandler(cfg *ChunkedUploadConfig) http.HandlerFunc {
 
 		userID, ok := GetUserID(r.Context())
 		if !ok {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			apperror.WriteJSON(w, r, apperror.ErrUnauthorized)
 			return
 		}
 
 		uploadID := r.PathValue("uploadId")
 		session, ok := sessionStore.Get(uploadID)
 		if !ok {
-			http.Error(w, `{"error":"upload session not found"}`, http.StatusNotFound)
+			apperror.WriteJSON(w, r, apperror.WrapWithMessage(nil, "session_not_found", "Upload session not found", http.StatusNotFound))
 			return
 		}
 
 		if session.UserID != userID {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusForbidden)
+			apperror.WriteJSON(w, r, apperror.ErrForbidden)
 			return
 		}
 

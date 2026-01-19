@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"time"
 
@@ -18,16 +19,26 @@ import (
 )
 
 const (
-	maxRetries      = 5
+	maxRetries      = 10
 	deliveryTimeout = 30 * time.Second
 	maxResponseBody = 1024
 )
 
-var retryDelays = []time.Duration{
-	1 * time.Minute,
-	5 * time.Minute,
-	30 * time.Minute,
-	2 * time.Hour,
+// calculateBackoff calculates exponential backoff with jitter
+// Base delay is 30 seconds, max is 4 hours
+func calculateBackoff(attempt int) time.Duration {
+	base := 30 * time.Second
+	max := 4 * time.Hour
+
+	// Exponential: 30s, 1m, 2m, 4m, 8m, 16m, 32m, 64m, 128m, 256m (capped at 4h)
+	backoff := base * time.Duration(1<<uint(attempt))
+	if backoff > max {
+		backoff = max
+	}
+
+	// Add jitter: ±25%
+	jitter := time.Duration(rand.Float64()*0.5-0.25) * backoff
+	return backoff + jitter
 }
 
 type WebhookDependencies struct {
@@ -139,10 +150,7 @@ func WebhookDeliveryHandler(deps *WebhookDependencies) func(context.Context, *jo
 			return middleware.Permanent(fmt.Errorf("max retries exceeded after %d attempts", newAttempts))
 		}
 
-		retryDelay := retryDelays[0]
-		if newAttempts-1 < len(retryDelays) {
-			retryDelay = retryDelays[newAttempts-1]
-		}
+		retryDelay := calculateBackoff(newAttempts - 1)
 		nextRetry := time.Now().Add(retryDelay)
 
 		if err := deps.Queries.UpdateDeliveryRetry(ctx, db.UpdateDeliveryRetryParams{

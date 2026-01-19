@@ -34,7 +34,7 @@ INSERT INTO files (
 ) VALUES (
     $1, $2, $3, $4, $5, $6
 )
-RETURNING id, user_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at
+RETURNING id, user_id, folder_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at
 `
 
 type CreateFileParams struct {
@@ -59,6 +59,7 @@ func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) (File, e
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
+		&i.FolderID,
 		&i.Filename,
 		&i.ContentType,
 		&i.SizeBytes,
@@ -72,7 +73,7 @@ func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) (File, e
 }
 
 const getFile = `-- name: GetFile :one
-SELECT id, user_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at FROM files 
+SELECT id, user_id, folder_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at FROM files 
 WHERE id = $1 AND deleted_at IS NULL
 `
 
@@ -82,6 +83,7 @@ func (q *Queries) GetFile(ctx context.Context, id pgtype.UUID) (File, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
+		&i.FolderID,
 		&i.Filename,
 		&i.ContentType,
 		&i.SizeBytes,
@@ -95,7 +97,7 @@ func (q *Queries) GetFile(ctx context.Context, id pgtype.UUID) (File, error) {
 }
 
 const getFilesByIDs = `-- name: GetFilesByIDs :many
-SELECT id, user_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at FROM files
+SELECT id, user_id, folder_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at FROM files
 WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
 `
 
@@ -111,6 +113,7 @@ func (q *Queries) GetFilesByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
+			&i.FolderID,
 			&i.Filename,
 			&i.ContentType,
 			&i.SizeBytes,
@@ -202,7 +205,7 @@ func (q *Queries) ListExpiredSoftDeletedFiles(ctx context.Context, limit int32) 
 }
 
 const listFilesByUser = `-- name: ListFilesByUser :many
-SELECT id, user_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at FROM files 
+SELECT id, user_id, folder_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at FROM files 
 WHERE user_id = $1 AND deleted_at IS NULL
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -226,6 +229,7 @@ func (q *Queries) ListFilesByUser(ctx context.Context, arg ListFilesByUserParams
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
+			&i.FolderID,
 			&i.Filename,
 			&i.ContentType,
 			&i.SizeBytes,
@@ -246,7 +250,7 @@ func (q *Queries) ListFilesByUser(ctx context.Context, arg ListFilesByUserParams
 }
 
 const listFilesByUserWithCount = `-- name: ListFilesByUserWithCount :many
-SELECT id, user_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at, COUNT(*) OVER() AS total_count FROM files
+SELECT id, user_id, folder_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at, COUNT(*) OVER() AS total_count FROM files
 WHERE user_id = $1 AND deleted_at IS NULL
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -261,6 +265,7 @@ type ListFilesByUserWithCountParams struct {
 type ListFilesByUserWithCountRow struct {
 	ID          pgtype.UUID        `json:"id"`
 	UserID      pgtype.UUID        `json:"user_id"`
+	FolderID    pgtype.UUID        `json:"folder_id"`
 	Filename    string             `json:"filename"`
 	ContentType string             `json:"content_type"`
 	SizeBytes   int64              `json:"size_bytes"`
@@ -284,6 +289,7 @@ func (q *Queries) ListFilesByUserWithCount(ctx context.Context, arg ListFilesByU
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
+			&i.FolderID,
 			&i.Filename,
 			&i.ContentType,
 			&i.SizeBytes,
@@ -351,7 +357,7 @@ func (q *Queries) MarkOriginalDeleted(ctx context.Context, id pgtype.UUID) error
 }
 
 const searchFilesByUser = `-- name: SearchFilesByUser :many
-SELECT id, user_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at, COUNT(*) OVER() AS total_count FROM files
+SELECT id, user_id, folder_id, filename, content_type, size_bytes, storage_key, status, created_at, updated_at, deleted_at, COUNT(*) OVER() AS total_count FROM files
 WHERE user_id = $1
   AND deleted_at IS NULL
   AND ($2::text = '' OR filename ILIKE '%' || $2 || '%')
@@ -377,6 +383,7 @@ type SearchFilesByUserParams struct {
 type SearchFilesByUserRow struct {
 	ID          pgtype.UUID        `json:"id"`
 	UserID      pgtype.UUID        `json:"user_id"`
+	FolderID    pgtype.UUID        `json:"folder_id"`
 	Filename    string             `json:"filename"`
 	ContentType string             `json:"content_type"`
 	SizeBytes   int64              `json:"size_bytes"`
@@ -409,6 +416,7 @@ func (q *Queries) SearchFilesByUser(ctx context.Context, arg SearchFilesByUserPa
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
+			&i.FolderID,
 			&i.Filename,
 			&i.ContentType,
 			&i.SizeBytes,

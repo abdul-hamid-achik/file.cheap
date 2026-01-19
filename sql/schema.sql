@@ -64,6 +64,8 @@ CREATE TABLE users (
     trial_ends_at TIMESTAMPTZ,
     files_limit INTEGER NOT NULL DEFAULT 100,
     max_file_size BIGINT NOT NULL DEFAULT 10485760,
+    storage_limit_bytes BIGINT NOT NULL DEFAULT 1073741824,
+    storage_used_bytes BIGINT NOT NULL DEFAULT 0,
     transformations_count INTEGER NOT NULL DEFAULT 0,
     transformations_limit INTEGER NOT NULL DEFAULT 100,
     transformations_reset_at TIMESTAMPTZ NOT NULL DEFAULT DATE_TRUNC('month', NOW()) + INTERVAL '1 month',
@@ -75,10 +77,26 @@ CREATE TABLE users (
     deleted_at TIMESTAMPTZ
 );
 
+-- Folders table for file organization
+CREATE TABLE folders (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    parent_id UUID REFERENCES folders(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    path TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id, parent_id, name)
+);
+
+CREATE INDEX idx_folders_user_parent ON folders(user_id, parent_id);
+CREATE INDEX idx_folders_path ON folders(user_id, path);
+
 -- Files table
 CREATE TABLE files (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    folder_id UUID REFERENCES folders(id) ON DELETE SET NULL,
     filename VARCHAR(255) NOT NULL,
     content_type VARCHAR(100) NOT NULL,
     size_bytes BIGINT NOT NULL,
@@ -88,6 +106,8 @@ CREATE TABLE files (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ
 );
+
+CREATE INDEX idx_files_folder ON files(folder_id) WHERE folder_id IS NOT NULL;
 
 -- Processing Jobs table
 CREATE TABLE processing_jobs (
@@ -263,6 +283,9 @@ CREATE TABLE file_shares (
     expires_at TIMESTAMPTZ,
     allowed_transforms TEXT[],
     access_count INT NOT NULL DEFAULT 0,
+    password_hash VARCHAR(255),
+    max_downloads INTEGER,
+    download_count INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -402,6 +425,9 @@ CREATE TABLE webhooks (
     secret VARCHAR(64) NOT NULL,
     events TEXT[] NOT NULL DEFAULT '{}',
     active BOOLEAN NOT NULL DEFAULT true,
+    consecutive_failures INTEGER DEFAULT 0,
+    last_failure_at TIMESTAMPTZ,
+    circuit_state VARCHAR(20) DEFAULT 'closed',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -429,3 +455,32 @@ CREATE INDEX idx_webhook_deliveries_status ON webhook_deliveries(status);
 CREATE INDEX idx_webhook_deliveries_next_retry ON webhook_deliveries(next_retry_at)
     WHERE status IN ('pending', 'retrying');
 CREATE INDEX idx_webhook_deliveries_created_at ON webhook_deliveries(created_at DESC);
+
+-- ============================================================================
+-- AUDIT LOGGING
+-- ============================================================================
+
+CREATE TYPE audit_action AS ENUM (
+    'file.upload', 'file.download', 'file.delete', 'file.share',
+    'share.access', 'share.delete',
+    'user.login', 'user.logout', 'user.password_change',
+    'settings.update', 'api_token.create', 'api_token.delete',
+    'webhook.create', 'webhook.delete'
+);
+
+CREATE TABLE audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    action audit_action NOT NULL,
+    resource_type VARCHAR(50) NOT NULL,
+    resource_id UUID,
+    ip_address INET,
+    user_agent TEXT,
+    metadata JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_audit_logs_user ON audit_logs(user_id, created_at DESC);
+CREATE INDEX idx_audit_logs_action ON audit_logs(action, created_at DESC);
+CREATE INDEX idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
+CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at DESC);

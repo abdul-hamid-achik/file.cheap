@@ -1,6 +1,6 @@
 -- name: CreateFileShare :one
-INSERT INTO file_shares (file_id, token, expires_at, allowed_transforms)
-VALUES ($1, $2, $3, $4)
+INSERT INTO file_shares (file_id, token, expires_at, allowed_transforms, password_hash, max_downloads)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: GetFileShareByToken :one
@@ -14,6 +14,20 @@ WHERE s.token = $1
 -- name: IncrementShareAccessCount :exec
 UPDATE file_shares
 SET access_count = access_count + 1
+WHERE id = $1;
+
+-- name: IncrementShareDownloadCount :exec
+UPDATE file_shares
+SET download_count = download_count + 1
+WHERE id = $1;
+
+-- name: IsShareDownloadLimitReached :one
+SELECT CASE
+    WHEN max_downloads IS NULL THEN false
+    WHEN download_count >= max_downloads THEN true
+    ELSE false
+END AS limit_reached
+FROM file_shares
 WHERE id = $1;
 
 -- name: ListFileSharesByFile :many

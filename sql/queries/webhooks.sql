@@ -83,3 +83,31 @@ WHERE status IN ('pending', 'retrying')
   AND (next_retry_at IS NULL OR next_retry_at <= NOW())
 ORDER BY created_at ASC
 LIMIT $1;
+
+-- name: IncrementWebhookFailures :exec
+UPDATE webhooks
+SET consecutive_failures = consecutive_failures + 1,
+    last_failure_at = NOW(),
+    circuit_state = CASE WHEN consecutive_failures >= 9 THEN 'open' ELSE circuit_state END
+WHERE id = $1;
+
+-- name: ResetWebhookFailures :exec
+UPDATE webhooks
+SET consecutive_failures = 0, circuit_state = 'closed'
+WHERE id = $1;
+
+-- name: GetWebhookCircuitState :one
+SELECT id, url, consecutive_failures, last_failure_at, circuit_state
+FROM webhooks
+WHERE id = $1;
+
+-- name: ListOpenCircuitWebhooks :many
+SELECT id, url, consecutive_failures, last_failure_at, circuit_state
+FROM webhooks
+WHERE circuit_state = 'open'
+  AND last_failure_at < NOW() - INTERVAL '1 hour';
+
+-- name: SetWebhookCircuitState :exec
+UPDATE webhooks
+SET circuit_state = $2
+WHERE id = $1;

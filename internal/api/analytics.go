@@ -54,15 +54,15 @@ func UsageAnalyticsHandler(cfg *AnalyticsConfig) http.HandlerFunc {
 		}
 
 		usage := map[string]any{
-			"files_used":         data.FilesUsed,
-			"files_limit":        data.FilesLimit,
-			"transforms_used":    data.TransformsUsed,
-			"transforms_limit":   data.TransformsLimit,
-			"storage_used_bytes": data.StorageUsedBytes,
+			"files_used":          data.FilesUsed,
+			"files_limit":         data.FilesLimit,
+			"transforms_used":     data.TransformsUsed,
+			"transforms_limit":    data.TransformsLimit,
+			"storage_used_bytes":  data.StorageUsedBytes,
 			"storage_limit_bytes": data.StorageLimitBytes,
-			"plan_name":          data.PlanName,
-			"plan_renews_at":     data.PlanRenewsAt,
-			"days_until_renewal": data.DaysUntilRenewal,
+			"plan_name":           data.PlanName,
+			"plan_renews_at":      data.PlanRenewsAt,
+			"days_until_renewal":  data.DaysUntilRenewal,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
