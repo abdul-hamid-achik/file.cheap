@@ -168,16 +168,21 @@ func run() error {
 	registry.Register("optimize", imgproc.NewOptimizeProcessor(nil))
 	registry.Register("convert", imgproc.NewConvertProcessor(nil))
 
+	poolStats := analytics.NewPoolStatsFunc(func() analytics.PoolStats { return pool.Stat() })
+	analyticsService := analytics.NewService(queries, redisClient)
+	analyticsService.SetPoolStats(poolStats)
+
 	apiCfg := &api.Config{
-		Storage:       instrumentedStore,
-		Broker:        &brokerAdapter{broker: b},
-		Queries:       queries,
-		MaxUploadSize: cfg.MaxUploadSize,
-		JWTSecret:     cfg.JWTSecret,
-		BaseURL:       cfg.BaseURL,
-		Registry:      registry,
-		Pool:          pool,
-		RedisClient:   redisClient,
+		Storage:          instrumentedStore,
+		Broker:           &brokerAdapter{broker: b},
+		Queries:          queries,
+		MaxUploadSize:    cfg.MaxUploadSize,
+		JWTSecret:        cfg.JWTSecret,
+		BaseURL:          cfg.BaseURL,
+		Registry:         registry,
+		Pool:             pool,
+		RedisClient:      redisClient,
+		AnalyticsService: analyticsService,
 	}
 	apiRouter := api.NewRouter(apiCfg)
 	mux.Handle("/v1/", apiRouter)
@@ -207,8 +212,6 @@ func run() error {
 		log.Info("stripe billing configured")
 	}
 
-	poolStats := analytics.NewPoolStatsFunc(func() analytics.PoolStats { return pool.Stat() })
-	analyticsService := web.NewAnalyticsService(webCfg, redisClient, poolStats)
 	analyticsHandlers := web.NewAnalyticsHandlers(analyticsService)
 	adminHandlers := web.NewAdminHandlers(analyticsService)
 	log.Info("analytics services configured")

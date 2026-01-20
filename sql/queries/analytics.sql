@@ -173,3 +173,120 @@ FROM files
 WHERE deleted_at IS NULL
 GROUP BY 1
 ORDER BY total_bytes DESC;
+
+-- ============================================================================
+-- ENHANCED ANALYTICS - Processing Volume & Trends
+-- ============================================================================
+
+-- name: GetProcessingVolumeByTypeOverTime :many
+-- Get processing volume by job type over the last N days
+SELECT
+    dates.date::date as date,
+    pj.job_type::text as job_type,
+    COUNT(pj.id)::bigint as count,
+    COALESCE(SUM(EXTRACT(EPOCH FROM (pj.completed_at - pj.started_at)))::bigint, 0) as total_duration_seconds
+FROM (
+    SELECT generate_series($1::date, CURRENT_DATE, '1 day'::interval)::date as date
+) dates
+LEFT JOIN processing_jobs pj ON DATE(pj.created_at) = dates.date
+    AND pj.status = 'completed'
+GROUP BY dates.date, pj.job_type
+ORDER BY dates.date, pj.job_type;
+
+-- name: GetStorageGrowthTrend :many
+-- Get storage growth over time (cumulative by day)
+SELECT
+    dates.date::date as date,
+    COALESCE(SUM(daily_added.bytes_added) OVER (ORDER BY dates.date), 0)::bigint as cumulative_bytes,
+    COALESCE(daily_added.bytes_added, 0)::bigint as bytes_added,
+    COALESCE(daily_added.files_added, 0)::bigint as files_added
+FROM (
+    SELECT generate_series($1::date, CURRENT_DATE, '1 day'::interval)::date as date
+) dates
+LEFT JOIN (
+    SELECT
+        DATE(created_at) as day,
+        SUM(size_bytes) as bytes_added,
+        COUNT(*) as files_added
+    FROM files
+    WHERE created_at >= $1 AND deleted_at IS NULL
+    GROUP BY DATE(created_at)
+) daily_added ON dates.date = daily_added.day
+ORDER BY dates.date;
+
+-- name: GetVideoProcessingStats :one
+-- Get video processing statistics for cost forecasting
+SELECT
+    COUNT(DISTINCT f.id)::bigint as total_video_files,
+    COALESCE(SUM(f.size_bytes), 0)::bigint as total_video_bytes,
+    COUNT(pj.id) FILTER (WHERE pj.job_type IN ('video_transcode', 'video_hls', 'video_thumbnail', 'video_watermark'))::bigint as total_video_jobs,
+    COUNT(pj.id) FILTER (WHERE pj.job_type = 'video_transcode')::bigint as transcode_jobs,
+    COUNT(pj.id) FILTER (WHERE pj.job_type = 'video_hls')::bigint as hls_jobs,
+    COUNT(pj.id) FILTER (WHERE pj.job_type = 'video_thumbnail')::bigint as video_thumbnail_jobs,
+    COALESCE(AVG(EXTRACT(EPOCH FROM (pj.completed_at - pj.started_at))) FILTER (WHERE pj.job_type = 'video_transcode'), 0)::float as avg_transcode_duration_seconds,
+    COALESCE(SUM(EXTRACT(EPOCH FROM (pj.completed_at - pj.started_at))) FILTER (WHERE pj.job_type IN ('video_transcode', 'video_hls')), 0)::bigint as total_video_processing_seconds
+FROM files f
+LEFT JOIN processing_jobs pj ON pj.file_id = f.id AND pj.status = 'completed'
+WHERE f.content_type LIKE 'video/%' AND f.deleted_at IS NULL;
+
+-- name: GetVideoProcessingStatsByUser :one
+-- Get video processing statistics for a specific user
+SELECT
+    COUNT(DISTINCT f.id)::bigint as total_video_files,
+    COALESCE(SUM(f.size_bytes), 0)::bigint as total_video_bytes,
+    COUNT(pj.id) FILTER (WHERE pj.job_type IN ('video_transcode', 'video_hls', 'video_thumbnail', 'video_watermark'))::bigint as total_video_jobs,
+    COUNT(pj.id) FILTER (WHERE pj.job_type = 'video_transcode')::bigint as transcode_jobs,
+    COUNT(pj.id) FILTER (WHERE pj.job_type = 'video_hls')::bigint as hls_jobs,
+    COALESCE(SUM(EXTRACT(EPOCH FROM (pj.completed_at - pj.started_at))) FILTER (WHERE pj.job_type IN ('video_transcode', 'video_hls')), 0)::bigint as total_video_processing_seconds
+FROM files f
+LEFT JOIN processing_jobs pj ON pj.file_id = f.id AND pj.status = 'completed'
+WHERE f.user_id = $1 AND f.content_type LIKE 'video/%' AND f.deleted_at IS NULL;
+
+-- name: GetProcessingVolumeByTier :many
+-- Get processing volume grouped by subscription tier
+SELECT
+    u.subscription_tier::text as tier,
+    pj.job_type::text as job_type,
+    COUNT(pj.id)::bigint as count,
+    COALESCE(SUM(EXTRACT(EPOCH FROM (pj.completed_at - pj.started_at)))::bigint, 0) as total_duration_seconds
+FROM processing_jobs pj
+JOIN files f ON f.id = pj.file_id
+JOIN users u ON u.id = f.user_id
+WHERE pj.created_at >= $1 AND pj.status = 'completed' AND f.deleted_at IS NULL
+GROUP BY u.subscription_tier, pj.job_type
+ORDER BY tier, count DESC;
+
+-- name: GetBandwidthStats :one
+-- Get CDN/download bandwidth statistics (approximation based on share downloads)
+SELECT
+    COALESCE(SUM(fs.download_count), 0)::bigint as total_downloads,
+    COALESCE(SUM(fs.download_count * f.size_bytes), 0)::bigint as estimated_bandwidth_bytes
+FROM file_shares fs
+JOIN files f ON f.id = fs.file_id
+WHERE fs.created_at >= $1 AND f.deleted_at IS NULL;
+
+-- name: GetBandwidthStatsByUser :one
+-- Get bandwidth statistics for a specific user
+SELECT
+    COALESCE(SUM(fs.download_count), 0)::bigint as total_downloads,
+    COALESCE(SUM(fs.download_count * f.size_bytes), 0)::bigint as estimated_bandwidth_bytes
+FROM file_shares fs
+JOIN files f ON f.id = fs.file_id
+WHERE f.user_id = $1 AND fs.created_at >= $2 AND f.deleted_at IS NULL;
+
+-- name: GetCostForecast :one
+-- Get data for cost forecasting (storage, processing, bandwidth)
+SELECT
+    -- Storage costs
+    COALESCE(SUM(f.size_bytes), 0)::bigint as total_storage_bytes,
+    COUNT(DISTINCT f.id)::bigint as total_files,
+
+    -- Processing costs (last 30 days extrapolated)
+    (SELECT COUNT(*) FROM processing_jobs WHERE created_at >= NOW() - INTERVAL '30 days' AND status = 'completed')::bigint as jobs_last_30_days,
+    (SELECT COUNT(*) FROM processing_jobs WHERE created_at >= NOW() - INTERVAL '30 days' AND status = 'completed' AND job_type IN ('video_transcode', 'video_hls'))::bigint as video_jobs_last_30_days,
+    (SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (completed_at - started_at))), 0) FROM processing_jobs WHERE created_at >= NOW() - INTERVAL '30 days' AND status = 'completed' AND job_type IN ('video_transcode', 'video_hls'))::bigint as video_processing_seconds_30_days,
+
+    -- Bandwidth (share downloads)
+    (SELECT COALESCE(SUM(download_count), 0) FROM file_shares WHERE created_at >= NOW() - INTERVAL '30 days')::bigint as downloads_30_days
+FROM files f
+WHERE f.deleted_at IS NULL;

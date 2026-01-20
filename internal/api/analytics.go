@@ -193,3 +193,52 @@ func AdminHealthAnalyticsHandler(cfg *AnalyticsConfig) http.HandlerFunc {
 		_ = json.NewEncoder(w).Encode(data.Health)
 	}
 }
+
+// EnhancedAnalyticsHandler returns enhanced analytics for the authenticated user
+// including processing volume trends, storage growth, and cost forecasts.
+func EnhancedAnalyticsHandler(cfg *AnalyticsConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, ok := GetUserID(r.Context())
+		if !ok {
+			apperror.WriteJSON(w, r, apperror.ErrUnauthorized)
+			return
+		}
+
+		data, err := cfg.Service.GetUserEnhancedAnalytics(r.Context(), userID)
+		if err != nil {
+			apperror.WriteJSON(w, r, apperror.Wrap(err, apperror.ErrInternal))
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(data)
+	}
+}
+
+// AdminEnhancedAnalyticsHandler returns platform-wide enhanced analytics
+// including processing volume by tier, storage trends, and cost forecasts.
+func AdminEnhancedAnalyticsHandler(cfg *AnalyticsConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, ok := GetUserID(r.Context())
+		if !ok {
+			apperror.WriteJSON(w, r, apperror.ErrUnauthorized)
+			return
+		}
+
+		pgUserID := pgtype.UUID{Bytes: userID, Valid: true}
+		role, err := cfg.Queries.GetUserRole(r.Context(), pgUserID)
+		if err != nil || role != db.UserRoleAdmin {
+			apperror.WriteJSON(w, r, apperror.ErrForbidden)
+			return
+		}
+
+		data, err := cfg.Service.GetEnhancedAnalytics(r.Context())
+		if err != nil {
+			apperror.WriteJSON(w, r, apperror.Wrap(err, apperror.ErrInternal))
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(data)
+	}
+}

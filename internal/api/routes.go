@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/abdul-hamid-achik/file.cheap/internal/analytics"
 	"github.com/abdul-hamid-achik/file.cheap/internal/apperror"
 	"github.com/abdul-hamid-achik/file.cheap/internal/billing"
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
@@ -133,6 +134,7 @@ type Config struct {
 	WebhookDispatcher *webhook.Dispatcher
 	Pool              *pgxpool.Pool
 	RedisClient       *redis.Client
+	AnalyticsService  *analytics.Service
 }
 
 // withPerm wraps a handler with a permission check
@@ -259,6 +261,23 @@ func NewRouter(cfg *Config) http.Handler {
 	apiMux.HandleFunc("GET /v1/webhooks/dlq", withPerm("webhooks:read", ListWebhookDLQHandler(webhookCfg)))
 	apiMux.HandleFunc("POST /v1/webhooks/dlq/{id}/retry", withPerm("webhooks:write", RetryWebhookDLQHandler(webhookCfg)))
 	apiMux.HandleFunc("DELETE /v1/webhooks/dlq/{id}", withPerm("webhooks:write", DeleteWebhookDLQEntryHandler(webhookCfg)))
+
+	// Analytics endpoints
+	if cfg.AnalyticsService != nil {
+		analyticsCfg := &AnalyticsConfig{
+			Service: cfg.AnalyticsService,
+			Queries: cfg.Queries,
+		}
+		apiMux.HandleFunc("GET /v1/analytics", AnalyticsHandler(analyticsCfg))
+		apiMux.HandleFunc("GET /v1/analytics/usage", UsageAnalyticsHandler(analyticsCfg))
+		apiMux.HandleFunc("GET /v1/analytics/storage", StorageAnalyticsHandler(analyticsCfg))
+		apiMux.HandleFunc("GET /v1/analytics/activity", ActivityAnalyticsHandler(analyticsCfg))
+		apiMux.HandleFunc("GET /v1/analytics/enhanced", EnhancedAnalyticsHandler(analyticsCfg))
+		apiMux.HandleFunc("GET /v1/admin/analytics", AdminAnalyticsHandler(analyticsCfg))
+		apiMux.HandleFunc("GET /v1/admin/analytics/users", AdminUsersAnalyticsHandler(analyticsCfg))
+		apiMux.HandleFunc("GET /v1/admin/analytics/health", AdminHealthAnalyticsHandler(analyticsCfg))
+		apiMux.HandleFunc("GET /v1/admin/analytics/enhanced", AdminEnhancedAnalyticsHandler(analyticsCfg))
+	}
 
 	rateLimit := cfg.RateLimit
 	if rateLimit <= 0 {

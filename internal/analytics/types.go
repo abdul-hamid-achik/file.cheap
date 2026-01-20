@@ -232,3 +232,83 @@ type StorageAnalytics struct {
 	LargestFiles       []LargestFile               `json:"largest_files"`
 	TotalBytes         int64                       `json:"total_bytes"`
 }
+
+// Enhanced Analytics Types
+
+// ProcessingVolumePoint represents processing volume for a specific day and job type
+type ProcessingVolumePoint struct {
+	Date                 time.Time `json:"date"`
+	JobType              string    `json:"job_type"`
+	Count                int64     `json:"count"`
+	TotalDurationSeconds int64     `json:"total_duration_seconds"`
+}
+
+// StorageGrowthPoint represents storage growth for a specific day
+type StorageGrowthPoint struct {
+	Date            time.Time `json:"date"`
+	CumulativeBytes int64     `json:"cumulative_bytes"`
+	BytesAdded      int64     `json:"bytes_added"`
+	FilesAdded      int64     `json:"files_added"`
+}
+
+// VideoProcessingStats contains video processing statistics
+type VideoProcessingStats struct {
+	TotalVideoFiles              int64   `json:"total_video_files"`
+	TotalVideoBytes              int64   `json:"total_video_bytes"`
+	TotalVideoJobs               int64   `json:"total_video_jobs"`
+	TranscodeJobs                int64   `json:"transcode_jobs"`
+	HLSJobs                      int64   `json:"hls_jobs"`
+	VideoThumbnailJobs           int64   `json:"video_thumbnail_jobs"`
+	AvgTranscodeDurationSeconds  float64 `json:"avg_transcode_duration_seconds"`
+	TotalVideoProcessingSeconds  int64   `json:"total_video_processing_seconds"`
+	EstimatedVideoMinutes        float64 `json:"estimated_video_minutes"`
+	EstimatedMonthlyCost         float64 `json:"estimated_monthly_cost"`
+}
+
+// ProcessingVolumeByTier represents processing volume grouped by subscription tier
+type ProcessingVolumeByTier struct {
+	Tier                 string `json:"tier"`
+	JobType              string `json:"job_type"`
+	Count                int64  `json:"count"`
+	TotalDurationSeconds int64  `json:"total_duration_seconds"`
+}
+
+// BandwidthStats contains bandwidth/download statistics
+type BandwidthStats struct {
+	TotalDownloads         int64   `json:"total_downloads"`
+	EstimatedBandwidthBytes int64   `json:"estimated_bandwidth_bytes"`
+	EstimatedBandwidthGB    float64 `json:"estimated_bandwidth_gb"`
+}
+
+// CostForecast contains data for cost forecasting
+type CostForecast struct {
+	// Storage
+	TotalStorageBytes     int64   `json:"total_storage_bytes"`
+	TotalStorageGB        float64 `json:"total_storage_gb"`
+	TotalFiles            int64   `json:"total_files"`
+	EstimatedStorageCost  float64 `json:"estimated_storage_cost"`
+
+	// Processing
+	JobsLast30Days               int64   `json:"jobs_last_30_days"`
+	VideoJobsLast30Days          int64   `json:"video_jobs_last_30_days"`
+	VideoProcessingSeconds30Days int64   `json:"video_processing_seconds_30_days"`
+	VideoMinutes30Days           float64 `json:"video_minutes_30_days"`
+	EstimatedProcessingCost      float64 `json:"estimated_processing_cost"`
+
+	// Bandwidth
+	Downloads30Days           int64   `json:"downloads_30_days"`
+	EstimatedBandwidthCost    float64 `json:"estimated_bandwidth_cost"`
+
+	// Totals
+	TotalEstimatedMonthlyCost float64 `json:"total_estimated_monthly_cost"`
+}
+
+// EnhancedAnalytics contains all enhanced analytics data
+type EnhancedAnalytics struct {
+	ProcessingVolume    []ProcessingVolumePoint  `json:"processing_volume"`
+	StorageGrowth       []StorageGrowthPoint     `json:"storage_growth"`
+	VideoStats          VideoProcessingStats     `json:"video_stats"`
+	BandwidthStats      BandwidthStats           `json:"bandwidth_stats"`
+	CostForecast        CostForecast             `json:"cost_forecast"`
+	ProcessingByTier    []ProcessingVolumeByTier `json:"processing_by_tier"`
+}

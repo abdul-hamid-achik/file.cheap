@@ -739,3 +739,203 @@ func (s *Service) UpdateEnterpriseInquiryStatus(ctx context.Context, inquiryID p
 	}
 	return &inquiry, nil
 }
+
+// ============================================================================
+// Enhanced Analytics Methods
+// ============================================================================
+
+// Cost estimates (can be configured)
+const (
+	CostPerGBStorage         = 0.023  // $/GB/month (S3-like pricing)
+	CostPerVideoMinute       = 0.015  // $/minute of video processing
+	CostPerGBBandwidth       = 0.09   // $/GB bandwidth
+	CostPerThousandTransforms = 0.50  // $/1000 image transforms
+)
+
+// GetEnhancedAnalytics returns comprehensive analytics including trends and forecasting
+func (s *Service) GetEnhancedAnalytics(ctx context.Context) (*EnhancedAnalytics, error) {
+	thirtyDaysAgo := time.Now().AddDate(0, 0, -30)
+	startDate := pgtype.Date{Time: thirtyDaysAgo, Valid: true}
+	startTime := pgtype.Timestamptz{Time: thirtyDaysAgo, Valid: true}
+
+	// Get processing volume by type over time
+	volumeRows, err := s.queries.GetProcessingVolumeByTypeOverTime(ctx, startDate)
+	if err != nil {
+		return nil, fmt.Errorf("get processing volume: %w", err)
+	}
+	processingVolume := make([]ProcessingVolumePoint, len(volumeRows))
+	for i, r := range volumeRows {
+		var duration int64
+		if d, ok := r.TotalDurationSeconds.(int64); ok {
+			duration = d
+		}
+		processingVolume[i] = ProcessingVolumePoint{
+			Date:                 r.Date.Time,
+			JobType:              r.JobType,
+			Count:                r.Count,
+			TotalDurationSeconds: duration,
+		}
+	}
+
+	// Get storage growth trend
+	growthRows, err := s.queries.GetStorageGrowthTrend(ctx, startDate)
+	if err != nil {
+		return nil, fmt.Errorf("get storage growth: %w", err)
+	}
+	storageGrowth := make([]StorageGrowthPoint, len(growthRows))
+	for i, r := range growthRows {
+		storageGrowth[i] = StorageGrowthPoint{
+			Date:            r.Date.Time,
+			CumulativeBytes: r.CumulativeBytes,
+			BytesAdded:      r.BytesAdded,
+			FilesAdded:      r.FilesAdded,
+		}
+	}
+
+	// Get video processing stats
+	videoStats, err := s.queries.GetVideoProcessingStats(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get video stats: %w", err)
+	}
+	videoMinutes := float64(videoStats.TotalVideoProcessingSeconds) / 60.0
+	videoAnalytics := VideoProcessingStats{
+		TotalVideoFiles:             videoStats.TotalVideoFiles,
+		TotalVideoBytes:             videoStats.TotalVideoBytes,
+		TotalVideoJobs:              videoStats.TotalVideoJobs,
+		TranscodeJobs:               videoStats.TranscodeJobs,
+		HLSJobs:                     videoStats.HlsJobs,
+		VideoThumbnailJobs:          videoStats.VideoThumbnailJobs,
+		AvgTranscodeDurationSeconds: videoStats.AvgTranscodeDurationSeconds,
+		TotalVideoProcessingSeconds: videoStats.TotalVideoProcessingSeconds,
+		EstimatedVideoMinutes:       videoMinutes,
+		EstimatedMonthlyCost:        videoMinutes * CostPerVideoMinute,
+	}
+
+	// Get bandwidth stats
+	bandwidthStats, err := s.queries.GetBandwidthStats(ctx, startTime)
+	if err != nil {
+		return nil, fmt.Errorf("get bandwidth stats: %w", err)
+	}
+	bandwidthGB := float64(bandwidthStats.EstimatedBandwidthBytes) / (1024 * 1024 * 1024)
+	bandwidth := BandwidthStats{
+		TotalDownloads:          bandwidthStats.TotalDownloads,
+		EstimatedBandwidthBytes: bandwidthStats.EstimatedBandwidthBytes,
+		EstimatedBandwidthGB:    bandwidthGB,
+	}
+
+	// Get cost forecast
+	forecastData, err := s.queries.GetCostForecast(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get cost forecast: %w", err)
+	}
+	storageGB := float64(forecastData.TotalStorageBytes) / (1024 * 1024 * 1024)
+	videoMinutes30d := float64(forecastData.VideoProcessingSeconds30Days) / 60.0
+	storageCost := storageGB * CostPerGBStorage
+	processingCost := videoMinutes30d * CostPerVideoMinute
+	bandwidthCost := float64(forecastData.Downloads30Days) * bandwidthGB / float64(max(bandwidthStats.TotalDownloads, 1)) * CostPerGBBandwidth
+
+	costForecast := CostForecast{
+		TotalStorageBytes:            forecastData.TotalStorageBytes,
+		TotalStorageGB:               storageGB,
+		TotalFiles:                   forecastData.TotalFiles,
+		EstimatedStorageCost:         storageCost,
+		JobsLast30Days:               forecastData.JobsLast30Days,
+		VideoJobsLast30Days:          forecastData.VideoJobsLast30Days,
+		VideoProcessingSeconds30Days: forecastData.VideoProcessingSeconds30Days,
+		VideoMinutes30Days:           videoMinutes30d,
+		EstimatedProcessingCost:      processingCost,
+		Downloads30Days:              forecastData.Downloads30Days,
+		EstimatedBandwidthCost:       bandwidthCost,
+		TotalEstimatedMonthlyCost:    storageCost + processingCost + bandwidthCost,
+	}
+
+	// Get processing by tier
+	tierRows, err := s.queries.GetProcessingVolumeByTier(ctx, startTime)
+	if err != nil {
+		return nil, fmt.Errorf("get processing by tier: %w", err)
+	}
+	processingByTier := make([]ProcessingVolumeByTier, len(tierRows))
+	for i, r := range tierRows {
+		var duration int64
+		if d, ok := r.TotalDurationSeconds.(int64); ok {
+			duration = d
+		}
+		processingByTier[i] = ProcessingVolumeByTier{
+			Tier:                 r.Tier,
+			JobType:              r.JobType,
+			Count:                r.Count,
+			TotalDurationSeconds: duration,
+		}
+	}
+
+	return &EnhancedAnalytics{
+		ProcessingVolume: processingVolume,
+		StorageGrowth:    storageGrowth,
+		VideoStats:       videoAnalytics,
+		BandwidthStats:   bandwidth,
+		CostForecast:     costForecast,
+		ProcessingByTier: processingByTier,
+	}, nil
+}
+
+// GetUserEnhancedAnalytics returns enhanced analytics for a specific user
+func (s *Service) GetUserEnhancedAnalytics(ctx context.Context, userID uuid.UUID) (*EnhancedAnalytics, error) {
+	pgUserID := pgtype.UUID{Bytes: userID, Valid: true}
+	thirtyDaysAgo := time.Now().AddDate(0, 0, -30)
+	startTime := pgtype.Timestamptz{Time: thirtyDaysAgo, Valid: true}
+
+	// Get user's video processing stats
+	videoStats, err := s.queries.GetVideoProcessingStatsByUser(ctx, pgUserID)
+	if err != nil {
+		return nil, fmt.Errorf("get user video stats: %w", err)
+	}
+	videoMinutes := float64(videoStats.TotalVideoProcessingSeconds) / 60.0
+	videoAnalytics := VideoProcessingStats{
+		TotalVideoFiles:             videoStats.TotalVideoFiles,
+		TotalVideoBytes:             videoStats.TotalVideoBytes,
+		TotalVideoJobs:              videoStats.TotalVideoJobs,
+		TranscodeJobs:               videoStats.TranscodeJobs,
+		HLSJobs:                     videoStats.HlsJobs,
+		TotalVideoProcessingSeconds: videoStats.TotalVideoProcessingSeconds,
+		EstimatedVideoMinutes:       videoMinutes,
+		EstimatedMonthlyCost:        videoMinutes * CostPerVideoMinute,
+	}
+
+	// Get user's bandwidth stats
+	bandwidthStats, err := s.queries.GetBandwidthStatsByUser(ctx, db.GetBandwidthStatsByUserParams{
+		UserID:    pgUserID,
+		CreatedAt: startTime,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get user bandwidth stats: %w", err)
+	}
+	bandwidthGB := float64(bandwidthStats.EstimatedBandwidthBytes) / (1024 * 1024 * 1024)
+	bandwidth := BandwidthStats{
+		TotalDownloads:          bandwidthStats.TotalDownloads,
+		EstimatedBandwidthBytes: bandwidthStats.EstimatedBandwidthBytes,
+		EstimatedBandwidthGB:    bandwidthGB,
+	}
+
+	// Get user's storage
+	totalStorage, err := s.queries.GetTotalStorageByUser(ctx, pgUserID)
+	if err != nil {
+		return nil, fmt.Errorf("get user storage: %w", err)
+	}
+	storageGB := float64(totalStorage) / (1024 * 1024 * 1024)
+
+	costForecast := CostForecast{
+		TotalStorageBytes:         totalStorage,
+		TotalStorageGB:            storageGB,
+		EstimatedStorageCost:      storageGB * CostPerGBStorage,
+		VideoMinutes30Days:        videoMinutes,
+		EstimatedProcessingCost:   videoMinutes * CostPerVideoMinute,
+		EstimatedBandwidthCost:    bandwidthGB * CostPerGBBandwidth,
+		TotalEstimatedMonthlyCost: storageGB*CostPerGBStorage + videoMinutes*CostPerVideoMinute + bandwidthGB*CostPerGBBandwidth,
+	}
+
+	return &EnhancedAnalytics{
+		VideoStats:     videoAnalytics,
+		BandwidthStats: bandwidth,
+		CostForecast:   costForecast,
+	}, nil
+}

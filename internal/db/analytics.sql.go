@@ -54,6 +54,96 @@ func (q *Queries) GetAdminStorageBreakdown(ctx context.Context) ([]GetAdminStora
 	return items, nil
 }
 
+const getBandwidthStats = `-- name: GetBandwidthStats :one
+SELECT
+    COALESCE(SUM(fs.download_count), 0)::bigint as total_downloads,
+    COALESCE(SUM(fs.download_count * f.size_bytes), 0)::bigint as estimated_bandwidth_bytes
+FROM file_shares fs
+JOIN files f ON f.id = fs.file_id
+WHERE fs.created_at >= $1 AND f.deleted_at IS NULL
+`
+
+type GetBandwidthStatsRow struct {
+	TotalDownloads          int64 `json:"total_downloads"`
+	EstimatedBandwidthBytes int64 `json:"estimated_bandwidth_bytes"`
+}
+
+// Get CDN/download bandwidth statistics (approximation based on share downloads)
+func (q *Queries) GetBandwidthStats(ctx context.Context, createdAt pgtype.Timestamptz) (GetBandwidthStatsRow, error) {
+	row := q.db.QueryRow(ctx, getBandwidthStats, createdAt)
+	var i GetBandwidthStatsRow
+	err := row.Scan(&i.TotalDownloads, &i.EstimatedBandwidthBytes)
+	return i, err
+}
+
+const getBandwidthStatsByUser = `-- name: GetBandwidthStatsByUser :one
+SELECT
+    COALESCE(SUM(fs.download_count), 0)::bigint as total_downloads,
+    COALESCE(SUM(fs.download_count * f.size_bytes), 0)::bigint as estimated_bandwidth_bytes
+FROM file_shares fs
+JOIN files f ON f.id = fs.file_id
+WHERE f.user_id = $1 AND fs.created_at >= $2 AND f.deleted_at IS NULL
+`
+
+type GetBandwidthStatsByUserParams struct {
+	UserID    pgtype.UUID        `json:"user_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type GetBandwidthStatsByUserRow struct {
+	TotalDownloads          int64 `json:"total_downloads"`
+	EstimatedBandwidthBytes int64 `json:"estimated_bandwidth_bytes"`
+}
+
+// Get bandwidth statistics for a specific user
+func (q *Queries) GetBandwidthStatsByUser(ctx context.Context, arg GetBandwidthStatsByUserParams) (GetBandwidthStatsByUserRow, error) {
+	row := q.db.QueryRow(ctx, getBandwidthStatsByUser, arg.UserID, arg.CreatedAt)
+	var i GetBandwidthStatsByUserRow
+	err := row.Scan(&i.TotalDownloads, &i.EstimatedBandwidthBytes)
+	return i, err
+}
+
+const getCostForecast = `-- name: GetCostForecast :one
+SELECT
+    -- Storage costs
+    COALESCE(SUM(f.size_bytes), 0)::bigint as total_storage_bytes,
+    COUNT(DISTINCT f.id)::bigint as total_files,
+
+    -- Processing costs (last 30 days extrapolated)
+    (SELECT COUNT(*) FROM processing_jobs WHERE created_at >= NOW() - INTERVAL '30 days' AND status = 'completed')::bigint as jobs_last_30_days,
+    (SELECT COUNT(*) FROM processing_jobs WHERE created_at >= NOW() - INTERVAL '30 days' AND status = 'completed' AND job_type IN ('video_transcode', 'video_hls'))::bigint as video_jobs_last_30_days,
+    (SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (completed_at - started_at))), 0) FROM processing_jobs WHERE created_at >= NOW() - INTERVAL '30 days' AND status = 'completed' AND job_type IN ('video_transcode', 'video_hls'))::bigint as video_processing_seconds_30_days,
+
+    -- Bandwidth (share downloads)
+    (SELECT COALESCE(SUM(download_count), 0) FROM file_shares WHERE created_at >= NOW() - INTERVAL '30 days')::bigint as downloads_30_days
+FROM files f
+WHERE f.deleted_at IS NULL
+`
+
+type GetCostForecastRow struct {
+	TotalStorageBytes            int64 `json:"total_storage_bytes"`
+	TotalFiles                   int64 `json:"total_files"`
+	JobsLast30Days               int64 `json:"jobs_last_30_days"`
+	VideoJobsLast30Days          int64 `json:"video_jobs_last_30_days"`
+	VideoProcessingSeconds30Days int64 `json:"video_processing_seconds_30_days"`
+	Downloads30Days              int64 `json:"downloads_30_days"`
+}
+
+// Get data for cost forecasting (storage, processing, bandwidth)
+func (q *Queries) GetCostForecast(ctx context.Context) (GetCostForecastRow, error) {
+	row := q.db.QueryRow(ctx, getCostForecast)
+	var i GetCostForecastRow
+	err := row.Scan(
+		&i.TotalStorageBytes,
+		&i.TotalFiles,
+		&i.JobsLast30Days,
+		&i.VideoJobsLast30Days,
+		&i.VideoProcessingSeconds30Days,
+		&i.Downloads30Days,
+	)
+	return i, err
+}
+
 const getDailyUsage = `-- name: GetDailyUsage :many
 SELECT 
     dates.date::date as date,
@@ -145,6 +235,105 @@ func (q *Queries) GetLargestFiles(ctx context.Context, arg GetLargestFilesParams
 			&i.ContentType,
 			&i.SizeBytes,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getProcessingVolumeByTier = `-- name: GetProcessingVolumeByTier :many
+SELECT
+    u.subscription_tier::text as tier,
+    pj.job_type::text as job_type,
+    COUNT(pj.id)::bigint as count,
+    COALESCE(SUM(EXTRACT(EPOCH FROM (pj.completed_at - pj.started_at)))::bigint, 0) as total_duration_seconds
+FROM processing_jobs pj
+JOIN files f ON f.id = pj.file_id
+JOIN users u ON u.id = f.user_id
+WHERE pj.created_at >= $1 AND pj.status = 'completed' AND f.deleted_at IS NULL
+GROUP BY u.subscription_tier, pj.job_type
+ORDER BY tier, count DESC
+`
+
+type GetProcessingVolumeByTierRow struct {
+	Tier                 string      `json:"tier"`
+	JobType              string      `json:"job_type"`
+	Count                int64       `json:"count"`
+	TotalDurationSeconds interface{} `json:"total_duration_seconds"`
+}
+
+// Get processing volume grouped by subscription tier
+func (q *Queries) GetProcessingVolumeByTier(ctx context.Context, createdAt pgtype.Timestamptz) ([]GetProcessingVolumeByTierRow, error) {
+	rows, err := q.db.Query(ctx, getProcessingVolumeByTier, createdAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetProcessingVolumeByTierRow
+	for rows.Next() {
+		var i GetProcessingVolumeByTierRow
+		if err := rows.Scan(
+			&i.Tier,
+			&i.JobType,
+			&i.Count,
+			&i.TotalDurationSeconds,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getProcessingVolumeByTypeOverTime = `-- name: GetProcessingVolumeByTypeOverTime :many
+
+SELECT
+    dates.date::date as date,
+    pj.job_type::text as job_type,
+    COUNT(pj.id)::bigint as count,
+    COALESCE(SUM(EXTRACT(EPOCH FROM (pj.completed_at - pj.started_at)))::bigint, 0) as total_duration_seconds
+FROM (
+    SELECT generate_series($1::date, CURRENT_DATE, '1 day'::interval)::date as date
+) dates
+LEFT JOIN processing_jobs pj ON DATE(pj.created_at) = dates.date
+    AND pj.status = 'completed'
+GROUP BY dates.date, pj.job_type
+ORDER BY dates.date, pj.job_type
+`
+
+type GetProcessingVolumeByTypeOverTimeRow struct {
+	Date                 pgtype.Date `json:"date"`
+	JobType              string      `json:"job_type"`
+	Count                int64       `json:"count"`
+	TotalDurationSeconds interface{} `json:"total_duration_seconds"`
+}
+
+// ============================================================================
+// ENHANCED ANALYTICS - Processing Volume & Trends
+// ============================================================================
+// Get processing volume by job type over the last N days
+func (q *Queries) GetProcessingVolumeByTypeOverTime(ctx context.Context, dollar_1 pgtype.Date) ([]GetProcessingVolumeByTypeOverTimeRow, error) {
+	rows, err := q.db.Query(ctx, getProcessingVolumeByTypeOverTime, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetProcessingVolumeByTypeOverTimeRow
+	for rows.Next() {
+		var i GetProcessingVolumeByTypeOverTimeRow
+		if err := rows.Scan(
+			&i.Date,
+			&i.JobType,
+			&i.Count,
+			&i.TotalDurationSeconds,
 		); err != nil {
 			return nil, err
 		}
@@ -329,6 +518,60 @@ func (q *Queries) GetStorageBreakdownByVariant(ctx context.Context, userID pgtyp
 	return items, nil
 }
 
+const getStorageGrowthTrend = `-- name: GetStorageGrowthTrend :many
+SELECT
+    dates.date::date as date,
+    COALESCE(SUM(daily_added.bytes_added) OVER (ORDER BY dates.date), 0)::bigint as cumulative_bytes,
+    COALESCE(daily_added.bytes_added, 0)::bigint as bytes_added,
+    COALESCE(daily_added.files_added, 0)::bigint as files_added
+FROM (
+    SELECT generate_series($1::date, CURRENT_DATE, '1 day'::interval)::date as date
+) dates
+LEFT JOIN (
+    SELECT
+        DATE(created_at) as day,
+        SUM(size_bytes) as bytes_added,
+        COUNT(*) as files_added
+    FROM files
+    WHERE created_at >= $1 AND deleted_at IS NULL
+    GROUP BY DATE(created_at)
+) daily_added ON dates.date = daily_added.day
+ORDER BY dates.date
+`
+
+type GetStorageGrowthTrendRow struct {
+	Date            pgtype.Date `json:"date"`
+	CumulativeBytes int64       `json:"cumulative_bytes"`
+	BytesAdded      int64       `json:"bytes_added"`
+	FilesAdded      int64       `json:"files_added"`
+}
+
+// Get storage growth over time (cumulative by day)
+func (q *Queries) GetStorageGrowthTrend(ctx context.Context, dollar_1 pgtype.Date) ([]GetStorageGrowthTrendRow, error) {
+	rows, err := q.db.Query(ctx, getStorageGrowthTrend, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetStorageGrowthTrendRow
+	for rows.Next() {
+		var i GetStorageGrowthTrendRow
+		if err := rows.Scan(
+			&i.Date,
+			&i.CumulativeBytes,
+			&i.BytesAdded,
+			&i.FilesAdded,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTopFilesByTransforms = `-- name: GetTopFilesByTransforms :many
 SELECT 
     f.id as file_id,
@@ -458,6 +701,86 @@ func (q *Queries) GetUserUsageStats(ctx context.Context, id pgtype.UUID) (GetUse
 		&i.StorageUsedBytes,
 		&i.PlanName,
 		&i.PlanRenewsAt,
+	)
+	return i, err
+}
+
+const getVideoProcessingStats = `-- name: GetVideoProcessingStats :one
+SELECT
+    COUNT(DISTINCT f.id)::bigint as total_video_files,
+    COALESCE(SUM(f.size_bytes), 0)::bigint as total_video_bytes,
+    COUNT(pj.id) FILTER (WHERE pj.job_type IN ('video_transcode', 'video_hls', 'video_thumbnail', 'video_watermark'))::bigint as total_video_jobs,
+    COUNT(pj.id) FILTER (WHERE pj.job_type = 'video_transcode')::bigint as transcode_jobs,
+    COUNT(pj.id) FILTER (WHERE pj.job_type = 'video_hls')::bigint as hls_jobs,
+    COUNT(pj.id) FILTER (WHERE pj.job_type = 'video_thumbnail')::bigint as video_thumbnail_jobs,
+    COALESCE(AVG(EXTRACT(EPOCH FROM (pj.completed_at - pj.started_at))) FILTER (WHERE pj.job_type = 'video_transcode'), 0)::float as avg_transcode_duration_seconds,
+    COALESCE(SUM(EXTRACT(EPOCH FROM (pj.completed_at - pj.started_at))) FILTER (WHERE pj.job_type IN ('video_transcode', 'video_hls')), 0)::bigint as total_video_processing_seconds
+FROM files f
+LEFT JOIN processing_jobs pj ON pj.file_id = f.id AND pj.status = 'completed'
+WHERE f.content_type LIKE 'video/%' AND f.deleted_at IS NULL
+`
+
+type GetVideoProcessingStatsRow struct {
+	TotalVideoFiles             int64   `json:"total_video_files"`
+	TotalVideoBytes             int64   `json:"total_video_bytes"`
+	TotalVideoJobs              int64   `json:"total_video_jobs"`
+	TranscodeJobs               int64   `json:"transcode_jobs"`
+	HlsJobs                     int64   `json:"hls_jobs"`
+	VideoThumbnailJobs          int64   `json:"video_thumbnail_jobs"`
+	AvgTranscodeDurationSeconds float64 `json:"avg_transcode_duration_seconds"`
+	TotalVideoProcessingSeconds int64   `json:"total_video_processing_seconds"`
+}
+
+// Get video processing statistics for cost forecasting
+func (q *Queries) GetVideoProcessingStats(ctx context.Context) (GetVideoProcessingStatsRow, error) {
+	row := q.db.QueryRow(ctx, getVideoProcessingStats)
+	var i GetVideoProcessingStatsRow
+	err := row.Scan(
+		&i.TotalVideoFiles,
+		&i.TotalVideoBytes,
+		&i.TotalVideoJobs,
+		&i.TranscodeJobs,
+		&i.HlsJobs,
+		&i.VideoThumbnailJobs,
+		&i.AvgTranscodeDurationSeconds,
+		&i.TotalVideoProcessingSeconds,
+	)
+	return i, err
+}
+
+const getVideoProcessingStatsByUser = `-- name: GetVideoProcessingStatsByUser :one
+SELECT
+    COUNT(DISTINCT f.id)::bigint as total_video_files,
+    COALESCE(SUM(f.size_bytes), 0)::bigint as total_video_bytes,
+    COUNT(pj.id) FILTER (WHERE pj.job_type IN ('video_transcode', 'video_hls', 'video_thumbnail', 'video_watermark'))::bigint as total_video_jobs,
+    COUNT(pj.id) FILTER (WHERE pj.job_type = 'video_transcode')::bigint as transcode_jobs,
+    COUNT(pj.id) FILTER (WHERE pj.job_type = 'video_hls')::bigint as hls_jobs,
+    COALESCE(SUM(EXTRACT(EPOCH FROM (pj.completed_at - pj.started_at))) FILTER (WHERE pj.job_type IN ('video_transcode', 'video_hls')), 0)::bigint as total_video_processing_seconds
+FROM files f
+LEFT JOIN processing_jobs pj ON pj.file_id = f.id AND pj.status = 'completed'
+WHERE f.user_id = $1 AND f.content_type LIKE 'video/%' AND f.deleted_at IS NULL
+`
+
+type GetVideoProcessingStatsByUserRow struct {
+	TotalVideoFiles             int64 `json:"total_video_files"`
+	TotalVideoBytes             int64 `json:"total_video_bytes"`
+	TotalVideoJobs              int64 `json:"total_video_jobs"`
+	TranscodeJobs               int64 `json:"transcode_jobs"`
+	HlsJobs                     int64 `json:"hls_jobs"`
+	TotalVideoProcessingSeconds int64 `json:"total_video_processing_seconds"`
+}
+
+// Get video processing statistics for a specific user
+func (q *Queries) GetVideoProcessingStatsByUser(ctx context.Context, userID pgtype.UUID) (GetVideoProcessingStatsByUserRow, error) {
+	row := q.db.QueryRow(ctx, getVideoProcessingStatsByUser, userID)
+	var i GetVideoProcessingStatsByUserRow
+	err := row.Scan(
+		&i.TotalVideoFiles,
+		&i.TotalVideoBytes,
+		&i.TotalVideoJobs,
+		&i.TranscodeJobs,
+		&i.HlsJobs,
+		&i.TotalVideoProcessingSeconds,
 	)
 	return i, err
 }

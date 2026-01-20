@@ -679,6 +679,190 @@ To optimize performance and reduce processing costs, the CDN automatically cache
 - Different transform parameters create different cache entries
 - Original files are always served from cache
 
+## Analytics API
+
+### User Analytics
+
+**GET** `/v1/analytics`
+
+Returns comprehensive analytics for the authenticated user.
+
+**Response:** `200 OK`
+```json
+{
+  "files_used": 45,
+  "files_limit": 100,
+  "transforms_used": 230,
+  "transforms_limit": 1000,
+  "storage_used_bytes": 1073741824,
+  "storage_limit_bytes": 5368709120,
+  "plan_name": "pro",
+  "plan_renews_at": "2024-02-15T00:00:00Z",
+  "days_until_renewal": 15,
+  "daily_usage": [...],
+  "transform_breakdown": [...],
+  "top_files": [...],
+  "recent_activity": [...]
+}
+```
+
+### Usage Summary
+
+**GET** `/v1/analytics/usage`
+
+Returns usage limits and current consumption.
+
+**Response:** `200 OK`
+```json
+{
+  "files_used": 45,
+  "files_limit": 100,
+  "transforms_used": 230,
+  "transforms_limit": 1000,
+  "storage_used_bytes": 1073741824,
+  "storage_limit_bytes": 5368709120,
+  "plan_name": "pro",
+  "plan_renews_at": "2024-02-15T00:00:00Z",
+  "days_until_renewal": 15
+}
+```
+
+### Storage Analytics
+
+**GET** `/v1/analytics/storage`
+
+Returns storage breakdown by file type and variant type.
+
+**Response:** `200 OK`
+```json
+{
+  "breakdown_by_type": [
+    {"file_type": "image", "file_count": 100, "total_bytes": 524288000},
+    {"file_type": "video", "file_count": 10, "total_bytes": 1073741824}
+  ],
+  "breakdown_by_variant": [
+    {"variant_type": "thumbnail", "variant_count": 100, "total_bytes": 10485760},
+    {"variant_type": "webp", "variant_count": 50, "total_bytes": 52428800}
+  ],
+  "largest_files": [...],
+  "total_bytes": 1598029824
+}
+```
+
+### Activity Feed
+
+**GET** `/v1/analytics/activity`
+
+Returns recent activity feed for the user.
+
+**Response:** `200 OK`
+```json
+{
+  "recent_activity": [
+    {
+      "id": "uuid",
+      "type": "upload",
+      "message": "image.jpg uploaded",
+      "status": "success",
+      "created_at": "2024-01-20T10:30:00Z",
+      "time_ago": "5 minutes ago"
+    }
+  ]
+}
+```
+
+### Enhanced Analytics
+
+**GET** `/v1/analytics/enhanced`
+
+Returns enhanced analytics with processing volume trends, storage growth, bandwidth stats, and cost forecasting.
+
+**Response:** `200 OK`
+```json
+{
+  "processing_volume": [
+    {"date": "2024-01-20", "job_type": "thumbnail", "count": 25, "total_duration_seconds": 45}
+  ],
+  "storage_growth": [
+    {"date": "2024-01-20", "cumulative_bytes": 1073741824, "bytes_added": 52428800, "files_added": 5}
+  ],
+  "video_stats": {
+    "total_video_files": 10,
+    "total_video_bytes": 536870912,
+    "total_video_jobs": 15,
+    "transcode_jobs": 8,
+    "hls_jobs": 5,
+    "video_thumbnail_jobs": 2,
+    "avg_transcode_duration_seconds": 45.5,
+    "total_video_processing_seconds": 364,
+    "estimated_video_minutes": 6.07,
+    "estimated_monthly_cost": 0.91
+  },
+  "bandwidth_stats": {
+    "total_downloads": 150,
+    "estimated_bandwidth_bytes": 1610612736,
+    "estimated_bandwidth_gb": 1.5
+  },
+  "cost_forecast": {
+    "total_storage_bytes": 1073741824,
+    "total_storage_gb": 1.0,
+    "total_files": 50,
+    "estimated_storage_cost": 0.02,
+    "jobs_last_30_days": 100,
+    "video_jobs_last_30_days": 15,
+    "video_processing_seconds_30_days": 364,
+    "video_minutes_30_days": 6.07,
+    "estimated_processing_cost": 0.91,
+    "downloads_30_days": 150,
+    "estimated_bandwidth_cost": 0.14,
+    "total_estimated_monthly_cost": 1.07
+  },
+  "processing_by_tier": [...]
+}
+```
+
+### Admin Analytics (Admin Only)
+
+**GET** `/v1/admin/analytics`
+
+Returns platform-wide analytics dashboard. Requires admin role.
+
+**Response:** `200 OK`
+```json
+{
+  "mrr": 4500.00,
+  "mrr_growth": 12.5,
+  "total_users": 1250,
+  "new_users_this_week": 35,
+  "total_files": 125000,
+  "total_storage_bytes": 536870912000,
+  "jobs_last_24h": 3500,
+  "job_success_rate": 99.2,
+  "churn": {...},
+  "revenue": {...},
+  "nrr": {...},
+  "cohort_data": [...],
+  "revenue_history": [...],
+  "users_by_plan": [...],
+  "health": {...},
+  "top_users": [...],
+  "recent_signups": [...],
+  "failed_jobs": [...]
+}
+```
+
+**GET** `/v1/admin/analytics/users`
+
+Returns user-focused admin analytics.
+
+**GET** `/v1/admin/analytics/health`
+
+Returns system health metrics.
+
+**GET** `/v1/admin/analytics/enhanced`
+
+Returns platform-wide enhanced analytics with processing volume by tier.
+
 ## Web UI Routes
 
 ### Public Pages
