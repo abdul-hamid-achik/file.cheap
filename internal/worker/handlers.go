@@ -1406,7 +1406,7 @@ func ZipDownloadHandler(deps *Dependencies) func(context.Context, *job.Job) erro
 
 		// Create ZIP archive
 		zipWriter := NewZipWriter(zipFile)
-		defer zipWriter.Close()
+		defer func() { _ = zipWriter.Close() }()
 
 		// Track filenames to handle duplicates
 		filenameCounts := make(map[string]int)
@@ -1463,7 +1463,7 @@ func ZipDownloadHandler(deps *Dependencies) func(context.Context, *job.Job) erro
 		storageKey := fmt.Sprintf("downloads/%s/%s.zip", payload.UserID.String(), payload.ZipDownloadID.String())
 
 		// Reopen file for reading
-		zipFile.Close()
+		_ = zipFile.Close()
 		uploadFile, err := os.Open(zipPath)
 		if err != nil {
 			errMsg := fmt.Sprintf("failed to reopen zip: %v", err)
@@ -1474,7 +1474,7 @@ func ZipDownloadHandler(deps *Dependencies) func(context.Context, *job.Job) erro
 			})
 			return fmt.Errorf("failed to reopen zip: %w", err)
 		}
-		defer uploadFile.Close()
+		defer func() { _ = uploadFile.Close() }()
 
 		if err := deps.Storage.Upload(ctx, storageKey, uploadFile, "application/zip", zipInfo.Size()); err != nil {
 			errMsg := fmt.Sprintf("failed to upload zip: %v", err)
