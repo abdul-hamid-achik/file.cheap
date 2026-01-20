@@ -425,6 +425,117 @@ Authentication: API key or JWT required
 - `401 Unauthorized` - Missing or invalid token
 - `404 Not Found` - Batch not found or not owned by user
 
+## Bulk Downloads (ZIP Export)
+
+Download multiple files as a single ZIP archive.
+
+### Create Bulk Download
+
+**POST** `/v1/downloads/zip`
+
+Authentication: API key or JWT required
+
+Request multiple files to be packaged into a ZIP archive for download.
+
+**Request Body:**
+```json
+{
+  "file_ids": [
+    "123e4567-e89b-12d3-a456-426614174000",
+    "223e4567-e89b-12d3-a456-426614174001",
+    "323e4567-e89b-12d3-a456-426614174002"
+  ]
+}
+```
+
+**Request Parameters:**
+- `file_ids` (array[string], required): Array of file UUIDs to include (max: 100 files)
+
+**Response:** `202 Accepted`
+```json
+{
+  "id": "z23e4567-e89b-12d3-a456-426614174000",
+  "status": "pending",
+  "status_url": "/v1/downloads/z23e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+**Error Responses:**
+- `400 Bad Request` - No files provided, too many files (>100), or no valid file IDs
+- `401 Unauthorized` - Missing or invalid token
+- `429 Too Many Requests` - Too many pending downloads (max 3 concurrent)
+
+**Notes:**
+- Maximum 100 files per ZIP download
+- Only files owned by the authenticated user are included
+- Invalid file IDs are silently skipped
+- ZIP archives expire after 24 hours (configurable via `ZIP_DOWNLOAD_EXPIRY`)
+
+### Get Bulk Download Status
+
+**GET** `/v1/downloads/{id}`
+
+Authentication: API key or JWT required
+
+Check the status of a ZIP download request.
+
+**Path Parameters:**
+- `id` (uuid): Bulk download ID
+
+**Response:** `200 OK`
+```json
+{
+  "id": "z23e4567-e89b-12d3-a456-426614174000",
+  "status": "completed",
+  "file_count": 3,
+  "size_bytes": 15728640,
+  "download_url": "https://storage.file.cheap/downloads/z23e4567...?signature=...",
+  "expires_at": "2026-01-07T12:00:00Z",
+  "created_at": "2026-01-06T12:00:00Z",
+  "completed_at": "2026-01-06T12:00:30Z"
+}
+```
+
+**Status Values:**
+- `pending` - ZIP creation queued
+- `running` - ZIP is being created
+- `completed` - ZIP ready for download
+- `failed` - ZIP creation failed (see `error_message`)
+
+**Error Responses:**
+- `401 Unauthorized` - Missing or invalid token
+- `404 Not Found` - Download not found or not owned by user
+
+### List Bulk Downloads
+
+**GET** `/v1/downloads`
+
+Authentication: API key or JWT required
+
+List your ZIP download history.
+
+**Query Parameters:**
+- `limit` (int, optional): Number of downloads to return (default: 20, max: 100)
+- `offset` (int, optional): Pagination offset (default: 0)
+
+**Response:** `200 OK`
+```json
+{
+  "downloads": [
+    {
+      "id": "z23e4567-e89b-12d3-a456-426614174000",
+      "status": "completed",
+      "file_count": 3,
+      "size_bytes": 15728640,
+      "download_url": "https://...",
+      "expires_at": "2026-01-07T12:00:00Z",
+      "created_at": "2026-01-06T12:00:00Z",
+      "completed_at": "2026-01-06T12:00:30Z"
+    }
+  ]
+}
+```
+
 ## Share Links & CDN
 
 ### Create Share Link
@@ -1366,6 +1477,185 @@ Authentication: API key or JWT required
 }
 ```
 
+## File Tags
+
+Organize files with custom labels/tags for better organization beyond folders.
+
+### Add Tags to File
+
+**POST** `/v1/files/{id}/tags`
+
+Authentication: API key or JWT required
+
+**Path Parameters:**
+- `id` (uuid): File ID
+
+**Request Body:**
+```json
+{
+  "tags": ["project-alpha", "review-needed", "2026"]
+}
+```
+
+**Request Parameters:**
+- `tags` (array[string], required): Tags to add (max 20 per request, each max 100 chars)
+
+**Response:** `201 Created`
+```json
+{
+  "tags": [
+    {
+      "file_id": "123e4567-e89b-12d3-a456-426614174000",
+      "tag_name": "project-alpha",
+      "created_at": "2026-01-06T12:00:00Z"
+    },
+    {
+      "file_id": "123e4567-e89b-12d3-a456-426614174000",
+      "tag_name": "review-needed",
+      "created_at": "2026-01-06T12:00:00Z"
+    }
+  ]
+}
+```
+
+**Error Responses:**
+- `400 Bad Request` - No tags provided or too many tags (>20)
+- `401 Unauthorized` - Missing or invalid token
+- `404 Not Found` - File not found or not owned by user
+
+**Notes:**
+- Duplicate tags are silently ignored
+- Empty or oversized tags are skipped
+
+### Remove Tag from File
+
+**DELETE** `/v1/files/{id}/tags/{tag}`
+
+Authentication: API key or JWT required
+
+**Path Parameters:**
+- `id` (uuid): File ID
+- `tag` (string): Tag name to remove
+
+**Response:** `204 No Content`
+
+### List File Tags
+
+**GET** `/v1/files/{id}/tags`
+
+Authentication: API key or JWT required
+
+Get all tags for a specific file.
+
+**Path Parameters:**
+- `id` (uuid): File ID
+
+**Response:** `200 OK`
+```json
+{
+  "tags": ["project-alpha", "review-needed", "2026"]
+}
+```
+
+### List User Tags
+
+**GET** `/v1/tags`
+
+Authentication: API key or JWT required
+
+Get all tags used by the authenticated user with file counts.
+
+**Response:** `200 OK`
+```json
+{
+  "tags": [
+    {
+      "tag_name": "project-alpha",
+      "file_count": 15
+    },
+    {
+      "tag_name": "review-needed",
+      "file_count": 8
+    }
+  ]
+}
+```
+
+### List Files by Tag
+
+**GET** `/v1/tags/{tag}/files`
+
+Authentication: API key or JWT required
+
+Get all files with a specific tag.
+
+**Path Parameters:**
+- `tag` (string): Tag name
+
+**Query Parameters:**
+- `limit` (int, optional): Number of files to return (default: 20, max: 100)
+- `offset` (int, optional): Pagination offset (default: 0)
+
+**Response:** `200 OK`
+```json
+{
+  "files": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "filename": "document.pdf",
+      "content_type": "application/pdf",
+      "size_bytes": 1024000,
+      "status": "completed",
+      "created_at": "2026-01-06T12:00:00Z"
+    }
+  ],
+  "total": 15,
+  "has_more": true
+}
+```
+
+### Rename Tag
+
+**PUT** `/v1/tags/{tag}`
+
+Authentication: API key or JWT required
+
+Rename a tag across all files.
+
+**Path Parameters:**
+- `tag` (string): Current tag name
+
+**Request Body:**
+```json
+{
+  "new_name": "project-beta"
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "old_name": "project-alpha",
+  "new_name": "project-beta"
+}
+```
+
+**Error Responses:**
+- `400 Bad Request` - Invalid new name (empty or >100 chars)
+
+### Delete Tag
+
+**DELETE** `/v1/tags/{tag}`
+
+Authentication: API key or JWT required
+
+Remove a tag from all files.
+
+**Path Parameters:**
+- `tag` (string): Tag name to delete
+
+**Response:** `204 No Content`
+
 ## Webhooks
 
 Webhooks allow you to receive real-time notifications when events occur.
@@ -1560,6 +1850,90 @@ X-Webhook-Signature: sha256=abc123...
 
 Verify the signature by computing HMAC-SHA256 of the raw payload body with your secret.
 
+### Webhook Dead Letter Queue (DLQ)
+
+View and retry permanently failed webhook deliveries.
+
+#### List Failed Deliveries
+
+**GET** `/v1/webhooks/dlq`
+
+Authentication: API key or JWT required
+
+List all failed webhook deliveries that exhausted retry attempts.
+
+**Query Parameters:**
+- `limit` (int, optional): Number of entries to return (default: 20, max: 100)
+- `offset` (int, optional): Pagination offset (default: 0)
+
+**Response:** `200 OK`
+```json
+{
+  "entries": [
+    {
+      "id": "dlq23e4567-e89b-12d3-a456-426614174000",
+      "webhook_id": "w23e4567-e89b-12d3-a456-426614174000",
+      "delivery_id": "d23e4567-e89b-12d3-a456-426614174000",
+      "event_type": "file.uploaded",
+      "final_error": "connection refused",
+      "attempts": 5,
+      "last_response_code": null,
+      "can_retry": true,
+      "retried_at": null,
+      "created_at": "2026-01-06T14:30:00Z"
+    }
+  ],
+  "total": 3,
+  "has_more": false
+}
+```
+
+**Fields:**
+- `can_retry` - Whether the entry can be manually retried
+- `retried_at` - Timestamp when the entry was last retried (null if never retried)
+- `last_response_code` - HTTP status code from last attempt (null if connection failed)
+
+#### Retry Failed Delivery
+
+**POST** `/v1/webhooks/dlq/{id}/retry`
+
+Authentication: API key or JWT required
+
+Manually retry a failed webhook delivery.
+
+**Path Parameters:**
+- `id` (uuid): DLQ entry ID
+
+**Response:** `200 OK`
+```json
+{
+  "retried": true,
+  "new_delivery_id": "d33e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+**Error Responses:**
+- `400 Bad Request` - Entry has already been retried (`can_retry: false`)
+- `404 Not Found` - Entry not found or webhook not owned by user
+
+**Notes:**
+- Each DLQ entry can only be retried once
+- A new delivery is created and queued for the retry
+- The original DLQ entry is marked as retried
+
+#### Delete DLQ Entry
+
+**DELETE** `/v1/webhooks/dlq/{id}`
+
+Authentication: API key or JWT required
+
+Remove a failed delivery from the dead letter queue.
+
+**Path Parameters:**
+- `id` (uuid): DLQ entry ID
+
+**Response:** `204 No Content`
+
 ## User Profile
 
 ### Get Current User
@@ -1740,3 +2114,36 @@ API tokens can be created with specific permissions to limit access.
 API tokens can be created with an expiration date. Expired tokens will be rejected with a `401 Unauthorized` response.
 
 Tokens without expiration are valid indefinitely (not recommended for production use).
+
+## Configuration
+
+### Environment Variables
+
+The following environment variables can be used to configure the API:
+
+#### Timeouts
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `UPLOAD_TIMEOUT` | Maximum time for file uploads | `5m` |
+| `CDN_TRANSFORM_TIMEOUT` | Maximum time for on-demand CDN transforms | `30s` |
+| `WEBHOOK_DELIVERY_TIMEOUT` | Maximum time for webhook HTTP requests | `30s` |
+| `PRESIGNED_URL_EXPIRY` | How long presigned download URLs are valid | `1h` |
+| `ZIP_DOWNLOAD_EXPIRY` | How long ZIP download links are valid | `24h` |
+
+**Format:** Duration strings like `30s`, `5m`, `1h`, `24h`
+
+**Examples:**
+```bash
+# Quick timeouts for development
+UPLOAD_TIMEOUT=1m
+CDN_TRANSFORM_TIMEOUT=10s
+
+# Extended timeouts for large files
+UPLOAD_TIMEOUT=15m
+ZIP_DOWNLOAD_EXPIRY=72h
+```
+
+#### Other Configuration
+
+See the deployment documentation for a complete list of environment variables including database, storage, and authentication configuration.
