@@ -11,6 +11,7 @@ import (
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/db"
 	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
+	"github.com/abdul-hamid-achik/file.cheap/internal/metrics"
 	"github.com/abdul-hamid-achik/file.cheap/internal/webhook"
 	"github.com/abdul-hamid-achik/job-queue/pkg/job"
 	"github.com/abdul-hamid-achik/job-queue/pkg/middleware"
@@ -52,12 +53,15 @@ type WebhookQuerier interface {
 	MarkDeliverySuccess(ctx context.Context, arg db.MarkDeliverySuccessParams) error
 	MarkDeliveryFailed(ctx context.Context, arg db.MarkDeliveryFailedParams) error
 	UpdateDeliveryRetry(ctx context.Context, arg db.UpdateDeliveryRetryParams) error
+	// DLQ support
+	CreateWebhookDLQEntry(ctx context.Context, arg db.CreateWebhookDLQEntryParams) (db.WebhookDlq, error)
 }
 
 func WebhookDeliveryHandler(deps *WebhookDependencies) func(context.Context, *job.Job) error {
 	return func(ctx context.Context, j *job.Job) error {
 		log := logger.FromContext(ctx).With("job_id", j.ID, "job_type", "webhook_delivery")
 		log.Info("webhook delivery job started")
+		startTime := time.Now()
 
 		var payload webhook.DeliveryPayload
 		if err := j.UnmarshalPayload(&payload); err != nil {
@@ -86,7 +90,8 @@ func WebhookDeliveryHandler(deps *WebhookDependencies) func(context.Context, *jo
 			return fmt.Errorf("failed to get webhook: %w", err)
 		}
 
-		log = log.With("webhook_id", uuidToString(wh.ID), "webhook_url", wh.Url)
+		webhookID := uuidToString(wh.ID)
+		log = log.With("webhook_id", webhookID, "webhook_url", wh.Url)
 
 		timestamp := time.Now()
 		signature := webhook.GenerateSignature(delivery.Payload, wh.Secret, timestamp)
@@ -109,13 +114,14 @@ func WebhookDeliveryHandler(deps *WebhookDependencies) func(context.Context, *jo
 		}
 
 		resp, err := client.Do(req)
+		deliveryDuration := time.Since(startTime).Seconds()
 
 		var responseCode int32
 		var responseBody string
 
 		if err != nil {
 			responseBody = err.Error()
-			log.Warn("webhook request failed", "error", err)
+			log.Warn("webhook request failed", "error", err, "duration_seconds", deliveryDuration)
 		} else {
 			responseCode = int32(resp.StatusCode)
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
@@ -131,12 +137,13 @@ func WebhookDeliveryHandler(deps *WebhookDependencies) func(context.Context, *jo
 			}); err != nil {
 				log.Error("failed to mark success", "error", err)
 			}
-			log.Info("webhook delivered successfully", "response_code", responseCode)
+			metrics.RecordWebhookDelivery("success", deliveryDuration)
+			log.Info("webhook delivered successfully", "response_code", responseCode, "duration_seconds", deliveryDuration)
 			return nil
 		}
 
 		newAttempts := int(delivery.Attempts) + 1
-		log.Warn("webhook delivery failed", "response_code", responseCode, "attempts", newAttempts)
+		log.Warn("webhook delivery failed", "response_code", responseCode, "attempts", newAttempts, "max_retries", maxRetries)
 
 		if newAttempts >= maxRetries {
 			if err := deps.Queries.MarkDeliveryFailed(ctx, db.MarkDeliveryFailedParams{
@@ -146,6 +153,31 @@ func WebhookDeliveryHandler(deps *WebhookDependencies) func(context.Context, *jo
 			}); err != nil {
 				log.Error("failed to mark failed", "error", err)
 			}
+
+			// Add to Dead Letter Queue for visibility and manual retry
+			finalError := fmt.Sprintf("max retries exceeded after %d attempts, last response: %d", newAttempts, responseCode)
+			if responseCode == 0 {
+				finalError = fmt.Sprintf("max retries exceeded after %d attempts, connection error: %s", newAttempts, responseBody)
+			}
+			dlqResponseCode := int32(responseCode)
+			_, dlqErr := deps.Queries.CreateWebhookDLQEntry(ctx, db.CreateWebhookDLQEntryParams{
+				WebhookID:        wh.ID,
+				DeliveryID:       pgDeliveryID,
+				EventType:        delivery.EventType,
+				Payload:          delivery.Payload,
+				FinalError:       finalError,
+				Attempts:         int32(newAttempts),
+				LastResponseCode: &dlqResponseCode,
+				LastResponseBody: &responseBody,
+			})
+			if dlqErr != nil {
+				log.Error("failed to add to DLQ", "error", dlqErr)
+			} else {
+				log.Warn("webhook delivery added to dead letter queue", "dlq_error", finalError)
+				metrics.RecordWebhookDLQ()
+			}
+
+			metrics.RecordWebhookDelivery("failed", deliveryDuration)
 			log.Warn("webhook delivery permanently failed after max retries", "attempts", newAttempts)
 			return middleware.Permanent(fmt.Errorf("max retries exceeded after %d attempts", newAttempts))
 		}
@@ -162,7 +194,9 @@ func WebhookDeliveryHandler(deps *WebhookDependencies) func(context.Context, *jo
 			log.Error("failed to update retry", "error", err)
 		}
 
-		log.Info("webhook delivery scheduled for retry", "next_retry", nextRetry, "retry_delay", retryDelay)
+		metrics.RecordWebhookRetry(webhookID)
+		metrics.RecordWebhookDelivery("retry", deliveryDuration)
+		log.Info("webhook delivery scheduled for retry", "next_retry", nextRetry, "retry_delay", retryDelay, "attempt", newAttempts)
 		return fmt.Errorf("delivery failed with status %d, will retry", responseCode)
 	}
 }

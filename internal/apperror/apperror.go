@@ -10,6 +10,7 @@ type Error struct {
 	Message    string
 	StatusCode int
 	Internal   error
+	Retryable  bool // Whether the operation can be retried
 }
 
 func (e *Error) Error() string {
@@ -116,6 +117,63 @@ var (
 		Message:    "This account uses social login. Please sign in with your social account",
 		StatusCode: http.StatusBadRequest,
 	}
+
+	// Processing errors
+	ErrProcessingFailed = &Error{
+		Code:       "processing_failed",
+		Message:    "File processing failed",
+		StatusCode: http.StatusInternalServerError,
+	}
+
+	ErrProcessorNotFound = &Error{
+		Code:       "processor_not_found",
+		Message:    "The requested processor is not available",
+		StatusCode: http.StatusBadRequest,
+	}
+
+	ErrStorageDownloadFailed = &Error{
+		Code:       "storage_download_failed",
+		Message:    "Failed to download file from storage",
+		StatusCode: http.StatusInternalServerError,
+	}
+
+	ErrStorageUploadFailed = &Error{
+		Code:       "storage_upload_failed",
+		Message:    "Failed to upload file to storage",
+		StatusCode: http.StatusInternalServerError,
+	}
+
+	// Webhook errors
+	ErrWebhookDeliveryFailed = &Error{
+		Code:       "webhook_delivery_failed",
+		Message:    "Webhook delivery failed",
+		StatusCode: http.StatusBadGateway,
+	}
+
+	ErrWebhookMaxRetries = &Error{
+		Code:       "webhook_max_retries",
+		Message:    "Webhook delivery failed after maximum retry attempts",
+		StatusCode: http.StatusBadGateway,
+	}
+
+	ErrWebhookTimeout = &Error{
+		Code:       "webhook_timeout",
+		Message:    "Webhook delivery timed out",
+		StatusCode: http.StatusGatewayTimeout,
+	}
+
+	// Job errors
+	ErrJobNotFound = &Error{
+		Code:       "job_not_found",
+		Message:    "Processing job not found",
+		StatusCode: http.StatusNotFound,
+	}
+
+	ErrInvalidJobPayload = &Error{
+		Code:       "invalid_job_payload",
+		Message:    "Invalid job payload",
+		StatusCode: http.StatusBadRequest,
+	}
 )
 
 func New(code, message string, statusCode int) *Error {
@@ -174,4 +232,25 @@ func Code(err error) string {
 		return appErr.Code
 	}
 	return ErrInternal.Code
+}
+
+// IsRetryable returns whether the error indicates the operation can be retried
+func IsRetryable(err error) bool {
+	var appErr *Error
+	if errors.As(err, &appErr) {
+		return appErr.Retryable
+	}
+	// By default, unknown errors are considered retryable
+	return true
+}
+
+// WithRetryable creates a new error with the retryable flag set
+func WithRetryable(err *Error, retryable bool) *Error {
+	return &Error{
+		Code:       err.Code,
+		Message:    err.Message,
+		StatusCode: err.StatusCode,
+		Internal:   err.Internal,
+		Retryable:  retryable,
+	}
 }

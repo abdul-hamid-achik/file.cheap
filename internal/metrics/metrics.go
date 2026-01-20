@@ -338,9 +338,46 @@ func RecordTransformationByTier(tier, transformType string) {
 	TransformationsByTier.WithLabelValues(tier, transformType).Inc()
 }
 
+// Webhook metrics for retries and DLQ
+var (
+	WebhookRetriesTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "filecheap_webhook_retries_total",
+			Help: "Total webhook delivery retries",
+		},
+		[]string{"webhook_id"},
+	)
+
+	WebhookDLQTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "filecheap_webhook_dlq_total",
+			Help: "Total webhook deliveries sent to dead letter queue",
+		},
+	)
+
+	WebhookDLQSize = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "filecheap_webhook_dlq_size",
+			Help: "Current number of entries in webhook dead letter queue",
+		},
+	)
+)
+
 func RecordWebhookDelivery(status string, durationSeconds float64) {
 	WebhookDeliveriesTotal.WithLabelValues(status).Inc()
 	WebhookDeliveryDuration.Observe(durationSeconds)
+}
+
+func RecordWebhookRetry(webhookID string) {
+	WebhookRetriesTotal.WithLabelValues(webhookID).Inc()
+}
+
+func RecordWebhookDLQ() {
+	WebhookDLQTotal.Inc()
+}
+
+func SetWebhookDLQSize(count int64) {
+	WebhookDLQSize.Set(float64(count))
 }
 
 func SetStorageUsageByTier(tier string, bytes int64) {
