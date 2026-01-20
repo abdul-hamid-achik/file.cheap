@@ -9,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TYPE file_status AS ENUM ('pending', 'processing', 'completed', 'failed');
 
 -- Job type enum
-CREATE TYPE job_type AS ENUM ('thumbnail', 'resize', 'webp', 'watermark', 'pdf_thumbnail', 'metadata', 'optimize', 'video_thumbnail', 'video_transcode', 'video_hls', 'video_watermark');
+CREATE TYPE job_type AS ENUM ('thumbnail', 'resize', 'webp', 'watermark', 'pdf_thumbnail', 'metadata', 'optimize', 'video_thumbnail', 'video_transcode', 'video_hls', 'video_watermark', 'zip_download');
 
 -- Job status enum  
 CREATE TYPE job_status AS ENUM ('pending', 'running', 'completed', 'failed');
@@ -538,3 +538,68 @@ CREATE TABLE enterprise_inquiries (
 CREATE INDEX idx_enterprise_inquiries_user_id ON enterprise_inquiries(user_id);
 CREATE INDEX idx_enterprise_inquiries_status ON enterprise_inquiries(status);
 CREATE INDEX idx_enterprise_inquiries_created_at ON enterprise_inquiries(created_at DESC);
+
+-- ============================================================================
+-- FILE TAGS
+-- ============================================================================
+
+-- File tags table for organizing files with labels
+CREATE TABLE file_tags (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    file_id UUID NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tag_name VARCHAR(100) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(file_id, tag_name)
+);
+
+CREATE INDEX idx_file_tags_file_id ON file_tags(file_id);
+CREATE INDEX idx_file_tags_user_id ON file_tags(user_id);
+CREATE INDEX idx_file_tags_tag_name ON file_tags(user_id, tag_name);
+
+-- ============================================================================
+-- ZIP DOWNLOADS
+-- ============================================================================
+
+-- ZIP download requests table
+CREATE TABLE zip_downloads (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    file_ids UUID[] NOT NULL,
+    status job_status NOT NULL DEFAULT 'pending',
+    storage_key TEXT,
+    size_bytes BIGINT,
+    download_url TEXT,
+    expires_at TIMESTAMPTZ,
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_zip_downloads_user_id ON zip_downloads(user_id);
+CREATE INDEX idx_zip_downloads_status ON zip_downloads(status);
+CREATE INDEX idx_zip_downloads_expires_at ON zip_downloads(expires_at) WHERE expires_at IS NOT NULL;
+
+-- ============================================================================
+-- WEBHOOK DEAD LETTER QUEUE
+-- ============================================================================
+
+-- Webhook dead letter queue for permanently failed deliveries
+CREATE TABLE webhook_dlq (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    webhook_id UUID NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+    delivery_id UUID REFERENCES webhook_deliveries(id) ON DELETE SET NULL,
+    event_type TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    final_error TEXT NOT NULL,
+    attempts INTEGER NOT NULL,
+    last_response_code INTEGER,
+    last_response_body TEXT,
+    can_retry BOOLEAN NOT NULL DEFAULT true,
+    retried_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_webhook_dlq_webhook_id ON webhook_dlq(webhook_id);
+CREATE INDEX idx_webhook_dlq_can_retry ON webhook_dlq(webhook_id) WHERE can_retry = true;
+CREATE INDEX idx_webhook_dlq_created_at ON webhook_dlq(created_at DESC);

@@ -92,3 +92,6 @@ static/css/output.css
 
 # Claude Code
 .claude/
+
+# Vecgrep
+.vecgrep/

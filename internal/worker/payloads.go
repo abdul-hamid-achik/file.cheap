@@ -294,3 +294,19 @@ type VideoWatermarkPayload struct {
 	Opacity   float64     `json:"opacity"`
 	IsPremium bool        `json:"is_premium"`
 }
+
+// ZIP download payloads
+
+type ZipDownloadPayload struct {
+	ZipDownloadID uuid.UUID   `json:"zip_download_id"`
+	UserID        uuid.UUID   `json:"user_id"`
+	FileIDs       []uuid.UUID `json:"file_ids"`
+}
+
+func NewZipDownloadPayload(zipDownloadID, userID uuid.UUID, fileIDs []uuid.UUID) ZipDownloadPayload {
+	return ZipDownloadPayload{
+		ZipDownloadID: zipDownloadID,
+		UserID:        userID,
+		FileIDs:       fileIDs,
+	}
+}

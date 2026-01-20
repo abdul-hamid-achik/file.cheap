@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"fmt"
@@ -1325,4 +1326,223 @@ func VideoWatermarkHandler(deps *Dependencies) func(context.Context, *job.Job) e
 		log.Info("job completed", "duration_ms", time.Since(start).Milliseconds(), "output_width", width, "output_height", height)
 		return nil
 	}
+}
+
+// ZipDownloadHandler creates a ZIP archive of multiple files for bulk download
+func ZipDownloadHandler(deps *Dependencies) func(context.Context, *job.Job) error {
+	return func(ctx context.Context, j *job.Job) error {
+		log := logger.FromContext(ctx).With("job_id", j.ID, "job_type", "zip_download")
+		log.Info("job started")
+		start := time.Now()
+
+		var payload ZipDownloadPayload
+		if err := j.UnmarshalPayload(&payload); err != nil {
+			log.Error("invalid payload", "error", err)
+			return middleware.Permanent(fmt.Errorf("invalid payload: %w", err))
+		}
+
+		log = log.With("zip_download_id", payload.ZipDownloadID.String(), "file_count", len(payload.FileIDs))
+
+		// Mark as running
+		zipID := pgtype.UUID{Bytes: payload.ZipDownloadID, Valid: true}
+		if err := deps.Queries.UpdateZipDownloadRunning(ctx, zipID); err != nil {
+			log.Warn("failed to mark zip download running", "error", err)
+		}
+
+		// Convert file IDs to pgtype.UUID
+		pgFileIDs := make([]pgtype.UUID, len(payload.FileIDs))
+		for i, id := range payload.FileIDs {
+			pgFileIDs[i] = pgtype.UUID{Bytes: id, Valid: true}
+		}
+
+		// Fetch all files
+		files, err := deps.Queries.GetFilesByIDs(ctx, pgFileIDs)
+		if err != nil {
+			errMsg := fmt.Sprintf("failed to fetch files: %v", err)
+			log.Error("failed to fetch files", "error", err)
+			_ = deps.Queries.UpdateZipDownloadFailed(ctx, db.UpdateZipDownloadFailedParams{
+				ID:           zipID,
+				ErrorMessage: &errMsg,
+			})
+			return fmt.Errorf("failed to fetch files: %w", err)
+		}
+
+		// Verify ownership
+		userID := pgtype.UUID{Bytes: payload.UserID, Valid: true}
+		validFiles := make([]db.File, 0, len(files))
+		for _, f := range files {
+			if f.UserID == userID && !f.DeletedAt.Valid {
+				validFiles = append(validFiles, f)
+			}
+		}
+
+		if len(validFiles) == 0 {
+			errMsg := "no valid files found"
+			log.Error(errMsg)
+			_ = deps.Queries.UpdateZipDownloadFailed(ctx, db.UpdateZipDownloadFailedParams{
+				ID:           zipID,
+				ErrorMessage: &errMsg,
+			})
+			return middleware.Permanent(fmt.Errorf("%s", errMsg))
+		}
+
+		// Create temporary ZIP file
+		tmpDir := os.TempDir()
+		zipPath := filepath.Join(tmpDir, fmt.Sprintf("download_%s.zip", payload.ZipDownloadID.String()))
+		zipFile, err := os.Create(zipPath)
+		if err != nil {
+			errMsg := fmt.Sprintf("failed to create temp file: %v", err)
+			log.Error("failed to create temp file", "error", err)
+			_ = deps.Queries.UpdateZipDownloadFailed(ctx, db.UpdateZipDownloadFailedParams{
+				ID:           zipID,
+				ErrorMessage: &errMsg,
+			})
+			return fmt.Errorf("failed to create temp file: %w", err)
+		}
+		defer func() {
+			_ = zipFile.Close()
+			_ = os.Remove(zipPath)
+		}()
+
+		// Create ZIP archive
+		zipWriter := NewZipWriter(zipFile)
+		defer zipWriter.Close()
+
+		// Track filenames to handle duplicates
+		filenameCounts := make(map[string]int)
+
+		for _, file := range validFiles {
+			log.Debug("adding file to zip", "filename", file.Filename, "storage_key", file.StorageKey)
+
+			reader, err := deps.Storage.Download(ctx, file.StorageKey)
+			if err != nil {
+				log.Warn("failed to download file, skipping", "filename", file.Filename, "error", err)
+				continue
+			}
+
+			// Handle duplicate filenames
+			filename := file.Filename
+			if count, exists := filenameCounts[filename]; exists {
+				ext := filepath.Ext(filename)
+				base := filename[:len(filename)-len(ext)]
+				filename = fmt.Sprintf("%s_%d%s", base, count+1, ext)
+			}
+			filenameCounts[file.Filename]++
+
+			if err := zipWriter.AddFile(filename, reader); err != nil {
+				closeSafely(reader, "file reader")
+				log.Warn("failed to add file to zip, skipping", "filename", file.Filename, "error", err)
+				continue
+			}
+			closeSafely(reader, "file reader")
+		}
+
+		if err := zipWriter.Close(); err != nil {
+			errMsg := fmt.Sprintf("failed to finalize zip: %v", err)
+			log.Error("failed to finalize zip", "error", err)
+			_ = deps.Queries.UpdateZipDownloadFailed(ctx, db.UpdateZipDownloadFailedParams{
+				ID:           zipID,
+				ErrorMessage: &errMsg,
+			})
+			return fmt.Errorf("failed to finalize zip: %w", err)
+		}
+
+		// Get file info
+		zipInfo, err := zipFile.Stat()
+		if err != nil {
+			errMsg := fmt.Sprintf("failed to stat zip: %v", err)
+			log.Error("failed to stat zip", "error", err)
+			_ = deps.Queries.UpdateZipDownloadFailed(ctx, db.UpdateZipDownloadFailedParams{
+				ID:           zipID,
+				ErrorMessage: &errMsg,
+			})
+			return fmt.Errorf("failed to stat zip: %w", err)
+		}
+
+		// Upload to storage
+		storageKey := fmt.Sprintf("downloads/%s/%s.zip", payload.UserID.String(), payload.ZipDownloadID.String())
+
+		// Reopen file for reading
+		zipFile.Close()
+		uploadFile, err := os.Open(zipPath)
+		if err != nil {
+			errMsg := fmt.Sprintf("failed to reopen zip: %v", err)
+			log.Error("failed to reopen zip", "error", err)
+			_ = deps.Queries.UpdateZipDownloadFailed(ctx, db.UpdateZipDownloadFailedParams{
+				ID:           zipID,
+				ErrorMessage: &errMsg,
+			})
+			return fmt.Errorf("failed to reopen zip: %w", err)
+		}
+		defer uploadFile.Close()
+
+		if err := deps.Storage.Upload(ctx, storageKey, uploadFile, "application/zip", zipInfo.Size()); err != nil {
+			errMsg := fmt.Sprintf("failed to upload zip: %v", err)
+			log.Error("failed to upload zip", "error", err)
+			_ = deps.Queries.UpdateZipDownloadFailed(ctx, db.UpdateZipDownloadFailedParams{
+				ID:           zipID,
+				ErrorMessage: &errMsg,
+			})
+			return fmt.Errorf("failed to upload zip: %w", err)
+		}
+
+		// Generate presigned URL (valid for 24 hours)
+		expiresAt := time.Now().Add(24 * time.Hour)
+		downloadURL, err := deps.Storage.GetPresignedURL(ctx, storageKey, 86400)
+		if err != nil {
+			errMsg := fmt.Sprintf("failed to generate download URL: %v", err)
+			log.Error("failed to generate download URL", "error", err)
+			_ = deps.Queries.UpdateZipDownloadFailed(ctx, db.UpdateZipDownloadFailedParams{
+				ID:           zipID,
+				ErrorMessage: &errMsg,
+			})
+			return fmt.Errorf("failed to generate download URL: %w", err)
+		}
+
+		// Update database
+		zipSize := zipInfo.Size()
+		err = deps.Queries.UpdateZipDownloadCompleted(ctx, db.UpdateZipDownloadCompletedParams{
+			ID:          zipID,
+			StorageKey:  &storageKey,
+			SizeBytes:   &zipSize,
+			DownloadUrl: &downloadURL,
+			ExpiresAt:   pgtype.Timestamptz{Time: expiresAt, Valid: true},
+		})
+		if err != nil {
+			log.Error("failed to update zip download record", "error", err)
+			return fmt.Errorf("failed to update zip download record: %w", err)
+		}
+
+		log.Info("job completed",
+			"duration_ms", time.Since(start).Milliseconds(),
+			"file_count", len(validFiles),
+			"size_bytes", zipInfo.Size())
+		return nil
+	}
+}
+
+// ZipWriter wraps archive/zip for easier file addition
+type ZipWriter struct {
+	file   *os.File
+	writer *zip.Writer
+}
+
+func NewZipWriter(f *os.File) *ZipWriter {
+	return &ZipWriter{
+		file:   f,
+		writer: zip.NewWriter(f),
+	}
+}
+
+func (z *ZipWriter) AddFile(name string, r io.Reader) error {
+	w, err := z.writer.Create(name)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(w, r)
+	return err
+}
+
+func (z *ZipWriter) Close() error {
+	return z.writer.Close()
 }

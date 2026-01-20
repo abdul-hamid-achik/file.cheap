@@ -58,6 +58,13 @@ type Config struct {
 	TracingEnabled  bool
 	OTLPEndpoint    string
 	TraceSampleRate float64
+
+	// Configurable timeouts
+	UploadTimeout          time.Duration
+	CDNTransformTimeout    time.Duration
+	WebhookDeliveryTimeout time.Duration
+	PresignedURLExpiry     time.Duration
+	ZipDownloadExpiry      time.Duration
 }
 
 func Load() (*Config, error) {
@@ -141,6 +148,28 @@ func Load() (*Config, error) {
 	cfg.TracingEnabled = getEnvBool("TRACING_ENABLED", true)
 	cfg.OTLPEndpoint = getEnvString("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317")
 	cfg.TraceSampleRate = getEnvFloat64("TRACE_SAMPLE_RATE", 1.0)
+
+	// Configurable timeouts
+	cfg.UploadTimeout, err = getEnvDuration("UPLOAD_TIMEOUT", "5m")
+	if err != nil {
+		return nil, fmt.Errorf("invalid UPLOAD_TIMEOUT: %w", err)
+	}
+	cfg.CDNTransformTimeout, err = getEnvDuration("CDN_TRANSFORM_TIMEOUT", "30s")
+	if err != nil {
+		return nil, fmt.Errorf("invalid CDN_TRANSFORM_TIMEOUT: %w", err)
+	}
+	cfg.WebhookDeliveryTimeout, err = getEnvDuration("WEBHOOK_DELIVERY_TIMEOUT", "30s")
+	if err != nil {
+		return nil, fmt.Errorf("invalid WEBHOOK_DELIVERY_TIMEOUT: %w", err)
+	}
+	cfg.PresignedURLExpiry, err = getEnvDuration("PRESIGNED_URL_EXPIRY", "1h")
+	if err != nil {
+		return nil, fmt.Errorf("invalid PRESIGNED_URL_EXPIRY: %w", err)
+	}
+	cfg.ZipDownloadExpiry, err = getEnvDuration("ZIP_DOWNLOAD_EXPIRY", "24h")
+	if err != nil {
+		return nil, fmt.Errorf("invalid ZIP_DOWNLOAD_EXPIRY: %w", err)
+	}
 
 	return cfg, nil
 }

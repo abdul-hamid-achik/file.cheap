@@ -213,6 +213,7 @@ const (
 	JobTypeVideoTranscode JobType = "video_transcode"
 	JobTypeVideoHls       JobType = "video_hls"
 	JobTypeVideoWatermark JobType = "video_watermark"
+	JobTypeZipDownload    JobType = "zip_download"
 )
 
 func (e *JobType) Scan(src interface{}) error {
@@ -650,6 +651,14 @@ type FileShare struct {
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 }
 
+type FileTag struct {
+	ID        pgtype.UUID        `json:"id"`
+	FileID    pgtype.UUID        `json:"file_id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	TagName   string             `json:"tag_name"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type FileVariant struct {
 	ID              pgtype.UUID        `json:"id"`
 	FileID          pgtype.UUID        `json:"file_id"`
@@ -828,4 +837,33 @@ type WebhookDelivery struct {
 	ResponseCode  *int32                `json:"response_code"`
 	ResponseBody  *string               `json:"response_body"`
 	CreatedAt     pgtype.Timestamptz    `json:"created_at"`
+}
+
+type WebhookDlq struct {
+	ID               pgtype.UUID        `json:"id"`
+	WebhookID        pgtype.UUID        `json:"webhook_id"`
+	DeliveryID       pgtype.UUID        `json:"delivery_id"`
+	EventType        string             `json:"event_type"`
+	Payload          []byte             `json:"payload"`
+	FinalError       string             `json:"final_error"`
+	Attempts         int32              `json:"attempts"`
+	LastResponseCode *int32             `json:"last_response_code"`
+	LastResponseBody *string            `json:"last_response_body"`
+	CanRetry         bool               `json:"can_retry"`
+	RetriedAt        pgtype.Timestamptz `json:"retried_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
+type ZipDownload struct {
+	ID           pgtype.UUID        `json:"id"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	FileIds      []pgtype.UUID      `json:"file_ids"`
+	Status       JobStatus          `json:"status"`
+	StorageKey   *string            `json:"storage_key"`
+	SizeBytes    *int64             `json:"size_bytes"`
+	DownloadUrl  *string            `json:"download_url"`
+	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
+	ErrorMessage *string            `json:"error_message"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	CompletedAt  pgtype.Timestamptz `json:"completed_at"`
 }

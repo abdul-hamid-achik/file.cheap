@@ -62,4 +62,14 @@ func (r *Registry) MustGet(name string) Processor {
 	return processor
 }
 
+// GetOrError returns a processor by name, or an error if not found.
+// This is a safer alternative to MustGet that doesn't panic.
+func (r *Registry) GetOrError(name string) (Processor, error) {
+	processor, exists := r.Get(name)
+	if !exists {
+		return nil, fmt.Errorf("processor not registered: %s", name)
+	}
+	return processor, nil
+}
+
 var DefaultRegistry = NewRegistry()

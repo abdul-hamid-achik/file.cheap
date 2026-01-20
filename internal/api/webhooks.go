@@ -26,6 +26,12 @@ type WebhookQuerier interface {
 	ListDeliveriesByWebhook(ctx context.Context, arg db.ListDeliveriesByWebhookParams) ([]db.WebhookDelivery, error)
 	CountDeliveriesByWebhook(ctx context.Context, webhookID pgtype.UUID) (int64, error)
 	CreateWebhookDelivery(ctx context.Context, arg db.CreateWebhookDeliveryParams) (db.WebhookDelivery, error)
+	// Webhook DLQ methods
+	GetWebhookDLQEntry(ctx context.Context, id pgtype.UUID) (db.WebhookDlq, error)
+	ListWebhookDLQByUser(ctx context.Context, arg db.ListWebhookDLQByUserParams) ([]db.WebhookDlq, error)
+	CountWebhookDLQByUser(ctx context.Context, userID pgtype.UUID) (int64, error)
+	MarkWebhookDLQRetried(ctx context.Context, id pgtype.UUID) error
+	DeleteWebhookDLQEntry(ctx context.Context, id pgtype.UUID) error
 }
 
 type WebhookConfig struct {

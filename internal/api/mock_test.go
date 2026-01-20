@@ -878,6 +878,73 @@ func (m *MockQuerier) MoveFileToRoot(ctx context.Context, arg db.MoveFileToRootP
 	return nil
 }
 
+// File Tags methods
+func (m *MockQuerier) CreateFileTag(ctx context.Context, arg db.CreateFileTagParams) (db.FileTag, error) {
+	return db.FileTag{}, nil
+}
+
+func (m *MockQuerier) DeleteFileTag(ctx context.Context, arg db.DeleteFileTagParams) error {
+	return nil
+}
+
+func (m *MockQuerier) ListTagsByFile(ctx context.Context, fileID pgtype.UUID) ([]db.FileTag, error) {
+	return nil, nil
+}
+
+func (m *MockQuerier) ListTagsByUser(ctx context.Context, userID pgtype.UUID) ([]db.ListTagsByUserRow, error) {
+	return nil, nil
+}
+
+func (m *MockQuerier) ListFilesByTag(ctx context.Context, arg db.ListFilesByTagParams) ([]db.ListFilesByTagRow, error) {
+	return nil, nil
+}
+
+func (m *MockQuerier) RenameTag(ctx context.Context, arg db.RenameTagParams) error {
+	return nil
+}
+
+func (m *MockQuerier) DeleteTagByName(ctx context.Context, arg db.DeleteTagByNameParams) error {
+	return nil
+}
+
+// ZIP Downloads methods
+func (m *MockQuerier) CreateZipDownload(ctx context.Context, arg db.CreateZipDownloadParams) (db.ZipDownload, error) {
+	return db.ZipDownload{}, nil
+}
+
+func (m *MockQuerier) GetZipDownloadByUser(ctx context.Context, arg db.GetZipDownloadByUserParams) (db.ZipDownload, error) {
+	return db.ZipDownload{}, nil
+}
+
+func (m *MockQuerier) ListZipDownloadsByUser(ctx context.Context, arg db.ListZipDownloadsByUserParams) ([]db.ZipDownload, error) {
+	return nil, nil
+}
+
+func (m *MockQuerier) CountPendingZipDownloadsByUser(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	return 0, nil
+}
+
+// Webhook DLQ methods
+func (m *MockQuerier) GetWebhookDLQEntry(ctx context.Context, id pgtype.UUID) (db.WebhookDlq, error) {
+	return db.WebhookDlq{}, nil
+}
+
+func (m *MockQuerier) ListWebhookDLQByUser(ctx context.Context, arg db.ListWebhookDLQByUserParams) ([]db.WebhookDlq, error) {
+	return nil, nil
+}
+
+func (m *MockQuerier) CountWebhookDLQByUser(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	return 0, nil
+}
+
+func (m *MockQuerier) MarkWebhookDLQRetried(ctx context.Context, id pgtype.UUID) error {
+	return nil
+}
+
+func (m *MockQuerier) DeleteWebhookDLQEntry(ctx context.Context, id pgtype.UUID) error {
+	return nil
+}
+
 var _ Querier = (*MockQuerier)(nil)
 
 type MockStorage struct {

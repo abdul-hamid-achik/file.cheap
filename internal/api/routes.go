@@ -95,6 +95,25 @@ type Querier interface {
 	DeleteFolderRecursive(ctx context.Context, arg db.DeleteFolderRecursiveParams) error
 	MoveFileToFolder(ctx context.Context, arg db.MoveFileToFolderParams) error
 	MoveFileToRoot(ctx context.Context, arg db.MoveFileToRootParams) error
+	// File Tags
+	CreateFileTag(ctx context.Context, arg db.CreateFileTagParams) (db.FileTag, error)
+	DeleteFileTag(ctx context.Context, arg db.DeleteFileTagParams) error
+	ListTagsByFile(ctx context.Context, fileID pgtype.UUID) ([]db.FileTag, error)
+	ListTagsByUser(ctx context.Context, userID pgtype.UUID) ([]db.ListTagsByUserRow, error)
+	ListFilesByTag(ctx context.Context, arg db.ListFilesByTagParams) ([]db.ListFilesByTagRow, error)
+	RenameTag(ctx context.Context, arg db.RenameTagParams) error
+	DeleteTagByName(ctx context.Context, arg db.DeleteTagByNameParams) error
+	// ZIP Downloads
+	CreateZipDownload(ctx context.Context, arg db.CreateZipDownloadParams) (db.ZipDownload, error)
+	GetZipDownloadByUser(ctx context.Context, arg db.GetZipDownloadByUserParams) (db.ZipDownload, error)
+	ListZipDownloadsByUser(ctx context.Context, arg db.ListZipDownloadsByUserParams) ([]db.ZipDownload, error)
+	CountPendingZipDownloadsByUser(ctx context.Context, userID pgtype.UUID) (int64, error)
+	// Webhook DLQ
+	GetWebhookDLQEntry(ctx context.Context, id pgtype.UUID) (db.WebhookDlq, error)
+	ListWebhookDLQByUser(ctx context.Context, arg db.ListWebhookDLQByUserParams) ([]db.WebhookDlq, error)
+	CountWebhookDLQByUser(ctx context.Context, userID pgtype.UUID) (int64, error)
+	MarkWebhookDLQRetried(ctx context.Context, id pgtype.UUID) error
+	DeleteWebhookDLQEntry(ctx context.Context, id pgtype.UUID) error
 }
 
 type Broker interface {
@@ -216,6 +235,30 @@ func NewRouter(cfg *Config) http.Handler {
 	userCfg := &UserConfig{Queries: cfg.Queries}
 	apiMux.HandleFunc("GET /v1/me", GetCurrentUserHandler(userCfg))
 	apiMux.HandleFunc("GET /v1/me/usage", GetUsageHandler(userCfg))
+
+	// File tags endpoints
+	tagsCfg := &TagsConfig{Queries: cfg.Queries}
+	apiMux.HandleFunc("POST /v1/files/{id}/tags", withPerm("files:write", AddTagsToFileHandler(tagsCfg)))
+	apiMux.HandleFunc("GET /v1/files/{id}/tags", withPerm("files:read", ListFileTagsHandler(tagsCfg)))
+	apiMux.HandleFunc("DELETE /v1/files/{id}/tags/{tag}", withPerm("files:write", RemoveTagFromFileHandler(tagsCfg)))
+	apiMux.HandleFunc("GET /v1/tags", withPerm("files:read", ListUserTagsHandler(tagsCfg)))
+	apiMux.HandleFunc("GET /v1/tags/{tag}/files", withPerm("files:read", ListFilesByTagHandler(tagsCfg)))
+	apiMux.HandleFunc("PUT /v1/tags/{tag}", withPerm("files:write", RenameTagHandler(tagsCfg)))
+	apiMux.HandleFunc("DELETE /v1/tags/{tag}", withPerm("files:write", DeleteTagHandler(tagsCfg)))
+
+	// Bulk download endpoints
+	bulkDownloadCfg := &BulkDownloadConfig{
+		Queries: cfg.Queries,
+		Broker:  cfg.Broker,
+	}
+	apiMux.HandleFunc("POST /v1/downloads/zip", withPerm("files:read", CreateBulkDownloadHandler(bulkDownloadCfg, cfg.BaseURL)))
+	apiMux.HandleFunc("GET /v1/downloads", withPerm("files:read", ListBulkDownloadsHandler(bulkDownloadCfg)))
+	apiMux.HandleFunc("GET /v1/downloads/{id}", withPerm("files:read", GetBulkDownloadHandler(bulkDownloadCfg)))
+
+	// Webhook DLQ endpoints
+	apiMux.HandleFunc("GET /v1/webhooks/dlq", withPerm("webhooks:read", ListWebhookDLQHandler(webhookCfg)))
+	apiMux.HandleFunc("POST /v1/webhooks/dlq/{id}/retry", withPerm("webhooks:write", RetryWebhookDLQHandler(webhookCfg)))
+	apiMux.HandleFunc("DELETE /v1/webhooks/dlq/{id}", withPerm("webhooks:write", DeleteWebhookDLQEntryHandler(webhookCfg)))
 
 	rateLimit := cfg.RateLimit
 	if rateLimit <= 0 {
