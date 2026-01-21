@@ -153,3 +153,152 @@ func TestPoolStatsFunc(t *testing.T) {
 		t.Errorf("AcquiredConns() after update = %d, want 8", adapter.AcquiredConns())
 	}
 }
+
+func TestCostConstants(t *testing.T) {
+	// Verify cost constants are reasonable
+	if CostPerGBStorage <= 0 {
+		t.Errorf("CostPerGBStorage should be positive, got %f", CostPerGBStorage)
+	}
+	if CostPerVideoMinute <= 0 {
+		t.Errorf("CostPerVideoMinute should be positive, got %f", CostPerVideoMinute)
+	}
+	if CostPerGBBandwidth <= 0 {
+		t.Errorf("CostPerGBBandwidth should be positive, got %f", CostPerGBBandwidth)
+	}
+	if CostPerThousandTransforms <= 0 {
+		t.Errorf("CostPerThousandTransforms should be positive, got %f", CostPerThousandTransforms)
+	}
+}
+
+func TestEnhancedAnalyticsTypes(t *testing.T) {
+	now := time.Now()
+	enhanced := EnhancedAnalytics{
+		ProcessingVolume: []ProcessingVolumePoint{
+			{Date: now, JobType: "thumbnail", Count: 100, TotalDurationSeconds: 50},
+		},
+		StorageGrowth: []StorageGrowthPoint{
+			{Date: now, CumulativeBytes: 1024 * 1024, BytesAdded: 512, FilesAdded: 2},
+		},
+		VideoStats: VideoProcessingStats{
+			TotalVideoFiles: 10,
+			TranscodeJobs:   5,
+		},
+		BandwidthStats: BandwidthStats{
+			TotalDownloads:          100,
+			EstimatedBandwidthBytes: 1024 * 1024 * 100,
+			EstimatedBandwidthGB:    0.1,
+		},
+		CostForecast: CostForecast{
+			TotalStorageGB:            1.0,
+			TotalEstimatedMonthlyCost: 5.00,
+		},
+		ProcessingByTier: []ProcessingVolumeByTier{
+			{Tier: "pro", JobType: "thumbnail", Count: 50, TotalDurationSeconds: 25},
+		},
+	}
+
+	if len(enhanced.ProcessingVolume) != 1 {
+		t.Errorf("ProcessingVolume length = %d, want 1", len(enhanced.ProcessingVolume))
+	}
+	if len(enhanced.StorageGrowth) != 1 {
+		t.Errorf("StorageGrowth length = %d, want 1", len(enhanced.StorageGrowth))
+	}
+	if enhanced.VideoStats.TotalVideoFiles != 10 {
+		t.Errorf("VideoStats.TotalVideoFiles = %d, want 10", enhanced.VideoStats.TotalVideoFiles)
+	}
+	if enhanced.BandwidthStats.TotalDownloads != 100 {
+		t.Errorf("BandwidthStats.TotalDownloads = %d, want 100", enhanced.BandwidthStats.TotalDownloads)
+	}
+}
+
+func TestUserAnalyticsTypes(t *testing.T) {
+	analytics := UserAnalytics{
+		FilesUsed:         50,
+		FilesLimit:        100,
+		TransformsUsed:    200,
+		TransformsLimit:   1000,
+		StorageUsedBytes:  1024 * 1024 * 500,
+		StorageLimitBytes: 1024 * 1024 * 1024 * 5,
+		PlanName:          "pro",
+		PlanRenewsAt:      time.Now().AddDate(0, 1, 0),
+		DaysUntilRenewal:  30,
+	}
+
+	if analytics.FilesUsed > analytics.FilesLimit {
+		t.Errorf("FilesUsed (%d) should not exceed FilesLimit (%d)", analytics.FilesUsed, analytics.FilesLimit)
+	}
+	if analytics.TransformsUsed > analytics.TransformsLimit {
+		t.Errorf("TransformsUsed (%d) should not exceed TransformsLimit (%d)", analytics.TransformsUsed, analytics.TransformsLimit)
+	}
+}
+
+func TestAdminDashboardTypes(t *testing.T) {
+	dashboard := AdminDashboard{
+		MRR:              4500.00,
+		MRRGrowth:        12.5,
+		TotalUsers:       1250,
+		NewUsersThisWeek: 35,
+		TotalFiles:       125000,
+		JobSuccessRate:   99.2,
+	}
+
+	if dashboard.MRR < 0 {
+		t.Errorf("MRR should not be negative, got %f", dashboard.MRR)
+	}
+	if dashboard.JobSuccessRate < 0 || dashboard.JobSuccessRate > 100 {
+		t.Errorf("JobSuccessRate should be 0-100, got %f", dashboard.JobSuccessRate)
+	}
+}
+
+func TestStorageAnalyticsTypes(t *testing.T) {
+	storage := StorageAnalytics{
+		BreakdownByType: []StorageBreakdownByType{
+			{FileType: "image", FileCount: 100, TotalBytes: 1024 * 1024 * 100},
+			{FileType: "video", FileCount: 10, TotalBytes: 1024 * 1024 * 1024},
+		},
+		BreakdownByVariant: []StorageBreakdownByVariant{
+			{VariantType: "thumbnail", VariantCount: 100, TotalBytes: 1024 * 1024},
+		},
+		LargestFiles: []LargestFile{
+			{ID: "file-1", Filename: "big-video.mp4", SizeBytes: 500 * 1024 * 1024},
+		},
+		TotalBytes: 1024 * 1024 * 1124,
+	}
+
+	if len(storage.BreakdownByType) != 2 {
+		t.Errorf("BreakdownByType length = %d, want 2", len(storage.BreakdownByType))
+	}
+	if len(storage.LargestFiles) != 1 {
+		t.Errorf("LargestFiles length = %d, want 1", len(storage.LargestFiles))
+	}
+}
+
+func TestChurnMetricsTypes(t *testing.T) {
+	churn := ChurnMetrics{
+		ChurnedThisMonth: 5,
+		CurrentActive:    1000,
+		MonthlyChurnRate: 0.5,
+		RetentionRate:    99.5,
+	}
+
+	if churn.MonthlyChurnRate < 0 || churn.MonthlyChurnRate > 100 {
+		t.Errorf("MonthlyChurnRate should be 0-100, got %f", churn.MonthlyChurnRate)
+	}
+	if churn.RetentionRate < 0 || churn.RetentionRate > 100 {
+		t.Errorf("RetentionRate should be 0-100, got %f", churn.RetentionRate)
+	}
+}
+
+func TestRevenueMetricsTypes(t *testing.T) {
+	revenue := RevenueMetrics{
+		MRR:         4500.00,
+		ARR:         54000.00,
+		ARPU:        45.00,
+		PayingUsers: 100,
+	}
+
+	expectedARR := revenue.MRR * 12
+	if revenue.ARR != expectedARR {
+		t.Errorf("ARR = %f, want %f (MRR * 12)", revenue.ARR, expectedARR)
+	}
+}
