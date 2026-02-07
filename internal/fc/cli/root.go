@@ -2,48 +2,49 @@ package cli
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/abdul-hamid-achik/file.cheap/internal/fc/client"
+	"github.com/abdul-hamid-achik/file.cheap/internal/engine"
 	"github.com/abdul-hamid-achik/file.cheap/internal/fc/config"
 	"github.com/abdul-hamid-achik/file.cheap/internal/fc/output"
 	"github.com/abdul-hamid-achik/file.cheap/internal/fc/version"
+	"github.com/abdul-hamid-achik/file.cheap/internal/processor"
 	"github.com/spf13/cobra"
 )
-
-// ErrNotAuthenticated is returned when authentication is required but not configured
-var ErrNotAuthenticated = errors.New("not authenticated")
 
 var (
 	jsonOutput bool
 	quietMode  bool
-	cfg        *config.Config
-	apiClient  *client.Client
-	printer    *output.Printer
+	outputDir  string
+	quality    int
+	parallel   int
+	overwrite  bool
 
-	// rootCtx is the root context that is cancelled on interrupt signals
+	cfg     *config.Config
+	printer *output.Printer
+	eng     *engine.Engine
+
 	rootCtx    context.Context
 	rootCancel context.CancelFunc
 )
 
 var rootCmd = &cobra.Command{
 	Use:   "fc",
-	Short: "file.cheap CLI - upload, transform, and deliver images",
-	Long: `fc is the command-line interface for file.cheap.
-
-Upload files, apply transformations, and manage your images from the terminal.
+	Short: "file.cheap - local file processing CLI and MCP server",
+	Long: `fc processes images, PDFs, and videos locally on your machine.
 
 Get started:
-  fc auth login              # Authenticate with file.cheap
-  fc upload photo.jpg        # Upload a file
-  fc list                    # List your files`,
+  fc convert photo.jpg webp       # Convert to WebP
+  fc resize photo.jpg 800x600     # Resize an image
+  fc thumbnail photo.jpg          # Generate thumbnail
+  fc optimize *.jpg               # Optimize images
+  fc info photo.jpg               # Show file metadata
+  fc doctor                       # Check dependencies
+  fc mcp serve                    # Start MCP server`,
 	Version: version.Full(),
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// Set up signal handling for graceful cancellation
 		rootCtx, rootCancel = context.WithCancel(context.Background())
 
 		sigCh := make(chan os.Signal, 1)
@@ -56,7 +57,7 @@ Get started:
 			rootCancel()
 		}()
 
-		if cmd.Name() == "help" || cmd.Name() == "version" {
+		if cmd.Name() == "help" || cmd.Name() == "version" || cmd.Name() == "completion" {
 			return nil
 		}
 
@@ -66,12 +67,38 @@ Get started:
 			return err
 		}
 
+		// CLI flags override config
+		if quality > 0 {
+			cfg.Quality = quality
+		}
+		if parallel > 0 {
+			cfg.Parallel = parallel
+		}
+		if outputDir != "" {
+			cfg.OutputDir = outputDir
+		}
+		if overwrite {
+			cfg.Overwrite = true
+		}
+
 		printer = output.New(
 			output.WithJSON(jsonOutput),
 			output.WithQuiet(quietMode),
 		)
 
-		apiClient = client.New(cfg.BaseURL, cfg.APIKey)
+		procCfg := &processor.Config{
+			MaxFileSize:  100 * 1024 * 1024,
+			TempDir:      cfg.TempDir,
+			Quality:      cfg.Quality,
+			MaxDimension: 4096,
+		}
+		if procCfg.TempDir == "" {
+			procCfg.TempDir = os.TempDir()
+		}
+
+		eng = engine.New(procCfg)
+		eng.RegisterDefaults()
+
 		return nil
 	},
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
@@ -88,34 +115,29 @@ func Execute() error {
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output as JSON (for scripting)")
+	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
 	rootCmd.PersistentFlags().BoolVar(&quietMode, "quiet", false, "Suppress non-error output")
+	rootCmd.PersistentFlags().StringVarP(&outputDir, "output", "o", "", "Output directory")
+	rootCmd.PersistentFlags().IntVarP(&quality, "quality", "q", 0, "Quality (1-100)")
+	rootCmd.PersistentFlags().IntVarP(&parallel, "parallel", "j", 0, "Parallel workers")
+	rootCmd.PersistentFlags().BoolVar(&overwrite, "overwrite", false, "Overwrite existing files")
 
 	rootCmd.SetVersionTemplate("fc version {{.Version}}\n")
 
-	rootCmd.AddCommand(authCmd)
-	rootCmd.AddCommand(uploadCmd)
-	rootCmd.AddCommand(listCmd)
-	rootCmd.AddCommand(downloadCmd)
-	rootCmd.AddCommand(deleteCmd)
-	rootCmd.AddCommand(transformCmd)
-	rootCmd.AddCommand(batchCmd)
-	rootCmd.AddCommand(socialCmd)
-	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(convertCmd)
+	rootCmd.AddCommand(resizeCmd)
+	rootCmd.AddCommand(thumbnailCmd)
+	rootCmd.AddCommand(optimizeCmd)
+	rootCmd.AddCommand(watermarkCmd)
+	rootCmd.AddCommand(infoCmd)
+	rootCmd.AddCommand(processCmd)
+	rootCmd.AddCommand(doctorCmd)
+	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(configCmd)
-	rootCmd.AddCommand(shareCmd)
-	rootCmd.AddCommand(videoCmd)
-}
-
-func requireAuth() error {
-	if !cfg.IsAuthenticated() {
-		return fmt.Errorf("%w: run 'fc auth login' first", ErrNotAuthenticated)
-	}
-	return nil
+	rootCmd.AddCommand(completionCmd)
 }
 
 // GetContext returns the root context for the CLI command.
-// This context is cancelled when the user presses Ctrl+C.
 func GetContext() context.Context {
 	if rootCtx == nil {
 		return context.Background()

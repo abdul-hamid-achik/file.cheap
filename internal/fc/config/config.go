@@ -3,28 +3,20 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"time"
+	"runtime"
+	"strconv"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	APIKey            string            `yaml:"api_key,omitempty"`
-	BaseURL           string            `yaml:"base_url,omitempty"`
-	DefaultTransforms []string          `yaml:"default_transforms,omitempty"`
-	Parallel          int               `yaml:"parallel,omitempty"`
-	Presets           map[string]Preset `yaml:"presets,omitempty"`
-	Timeouts          TimeoutConfig     `yaml:"timeouts,omitempty"`
-}
-
-// TimeoutConfig holds configurable timeout durations for various operations.
-// All durations are specified as strings parseable by time.ParseDuration (e.g., "5m", "30s", "1h").
-type TimeoutConfig struct {
-	HTTP        string `yaml:"http,omitempty"`         // HTTP client timeout (default: 5m)
-	Auth        string `yaml:"auth,omitempty"`         // Device auth timeout (default: 15m)
-	Upload      string `yaml:"upload,omitempty"`       // Upload wait timeout (default: 5m)
-	BatchWait   string `yaml:"batch_wait,omitempty"`   // Batch completion wait (default: 30m)
-	StatusWatch string `yaml:"status_watch,omitempty"` // File status watch (default: 10m)
+	Quality   int               `yaml:"quality,omitempty"`
+	OutputDir string            `yaml:"output_dir,omitempty"`
+	Parallel  int               `yaml:"parallel,omitempty"`
+	Overwrite bool              `yaml:"overwrite,omitempty"`
+	TempDir   string            `yaml:"temp_dir,omitempty"`
+	LogLevel  string            `yaml:"log_level,omitempty"`
+	Presets   map[string]Preset `yaml:"presets,omitempty"`
 }
 
 type Preset struct {
@@ -35,19 +27,13 @@ type Preset struct {
 }
 
 const (
-	DefaultBaseURL  = "https://file.cheap"
-	DefaultParallel = 4
+	DefaultQuality  = 85
+	DefaultParallel = 0 // 0 means runtime.NumCPU()
+	DefaultLogLevel = "warn"
 
-	// Environment variable names for configuration overrides
-	EnvAPIKey  = "FC_API_KEY"
-	EnvBaseURL = "FC_BASE_URL"
-
-	// Default timeout durations
-	DefaultHTTPTimeout        = 5 * time.Minute
-	DefaultAuthTimeout        = 15 * time.Minute
-	DefaultUploadTimeout      = 5 * time.Minute
-	DefaultBatchWaitTimeout   = 30 * time.Minute
-	DefaultStatusWatchTimeout = 10 * time.Minute
+	EnvQuality   = "FC_QUALITY"
+	EnvOutputDir = "FC_OUTPUT_DIR"
+	EnvJobs      = "FC_JOBS"
 )
 
 var BuiltinPresets = map[string]Preset{
@@ -91,8 +77,9 @@ func Path() (string, error) {
 
 func Load() (*Config, error) {
 	cfg := &Config{
-		BaseURL:  DefaultBaseURL,
+		Quality:  DefaultQuality,
 		Parallel: DefaultParallel,
+		LogLevel: DefaultLogLevel,
 		Presets:  make(map[string]Preset),
 	}
 
@@ -104,6 +91,7 @@ func Load() (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			applyEnvOverrides(cfg)
 			return cfg, nil
 		}
 		return nil, err
@@ -113,22 +101,31 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
-	if cfg.BaseURL == "" {
-		cfg.BaseURL = DefaultBaseURL
+	if cfg.Quality <= 0 {
+		cfg.Quality = DefaultQuality
 	}
-	if cfg.Parallel == 0 {
-		cfg.Parallel = DefaultParallel
-	}
-
-	// Environment variables take precedence over config file
-	if envKey := os.Getenv(EnvAPIKey); envKey != "" {
-		cfg.APIKey = envKey
-	}
-	if envURL := os.Getenv(EnvBaseURL); envURL != "" {
-		cfg.BaseURL = envURL
+	if cfg.Presets == nil {
+		cfg.Presets = make(map[string]Preset)
 	}
 
+	applyEnvOverrides(cfg)
 	return cfg, nil
+}
+
+func applyEnvOverrides(cfg *Config) {
+	if v := os.Getenv(EnvQuality); v != "" {
+		if q, err := strconv.Atoi(v); err == nil && q > 0 && q <= 100 {
+			cfg.Quality = q
+		}
+	}
+	if v := os.Getenv(EnvOutputDir); v != "" {
+		cfg.OutputDir = v
+	}
+	if v := os.Getenv(EnvJobs); v != "" {
+		if j, err := strconv.Atoi(v); err == nil && j > 0 {
+			cfg.Parallel = j
+		}
+	}
 }
 
 func (c *Config) Save() error {
@@ -164,53 +161,11 @@ func (c *Config) GetPreset(name string) (Preset, bool) {
 	return Preset{}, false
 }
 
-func (c *Config) IsAuthenticated() bool {
-	return c.APIKey != ""
-}
-
-func (c *Config) ClearAuth() error {
-	c.APIKey = ""
-	return c.Save()
-}
-
-func (c *Config) SetAPIKey(key string) error {
-	c.APIKey = key
-	return c.Save()
-}
-
-// GetTimeout returns the configured timeout for the given operation, or the default if not set.
-// Valid names: "http", "auth", "upload", "batch_wait", "status_watch"
-func (c *Config) GetTimeout(name string) time.Duration {
-	var configValue string
-	var defaultValue time.Duration
-
-	switch name {
-	case "http":
-		configValue = c.Timeouts.HTTP
-		defaultValue = DefaultHTTPTimeout
-	case "auth":
-		configValue = c.Timeouts.Auth
-		defaultValue = DefaultAuthTimeout
-	case "upload":
-		configValue = c.Timeouts.Upload
-		defaultValue = DefaultUploadTimeout
-	case "batch_wait":
-		configValue = c.Timeouts.BatchWait
-		defaultValue = DefaultBatchWaitTimeout
-	case "status_watch":
-		configValue = c.Timeouts.StatusWatch
-		defaultValue = DefaultStatusWatchTimeout
-	default:
-		return 5 * time.Minute // fallback default
+// EffectiveParallel returns the number of parallel workers to use.
+// Returns runtime.NumCPU() if Parallel is 0 or negative.
+func (c *Config) EffectiveParallel() int {
+	if c.Parallel <= 0 {
+		return runtime.NumCPU()
 	}
-
-	if configValue == "" {
-		return defaultValue
-	}
-
-	parsed, err := time.ParseDuration(configValue)
-	if err != nil {
-		return defaultValue
-	}
-	return parsed
+	return c.Parallel
 }
