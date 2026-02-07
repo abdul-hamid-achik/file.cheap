@@ -25,7 +25,7 @@ builds:
       - -X github.com/abdul-hamid-achik/file.cheap/internal/fc/version.Date={{.Date}}
 
 archives:
-  - id: default
+  - id: fc
     formats:
       - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
