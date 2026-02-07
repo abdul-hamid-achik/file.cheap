@@ -94,7 +94,7 @@ func DetectContentType(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open %s: %w", path, err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // read-only
 
 	buf := make([]byte, 512)
 	n, err := f.Read(buf)
