@@ -5,7 +5,6 @@ project_name: fc
 before:
   hooks:
     - go mod tidy
-    - templ generate
 
 builds:
   - id: fc
@@ -16,7 +15,6 @@ builds:
     goos:
       - linux
       - darwin
-      - windows
     goarch:
       - amd64
       - arm64
@@ -30,10 +28,6 @@ archives:
   - id: default
     formats:
       - tar.gz
-    format_overrides:
-      - goos: windows
-        formats:
-          - zip
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
@@ -60,8 +54,15 @@ brews:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
     homepage: "https://file.cheap"
-    description: "CLI for file.cheap - upload, transform, and deliver images"
+    description: "Local file processing CLI and MCP server for images, PDFs, and videos"
     license: "MIT"
+    dependencies:
+      - name: ffmpeg
+        type: optional
+      - name: poppler
+        type: optional
+      - name: webp
+        type: optional
     install: |
       bin.install "fc"
     test: |
@@ -74,13 +75,17 @@ nfpms:
     vendor: file.cheap
     homepage: https://file.cheap
     maintainer: Abdul Hamid Achik <abdul.achik@gmail.com>
-    description: "CLI for file.cheap - upload, transform, and deliver images"
+    description: "Local file processing CLI and MCP server for images, PDFs, and videos"
     license: MIT
     formats:
       - deb
       - rpm
       - apk
     bindir: /usr/bin
+    recommends:
+      - ffmpeg
+      - poppler-utils
+      - libwebp-tools
 
 release:
   github:
