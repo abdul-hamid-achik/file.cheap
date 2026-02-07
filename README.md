@@ -1,69 +1,124 @@
 # file.cheap
 
-File processing that doesn't cost a fortune. A production-ready Go application for image and document processing.
+Local file processing CLI and MCP server for images, PDFs, and videos. Everything runs on your machine -- no cloud, no accounts, no uploads.
 
-## What You'll Learn
-
-- Go interfaces and design patterns
-- Object storage with MinIO (S3-compatible)
-- Type-safe SQL with sqlc and pgx
-- Background job processing with Redis Streams
-- Image processing with the imaging library
-- HTTP APIs with Go 1.22+ net/http patterns
-- Modern frontend with templ + htmx + Tailwind 4
-
-## Quick Start
+## Install
 
 ```bash
-# Install tools
-brew install go-task sqlc templ tailwindcss
-asdf install  # or install Go 1.25.5 manually
+# macOS (Homebrew)
+brew install abdul-hamid-achik/tap/fc
 
-# Setup project
-task setup
-task deps
+# Linux (deb)
+curl -LO https://github.com/abdul-hamid-achik/file.cheap/releases/latest/download/fc_linux_amd64.deb
+sudo dpkg -i fc_linux_amd64.deb
 
-# Start infrastructure
-task docker:up
-
-# Run tests
-task test
+# From source
+go install github.com/abdul-hamid-achik/file.cheap/cmd/fc@latest
 ```
+
+Optional dependencies for full functionality:
+
+```bash
+# macOS
+brew install ffmpeg poppler webp
+
+# Ubuntu/Debian
+sudo apt install ffmpeg poppler-utils libwebp-tools
+```
+
+Run `fc doctor` to check what's available.
+
+## Usage
+
+```bash
+# Image operations
+fc resize photo.jpg 800x600
+fc thumbnail *.jpg
+fc convert photo.png webp
+fc optimize photo.jpg --quality 80
+fc watermark photo.jpg "Copyright 2026"
+fc info photo.jpg
+
+# PDF
+fc thumbnail document.pdf
+
+# Video (requires ffmpeg)
+fc thumbnail video.mp4
+fc convert video.mov mp4
+
+# Chain operations
+fc process photo.jpg -t resize,optimize,webp
+
+# Batch
+fc resize images/*.jpg 1200x800 --parallel 8
+```
+
+## MCP Server
+
+Use `fc` as an MCP tool server for AI assistants like Claude:
+
+```json
+{
+  "mcpServers": {
+    "file-cheap": {
+      "command": "fc",
+      "args": ["mcp", "serve"]
+    }
+  }
+}
+```
+
+This exposes 14 tools: `fc_resize_image`, `fc_thumbnail`, `fc_convert_to_webp`, `fc_optimize_image`, `fc_convert_image`, `fc_watermark_image`, `fc_image_metadata`, `fc_pdf_thumbnail`, `fc_video_thumbnail`, `fc_transcode_video`, `fc_video_watermark`, `fc_generate_hls`, `fc_batch_process`, `fc_list_capabilities`.
+
+## Configuration
+
+```bash
+fc config init       # create ~/.config/fc/config.yaml
+fc config show       # print current config
+fc config set quality 90
+```
+
+Config file (`~/.config/fc/config.yaml`):
+
+```yaml
+quality: 85
+output_dir: ""       # empty = same directory as input
+parallel: 8
+overwrite: false
+```
+
+Environment variables: `FC_QUALITY`, `FC_OUTPUT_DIR`, `FC_JOBS`.
 
 ## Project Structure
 
 ```
-file-processor/
-├── cmd/api/          # API server entry point
-├── cmd/worker/       # Background worker entry point
-├── internal/         # Application code (you implement this)
-├── sql/              # SQL schema and queries (you write this)
-├── docs/             # Learning documentation
-├── testdata/         # Test fixtures
-└── Taskfile.yml      # Task runner commands
+file.cheap/
+├── cmd/fc/                  # CLI entry point
+├── internal/
+│   ├── engine/              # Processing orchestration
+│   ├── mcp/                 # MCP server (14 tools)
+│   ├── processor/           # Core processing (zero deps on infra)
+│   │   ├── image/           # 7 image processors
+│   │   ├── pdf/             # PDF thumbnail
+│   │   └── video/           # Video thumbnail, transcode, HLS, watermark
+│   ├── fc/cli/              # Cobra commands
+│   ├── fc/config/           # YAML config
+│   ├── fc/output/           # Printer, progress bars, tables
+│   ├── storage/             # Storage interface + local filesystem
+│   ├── presets/             # Built-in processing presets
+│   ├── apperror/            # Error types
+│   └── logger/              # slog wrapper
+└── testdata/                # Test fixtures
 ```
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [ARCHITECTURE.md](./docs/ARCHITECTURE.md) | System architecture, components, and data flow |
-| [API.md](./docs/API.md) | REST API reference and endpoint documentation |
-| [DEVELOPMENT.md](./docs/DEVELOPMENT.md) | Development guide and common tasks |
-| [DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Production deployment with Kubernetes |
-| [MONITORING.md](./docs/MONITORING.md) | Prometheus, Grafana, and observability setup |
-| [AGENTS.md](./AGENTS.md) | Code style guidelines for AI agents |
 
 ## Tech Stack
 
-- **Language:** Go 1.25
-- **Database:** PostgreSQL 17
-- **Cache/Queue:** Redis 7
-- **Object Storage:** MinIO
-- **SQL Codegen:** sqlc
-- **Templates:** templ
-- **Frontend:** htmx + Tailwind 4
-- **Task Runner:** Task
+- **Go 1.25**, single static binary (~13MB), `CGO_ENABLED=0`
+- **Image processing**: `disintegration/imaging`, `fogleman/gg` (pure Go)
+- **Video**: ffmpeg/ffprobe (external, runtime-detected)
+- **PDF**: poppler-utils or mupdf (external, runtime-detected)
+- **MCP**: `modelcontextprotocol/go-sdk` (official SDK)
+- **CLI**: `spf13/cobra`, `fatih/color`, `schollz/progressbar`
 
 ## License
 

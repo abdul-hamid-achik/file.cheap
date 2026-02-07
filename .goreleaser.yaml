@@ -46,18 +46,19 @@ changelog:
       - '^test:'
       - '^chore:'
 
-homebrew_casks:
-  - name: fc
-    binaries:
-      - fc
-    ids:
-      - fc
-    repository:
-      owner: abdul-hamid-achik
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    homepage: "https://file.cheap"
-    description: "Local file processing CLI and MCP server for images, PDFs, and videos"
+# TODO: Re-enable once HOMEBREW_TAP_TOKEN is regenerated (expired 2026-02-07)
+# homebrew_casks:
+#   - name: fc
+#     binaries:
+#       - fc
+#     ids:
+#       - fc
+#     repository:
+#       owner: abdul-hamid-achik
+#       name: homebrew-tap
+#       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+#     homepage: "https://file.cheap"
+#     description: "Local file processing CLI and MCP server for images, PDFs, and videos"
 
 nfpms:
   - id: packages
