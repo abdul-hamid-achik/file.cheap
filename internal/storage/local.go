@@ -50,10 +50,10 @@ func (s *LocalStorage) Upload(ctx context.Context, key string, reader io.Reader,
 	if err != nil {
 		return fmt.Errorf("create file %s: %w", key, err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // write errors caught by io.Copy
 
 	if _, err := io.Copy(f, reader); err != nil {
-		os.Remove(fullPath)
+		_ = os.Remove(fullPath)
 		return fmt.Errorf("write file %s: %w", key, err)
 	}
 
@@ -154,8 +154,8 @@ func (s *LocalStorage) HealthCheck(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("root dir not writable: %w", err)
 	}
-	f.Close()
-	os.Remove(tmp)
+	_ = f.Close()
+	_ = os.Remove(tmp)
 
 	return nil
 }

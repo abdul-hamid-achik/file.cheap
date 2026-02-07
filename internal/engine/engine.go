@@ -135,7 +135,7 @@ func (e *Engine) Process(ctx context.Context, req *Request) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("engine: open input: %w", err)
 	}
-	defer inFile.Close()
+	defer inFile.Close() //nolint:errcheck // best-effort close on read-only file
 
 	inStat, err := inFile.Stat()
 	if err != nil {
@@ -186,7 +186,7 @@ func (e *Engine) Process(ctx context.Context, req *Request) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("engine: create output: %w", err)
 	}
-	defer outFile.Close()
+	defer outFile.Close() //nolint:errcheck // caller checks write errors via io.Copy
 
 	written, err := io.Copy(outFile, pResult.Data)
 	if err != nil {

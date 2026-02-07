@@ -155,7 +155,7 @@ func registerVideoTools(srv *mcp.Server, eng *engine.Engine) {
 			r, _ := toolError("cannot open file: %v", err)
 			return r, nil, nil
 		}
-		defer f.Close()
+		defer f.Close() //nolint:errcheck // read-only
 
 		result, err := proc.AddWatermark(ctx, f, in.Text, position, opacity)
 		if err != nil {
@@ -178,7 +178,7 @@ func registerVideoTools(srv *mcp.Server, eng *engine.Engine) {
 			r, _ := toolError("cannot create output: %v", err)
 			return r, nil, nil
 		}
-		defer outFile.Close()
+		defer outFile.Close() //nolint:errcheck // write errors caught by io.Copy
 
 		written, err := io.Copy(outFile, result.Data)
 		if err != nil {
@@ -234,7 +234,7 @@ func registerVideoTools(srv *mcp.Server, eng *engine.Engine) {
 			r, _ := toolError("cannot open file: %v", err)
 			return r, nil, nil
 		}
-		defer f.Close()
+		defer f.Close() //nolint:errcheck // read-only
 
 		segDur := in.SegmentDuration
 		if segDur <= 0 {
@@ -311,12 +311,12 @@ func moveFile(src, dst string) error {
 	if err != nil {
 		return fmt.Errorf("open %s: %w", src, err)
 	}
-	defer in.Close()
+	defer in.Close() //nolint:errcheck // read-only
 	out, err := os.Create(dst)
 	if err != nil {
 		return fmt.Errorf("create %s: %w", dst, err)
 	}
-	defer out.Close()
+	defer out.Close() //nolint:errcheck // write errors caught by io.Copy
 	if _, err := io.Copy(out, in); err != nil {
 		return fmt.Errorf("copy: %w", err)
 	}

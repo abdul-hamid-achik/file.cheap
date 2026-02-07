@@ -34,7 +34,7 @@ func TestLocalStorage_UploadDownloadRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Download: %v", err)
 	}
-	defer rc.Close()
+	defer rc.Close() //nolint:errcheck
 
 	got, err := io.ReadAll(rc)
 	if err != nil {
@@ -64,7 +64,7 @@ func TestLocalStorage_UploadOverwrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Download: %v", err)
 	}
-	defer rc.Close()
+	defer rc.Close() //nolint:errcheck
 
 	got, _ := io.ReadAll(rc)
 	if string(got) != "v2" {

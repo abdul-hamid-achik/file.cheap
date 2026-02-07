@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
@@ -98,17 +96,4 @@ Examples:
 		}
 		return nil
 	},
-}
-
-// readMetadataJSON reads and parses the metadata processor JSON result.
-func readMetadataJSON(r io.Reader) (map[string]any, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
-	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, err
-	}
-	return m, nil
 }
