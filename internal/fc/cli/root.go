@@ -129,6 +129,7 @@ func init() {
 	rootCmd.AddCommand(thumbnailCmd)
 	rootCmd.AddCommand(optimizeCmd)
 	rootCmd.AddCommand(watermarkCmd)
+	rootCmd.AddCommand(pixelartCmd)
 	rootCmd.AddCommand(infoCmd)
 	rootCmd.AddCommand(processCmd)
 	rootCmd.AddCommand(doctorCmd)

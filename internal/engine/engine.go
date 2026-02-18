@@ -72,6 +72,7 @@ func (e *Engine) RegisterDefaults() {
 	e.Registry.Register("convert", image.NewConvertProcessor(e.Config))
 	e.Registry.Register("watermark", image.NewWatermarkProcessor(e.Config))
 	e.Registry.Register("metadata", image.NewMetadataProcessor(e.Config))
+	e.Registry.Register("pixelart", image.NewPixelArtProcessor(e.Config))
 
 	// PDF processor (needs poppler-utils or mutool at runtime).
 	e.Registry.Register("pdf_thumbnail", pdf.NewThumbnailProcessor(e.Config))

@@ -61,6 +61,14 @@ type metadataInput struct {
 	Path string `json:"path" jsonschema:"description=Absolute path to the image file,required"`
 }
 
+type pixelartInput struct {
+	Path       string `json:"path" jsonschema:"description=Absolute path to the image file,required"`
+	PixelSize  int    `json:"pixel_size,omitempty" jsonschema:"description=Size of each pixel block (default 16),minimum=1,maximum=256"`
+	Format     string `json:"format,omitempty" jsonschema:"description=Output format (png or jpeg),enum=png,enum=jpeg"`
+	Quality    int    `json:"quality,omitempty" jsonschema:"description=Output quality 1-100 (for JPEG),minimum=1,maximum=100"`
+	OutputPath string `json:"output_path,omitempty" jsonschema:"description=Output file path (auto-generated if omitted)"`
+}
+
 func registerImageTools(srv *mcp.Server, eng *engine.Engine) {
 	falseVal := false
 
@@ -259,5 +267,39 @@ func registerImageTools(srv *mcp.Server, eng *engine.Engine) {
 		}
 		meta, _ := json.MarshalIndent(res.Metadata, "", "  ")
 		return textResult(string(meta)), nil, nil
+	})
+
+	// fc_pixelart
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "fc_pixelart",
+		Description: "Convert an image to pixel art by reducing and re-upscaling with a configurable block size",
+		Annotations: &mcp.ToolAnnotations{
+			DestructiveHint: &falseVal,
+			OpenWorldHint:   &falseVal,
+			IdempotentHint:  true,
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in pixelartInput) (*mcp.CallToolResult, any, error) {
+		if err := validatePath(in.Path); err != nil {
+			r, _ := toolError("%v", err)
+			return r, nil, nil
+		}
+		pixelSize := in.PixelSize
+		if pixelSize == 0 {
+			pixelSize = 16
+		}
+		format := in.Format
+		if format == "" {
+			format = "png"
+		}
+		return processAndRespond(ctx, eng, &engine.Request{
+			InputPath:  absPath(in.Path),
+			OutputPath: in.OutputPath,
+			Processor:  "pixelart",
+			Options: &processor.Options{
+				Width:   pixelSize,
+				Format:  format,
+				Quality: in.Quality,
+			},
+		})
 	})
 }

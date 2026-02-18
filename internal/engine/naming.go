@@ -35,6 +35,12 @@ func GenerateOutputPath(inputPath, processorName string, opts *processor.Options
 		outName = base + "." + format
 	case "watermark":
 		outName = base + "_watermarked" + ext
+	case "pixelart":
+		format := "png"
+		if opts != nil && opts.Format != "" {
+			format = opts.Format
+		}
+		outName = base + "_pixelart." + format
 	case "metadata":
 		// Metadata extraction produces no output file.
 		return ""
