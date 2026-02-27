@@ -27,13 +27,13 @@ func registerPrompts(srv *mcp.Server) {
 			Messages: []*mcp.PromptMessage{
 				{Role: "user", Content: &mcp.TextContent{Text: fmt.Sprintf(`I need to optimize the image at %s for web delivery. Please follow these steps:
 
-1. Use fc_file_info to inspect the file and confirm it is a supported image format.
-2. Use fc_optimize_image to compress the original with quality 85.
-3. Use fc_convert_to_webp to create a WebP version with quality 85.
-4. Use fc_apply_preset with preset "sm" (640px) to generate a mobile-friendly size.
-5. Use fc_apply_preset with preset "md" (1024px) to generate a tablet-friendly size.
-6. Use fc_apply_preset with preset "lg" (1440px) to generate a desktop-friendly size.
-7. For each generated file, convert it to WebP using fc_convert_to_webp.
+1. Use fcheap_file_info to inspect the file and confirm it is a supported image format.
+2. Use fcheap_optimize_image to compress the original with quality 85.
+3. Use fcheap_convert_to_webp to create a WebP version with quality 85.
+4. Use fcheap_apply_preset with preset "sm" (640px) to generate a mobile-friendly size.
+5. Use fcheap_apply_preset with preset "md" (1024px) to generate a tablet-friendly size.
+6. Use fcheap_apply_preset with preset "lg" (1440px) to generate a desktop-friendly size.
+7. For each generated file, convert it to WebP using fcheap_convert_to_webp.
 
 Report the file sizes before and after each operation so I can see the savings.`, path)}},
 			},
@@ -53,14 +53,14 @@ Report the file sizes before and after each operation so I can see the savings.`
 			Messages: []*mcp.PromptMessage{
 				{Role: "user", Content: &mcp.TextContent{Text: fmt.Sprintf(`I need to generate a complete social media image pack from %s. Please follow these steps:
 
-1. Use fc_file_info to inspect the source image and confirm its dimensions.
-2. Generate all social media sizes using fc_apply_preset:
+1. Use fcheap_file_info to inspect the source image and confirm its dimensions.
+2. Generate all social media sizes using fcheap_apply_preset:
    - "og" (1200x630) — Open Graph / Facebook sharing
    - "twitter" (1200x675) — Twitter/X card image
    - "instagram_square" (1080x1080) — Instagram feed post
    - "instagram_portrait" (1080x1350) — Instagram portrait post
    - "instagram_story" (1080x1920) — Instagram/Facebook story
-3. For each generated image, also create a WebP version using fc_convert_to_webp for web embedding.
+3. For each generated image, also create a WebP version using fcheap_convert_to_webp for web embedding.
 4. Summarize all generated files with their dimensions and file sizes.`, path)}},
 			},
 		}, nil
@@ -79,13 +79,13 @@ Report the file sizes before and after each operation so I can see the savings.`
 			Messages: []*mcp.PromptMessage{
 				{Role: "user", Content: &mcp.TextContent{Text: fmt.Sprintf(`I need to generate a complete responsive image set from %s for use in HTML <picture> and srcset attributes. Please follow these steps:
 
-1. Use fc_file_info to inspect the source image and confirm its dimensions.
-2. Generate responsive breakpoint sizes using fc_apply_preset:
+1. Use fcheap_file_info to inspect the source image and confirm its dimensions.
+2. Generate responsive breakpoint sizes using fcheap_apply_preset:
    - "sm" (640px wide) — mobile devices
    - "md" (1024px wide) — tablets
    - "lg" (1440px wide) — laptops and desktops
    - "xl" (1920px wide) — large displays
-3. For each generated size, create a WebP variant using fc_convert_to_webp with quality 85.
+3. For each generated size, create a WebP variant using fcheap_convert_to_webp with quality 85.
 4. Summarize all generated files with their dimensions and file sizes.
 5. Provide an HTML <picture> snippet that uses the generated files with appropriate media queries and WebP fallbacks. For example:
 
@@ -116,13 +116,13 @@ Report the file sizes before and after each operation so I can see the savings.`
 			Messages: []*mcp.PromptMessage{
 				{Role: "user", Content: &mcp.TextContent{Text: fmt.Sprintf(`I need to prepare the video at %s for web delivery. Please follow these steps:
 
-1. Use fc_list_capabilities to verify that ffmpeg is available. If it is not installed, stop and inform me that ffmpeg is required (install via "brew install ffmpeg" or "apt install ffmpeg").
-2. Use fc_video_metadata to inspect the source video (duration, resolution, codecs, bitrate).
-3. Use fc_video_thumbnail to extract a poster image from the video.
-4. Use fc_transcode_video to create a web-optimized MP4:
+1. Use fcheap_list_capabilities to verify that ffmpeg is available. If it is not installed, stop and inform me that ffmpeg is required (install via "brew install ffmpeg" or "apt install ffmpeg").
+2. Use fcheap_video_metadata to inspect the source video (duration, resolution, codecs, bitrate).
+3. Use fcheap_video_thumbnail to extract a poster image from the video.
+4. Use fcheap_transcode_video to create a web-optimized MP4:
    - If the source is already H.264 MP4 with reasonable bitrate (under 5 Mbps), you may skip this step.
    - Otherwise transcode to MP4 with format "mp4".
-5. If the video is longer than 30 seconds, use fc_generate_hls to create an HLS adaptive streaming package for better playback on slow connections.
+5. If the video is longer than 30 seconds, use fcheap_generate_hls to create an HLS adaptive streaming package for better playback on slow connections.
 6. Summarize the results:
    - Original file: size, duration, resolution, codecs
    - Poster image: path and dimensions

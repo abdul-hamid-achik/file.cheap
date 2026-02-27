@@ -27,7 +27,7 @@ func registerUtilTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_batch_process
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_batch_process",
+		Name:        "fcheap_batch_process",
 		Description: "Apply a processing operation to multiple files at once",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &falseVal,
@@ -91,7 +91,7 @@ func registerUtilTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_list_capabilities
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_list_capabilities",
+		Name:        "fcheap_list_capabilities",
 		Description: "List available processors, supported file types, and external dependency status",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:    true,

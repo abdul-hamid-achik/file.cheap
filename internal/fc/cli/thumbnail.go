@@ -23,10 +23,10 @@ var thumbnailCmd = &cobra.Command{
 File type is auto-detected.
 
 Examples:
-  fc thumbnail photo.jpg
-  fc thumbnail *.jpg --width 200 --height 200
-  fc thumbnail video.mp4
-  fc thumbnail document.pdf`,
+  fcheap thumbnail photo.jpg
+  fcheap thumbnail *.jpg --width 200 --height 200
+  fcheap thumbnail video.mp4
+  fcheap thumbnail document.pdf`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var expanded []string

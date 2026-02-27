@@ -25,10 +25,10 @@ Size can be:
   preset  - sm (640), md (1024), lg (1920), xl (2560)
 
 Examples:
-  fc resize photo.jpg 800x600
-  fc resize photo.jpg 800
-  fc resize *.jpg md
-  fc resize photo.jpg 1024 --fit cover`,
+  fcheap resize photo.jpg 800x600
+  fcheap resize photo.jpg 800
+  fcheap resize *.jpg md
+  fcheap resize photo.jpg 1024 --fit cover`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sizeSpec := args[len(args)-1]

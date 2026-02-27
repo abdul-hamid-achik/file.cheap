@@ -54,7 +54,7 @@ func TestSaveAndLoad(t *testing.T) {
 		t.Fatalf("Save() error = %v", err)
 	}
 
-	configPath := filepath.Join(tmpDir, ".config", "fc", "config.yaml")
+	configPath := filepath.Join(tmpDir, ".config", "fcheap", "config.yaml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Error("Config file was not created")
 	}

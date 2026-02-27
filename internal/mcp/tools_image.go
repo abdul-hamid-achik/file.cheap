@@ -66,7 +66,7 @@ func registerImageTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_resize_image
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_resize_image",
+		Name:        "fcheap_resize_image",
 		Description: "Resize an image to the given dimensions",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &falseVal,
@@ -93,7 +93,7 @@ func registerImageTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_thumbnail
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_thumbnail",
+		Name:        "fcheap_thumbnail",
 		Description: "Generate a thumbnail from an image",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &falseVal,
@@ -130,7 +130,7 @@ func registerImageTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_convert_to_webp
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_convert_to_webp",
+		Name:        "fcheap_convert_to_webp",
 		Description: "Convert an image to WebP format for smaller file sizes",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &falseVal,
@@ -152,7 +152,7 @@ func registerImageTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_optimize_image
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_optimize_image",
+		Name:        "fcheap_optimize_image",
 		Description: "Optimize an image to reduce file size while maintaining quality",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &falseVal,
@@ -174,7 +174,7 @@ func registerImageTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_convert_image
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_convert_image",
+		Name:        "fcheap_convert_image",
 		Description: "Convert an image to a different format (jpeg, png, gif, bmp, tiff)",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &falseVal,
@@ -199,7 +199,7 @@ func registerImageTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_watermark_image
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_watermark_image",
+		Name:        "fcheap_watermark_image",
 		Description: "Add a text watermark to an image",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &falseVal,
@@ -237,7 +237,7 @@ func registerImageTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_image_metadata
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_image_metadata",
+		Name:        "fcheap_image_metadata",
 		Description: "Read metadata (dimensions, format, size) from an image file. Returns JSON.",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:    true,

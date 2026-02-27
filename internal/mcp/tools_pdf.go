@@ -21,7 +21,7 @@ func registerPDFTools(srv *mcp.Server, eng *engine.Engine) {
 	falseVal := false
 
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_pdf_thumbnail",
+		Name:        "fcheap_pdf_thumbnail",
 		Description: "Generate a thumbnail image from a PDF page. Requires poppler-utils or mutool.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &falseVal,

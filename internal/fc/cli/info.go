@@ -16,9 +16,9 @@ var infoCmd = &cobra.Command{
 	Long: `Display metadata for images (dimensions, format, size).
 
 Examples:
-  fc info photo.jpg
-  fc info *.jpg
-  fc info photo.jpg --json`,
+  fcheap info photo.jpg
+  fcheap info *.jpg
+  fcheap info photo.jpg --json`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var expanded []string

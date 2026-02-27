@@ -18,14 +18,14 @@ var mcpServeCmd = &cobra.Command{
 	Short: "Start MCP server (stdio transport)",
 	Long: `Start an MCP (Model Context Protocol) server using stdio transport.
 
-This allows AI assistants like Claude to use fc as a tool for
+This allows AI assistants like Claude to use fcheap as a tool for
 processing images, PDFs, and videos.
 
 Usage in Claude Code MCP config:
   {
     "mcpServers": {
       "file-cheap": {
-        "command": "fc",
+        "command": "fcheap",
         "args": ["mcp", "serve"]
       }
     }

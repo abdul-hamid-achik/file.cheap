@@ -43,7 +43,7 @@ func registerPipelineTools(srv *mcp.Server, eng *engine.Engine) {
 	falseVal := false
 
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_pipeline",
+		Name:        "fcheap_pipeline",
 		Description: "Chain multiple processing operations on a single file. Each step's output becomes the next step's input. Useful for workflows like: resize \u2192 optimize \u2192 convert to webp.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &falseVal,
@@ -130,7 +130,7 @@ func registerPipelineTools(srv *mcp.Server, eng *engine.Engine) {
 				} else if s.Operation == "convert" && s.Format != "" {
 					ext = "." + s.Format
 				}
-				tmpPath := filepath.Join(os.TempDir(), fmt.Sprintf("fc_pipeline_%d_%s%s", i, s.Operation, ext))
+				tmpPath := filepath.Join(os.TempDir(), fmt.Sprintf("fcheap_pipeline_%d_%s%s", i, s.Operation, ext))
 				engineReq.OutputPath = tmpPath
 				tempFiles = append(tempFiles, tmpPath)
 			}

@@ -16,9 +16,9 @@ var optimizeCmd = &cobra.Command{
 Reduces file size while maintaining visual quality.
 
 Examples:
-  fc optimize photo.jpg
-  fc optimize *.jpg --quality 80
-  fc optimize photos/ -q 75`,
+  fcheap optimize photo.jpg
+  fcheap optimize *.jpg --quality 80
+  fcheap optimize photos/ -q 75`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var expanded []string

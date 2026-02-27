@@ -21,9 +21,9 @@ var watermarkCmd = &cobra.Command{
 	Long: `Add a text watermark to one or more images.
 
 Examples:
-  fc watermark photo.jpg "Copyright 2024"
-  fc watermark *.jpg "DRAFT" --position center --opacity 30
-  fc watermark photo.jpg "Sample" --font-size 48`,
+  fcheap watermark photo.jpg "Copyright 2024"
+  fcheap watermark *.jpg "DRAFT" --position center --opacity 30
+  fcheap watermark photo.jpg "Sample" --font-size 48`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		text := args[len(args)-1]

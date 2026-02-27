@@ -69,9 +69,9 @@ var configSetCmd = &cobra.Command{
 Keys: quality, output_dir, parallel, overwrite, temp_dir, log_level
 
 Examples:
-  fc config set quality 90
-  fc config set output_dir /tmp/output
-  fc config set parallel 8`,
+  fcheap config set quality 90
+  fcheap config set output_dir /tmp/output
+  fcheap config set parallel 8`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key, value := args[0], args[1]

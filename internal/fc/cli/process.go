@@ -18,9 +18,9 @@ var processCmd = &cobra.Command{
 	Long: `Apply a chain of transformations to files.
 
 Examples:
-  fc process photo.jpg -t resize,webp
-  fc process *.jpg -t optimize,thumbnail
-  fc process photo.jpg -t resize --quality 80`,
+  fcheap process photo.jpg -t resize,webp
+  fcheap process *.jpg -t optimize,thumbnail
+  fcheap process photo.jpg -t resize --quality 80`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if processTransforms == "" {

@@ -11,12 +11,12 @@ import (
 )
 
 func registerResources(srv *mcp.Server, eng *engine.Engine) {
-	// fc://supported-formats — static listing of all supported file formats.
+	// fcheap://supported-formats — static listing of all supported file formats.
 	srv.AddResource(&mcp.Resource{
 		Name:     "supported-formats",
 		Title:    "Supported File Formats",
 		MIMEType: "application/json",
-		URI:      "fc://supported-formats",
+		URI:      "fcheap://supported-formats",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		formats := map[string]any{
 			"image": map[string]any{
@@ -44,12 +44,12 @@ func registerResources(srv *mcp.Server, eng *engine.Engine) {
 		}, nil
 	})
 
-	// fc://capabilities — dynamic listing of registered processors and dependency status.
+	// fcheap://capabilities — dynamic listing of registered processors and dependency status.
 	srv.AddResource(&mcp.Resource{
 		Name:     "capabilities",
 		Title:    "Processing Capabilities",
 		MIMEType: "application/json",
-		URI:      "fc://capabilities",
+		URI:      "fcheap://capabilities",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		processors := eng.ListProcessors()
 
@@ -80,16 +80,16 @@ func registerResources(srv *mcp.Server, eng *engine.Engine) {
 		}, nil
 	})
 
-	// fc://file/{path} — file info resource template.
+	// fcheap://file/{path} — file info resource template.
 	srv.AddResourceTemplate(&mcp.ResourceTemplate{
 		Name:        "file-info",
 		Title:       "File Information",
-		URITemplate: "fc://file/{path}",
+		URITemplate: "fcheap://file/{path}",
 		MIMEType:    "application/json",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		path := req.Params.URI
 		// Strip the URI scheme prefix to get the file path.
-		const prefix = "fc://file/"
+		const prefix = "fcheap://file/"
 		if len(path) > len(prefix) {
 			path = path[len(prefix):]
 		}

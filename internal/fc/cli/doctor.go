@@ -12,7 +12,7 @@ var doctorCmd = &cobra.Command{
 	Short: "Check system dependencies",
 	Long: `Check that required external tools are installed and available.
 
-fc uses these optional dependencies:
+fcheap uses these optional dependencies:
   ffmpeg/ffprobe  - Video processing (transcode, thumbnail, HLS, watermark)
   pdftoppm        - PDF thumbnail generation (from poppler-utils)
   pdfinfo         - PDF page counting (from poppler-utils)

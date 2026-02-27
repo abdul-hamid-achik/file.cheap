@@ -59,7 +59,7 @@ jobs:
           cache: true
 
       - name: Build binary
-        run: CGO_ENABLED=0 go build -o fc ./cmd/fc
+        run: CGO_ENABLED=0 go build -o fcheap ./cmd/fcheap
 
       - name: Verify binary
-        run: ./fc --version
+        run: ./fcheap --version

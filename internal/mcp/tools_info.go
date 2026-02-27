@@ -96,7 +96,7 @@ func registerInfoTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_file_info
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_file_info",
+		Name:        "fcheap_file_info",
 		Description: "Detect file type, MIME content type, size, and basic dimensions without processing",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:    true,
@@ -149,7 +149,7 @@ func registerInfoTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_video_metadata
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_video_metadata",
+		Name:        "fcheap_video_metadata",
 		Description: "Extract video metadata (duration, resolution, codecs, bitrate) using ffprobe",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:    true,
@@ -163,7 +163,7 @@ func registerInfoTools(srv *mcp.Server, eng *engine.Engine) {
 		}
 
 		if !engine.FFmpegAvailable() {
-			r, _ := toolError("ffmpeg is not installed; run 'fc doctor' to check dependencies")
+			r, _ := toolError("ffmpeg is not installed; run 'fcheap doctor' to check dependencies")
 			return r, nil, nil
 		}
 

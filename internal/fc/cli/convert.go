@@ -16,9 +16,9 @@ var convertCmd = &cobra.Command{
 	Long: `Convert images to a different format (jpeg, png, gif, webp).
 
 Examples:
-  fc convert photo.jpg webp
-  fc convert photo.png jpeg --quality 90
-  fc convert *.png webp`,
+  fcheap convert photo.jpg webp
+  fcheap convert photo.png jpeg --quality 90
+  fcheap convert *.png webp`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		format := strings.ToLower(args[len(args)-1])

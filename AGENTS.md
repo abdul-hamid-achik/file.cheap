@@ -48,7 +48,7 @@ type myInput struct {
 }
 
 mcp.AddTool(srv, &mcp.Tool{
-    Name:        "fc_my_tool",
+    Name:        "fcheap_my_tool",
     Description: "...",
 }, func(ctx context.Context, req *mcp.CallToolRequest, in myInput) (*mcp.CallToolResult, any, error) {
     // validate, process, return
@@ -78,7 +78,7 @@ Register in `root.go` `init()`.
 - **pdftoppm/pdfinfo** (poppler-utils) or **mutool** (mupdf) -- required for PDF thumbnails
 - **cwebp** -- optional for WebP, pure Go fallback exists
 
-Never bundle these. Detect at runtime, show clear errors with `fc doctor` instructions.
+Never bundle these. Detect at runtime, show clear errors with `fcheap doctor` instructions.
 
 ## What NOT to Do
 

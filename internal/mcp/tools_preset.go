@@ -27,7 +27,7 @@ func registerPresetTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_apply_preset
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_apply_preset",
+		Name:        "fcheap_apply_preset",
 		Description: "Apply a named preset to resize or crop an image. Presets include social media sizes (og, twitter, instagram), responsive breakpoints (sm, md, lg, xl), and thumbnails.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &falseVal,
@@ -70,7 +70,7 @@ func registerPresetTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_list_presets
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_list_presets",
+		Name:        "fcheap_list_presets",
 		Description: "List all available presets with their dimensions, quality, and category",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:    true,

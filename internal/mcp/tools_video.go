@@ -51,7 +51,7 @@ func registerVideoTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_video_thumbnail
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_video_thumbnail",
+		Name:        "fcheap_video_thumbnail",
 		Description: "Extract a thumbnail frame from a video. Requires ffmpeg.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &falseVal,
@@ -63,7 +63,7 @@ func registerVideoTools(srv *mcp.Server, eng *engine.Engine) {
 			return r, nil, nil
 		}
 		if !engine.FFmpegAvailable() {
-			r, _ := toolError("ffmpeg is not installed; run 'fc doctor' to check dependencies")
+			r, _ := toolError("ffmpeg is not installed; run 'fcheap doctor' to check dependencies")
 			return r, nil, nil
 		}
 		pos := in.PositionPercent
@@ -84,7 +84,7 @@ func registerVideoTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_transcode_video
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_transcode_video",
+		Name:        "fcheap_transcode_video",
 		Description: "Transcode a video to a different format or quality. Requires ffmpeg.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &falseVal,
@@ -96,7 +96,7 @@ func registerVideoTools(srv *mcp.Server, eng *engine.Engine) {
 			return r, nil, nil
 		}
 		if !engine.FFmpegAvailable() {
-			r, _ := toolError("ffmpeg is not installed; run 'fc doctor' to check dependencies")
+			r, _ := toolError("ffmpeg is not installed; run 'fcheap doctor' to check dependencies")
 			return r, nil, nil
 		}
 		format := in.Format
@@ -116,7 +116,7 @@ func registerVideoTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_video_watermark
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_video_watermark",
+		Name:        "fcheap_video_watermark",
 		Description: "Add a text watermark to a video. Requires ffmpeg.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &falseVal,
@@ -128,7 +128,7 @@ func registerVideoTools(srv *mcp.Server, eng *engine.Engine) {
 			return r, nil, nil
 		}
 		if !engine.FFmpegAvailable() {
-			r, _ := toolError("ffmpeg is not installed; run 'fc doctor' to check dependencies")
+			r, _ := toolError("ffmpeg is not installed; run 'fcheap doctor' to check dependencies")
 			return r, nil, nil
 		}
 		opacity := in.Opacity
@@ -205,7 +205,7 @@ func registerVideoTools(srv *mcp.Server, eng *engine.Engine) {
 
 	// fc_generate_hls
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "fc_generate_hls",
+		Name:        "fcheap_generate_hls",
 		Description: "Generate HLS (HTTP Live Streaming) segments and playlist from a video. Requires ffmpeg.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &falseVal,
@@ -217,7 +217,7 @@ func registerVideoTools(srv *mcp.Server, eng *engine.Engine) {
 			return r, nil, nil
 		}
 		if !engine.FFmpegAvailable() {
-			r, _ := toolError("ffmpeg is not installed; run 'fc doctor' to check dependencies")
+			r, _ := toolError("ffmpeg is not installed; run 'fcheap doctor' to check dependencies")
 			return r, nil, nil
 		}
 

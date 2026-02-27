@@ -31,18 +31,18 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "fc",
+	Use:   "fcheap",
 	Short: "file.cheap - local file processing CLI and MCP server",
-	Long: `fc processes images, PDFs, and videos locally on your machine.
+	Long: `fcheap processes images, PDFs, and videos locally on your machine.
 
 Get started:
-  fc convert photo.jpg webp       # Convert to WebP
-  fc resize photo.jpg 800x600     # Resize an image
-  fc thumbnail photo.jpg          # Generate thumbnail
-  fc optimize *.jpg               # Optimize images
-  fc info photo.jpg               # Show file metadata
-  fc doctor                       # Check dependencies
-  fc mcp serve                    # Start MCP server`,
+  fcheap convert photo.jpg webp       # Convert to WebP
+  fcheap resize photo.jpg 800x600     # Resize an image
+  fcheap thumbnail photo.jpg          # Generate thumbnail
+  fcheap optimize *.jpg               # Optimize images
+  fcheap info photo.jpg               # Show file metadata
+  fcheap doctor                       # Check dependencies
+  fcheap mcp serve                    # Start MCP server`,
 	Version: version.Full(),
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		rootCtx, rootCancel = context.WithCancel(context.Background())
@@ -122,7 +122,7 @@ func init() {
 	rootCmd.PersistentFlags().IntVarP(&parallel, "parallel", "j", 0, "Parallel workers")
 	rootCmd.PersistentFlags().BoolVar(&overwrite, "overwrite", false, "Overwrite existing files")
 
-	rootCmd.SetVersionTemplate("fc version {{.Version}}\n")
+	rootCmd.SetVersionTemplate("fcheap version {{.Version}}\n")
 
 	rootCmd.AddCommand(convertCmd)
 	rootCmd.AddCommand(resizeCmd)

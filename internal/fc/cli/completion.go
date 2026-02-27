@@ -9,17 +9,17 @@ import (
 var completionCmd = &cobra.Command{
 	Use:   "completion [bash|zsh|fish|powershell]",
 	Short: "Generate shell completion scripts",
-	Long: `Generate shell completion scripts for fc.
+	Long: `Generate shell completion scripts for fcheap.
 
 Bash:
-  $ fc completion bash > /etc/bash_completion.d/fc
-  $ source <(fc completion bash)
+  $ fcheap completion bash > /etc/bash_completion.d/fcheap
+  $ source <(fcheap completion bash)
 
 Zsh:
-  $ fc completion zsh > "${fpath[1]}/_fc"
+  $ fcheap completion zsh > "${fpath[1]}/_fcheap"
 
 Fish:
-  $ fc completion fish > ~/.config/fish/completions/fc.fish`,
+  $ fcheap completion fish > ~/.config/fish/completions/fcheap.fish`,
 	Args:      cobra.ExactArgs(1),
 	ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
 	RunE: func(cmd *cobra.Command, args []string) error {

@@ -31,9 +31,9 @@ const (
 	DefaultParallel = 0 // 0 means runtime.NumCPU()
 	DefaultLogLevel = "warn"
 
-	EnvQuality   = "FC_QUALITY"
-	EnvOutputDir = "FC_OUTPUT_DIR"
-	EnvJobs      = "FC_JOBS"
+	EnvQuality   = "FCHEAP_QUALITY"
+	EnvOutputDir = "FCHEAP_OUTPUT_DIR"
+	EnvJobs      = "FCHEAP_JOBS"
 )
 
 var BuiltinPresets = map[string]Preset{
@@ -64,7 +64,7 @@ func Dir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".config", "fc"), nil
+	return filepath.Join(home, ".config", "fcheap"), nil
 }
 
 func Path() (string, error) {
