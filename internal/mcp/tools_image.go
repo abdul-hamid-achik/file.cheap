@@ -12,53 +12,53 @@ import (
 // -- Input structs for typed tool handlers --
 
 type resizeInput struct {
-	Path       string `json:"path" jsonschema:"description=Absolute path to the image file,required"`
-	Width      int    `json:"width,omitempty" jsonschema:"description=Target width in pixels"`
-	Height     int    `json:"height,omitempty" jsonschema:"description=Target height in pixels"`
-	Quality    int    `json:"quality,omitempty" jsonschema:"description=Output quality 1-100,minimum=1,maximum=100"`
-	Fit        string `json:"fit,omitempty" jsonschema:"description=Fit mode: contain cover or fill,enum=contain,enum=cover,enum=fill"`
-	OutputPath string `json:"output_path,omitempty" jsonschema:"description=Output file path (auto-generated if omitted)"`
+	Path       string `json:"path" jsonschema:"Absolute path to the image file"`
+	Width      int    `json:"width,omitempty" jsonschema:"Target width in pixels"`
+	Height     int    `json:"height,omitempty" jsonschema:"Target height in pixels"`
+	Quality    int    `json:"quality,omitempty" jsonschema:"Output quality 1-100"`
+	Fit        string `json:"fit,omitempty" jsonschema:"Fit mode: contain, cover, or fill"`
+	OutputPath string `json:"output_path,omitempty" jsonschema:"Output file path (auto-generated if omitted)"`
 }
 
 type thumbnailInput struct {
-	Path       string `json:"path" jsonschema:"description=Absolute path to the image file,required"`
-	Width      int    `json:"width,omitempty" jsonschema:"description=Thumbnail width in pixels,default=300"`
-	Height     int    `json:"height,omitempty" jsonschema:"description=Thumbnail height in pixels,default=300"`
-	Position   string `json:"position,omitempty" jsonschema:"description=Crop anchor position,enum=center,enum=north,enum=south,enum=east,enum=west"`
-	Quality    int    `json:"quality,omitempty" jsonschema:"description=Output quality 1-100,minimum=1,maximum=100"`
-	OutputPath string `json:"output_path,omitempty" jsonschema:"description=Output file path (auto-generated if omitted)"`
+	Path       string `json:"path" jsonschema:"Absolute path to the image file"`
+	Width      int    `json:"width,omitempty" jsonschema:"Thumbnail width in pixels (default 300)"`
+	Height     int    `json:"height,omitempty" jsonschema:"Thumbnail height in pixels (default 300)"`
+	Position   string `json:"position,omitempty" jsonschema:"Crop anchor position: center, north, south, east, or west"`
+	Quality    int    `json:"quality,omitempty" jsonschema:"Output quality 1-100"`
+	OutputPath string `json:"output_path,omitempty" jsonschema:"Output file path (auto-generated if omitted)"`
 }
 
 type webpInput struct {
-	Path       string `json:"path" jsonschema:"description=Absolute path to the image file,required"`
-	Quality    int    `json:"quality,omitempty" jsonschema:"description=Output quality 1-100,minimum=1,maximum=100"`
-	OutputPath string `json:"output_path,omitempty" jsonschema:"description=Output file path (auto-generated if omitted)"`
+	Path       string `json:"path" jsonschema:"Absolute path to the image file"`
+	Quality    int    `json:"quality,omitempty" jsonschema:"Output quality 1-100"`
+	OutputPath string `json:"output_path,omitempty" jsonschema:"Output file path (auto-generated if omitted)"`
 }
 
 type optimizeInput struct {
-	Path       string `json:"path" jsonschema:"description=Absolute path to the image file,required"`
-	Quality    int    `json:"quality,omitempty" jsonschema:"description=Output quality 1-100,minimum=1,maximum=100"`
-	OutputPath string `json:"output_path,omitempty" jsonschema:"description=Output file path (auto-generated if omitted)"`
+	Path       string `json:"path" jsonschema:"Absolute path to the image file"`
+	Quality    int    `json:"quality,omitempty" jsonschema:"Output quality 1-100"`
+	OutputPath string `json:"output_path,omitempty" jsonschema:"Output file path (auto-generated if omitted)"`
 }
 
 type convertImageInput struct {
-	Path       string `json:"path" jsonschema:"description=Absolute path to the image file,required"`
-	Format     string `json:"format" jsonschema:"description=Target format,required,enum=jpeg,enum=png,enum=gif,enum=bmp,enum=tiff"`
-	Quality    int    `json:"quality,omitempty" jsonschema:"description=Output quality 1-100,minimum=1,maximum=100"`
-	OutputPath string `json:"output_path,omitempty" jsonschema:"description=Output file path (auto-generated if omitted)"`
+	Path       string `json:"path" jsonschema:"Absolute path to the image file"`
+	Format     string `json:"format" jsonschema:"Target format: jpeg, png, gif, bmp, or tiff"`
+	Quality    int    `json:"quality,omitempty" jsonschema:"Output quality 1-100"`
+	OutputPath string `json:"output_path,omitempty" jsonschema:"Output file path (auto-generated if omitted)"`
 }
 
 type watermarkImageInput struct {
-	Path       string `json:"path" jsonschema:"description=Absolute path to the image file,required"`
-	Text       string `json:"text" jsonschema:"description=Watermark text to overlay,required"`
-	Position   string `json:"position,omitempty" jsonschema:"description=Watermark position,enum=center,enum=bottom-right,enum=bottom-left,enum=top-right,enum=top-left"`
-	Opacity    int    `json:"opacity,omitempty" jsonschema:"description=Watermark opacity 1-100,minimum=1,maximum=100"`
-	FontSize   int    `json:"font_size,omitempty" jsonschema:"description=Font size in pixels"`
-	OutputPath string `json:"output_path,omitempty" jsonschema:"description=Output file path (auto-generated if omitted)"`
+	Path       string `json:"path" jsonschema:"Absolute path to the image file"`
+	Text       string `json:"text" jsonschema:"Watermark text to overlay"`
+	Position   string `json:"position,omitempty" jsonschema:"Watermark position: center, bottom-right, bottom-left, top-right, or top-left"`
+	Opacity    int    `json:"opacity,omitempty" jsonschema:"Watermark opacity 1-100"`
+	FontSize   int    `json:"font_size,omitempty" jsonschema:"Font size in pixels"`
+	OutputPath string `json:"output_path,omitempty" jsonschema:"Output file path (auto-generated if omitted)"`
 }
 
 type metadataInput struct {
-	Path string `json:"path" jsonschema:"description=Absolute path to the image file,required"`
+	Path string `json:"path" jsonschema:"Absolute path to the image file"`
 }
 
 func registerImageTools(srv *mcp.Server, eng *engine.Engine) {

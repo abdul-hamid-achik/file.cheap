@@ -9,12 +9,12 @@ import (
 )
 
 type pdfThumbnailInput struct {
-	Path       string `json:"path" jsonschema:"description=Absolute path to the PDF file,required"`
-	Page       int    `json:"page,omitempty" jsonschema:"description=Page number to thumbnail (1-based default 1),minimum=1"`
-	Width      int    `json:"width,omitempty" jsonschema:"description=Thumbnail width in pixels"`
-	Height     int    `json:"height,omitempty" jsonschema:"description=Thumbnail height in pixels"`
-	Format     string `json:"format,omitempty" jsonschema:"description=Output image format,enum=png,enum=jpeg"`
-	OutputPath string `json:"output_path,omitempty" jsonschema:"description=Output file path (auto-generated if omitted)"`
+	Path       string `json:"path" jsonschema:"Absolute path to the PDF file"`
+	Page       int    `json:"page,omitempty" jsonschema:"Page number to thumbnail, 1-based (default 1)"`
+	Width      int    `json:"width,omitempty" jsonschema:"Thumbnail width in pixels"`
+	Height     int    `json:"height,omitempty" jsonschema:"Thumbnail height in pixels"`
+	Format     string `json:"format,omitempty" jsonschema:"Output image format: png or jpeg"`
+	OutputPath string `json:"output_path,omitempty" jsonschema:"Output file path (auto-generated if omitted)"`
 }
 
 func registerPDFTools(srv *mcp.Server, eng *engine.Engine) {

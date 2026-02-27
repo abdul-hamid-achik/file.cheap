@@ -15,35 +15,35 @@ import (
 )
 
 type videoThumbnailInput struct {
-	Path            string `json:"path" jsonschema:"description=Absolute path to the video file,required"`
-	PositionPercent int    `json:"position_percent,omitempty" jsonschema:"description=Position in video as percentage 0-100 (default 10),minimum=0,maximum=100"`
-	Width           int    `json:"width,omitempty" jsonschema:"description=Thumbnail width in pixels"`
-	Height          int    `json:"height,omitempty" jsonschema:"description=Thumbnail height in pixels"`
-	OutputPath      string `json:"output_path,omitempty" jsonschema:"description=Output file path (auto-generated if omitted)"`
+	Path            string `json:"path" jsonschema:"Absolute path to the video file"`
+	PositionPercent int    `json:"position_percent,omitempty" jsonschema:"Position in video as percentage 0-100 (default 10)"`
+	Width           int    `json:"width,omitempty" jsonschema:"Thumbnail width in pixels"`
+	Height          int    `json:"height,omitempty" jsonschema:"Thumbnail height in pixels"`
+	OutputPath      string `json:"output_path,omitempty" jsonschema:"Output file path (auto-generated if omitted)"`
 }
 
 type transcodeVideoInput struct {
-	Path          string `json:"path" jsonschema:"description=Absolute path to the video file,required"`
-	Format        string `json:"format,omitempty" jsonschema:"description=Output format,enum=mp4,enum=webm"`
-	Quality       int    `json:"quality,omitempty" jsonschema:"description=Video quality 1-100,minimum=1,maximum=100"`
-	MaxResolution int    `json:"max_resolution,omitempty" jsonschema:"description=Maximum output height in pixels (480 720 1080 2160)"`
-	Preset        string `json:"preset,omitempty" jsonschema:"description=Encoding preset,enum=ultrafast,enum=veryfast,enum=fast,enum=medium,enum=slow"`
-	OutputPath    string `json:"output_path,omitempty" jsonschema:"description=Output file path (auto-generated if omitted)"`
+	Path          string `json:"path" jsonschema:"Absolute path to the video file"`
+	Format        string `json:"format,omitempty" jsonschema:"Output format: mp4 or webm"`
+	Quality       int    `json:"quality,omitempty" jsonschema:"Video quality 1-100"`
+	MaxResolution int    `json:"max_resolution,omitempty" jsonschema:"Maximum output height in pixels: 480, 720, 1080, or 2160"`
+	Preset        string `json:"preset,omitempty" jsonschema:"Encoding preset: ultrafast, veryfast, fast, medium, or slow"`
+	OutputPath    string `json:"output_path,omitempty" jsonschema:"Output file path (auto-generated if omitted)"`
 }
 
 type videoWatermarkInput struct {
-	Path       string  `json:"path" jsonschema:"description=Absolute path to the video file,required"`
-	Text       string  `json:"text" jsonschema:"description=Watermark text to overlay,required"`
-	Position   string  `json:"position,omitempty" jsonschema:"description=Watermark position,enum=center,enum=bottom-right,enum=bottom-left,enum=top-right,enum=top-left"`
-	Opacity    float64 `json:"opacity,omitempty" jsonschema:"description=Watermark opacity 0.0-1.0"`
-	OutputPath string  `json:"output_path,omitempty" jsonschema:"description=Output file path (auto-generated if omitted)"`
+	Path       string  `json:"path" jsonschema:"Absolute path to the video file"`
+	Text       string  `json:"text" jsonschema:"Watermark text to overlay"`
+	Position   string  `json:"position,omitempty" jsonschema:"Watermark position: center, bottom-right, bottom-left, top-right, or top-left"`
+	Opacity    float64 `json:"opacity,omitempty" jsonschema:"Watermark opacity 0.0-1.0"`
+	OutputPath string  `json:"output_path,omitempty" jsonschema:"Output file path (auto-generated if omitted)"`
 }
 
 type generateHLSInput struct {
-	Path            string `json:"path" jsonschema:"description=Absolute path to the video file,required"`
-	SegmentDuration int    `json:"segment_duration,omitempty" jsonschema:"description=Segment duration in seconds (default 6)"`
-	Quality         int    `json:"quality,omitempty" jsonschema:"description=Video quality 1-100,minimum=1,maximum=100"`
-	OutputDir       string `json:"output_dir,omitempty" jsonschema:"description=Output directory for HLS files (auto-generated if omitted)"`
+	Path            string `json:"path" jsonschema:"Absolute path to the video file"`
+	SegmentDuration int    `json:"segment_duration,omitempty" jsonschema:"Segment duration in seconds (default 6)"`
+	Quality         int    `json:"quality,omitempty" jsonschema:"Video quality 1-100"`
+	OutputDir       string `json:"output_dir,omitempty" jsonschema:"Output directory for HLS files (auto-generated if omitted)"`
 }
 
 func registerVideoTools(srv *mcp.Server, eng *engine.Engine) {

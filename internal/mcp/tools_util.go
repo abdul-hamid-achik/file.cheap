@@ -11,13 +11,13 @@ import (
 )
 
 type batchProcessInput struct {
-	Paths     []string `json:"paths" jsonschema:"description=List of absolute file paths to process,required"`
-	Operation string   `json:"operation" jsonschema:"description=Processing operation to apply,required,enum=resize,enum=thumbnail,enum=webp,enum=optimize,enum=convert,enum=watermark,enum=pdf_thumbnail,enum=video_thumbnail,enum=video_transcode"`
-	Width     int      `json:"width,omitempty" jsonschema:"description=Width in pixels"`
-	Height    int      `json:"height,omitempty" jsonschema:"description=Height in pixels"`
-	Quality   int      `json:"quality,omitempty" jsonschema:"description=Quality 1-100,minimum=1,maximum=100"`
-	Format    string   `json:"format,omitempty" jsonschema:"description=Output format (for convert/transcode)"`
-	Text      string   `json:"text,omitempty" jsonschema:"description=Text (for watermark operations)"`
+	Paths     []string `json:"paths" jsonschema:"List of absolute file paths to process"`
+	Operation string   `json:"operation" jsonschema:"Processing operation: resize, thumbnail, webp, optimize, convert, watermark, pdf_thumbnail, video_thumbnail, or video_transcode"`
+	Width     int      `json:"width,omitempty" jsonschema:"Width in pixels"`
+	Height    int      `json:"height,omitempty" jsonschema:"Height in pixels"`
+	Quality   int      `json:"quality,omitempty" jsonschema:"Quality 1-100"`
+	Format    string   `json:"format,omitempty" jsonschema:"Output format (for convert/transcode)"`
+	Text      string   `json:"text,omitempty" jsonschema:"Text (for watermark operations)"`
 }
 
 type listCapabilitiesInput struct{}

@@ -20,13 +20,25 @@ func NewServer(eng *engine.Engine, version string) *mcp.Server {
 		Version: version,
 	}, &mcp.ServerOptions{
 		Instructions: "file.cheap provides local file processing tools for images, PDFs, and videos. " +
-			"All processing happens locally on your machine. Video tools require ffmpeg.",
+			"All processing happens locally on your machine. " +
+			"Use fc_list_capabilities to check available processors and dependencies. " +
+			"Use fc_file_info to inspect files before processing. " +
+			"Use fc_list_presets for quick named presets (social media sizes, responsive breakpoints). " +
+			"Chain operations with fc_pipeline. Video tools require ffmpeg (check with fc_list_capabilities).",
 	})
 
+	// Tools
 	registerImageTools(srv, eng)
 	registerPDFTools(srv, eng)
 	registerVideoTools(srv, eng)
 	registerUtilTools(srv, eng)
+	registerInfoTools(srv, eng)
+	registerPresetTools(srv, eng)
+	registerPipelineTools(srv, eng)
+
+	// Resources & Prompts
+	registerResources(srv, eng)
+	registerPrompts(srv)
 
 	return srv
 }
