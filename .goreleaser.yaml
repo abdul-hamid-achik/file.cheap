@@ -58,6 +58,13 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: "https://file.cheap"
     description: "Local file processing CLI and MCP server for images, PDFs, and videos"
+    caveats: |
+      The binary is not signed with an Apple Developer certificate.
+      macOS may show a security warning on first run. To fix:
+
+        xattr -d com.apple.quarantine "$(brew --prefix)/Caskroom/fcheap/#{version}/fcheap"
+
+      Or install with: brew install --no-quarantine abdul-hamid-achik/tap/fcheap
 
 nfpms:
   - id: packages

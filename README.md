@@ -5,8 +5,8 @@ Local file processing CLI and MCP server for images, PDFs, and videos. Everythin
 ## Install
 
 ```bash
-# macOS (Homebrew)
-brew install abdul-hamid-achik/tap/fcheap
+# macOS (Homebrew) — use --no-quarantine to avoid Gatekeeper warnings
+brew install --no-quarantine abdul-hamid-achik/tap/fcheap
 
 # Linux (deb)
 curl -LO https://github.com/abdul-hamid-achik/file.cheap/releases/latest/download/fcheap_linux_amd64.deb
