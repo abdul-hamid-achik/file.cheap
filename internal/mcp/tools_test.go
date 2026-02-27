@@ -190,7 +190,7 @@ func TestPipeline_ResizeThenOptimize(t *testing.T) {
 	assert.NoError(t, err, "final pipeline output must exist")
 
 	// Clean up intermediate.
-	os.Remove(step1Out)
+	os.Remove(step1Out) //nolint:errcheck // best-effort cleanup
 }
 
 // ---------------------------------------------------------------------------
@@ -198,6 +198,10 @@ func TestPipeline_ResizeThenOptimize(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestPipeline_ResizeThenWebP(t *testing.T) {
+	if !checkBinary("cwebp") {
+		t.Skip("cwebp not available, skipping webp pipeline test")
+	}
+
 	dir := t.TempDir()
 	jpegPath := createTestJPEG200(t, dir, "pipeline_webp_input.jpg")
 
@@ -232,7 +236,7 @@ func TestPipeline_ResizeThenWebP(t *testing.T) {
 	assert.NoError(t, err, "webp output must exist")
 
 	// Clean up intermediate.
-	os.Remove(step1Out)
+	os.Remove(step1Out) //nolint:errcheck // best-effort cleanup
 }
 
 // ---------------------------------------------------------------------------

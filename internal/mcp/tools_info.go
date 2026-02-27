@@ -139,7 +139,7 @@ func registerInfoTools(srv *mcp.Server, eng *engine.Engine) {
 					info.Width = cfg.Width
 					info.Height = cfg.Height
 				}
-				f.Close()
+				f.Close() //nolint:errcheck // read-only
 			}
 		}
 
