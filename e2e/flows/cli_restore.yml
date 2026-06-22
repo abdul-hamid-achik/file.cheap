@@ -1,0 +1,60 @@
+version: 1
+name: cli_restore
+
+metadata:
+  feature: cli
+  owner: core
+  priority: high
+  tags:
+    - smoke
+
+intent: |
+  Verify that the fcheap CLI can restore a previously saved stash to a
+  target directory and the restored files match the original content.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - |
+      export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-stash-restore
+      rm -rf /tmp/fcheap-e2e-stash-restore /tmp/fcheap-e2e-restore-src /tmp/fcheap-e2e-restore-out
+      mkdir -p /tmp/fcheap-e2e-restore-src
+      echo "restore me" > /tmp/fcheap-e2e-restore-src/file.txt
+      ./bin/fcheap save /tmp/fcheap-e2e-restore-src --tag restore-test
+      STASH_ID=$(./bin/fcheap list --tag restore-test --json | grep -o '"id": "[^"]*"' | head -1 | cut -d'"' -f4)
+      echo "Stash ID: $STASH_ID"
+      ./bin/fcheap restore "$STASH_ID" --to /tmp/fcheap-e2e-restore-out
+      echo "---"
+      cat /tmp/fcheap-e2e-restore-out/file.txt
+  cwd: "."
+  timeoutMs: 30000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: save and restore exit successfully
+    verify:
+      process:
+        exitCode: 0
+  - id: file_restored
+    description: restored file content matches original
+    verify:
+      screen:
+        contains: "restore me"

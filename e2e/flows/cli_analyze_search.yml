@@ -1,0 +1,61 @@
+version: 1
+name: cli_analyze_search
+
+metadata:
+  feature: cli
+  owner: core
+  priority: medium
+  tags:
+    - smoke
+
+intent: |
+  Verify that the fcheap CLI can analyze (index) a stash for search and
+  then search across stashes to find matching content.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - |
+      export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-stash-analyze
+      rm -rf /tmp/fcheap-e2e-stash-analyze /tmp/fcheap-e2e-analyze-src
+      mkdir -p /tmp/fcheap-e2e-analyze-src
+      echo "The Internal Migrant condition is not working" > /tmp/fcheap-e2e-analyze-src/notes.txt
+      echo "Columns are not showing up in the UI" > /tmp/fcheap-e2e-analyze-src/bug.txt
+      ./bin/fcheap save /tmp/fcheap-e2e-analyze-src --tag analyze-test
+      STASH_ID=$(./bin/fcheap list --tag analyze-test --json | grep -o '"id": "[^"]*"' | head -1 | cut -d'"' -f4)
+      echo "Stash ID: $STASH_ID"
+      ./bin/fcheap analyze "$STASH_ID"
+      echo "---"
+      ./bin/fcheap search "Internal Migrant"
+  cwd: "."
+  timeoutMs: 30000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: analyze and search exit successfully
+    verify:
+      process:
+        exitCode: 0
+  - id: analyze_succeeded
+    description: analyze reports indexing succeeded
+    verify:
+      screen:
+        contains: "Indexed"

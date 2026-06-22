@@ -1,0 +1,12 @@
+version: 1
+name: wait_clean_exit
+
+# Reusable step snippet: wait for the target process to exit cleanly, then
+# snapshot the final screen as "result". Import with `imports` and call with
+# `use: wait_clean_exit`.
+steps:
+  - wait:
+      process:
+        exitCode: 0
+      timeoutMs: 20000
+  - snapshot: result

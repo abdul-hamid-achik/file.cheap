@@ -1,0 +1,64 @@
+version: 1
+name: cli_save_list
+
+metadata:
+  feature: cli
+  owner: core
+  priority: high
+  tags:
+    - smoke
+
+intent: |
+  Verify that the fcheap CLI can save a directory to the stash vault and
+  list it back. Creates a small test fixture, saves it, lists it, and
+  verifies the output shows the stash entry.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - |
+      export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-stash
+      rm -rf /tmp/fcheap-e2e-stash /tmp/fcheap-e2e-fixture
+      mkdir -p /tmp/fcheap-e2e-fixture/sub
+      echo "hello world" > /tmp/fcheap-e2e-fixture/readme.txt
+      echo "test data" > /tmp/fcheap-e2e-fixture/sub/data.txt
+      ./bin/fcheap save /tmp/fcheap-e2e-fixture --tag e2e --tool test
+      echo "---"
+      ./bin/fcheap list --tag e2e
+  cwd: "."
+  timeoutMs: 30000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: save and list exit successfully
+    verify:
+      process:
+        exitCode: 0
+  - id: save_succeeded
+    description: save reports success
+    verify:
+      screen:
+        contains: "Saved"
+  - id: list_shows_entry
+    description: list shows the stashed entry with e2e tag
+    verify:
+      screen:
+        contains: "e2e"

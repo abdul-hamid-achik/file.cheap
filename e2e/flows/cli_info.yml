@@ -1,0 +1,58 @@
+version: 1
+name: cli_info
+
+metadata:
+  feature: cli
+  owner: core
+  priority: medium
+  tags:
+    - smoke
+
+intent: |
+  Verify that the fcheap CLI can show detailed info about a stash including
+  file count, size, and metadata.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - |
+      export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-stash-info
+      rm -rf /tmp/fcheap-e2e-stash-info /tmp/fcheap-e2e-info-src
+      mkdir -p /tmp/fcheap-e2e-info-src
+      echo "info test" > /tmp/fcheap-e2e-info-src/file.txt
+      ./bin/fcheap save /tmp/fcheap-e2e-info-src --tag info-test --tool test-tool
+      STASH_ID=$(./bin/fcheap list --tag info-test --json | grep -o '"id": "[^"]*"' | head -1 | cut -d'"' -f4)
+      echo "Stash ID: $STASH_ID"
+      ./bin/fcheap info "$STASH_ID"
+  cwd: "."
+  timeoutMs: 30000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: info command exits successfully
+    verify:
+      process:
+        exitCode: 0
+  - id: shows_file_count
+    description: info shows file count
+    verify:
+      screen:
+        contains: "Files"

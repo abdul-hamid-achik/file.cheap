@@ -1,0 +1,56 @@
+version: 1
+name: cli_doctor
+
+metadata:
+  feature: cli
+  owner: core
+  priority: high
+  tags:
+    - smoke
+    - agent
+
+intent: |
+  Verify that the built fcheap CLI can report local runtime readiness
+  (stash directory, compression support) and print its version.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - "./bin/fcheap doctor && ./bin/fcheap --version"
+  cwd: "."
+  timeoutMs: 20000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: doctor and version exit successfully
+    verify:
+      process:
+        exitCode: 0
+  - id: doctor_ok
+    description: doctor reports the stash directory is usable
+    verify:
+      screen:
+        contains: "stash dir:"
+  - id: version_printed
+    description: version output is printed
+    verify:
+      screen:
+        contains: "fcheap"

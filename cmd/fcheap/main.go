@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/abdul-hamid-achik/file.cheap/internal/fc/cli"
+	"github.com/abdul-hamid-achik/file.cheap/internal/fcheap/cli"
 )
 
 func main() {

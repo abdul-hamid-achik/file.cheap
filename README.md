@@ -1,6 +1,6 @@
 # file.cheap
 
-Local file processing CLI and MCP server for images, PDFs, and videos. Everything runs on your machine -- no cloud, no accounts, no uploads.
+Local-first stash tool for saving, restoring, compressing, and analyzing files and folders for agent workflows. Everything runs on your machine -- no cloud, no accounts, no uploads.
 
 ## Install
 
@@ -16,41 +16,42 @@ sudo dpkg -i fcheap_linux_amd64.deb
 go install github.com/abdul-hamid-achik/file.cheap/cmd/fcheap@latest
 ```
 
-Optional dependencies for full functionality:
-
-```bash
-# macOS
-brew install ffmpeg poppler webp
-
-# Ubuntu/Debian
-sudo apt install ffmpeg poppler-utils libwebp-tools
-```
-
-Run `fcheap doctor` to check what's available.
-
 ## Usage
 
 ```bash
-# Image operations
-fcheap resize photo.jpg 800x600
-fcheap thumbnail *.jpg
-fcheap convert photo.png webp
-fcheap optimize photo.jpg --quality 80
-fcheap watermark photo.jpg "Copyright 2026"
-fcheap info photo.jpg
+# Save files or folders to the stash vault
+fcheap save /tmp/vidtrace-artifacts --tag OPG-15061 --tool vidtrace --source ~/Downloads/OPG-15061.mp4
 
-# PDF
-fcheap thumbnail document.pdf
+# List saved stashes, optionally filtered by tag
+fcheap list
+fcheap list --tag OPG-15061
 
-# Video (requires ffmpeg)
-fcheap thumbnail video.mp4
-fcheap convert video.mov mp4
+# Get detailed info about a stash
+fcheap info <stash-id>
 
-# Chain operations
-fcheap process photo.jpg -t resize,optimize,webp
+# Restore a stash to a working directory
+fcheap restore <stash-id> --to /tmp/working/
 
-# Batch
-fcheap resize images/*.jpg 1200x800 --parallel 8
+# Compress a stash to save space
+fcheap compress <stash-id>
+
+# Analyze (index) a stash for search
+fcheap analyze <stash-id>
+
+# Search across all stashes
+fcheap search "Internal Migrant"
+
+# Diff a stash against a live codebase
+fcheap diff <stash-id> ~/projects/graphite
+
+# Drop a stash when done (requires --force)
+fcheap drop <stash-id> --force
+
+# Open the Studio TUI for browsing stashes
+fcheap studio
+
+# Check runtime health
+fcheap doctor
 ```
 
 ## MCP Server
@@ -68,26 +69,47 @@ Use `fcheap` as an MCP tool server for AI assistants like Claude:
 }
 ```
 
-This exposes 14 tools: `fcheap_resize_image`, `fcheap_thumbnail`, `fcheap_convert_to_webp`, `fcheap_optimize_image`, `fcheap_convert_image`, `fcheap_watermark_image`, `fcheap_image_metadata`, `fcheap_pdf_thumbnail`, `fcheap_video_thumbnail`, `fcheap_transcode_video`, `fcheap_video_watermark`, `fcheap_generate_hls`, `fcheap_batch_process`, `fcheap_list_capabilities`.
+This exposes tools: `fcheap_save`, `fcheap_list`, `fcheap_info`, `fcheap_restore`, `fcheap_drop`, `fcheap_search`, `fcheap_analyze`, `fcheap_diff`.
 
 ## Configuration
 
 ```bash
-fcheap config init       # create ~/.config/fcheap/config.yaml
-fcheap config show       # print current config
-fcheap config set quality 90
+fcheap config           # print current config
 ```
 
 Config file (`~/.config/fcheap/config.yaml`):
 
 ```yaml
-quality: 85
-output_dir: ""       # empty = same directory as input
+stash_dir: ~/.local/share/fcheap
+compression: zstd
+compress_threshold: 10485760  # 10MB
 parallel: 8
-overwrite: false
+log_level: warn
+vecgrep_path: ""              # optional, for semantic search
 ```
 
-Environment variables: `FCHEAP_QUALITY`, `FCHEAP_OUTPUT_DIR`, `FCHEAP_JOBS`.
+Environment variables: `FCHEAP_STASH_DIR`, `FCHEAP_JOBS`, `FCHEAP_LOG_LEVEL`, `FCHEAP_VECGREP_PATH`.
+
+## Storage Layout
+
+```
+~/.local/share/fcheap/
+├── <stash-id>/
+│   ├── manifest.json       # metadata, provenance, tags
+│   ├── content/            # file tree (or archive.tar.zst)
+│   └── analysis/           # search index (if analyzed)
+└── fcheap.veclite          # veclite database for keyword search
+```
+
+## Studio TUI
+
+The Studio is a terminal UI built with Bubbletea v2 for browsing stashes:
+
+```bash
+fcheap studio
+```
+
+Navigate with `j/k`, view details with `Enter`, quit with `q`.
 
 ## Project Structure
 
@@ -95,30 +117,34 @@ Environment variables: `FCHEAP_QUALITY`, `FCHEAP_OUTPUT_DIR`, `FCHEAP_JOBS`.
 file.cheap/
 ├── cmd/fcheap/              # CLI entry point
 ├── internal/
-│   ├── engine/              # Processing orchestration
-│   ├── mcp/                 # MCP server (14 tools)
-│   ├── processor/           # Core processing (zero deps on infra)
-│   │   ├── image/           # 7 image processors
-│   │   ├── pdf/             # PDF thumbnail
-│   │   └── video/           # Video thumbnail, transcode, HLS, watermark
-│   ├── fc/cli/              # Cobra commands
-│   ├── fc/config/           # YAML config
-│   ├── fc/output/           # Printer, progress bars, tables
-│   ├── storage/             # Storage interface + local filesystem
-│   ├── presets/             # Built-in processing presets
+│   ├── stash/               # Core domain: Save, Restore, Drop, List, Info
+│   ├── manifest/            # Stash metadata and provenance
+│   ├── compress/            # tar+zstd archiving
+│   ├── detect/              # Bundle type detection (vidtrace, generic)
+│   ├── analyze/             # BM25 search + vecgrep subprocess
+│   ├── diff/                # Stash-to-directory comparison
+│   ├── db/                  # SQLite metadata storage
+│   ├── mcp/                 # MCP server (8 tools)
+│   ├── studio/              # Bubbletea v2 TUI
+│   ├── fcheap/cli/             # Cobra commands
+│   ├── fcheap/config/          # YAML config
+│   ├── fcheap/output/           # Printer, progress bars, tables
+│   ├── fcheap/version/          # Build-time version
 │   ├── apperror/            # Error types
 │   └── logger/              # slog wrapper
+├── e2e/                     # glyphrun e2e test specs
 └── testdata/                # Test fixtures
 ```
 
 ## Tech Stack
 
-- **Go 1.25**, single static binary (~13MB), `CGO_ENABLED=0`
-- **Image processing**: `disintegration/imaging`, `fogleman/gg` (pure Go)
-- **Video**: ffmpeg/ffprobe (external, runtime-detected)
-- **PDF**: poppler-utils or mupdf (external, runtime-detected)
+- **Go 1.25**, single static binary, `CGO_ENABLED=0`
+- **CLI**: `spf13/cobra`, `fatih/color`
 - **MCP**: `modelcontextprotocol/go-sdk` (official SDK)
-- **CLI**: `spf13/cobra`, `fatih/color`, `schollz/progressbar`
+- **TUI**: `charm.land/bubbletea/v2`, `charm.land/lipgloss/v2`
+- **Compression**: `klauspost/compress/zstd`
+- **Database**: `modernc.org/sqlite` (CGO-free SQLite)
+- **E2E**: glyphrun
 
 ## License
 

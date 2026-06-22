@@ -1,0 +1,60 @@
+version: 1
+name: cli_drop
+
+metadata:
+  feature: cli
+  owner: core
+  priority: medium
+  tags:
+    - smoke
+
+intent: |
+  Verify that the fcheap CLI can drop a stash with --force and that the
+  stash is no longer listed after deletion.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - |
+      export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-stash-drop
+      rm -rf /tmp/fcheap-e2e-stash-drop /tmp/fcheap-e2e-drop-src
+      mkdir -p /tmp/fcheap-e2e-drop-src
+      echo "drop me" > /tmp/fcheap-e2e-drop-src/file.txt
+      ./bin/fcheap save /tmp/fcheap-e2e-drop-src --tag drop-test
+      STASH_ID=$(./bin/fcheap list --tag drop-test --json | grep -o '"id": "[^"]*"' | head -1 | cut -d'"' -f4)
+      echo "Stash ID: $STASH_ID"
+      ./bin/fcheap drop "$STASH_ID" --force
+      echo "---"
+      ./bin/fcheap list --tag drop-test --json
+  cwd: "."
+  timeoutMs: 30000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: save, drop, and list exit successfully
+    verify:
+      process:
+        exitCode: 0
+  - id: drop_succeeded
+    description: drop reports success
+    verify:
+      screen:
+        contains: "Dropped"

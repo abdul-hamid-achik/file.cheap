@@ -13,27 +13,46 @@ builds:
     env:
       - CGO_ENABLED=0
     goos:
-      - linux
       - darwin
+      - linux
     goarch:
       - amd64
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/abdul-hamid-achik/file.cheap/internal/fc/version.Version={{.Version}}
-      - -X github.com/abdul-hamid-achik/file.cheap/internal/fc/version.Commit={{.ShortCommit}}
-      - -X github.com/abdul-hamid-achik/file.cheap/internal/fc/version.Date={{.Date}}
+      - -X github.com/abdul-hamid-achik/file.cheap/internal/fcheap/version.Version={{ .Version }}
+      - -X github.com/abdul-hamid-achik/file.cheap/internal/fcheap/version.Commit={{ .Commit }}
+      - -X github.com/abdul-hamid-achik/file.cheap/internal/fcheap/version.Date={{ .Date }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
   - id: fcheap
+    ids:
+      - fcheap
     formats:
       - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
 
+nfpms:
+  - id: fcheap
+    ids:
+      - fcheap
+    package_name: fcheap
+    vendor: Abdul Hamid Achik
+    homepage: "https://github.com/abdul-hamid-achik/file.cheap"
+    maintainer: "Abdul Hamid Achik <abdulachik@icloud.com>"
+    description: "Local-first stash tool for saving, restoring, compressing, and analyzing files for agent workflows"
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    section: utils
+
 checksum:
-  name_template: 'checksums.txt'
+  name_template: "checksums.txt"
 
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
@@ -42,47 +61,12 @@ changelog:
   sort: asc
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
-      - '^chore:'
-
-homebrew_casks:
-  - name: fcheap
-    binaries:
-      - fcheap
-    ids:
-      - fcheap
-    repository:
-      owner: abdul-hamid-achik
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    homepage: "https://file.cheap"
-    description: "Local file processing CLI and MCP server for images, PDFs, and videos"
-    caveats: |
-      The binary is not signed with an Apple Developer certificate.
-      macOS may show a security warning on first run. To fix:
-
-        xattr -d com.apple.quarantine "$(brew --prefix)/Caskroom/fcheap/#{version}/fcheap"
-
-      Or install with: brew install --no-quarantine abdul-hamid-achik/tap/fcheap
-
-nfpms:
-  - id: packages
-    package_name: fcheap
-    vendor: file.cheap
-    homepage: https://file.cheap
-    maintainer: Abdul Hamid Achik <abdul.achik@gmail.com>
-    description: "Local file processing CLI and MCP server for images, PDFs, and videos"
-    license: MIT
-    formats:
-      - deb
-      - rpm
-      - apk
-    bindir: /usr/bin
-    recommends:
-      - ffmpeg
-      - poppler-utils
-      - libwebp-tools
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - "Merge pull request"
+      - "Merge branch"
 
 release:
   github:
@@ -90,4 +74,34 @@ release:
     name: file.cheap
   draft: false
   prerelease: auto
-  name_template: "v{{.Version}}"
+  name_template: "v{{ .Version }}"
+
+homebrew_casks:
+  - name: fcheap
+    ids:
+      - fcheap
+    binaries:
+      - fcheap
+    repository:
+      owner: abdul-hamid-achik
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    homepage: "https://github.com/abdul-hamid-achik/file.cheap"
+    description: "Local-first stash tool for saving, restoring, compressing, and analyzing files for agent workflows"
+    license: "MIT"
+    skip_upload: "{{ if .Env.HOMEBREW_TAP_TOKEN }}false{{ else }}true{{ end }}"
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/fcheap"]
+          end
+    caveats: |
+      The binary is not signed with an Apple Developer certificate.
+      macOS may show a security warning on first run.
+
+      If macOS blocks the first run, clear quarantine manually:
+        xattr -dr com.apple.quarantine /opt/homebrew/Caskroom/fcheap/*/fcheap
+
+      Run `fcheap doctor` after installation to check the stash directory.

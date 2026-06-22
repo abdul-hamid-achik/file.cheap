@@ -1,0 +1,61 @@
+version: 1
+name: cli_compress
+
+metadata:
+  feature: cli
+  owner: core
+  priority: medium
+  tags:
+    - smoke
+
+intent: |
+  Verify that the fcheap CLI can compress a stash into an archive and that
+  the archive file is created on disk.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - |
+      export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-stash-compress
+      rm -rf /tmp/fcheap-e2e-stash-compress /tmp/fcheap-e2e-compress-src
+      mkdir -p /tmp/fcheap-e2e-compress-src/sub
+      echo "compress me" > /tmp/fcheap-e2e-compress-src/file.txt
+      echo "more data" > /tmp/fcheap-e2e-compress-src/sub/nested.txt
+      ./bin/fcheap save /tmp/fcheap-e2e-compress-src --tag compress-test
+      STASH_ID=$(./bin/fcheap list --tag compress-test --json | grep -o '"id": "[^"]*"' | head -1 | cut -d'"' -f4)
+      echo "Stash ID: $STASH_ID"
+      ./bin/fcheap compress "$STASH_ID"
+      echo "---"
+      ls -la /tmp/fcheap-e2e-stash-compress/*/content.tar.zst 2>/dev/null || echo "no archive found"
+  cwd: "."
+  timeoutMs: 30000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: compress command exits successfully
+    verify:
+      process:
+        exitCode: 0
+  - id: compress_succeeded
+    description: compress reports success
+    verify:
+      screen:
+        contains: "Compressed"

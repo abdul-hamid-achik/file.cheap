@@ -57,13 +57,13 @@ func TestWrap(t *testing.T) {
 
 func TestWrapWithMessage(t *testing.T) {
 	innerErr := errors.New("connection refused")
-	wrapped := WrapWithMessage(innerErr, "storage_error", "Storage connection failed")
+	wrapped := WrapWithMessage(innerErr, "stash_error", "Stash connection failed")
 
-	if wrapped.Code != "storage_error" {
-		t.Errorf("Code = %q, want %q", wrapped.Code, "storage_error")
+	if wrapped.Code != "stash_error" {
+		t.Errorf("Code = %q, want %q", wrapped.Code, "stash_error")
 	}
-	if wrapped.Message != "Storage connection failed" {
-		t.Errorf("Message = %q, want %q", wrapped.Message, "Storage connection failed")
+	if wrapped.Message != "Stash connection failed" {
+		t.Errorf("Message = %q, want %q", wrapped.Message, "Stash connection failed")
 	}
 	if wrapped.Internal != innerErr {
 		t.Errorf("Internal = %v, want %v", wrapped.Internal, innerErr)
@@ -79,32 +79,32 @@ func TestIs(t *testing.T) {
 	}{
 		{
 			name:   "matching error",
-			err:    ErrFileNotFound,
-			target: ErrFileNotFound,
+			err:    ErrStashNotFound,
+			target: ErrStashNotFound,
 			want:   true,
 		},
 		{
 			name:   "wrapped matching error",
-			err:    Wrap(errors.New("inner"), ErrFileNotFound),
-			target: ErrFileNotFound,
+			err:    Wrap(errors.New("inner"), ErrStashNotFound),
+			target: ErrStashNotFound,
 			want:   true,
 		},
 		{
 			name:   "non-matching error",
 			err:    ErrInternal,
-			target: ErrFileNotFound,
+			target: ErrStashNotFound,
 			want:   false,
 		},
 		{
 			name:   "non-apperror",
 			err:    errors.New("regular error"),
-			target: ErrFileNotFound,
+			target: ErrStashNotFound,
 			want:   false,
 		},
 		{
 			name:   "nil error",
 			err:    nil,
-			target: ErrFileNotFound,
+			target: ErrStashNotFound,
 			want:   false,
 		},
 	}
@@ -124,9 +124,10 @@ func TestCode(t *testing.T) {
 		err  error
 		want string
 	}{
+		{"stash not found", ErrStashNotFound, "stash_not_found"},
 		{"file not found", ErrFileNotFound, "file_not_found"},
 		{"internal", ErrInternal, "internal_error"},
-		{"processing failed", ErrProcessingFailed, "processing_failed"},
+		{"archive failed", ErrArchiveFailed, "archive_failed"},
 		{"dependency missing", ErrDependencyMissing, "dependency_missing"},
 		{"custom", New("custom_code", "message"), "custom_code"},
 		{"non-apperror", errors.New("regular"), "internal_error"},
@@ -141,72 +142,21 @@ func TestCode(t *testing.T) {
 	}
 }
 
-func TestIsRetryable(t *testing.T) {
-	tests := []struct {
-		name string
-		err  error
-		want bool
-	}{
-		{"nil error is retryable", nil, true},
-		{"regular error is retryable", errors.New("timeout"), true},
-		{"retryable apperror", WithRetryable(ErrInternal, true), true},
-		{"non-retryable apperror", WithRetryable(ErrInvalidFileType, false), false},
-		{"default apperror without flag is not retryable", ErrInvalidFileType, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := IsRetryable(tt.err); got != tt.want {
-				t.Errorf("IsRetryable() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestWithRetryable(t *testing.T) {
-	tests := []struct {
-		name      string
-		err       *Error
-		retryable bool
-	}{
-		{"set retryable true", ErrInternal, true},
-		{"set retryable false", ErrInternal, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := WithRetryable(tt.err, tt.retryable)
-			if result.Retryable != tt.retryable {
-				t.Errorf("Retryable = %v, want %v", result.Retryable, tt.retryable)
-			}
-			if result.Code != tt.err.Code {
-				t.Errorf("Code = %q, want %q", result.Code, tt.err.Code)
-			}
-			if result.Message != tt.err.Message {
-				t.Errorf("Message = %q, want %q", result.Message, tt.err.Message)
-			}
-		})
-	}
-}
-
 func TestPredefinedErrors(t *testing.T) {
 	tests := []struct {
 		name     string
 		err      *Error
 		wantCode string
 	}{
-		{"ErrFileTooLarge", ErrFileTooLarge, "file_too_large"},
-		{"ErrInvalidFileType", ErrInvalidFileType, "invalid_file_type"},
+		{"ErrStashNotFound", ErrStashNotFound, "stash_not_found"},
+		{"ErrStashExists", ErrStashExists, "stash_exists"},
 		{"ErrFileNotFound", ErrFileNotFound, "file_not_found"},
-		{"ErrUnsupportedFormat", ErrUnsupportedFormat, "unsupported_format"},
-		{"ErrOutputExists", ErrOutputExists, "output_exists"},
-		{"ErrProcessingFailed", ErrProcessingFailed, "processing_failed"},
-		{"ErrProcessorNotFound", ErrProcessorNotFound, "processor_not_found"},
-		{"ErrStorageDownloadFailed", ErrStorageDownloadFailed, "storage_download_failed"},
-		{"ErrStorageUploadFailed", ErrStorageUploadFailed, "storage_upload_failed"},
-		{"ErrInternal", ErrInternal, "internal_error"},
-		{"ErrServiceUnavailable", ErrServiceUnavailable, "service_unavailable"},
+		{"ErrInvalidPath", ErrInvalidPath, "invalid_path"},
+		{"ErrArchiveFailed", ErrArchiveFailed, "archive_failed"},
+		{"ErrRestoreFailed", ErrRestoreFailed, "restore_failed"},
+		{"ErrIndexFailed", ErrIndexFailed, "index_failed"},
 		{"ErrDependencyMissing", ErrDependencyMissing, "dependency_missing"},
+		{"ErrInternal", ErrInternal, "internal_error"},
 	}
 
 	for _, tt := range tests {

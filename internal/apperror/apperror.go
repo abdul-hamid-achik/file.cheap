@@ -1,12 +1,13 @@
+// Package apperror provides typed error types for fcheap boundary handling.
 package apperror
 
 import "errors"
 
+// Error is a typed error with a machine-readable code and optional wrapped cause.
 type Error struct {
-	Code      string
-	Message   string
-	Internal  error
-	Retryable bool
+	Code     string
+	Message  string
+	Internal error
 }
 
 func (e *Error) Error() string {
@@ -18,71 +19,45 @@ func (e *Error) Unwrap() error {
 }
 
 var (
-	// File errors
-	ErrFileTooLarge = &Error{
-		Code:    "file_too_large",
-		Message: "File exceeds the maximum allowed size",
+	ErrStashNotFound = &Error{
+		Code:    "stash_not_found",
+		Message: "Stash not found",
 	}
-
-	ErrInvalidFileType = &Error{
-		Code:    "invalid_file_type",
-		Message: "This file type is not supported",
+	ErrStashExists = &Error{
+		Code:    "stash_exists",
+		Message: "A stash with this ID already exists",
 	}
-
 	ErrFileNotFound = &Error{
 		Code:    "file_not_found",
 		Message: "File not found",
 	}
-
-	ErrUnsupportedFormat = &Error{
-		Code:    "unsupported_format",
-		Message: "Unsupported file format",
+	ErrInvalidPath = &Error{
+		Code:    "invalid_path",
+		Message: "Invalid file path",
 	}
-
-	ErrOutputExists = &Error{
-		Code:    "output_exists",
-		Message: "Output file already exists (use --overwrite)",
+	ErrArchiveFailed = &Error{
+		Code:    "archive_failed",
+		Message: "Failed to create or extract archive",
 	}
-
-	// Processing errors
-	ErrProcessingFailed = &Error{
-		Code:    "processing_failed",
-		Message: "File processing failed",
+	ErrRestoreFailed = &Error{
+		Code:    "restore_failed",
+		Message: "Failed to restore stash",
 	}
-
-	ErrProcessorNotFound = &Error{
-		Code:    "processor_not_found",
-		Message: "The requested processor is not available",
+	ErrIndexFailed = &Error{
+		Code:    "index_failed",
+		Message: "Failed to index stash content",
 	}
-
-	// Storage errors
-	ErrStorageDownloadFailed = &Error{
-		Code:    "storage_download_failed",
-		Message: "Failed to download file from storage",
-	}
-
-	ErrStorageUploadFailed = &Error{
-		Code:    "storage_upload_failed",
-		Message: "Failed to upload file to storage",
-	}
-
-	// System errors
-	ErrInternal = &Error{
-		Code:    "internal_error",
-		Message: "An unexpected error occurred",
-	}
-
-	ErrServiceUnavailable = &Error{
-		Code:    "service_unavailable",
-		Message: "Service temporarily unavailable",
-	}
-
 	ErrDependencyMissing = &Error{
 		Code:    "dependency_missing",
 		Message: "Required external dependency not found",
 	}
+	ErrInternal = &Error{
+		Code:    "internal_error",
+		Message: "An unexpected error occurred",
+	}
 )
 
+// New creates a new typed error with the given code and message.
 func New(code, message string) *Error {
 	return &Error{
 		Code:    code,
@@ -90,6 +65,7 @@ func New(code, message string) *Error {
 	}
 }
 
+// Wrap wraps an underlying error with an apperror type.
 func Wrap(err error, appErr *Error) *Error {
 	return &Error{
 		Code:     appErr.Code,
@@ -98,6 +74,7 @@ func Wrap(err error, appErr *Error) *Error {
 	}
 }
 
+// WrapWithMessage creates a new error wrapping an underlying error with a custom message.
 func WrapWithMessage(err error, code, message string) *Error {
 	return &Error{
 		Code:     code,
@@ -106,6 +83,7 @@ func WrapWithMessage(err error, code, message string) *Error {
 	}
 }
 
+// Is reports whether err matches the target error code.
 func Is(err error, target *Error) bool {
 	var appErr *Error
 	if errors.As(err, &appErr) {
@@ -114,29 +92,11 @@ func Is(err error, target *Error) bool {
 	return false
 }
 
+// Code extracts the error code from an error, defaulting to internal_error.
 func Code(err error) string {
 	var appErr *Error
 	if errors.As(err, &appErr) {
 		return appErr.Code
 	}
 	return ErrInternal.Code
-}
-
-// IsRetryable returns whether the error indicates the operation can be retried.
-func IsRetryable(err error) bool {
-	var appErr *Error
-	if errors.As(err, &appErr) {
-		return appErr.Retryable
-	}
-	return true
-}
-
-// WithRetryable creates a new error with the retryable flag set.
-func WithRetryable(err *Error, retryable bool) *Error {
-	return &Error{
-		Code:      err.Code,
-		Message:   err.Message,
-		Internal:  err.Internal,
-		Retryable: retryable,
-	}
 }

@@ -1,0 +1,50 @@
+version: 1
+name: cli_config
+
+metadata:
+  feature: cli
+  owner: core
+  priority: low
+  tags:
+    - smoke
+
+intent: |
+  Verify that the fcheap CLI can display the current configuration including
+  stash directory, compression, and log level.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - "./bin/fcheap config show"
+  cwd: "."
+  timeoutMs: 15000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: config command exits successfully
+    verify:
+      process:
+        exitCode: 0
+  - id: shows_stash_dir
+    description: config output shows stash directory
+    verify:
+      screen:
+        contains: "stash"

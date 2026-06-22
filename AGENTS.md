@@ -4,19 +4,31 @@ Guidelines for AI agents working on the file.cheap codebase.
 
 ## Architecture
 
-file.cheap is a local-first CLI tool + MCP server. There is no database, no API server, no cloud infrastructure. Everything processes files locally on the user's machine.
+file.cheap is a local-first CLI tool + MCP server for saving, restoring, compressing, and analyzing files and folders for agent workflows. There is no API server, no cloud infrastructure. Everything stores files locally on the user's machine.
 
 ### Key Layers
 
-1. **Processors** (`internal/processor/`) -- the core. Each processor implements `Processor` interface: `Process(ctx, *Options, io.Reader) (*Result, error)`. Zero coupling to infrastructure. Never import packages outside `processor/`.
+1. **Stash** (`internal/stash/`) -- the core domain. The `Manager` handles Save, Restore, Drop, List, Info operations on file/folder snapshots. Zero coupling to infrastructure.
 
-2. **Engine** (`internal/engine/`) -- orchestration. Opens files, picks the right processor from the registry, writes output, returns metadata. The bridge between CLI/MCP and processors.
+2. **Manifest** (`internal/manifest/`) -- snapshot metadata: ID, name, tags, tool, source path, file count, size, hashes, bundle type. Serialized as `manifest.json` alongside each stash.
 
-3. **MCP Server** (`internal/mcp/`) -- exposes 14 tools via `modelcontextprotocol/go-sdk`. Uses typed input structs with `json` + `jsonschema` tags for auto-schema generation. Each tool validates input, calls engine, returns JSON.
+3. **Compress** (`internal/compress/`) -- tar+zstd and tar+gzip archiving. Streaming archive/extract for space-efficient storage.
 
-4. **CLI** (`internal/fc/cli/`) -- Cobra commands. Each command file handles args/flags, calls `engine.Process()`, prints output via the printer.
+4. **Detect** (`internal/detect/`) -- bundle type detection. Recognizes vidtrace bundles (metadata.json + timeline.json) and generic file trees. Extracts searchable text per type.
 
-5. **Storage** (`internal/storage/`) -- interface with local filesystem implementation. Used by engine for file I/O.
+5. **Analyze** (`internal/analyze/`) -- built-in BM25 keyword search + optional vecgrep subprocess for semantic search. Indexes stash content for fast retrieval.
+
+6. **Diff** (`internal/diff/`) -- compares a stash against a target directory. Reports files only in stash, only in target, and changed files.
+
+7. **DB** (`internal/db/`) -- SQLite (via modernc.org/sqlite, CGO-free) for queryable metadata. Schema and queries in SQL files; hand-written Go wrapper.
+
+8. **MCP Server** (`internal/mcp/`) -- exposes stash tools via `modelcontextprotocol/go-sdk`. Uses typed input structs with `json` + `jsonschema` tags for auto-schema generation. Each tool validates input, calls stash manager, returns JSON. Also exposes `fcheap_docs` tool for reading documentation.
+
+9. **CLI** (`internal/fcheap/cli/`) -- Cobra commands. Each command file handles args/flags, calls stash manager, prints output via the printer. Includes `docs` command for serving, building, and reading the VitePress docs.
+
+10. **Studio TUI** (`internal/studio/`) -- Bubbletea v2 terminal interface for browsing stashes, viewing manifests, and triggering operations.
+
+11. **Docs** (`docs/`) -- VitePress documentation site. Deployed to Vercel at file.cheap. The `fcheap docs` CLI command serves, builds, lists, and reads doc pages.
 
 ## Code Style
 
@@ -29,13 +41,13 @@ file.cheap is a local-first CLI tool + MCP server. There is no database, no API 
 
 ## Conventions
 
-### Adding a New Processor
+### Adding a New CLI Command
 
-1. Create `internal/processor/<type>/<name>.go` implementing `processor.Processor`
-2. Register in `internal/engine/engine.go` `RegisterDefaults()`
-3. Add CLI command in `internal/fc/cli/<name>.go`
-4. Add MCP tool in `internal/mcp/tools_<type>.go`
-5. Add test with fixture in `testdata/`
+1. Create `internal/fcheap/cli/<name>.go` with a cobra command
+2. Register in `internal/fcheap/cli/root.go` `init()`
+3. If it needs MCP exposure, add a tool in `internal/mcp/server.go`
+4. Add e2e spec in `e2e/flows/cli_<name>.yml`
+5. If it needs a docs page, add `docs/cli/<name>.md` and update `docs/.vitepress/config.ts` nav
 
 ### MCP Tools
 
@@ -43,17 +55,23 @@ Tools use the official Go SDK pattern:
 
 ```go
 type myInput struct {
-    Path    string `json:"path" jsonschema:"description=...,required"`
-    Quality int    `json:"quality,omitempty" jsonschema:"description=...,minimum=1,maximum=100"`
+    Path string `json:"path" jsonschema:"Absolute path to the file or directory"`
 }
 
 mcp.AddTool(srv, &mcp.Tool{
     Name:        "fcheap_my_tool",
     Description: "...",
+    Annotations: &mcp.ToolAnnotations{
+        DestructiveHint: &f,
+        OpenWorldHint:   &t,
+        IdempotentHint:  true,
+    },
 }, func(ctx context.Context, req *mcp.CallToolRequest, in myInput) (*mcp.CallToolResult, any, error) {
     // validate, process, return
 })
 ```
+
+Note: `DestructiveHint` and `OpenWorldHint` are `*bool` (use `&f`/`&t` helpers). `IdempotentHint` is plain `bool`.
 
 ### CLI Commands
 
@@ -61,31 +79,64 @@ Each command follows the pattern:
 
 ```go
 var myCmd = &cobra.Command{
-    Use:   "my <files...>",
+    Use:   "my <args...>",
     Short: "...",
-    Args:  cobra.MinimumNArgs(1),
+    Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-        // iterate files, call eng.Process(), print results
+        mgr, err := stash.NewManager(cfg.StashDir)
+        // call mgr, print results via printer
     },
 }
 ```
 
 Register in `root.go` `init()`.
 
+### Studio TUI
+
+Built with `charm.land/bubbletea/v2` and `charm.land/lipgloss/v2`. Uses `tea.NewView()` for View() return. Interactive guard checks `term.IsTerminal()` on stdin/stdout.
+
+### E2E Tests
+
+Built with glyphrun. Specs live in `e2e/flows/`. Each spec builds the binary as a precondition, runs CLI commands in a PTY, and verifies outcomes via screen content and exit codes.
+
+## Storage Layout
+
+```
+~/.local/share/fcheap/           (XDG_DATA_HOME or ~/.local/share)
+├── <stash-id>/
+│   ├── manifest.json            # metadata, provenance, tags
+│   ├── content/                 # extracted file tree (or archive.tar.zst)
+│   └── analysis/                # search index (if analyzed)
+└── fcheap.veclite               # veclite database for keyword search
+```
+
 ## External Dependencies
 
-- **ffmpeg/ffprobe** -- required for all video operations. Check with `engine.FFmpegAvailable()`
-- **pdftoppm/pdfinfo** (poppler-utils) or **mutool** (mupdf) -- required for PDF thumbnails
-- **cwebp** -- optional for WebP, pure Go fallback exists
+- **vecgrep** -- optional, for semantic search via subprocess. Detected at runtime, `fcheap doctor` reports status.
+- **zstd** -- built-in via `github.com/klauspost/compress/zstd` (no external binary needed).
 
-Never bundle these. Detect at runtime, show clear errors with `fcheap doctor` instructions.
+Never bundle external binaries. Detect at runtime, show clear errors with `fcheap doctor` instructions.
 
 ## What NOT to Do
 
-- Don't add database dependencies
 - Don't add HTTP server/API code
 - Don't add authentication or billing
 - Don't import cloud SDKs (S3, GCS, etc.)
 - Don't add telemetry, metrics, or tracing
-- Don't bundle ffmpeg or other binaries
-- Don't use `os/exec` outside of `processor/video/` and `processor/pdf/`
+- Don't bundle external binaries
+- Don't use `os/exec` outside of `internal/analyze/` (for vecgrep subprocess) and `internal/fcheap/cli/docs.go` (for VitePress dev/build)
+
+## Documentation
+
+This project uses **Obsidian CLI** for note-taking and knowledge management. The Obsidian vault for this project is at `~/notes/projects/file.cheap`.
+
+When you need to document something, add a note, or capture a decision:
+
+1. Use the Obsidian CLI to create or edit notes in the vault
+2. Notes should follow the existing vault structure (folders by topic)
+3. The vault is the single source of truth for project knowledge -- architecture decisions, debugging notes, feature plans, etc.
+
+The `docs/` directory in this repo is specifically for the **VitePress documentation site** deployed to Vercel at `file.cheap`. It contains user-facing documentation written in Markdown and built with VitePress. Do not confuse the two:
+
+- `~/notes/projects/file.cheap` (Obsidian vault) -- internal notes, decisions, research
+- `docs/` (VitePress site) -- public-facing documentation at file.cheap

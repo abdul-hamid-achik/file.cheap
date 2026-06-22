@@ -1,0 +1,62 @@
+version: 1
+name: cli_diff
+
+metadata:
+  feature: cli
+  owner: core
+  priority: medium
+  tags:
+    - smoke
+
+intent: |
+  Verify that the fcheap CLI can diff a stash against a target directory
+  and report files only in stash, only in target, and changed files.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - |
+      export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-stash-diff
+      rm -rf /tmp/fcheap-e2e-stash-diff /tmp/fcheap-e2e-diff-src /tmp/fcheap-e2e-diff-target
+      mkdir -p /tmp/fcheap-e2e-diff-src
+      echo "original" > /tmp/fcheap-e2e-diff-src/file.txt
+      echo "only in stash" > /tmp/fcheap-e2e-diff-src/stash-only.txt
+      ./bin/fcheap save /tmp/fcheap-e2e-diff-src --tag diff-test
+      STASH_ID=$(./bin/fcheap list --tag diff-test --json | grep -o '"id": "[^"]*"' | head -1 | cut -d'"' -f4)
+      echo "Stash ID: $STASH_ID"
+      mkdir -p /tmp/fcheap-e2e-diff-target
+      echo "changed" > /tmp/fcheap-e2e-diff-target/file.txt
+      echo "only in target" > /tmp/fcheap-e2e-diff-target/target-only.txt
+      ./bin/fcheap diff "$STASH_ID" /tmp/fcheap-e2e-diff-target
+  cwd: "."
+  timeoutMs: 30000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: diff command exits successfully
+    verify:
+      process:
+        exitCode: 0
+  - id: diff_shows_sections
+    description: diff output shows comparison sections
+    verify:
+      screen:
+        contains: "Diff"

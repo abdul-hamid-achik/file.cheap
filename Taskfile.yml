@@ -1,0 +1,99 @@
+version: '3'
+
+vars:
+  BIN: bin/fcheap
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+  COMMIT:
+    sh: git rev-parse --short HEAD 2>/dev/null || echo none
+  BUILD_TIME:
+    sh: date -u +%Y-%m-%dT%H:%M:%SZ
+  LDFLAGS: >-
+    -s -w
+    -X github.com/abdul-hamid-achik/file.cheap/internal/fcheap/version.Version={{.VERSION}}
+    -X github.com/abdul-hamid-achik/file.cheap/internal/fcheap/version.Commit={{.COMMIT}}
+    -X github.com/abdul-hamid-achik/file.cheap/internal/fcheap/version.Date={{.BUILD_TIME}}
+
+tasks:
+  build:
+    desc: Build fcheap binary
+    cmds:
+      - go build -ldflags "{{.LDFLAGS}}" -o {{.BIN}} ./cmd/fcheap
+
+  run:
+    desc: Build and run fcheap
+    cmds:
+      - task: build
+      - ./{{.BIN}} {{.CLI_ARGS}}
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test ./...
+
+  test-verbose:
+    desc: Run tests with verbose output
+    cmds:
+      - go test -v ./...
+
+  race:
+    desc: Run tests with race detector
+    cmds:
+      - go test -race ./...
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run
+
+  fmt:
+    desc: Format Go code
+    cmds:
+      - gofmt -s -w .
+
+  tidy:
+    desc: Tidy go modules
+    cmds:
+      - go mod tidy
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  check:
+    desc: Run fmt, tidy, vet, lint, test, and build
+    cmds:
+      - task: fmt
+      - task: tidy
+      - task: vet
+      - task: lint
+      - task: test
+      - task: build
+
+  release:
+    desc: Build optimized release binary
+    cmds:
+      - go build -ldflags "{{.LDFLAGS}} -trimpath" -o {{.BIN}} ./cmd/fcheap
+
+  install:
+    desc: Install fcheap to GOBIN
+    cmds:
+      - go install -ldflags "{{.LDFLAGS}}" ./cmd/fcheap
+
+  e2e:
+    desc: Run glyphrun e2e specs
+    cmds:
+      - task: build
+      - glyph run e2e/flows/*.yml --format md
+
+  e2e-one:
+    desc: Run a single e2e flow (usage: task e2e-one -- <name>)
+    cmds:
+      - task: build
+      - glyph run e2e/flows/{{.CLI_ARGS}}.yml --format md
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf bin .glyphrun

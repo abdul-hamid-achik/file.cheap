@@ -1,29 +1,23 @@
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
+# Plans directory — never commit
+plans/
 
-# Test binary, built with `go test -c`
-*.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
-*.out
-
-# Go workspace file
-go.work
-
-# Dependency directories
-vendor/
-
-# Build output
+# Build artifacts
 bin/
 dist/
-/api
-/worker
-cookies.txt
-cookies2.txt
+.glyphrun/
+
+# VitePress docs (built on Vercel)
+docs/node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+
+# Go workspace
+go.work
+vendor/
+
+# OS files
+.DS_Store
+Thumbs.db
 
 # IDE
 .idea/
@@ -36,62 +30,22 @@ cookies2.txt
 .env
 .env.local
 .env.*.local
-.env.production
-
-# Terraform
-infrastructure/terraform.tfvars
-infrastructure/terraform/*.tfvars
-!infrastructure/terraform.tfvars.example
-*.tfstate
-*.tfstate.*
-.terraform/
-.terraform.lock.hcl
-
-# Ansible
-infrastructure/ansible/inventory/hosts.yml
-/tmp/k3s_*
-
-# Kubeconfig
-.kube/
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
 
 # Test coverage
+*.out
+coverage.txt
 coverage.html
-coverage.out
-
-# Air (live reload)
-tmp/
 
 # Debug
 debug
 __debug_bin
 
-# Uploaded files (local development)
-uploads/
+# Claude Code
+.claude/
 
-# Test data images (see testdata/README.md for how to create)
+# Test data (see testdata/README.md)
 testdata/*.jpg
 testdata/*.jpeg
 testdata/*.png
 testdata/*.gif
 testdata/*.webp
-
-# Generated CSS
-static/css/output.css
-
-# Generated templ files
-*_templ.go
-
-# Claude Code
-.claude/
-
-# Vecgrep
-.vecgrep/
