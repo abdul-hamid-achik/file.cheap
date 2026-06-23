@@ -177,13 +177,13 @@ func (d *vidtraceDetector) Detect(dir string) (Result, bool) {
 		}
 	}
 
-	// Collect text files from ocr/ and transcript/ directories
-	r.SearchableFiles = collectTextFiles(dir, []string{"ocr", "transcript"})
-
-	// Also read ocr_all_frames.txt
-	ocrAll := filepath.Join(dir, "ocr", "ocr_all_frames.txt")
-	if data, err := os.ReadFile(ocrAll); err == nil {
-		r.SearchableText += string(data) + "\n"
+	// Only index the raw ocr/ and transcript/ text files when the timeline
+	// produced no per-frame units. When units exist, that same OCR/transcript
+	// text is already indexed per frame, so re-indexing the files (and the
+	// combined ocr_all_frames.txt, which lives under ocr/) would double-count it
+	// and skew BM25 scores.
+	if len(r.Units) == 0 {
+		r.SearchableFiles = collectTextFiles(dir, []string{"ocr", "transcript"})
 	}
 
 	return r, true

@@ -395,6 +395,12 @@ func (a *Analyzer) search(ctx context.Context, query string, filter veclite.Filt
 	if strings.TrimSpace(query) == "" {
 		return nil, nil
 	}
+	switch mode {
+	case "", "keyword", "semantic", "hybrid":
+		// ok — "" auto-resolves below based on whether an embedder is configured
+	default:
+		return nil, fmt.Errorf("unknown search mode %q (valid: keyword, semantic, hybrid)", mode)
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -638,6 +644,11 @@ func (a *Analyzer) StashQuery(stashDir string, maxLen int) (string, error) {
 
 // DropIndex removes all indexed documents for a stash from veclite.
 func (a *Analyzer) DropIndex(stashID string) error {
+	// Nothing was ever indexed — don't create an empty DB just to clear it.
+	if _, err := os.Stat(a.vecliteDBPath()); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+
 	unlock := a.lockDB()
 	defer unlock()
 

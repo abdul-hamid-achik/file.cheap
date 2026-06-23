@@ -121,7 +121,6 @@ func TestDetectVidtraceFromFixture(t *testing.T) {
 		"I click login",               // entry 1 transcript
 		"error 500 internal server",   // entry 2 OCR
 		"test.mp4",                    // source_video from metadata.json
-		"test frame",                  // ocr/ocr_all_frames.txt
 	} {
 		if !strings.Contains(r.SearchableText, want) {
 			t.Errorf("SearchableText missing %q", want)
@@ -129,6 +128,12 @@ func TestDetectVidtraceFromFixture(t *testing.T) {
 	}
 	if len(r.Units) != 2 {
 		t.Errorf("Units = %d, want 2", len(r.Units))
+	}
+	// When the timeline yields per-frame units, the raw ocr/ and transcript/
+	// files must NOT also be indexed — that text is already covered per frame, so
+	// re-indexing the files would double-count it in BM25.
+	if len(r.SearchableFiles) != 0 {
+		t.Errorf("SearchableFiles = %d, want 0 (timeline units already cover ocr/transcript)", len(r.SearchableFiles))
 	}
 
 	meta, ok := VidtraceMetadata(dir)

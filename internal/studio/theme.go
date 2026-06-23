@@ -59,6 +59,9 @@ func plural(n int, singular, pluralForm string) string {
 }
 
 func clamp(n, lo, hi int) int {
+	if hi < lo {
+		lo = hi // tolerate inverted bounds (e.g. very small terminal widths)
+	}
 	if n < lo {
 		return lo
 	}

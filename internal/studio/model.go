@@ -451,6 +451,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case viewDiff:
 		return m.handleDiffKey(key)
 	case viewStatus, viewHelp:
+		// q/esc/enter return to the list; s and ? toggle their own panel closed
+		// (pressing s again from Status, or ? again from Help, returns to list).
 		switch key {
 		case "q", "esc", "?", "s", "enter":
 			m.toList()
@@ -595,6 +597,9 @@ func (m *Model) startDiffPrompt() tea.Cmd {
 	m.diffPrompting = true
 	m.statusMessage = ""
 	if st := m.currentStash(); st != nil && st.Manifest != nil {
+		// Anchor the diff to a stash regardless of entry point (list or detail),
+		// so the diff panel is titled and `esc` returns to that stash's detail.
+		m.selected = st
 		m.diffInput.SetValue(st.Manifest.SourcePath)
 	}
 	return m.diffInput.Focus()
