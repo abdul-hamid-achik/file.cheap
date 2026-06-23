@@ -3,6 +3,7 @@ package studio
 import (
 	"context"
 	"fmt"
+	"image"
 	"os/exec"
 	"sort"
 	"strings"
@@ -42,6 +43,15 @@ const (
 	focusResults
 )
 
+// imgCache memoizes rendered half-block art so the View path doesn't re-rasterize
+// the image every frame (e.g. while a spinner ticks). It is keyed by the decoded
+// image plus the pane size it was rendered for.
+type imgCache struct {
+	img        image.Image
+	cols, rows int
+	str        string
+}
+
 // confirmAction is a pending destructive action awaiting y/n.
 type confirmAction int
 
@@ -77,10 +87,23 @@ type Model struct {
 	filterInput textinput.Model
 
 	// detail view
-	selected  *stash.Stash
-	fileIdx   int
-	preview   viewport.Model
-	previewID string // stash id whose preview is loaded
+	selected   *stash.Stash
+	fileIdx    int
+	preview    viewport.Model
+	previewSeq int // bumped per preview request; a load result is applied only if it still matches (drops out-of-order async loads)
+
+	// image preview: when the selected file is a raster image we decode it once
+	// and render it to half-blocks sized to the current pane at View time.
+	// previewImg nil means the preview is plain text in the viewport.
+	previewImg      image.Image
+	previewImgCap   string    // styled caption line (format · dims · size)
+	previewImgCache *imgCache // memoized art, keyed by image + pane size
+
+	// video playback: animate a vidtrace frame sequence in the preview pane.
+	playing    bool
+	playFrames []int // indices (into selectedFiles) of the image frames, in order
+	playPos    int   // current position within playFrames
+	playFPS    int
 
 	// search view
 	query         textinput.Model
@@ -125,9 +148,13 @@ type searchDoneMsg struct {
 }
 
 type previewLoadedMsg struct {
+	seq     int // request token; stale loads (seq != model.previewSeq) are dropped
 	stashID string
 	title   string
 	content string
+	img     image.Image // non-nil when the selected file is a decodable raster image
+	format  string      // image format ("png", "jpeg", …) when img is set
+	size    int64       // logical file size, for the image caption
 	err     error
 }
 
@@ -162,6 +189,15 @@ type indexProgressClosedMsg struct{}
 type diffDoneMsg struct {
 	content string
 	err     error
+}
+
+// videoFrameMsg carries one decoded frame during vidtrace playback.
+type videoFrameMsg struct {
+	pos    int // position within m.playFrames this frame was requested for
+	img    image.Image
+	format string
+	size   int64
+	err    error
 }
 
 // NewModel constructs the initial studio model.
@@ -201,20 +237,21 @@ func NewModel(ctx context.Context, stashDir, vecgrepPath string, emb analyze.Emb
 	prog := progress.New(progress.WithDefaultBlend(), progress.WithWidth(34))
 
 	return Model{
-		progress:    prog,
-		ctx:         ctx,
-		stashDir:    stashDir,
-		vecgrepPath: vecgrepPath,
-		analyzer:    analyze.NewAnalyzer(stashDir, vecgrepPath).WithEmbedder(emb),
-		activeView:  viewList,
-		focus:       focusList,
-		query:       ti,
-		diffInput:   di,
-		filterInput: fi,
-		preview:     vp,
-		spinner:     sp,
-		searchMode:  "auto",
-		loading:     true,
+		progress:        prog,
+		ctx:             ctx,
+		stashDir:        stashDir,
+		vecgrepPath:     vecgrepPath,
+		analyzer:        analyze.NewAnalyzer(stashDir, vecgrepPath).WithEmbedder(emb),
+		activeView:      viewList,
+		focus:           focusList,
+		query:           ti,
+		diffInput:       di,
+		filterInput:     fi,
+		preview:         vp,
+		spinner:         sp,
+		searchMode:      "auto",
+		loading:         true,
+		previewImgCache: &imgCache{},
 	}
 }
 
@@ -261,6 +298,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusMessage = "diff complete"
 		return m, nil
 
+	case videoFrameMsg:
+		// Stop cleanly if playback was cancelled (a navigation/view change) while
+		// this frame was decoding, or the position is stale.
+		if !m.playing || m.activeView != viewDetail || msg.pos != m.playPos {
+			return m, nil
+		}
+		if msg.err == nil && msg.img != nil {
+			m.previewImg = msg.img
+			m.previewImgCap = m.playCaption(msg.img, msg.format, msg.size)
+			if fi := m.playFrames[msg.pos]; fi >= 0 && fi < len(m.selectedFiles()) {
+				m.fileIdx = fi // keep the Files-pane cursor in step with playback
+			}
+		}
+		// Advance to the next frame (looping) and schedule it.
+		m.playPos = (msg.pos + 1) % len(m.playFrames)
+		return m, m.playFrameCmd(m.playPos)
+
 	case stashesLoadedMsg:
 		m.loading = false
 		if msg.err != nil {
@@ -289,6 +343,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.toList()
 			}
 		}
+		// In detail view, reload the preview so it reflects the now-current stash
+		// (e.g. after compress, the file should show "(compressed — restore to view)"
+		// instead of the stale uncompressed content).
+		if m.activeView == viewDetail && m.selected != nil {
+			m.clearPreviewImage()
+			return m, m.loadFilePreviewCmd()
+		}
 		return m, nil
 
 	case searchDoneMsg:
@@ -305,13 +366,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.loadResultPreviewCmd()
 
 	case previewLoadedMsg:
+		// Drop results from a superseded request: when the user navigates files
+		// quickly, several decode/read goroutines are in flight and may finish out
+		// of order — only the newest request's result should reach the pane.
+		if msg.seq != m.previewSeq {
+			return m, nil
+		}
 		if msg.err != nil {
+			m.clearPreviewImage()
 			m.preview.SetContent(warnStyle.Render(msg.err.Error()))
 			m.preview.GotoTop()
 			return m, nil
 		}
-		m.previewID = msg.stashID
-		m.preview.SetContent(msg.content)
+		if msg.img != nil {
+			m.previewImg = msg.img
+			m.previewImgCap = imageCaption(msg.img, msg.format, msg.size)
+		} else {
+			m.clearPreviewImage()
+			m.preview.SetContent(msg.content)
+		}
 		m.preview.GotoTop()
 		return m, nil
 
@@ -356,6 +429,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.resize()
+		// The image preview re-flows at View time, keyed off the new pane size.
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -598,7 +672,25 @@ func (m *Model) handleListKey(key string) (tea.Cmd, bool) {
 	case "?":
 		m.activeView = viewHelp
 		return nil, true
-	case "g":
+	case "g", "home":
+		m.cursor = 0
+		return nil, true
+	case "G", "end":
+		if n := len(m.visible()); n > 0 {
+			m.cursor = n - 1
+		}
+		return nil, true
+	case "pgdown", "ctrl+d":
+		if n := len(m.visible()); n > 0 {
+			m.cursor = clamp(m.cursor+m.filePageStep(), 0, n-1)
+		}
+		return nil, true
+	case "pgup", "ctrl+u":
+		if n := len(m.visible()); n > 0 {
+			m.cursor = clamp(m.cursor-m.filePageStep(), 0, n-1)
+		}
+		return nil, true
+	case "R":
 		return loadStashesCmd(m.stashDir), true
 	case "o":
 		if len(m.stashes) > 0 {
@@ -637,6 +729,11 @@ func (m *Model) handleListKey(key string) (tea.Cmd, bool) {
 
 func (m *Model) handleDetailKey(key string) (tea.Cmd, bool) {
 	files := m.selectedFiles()
+	// Any key other than the play toggle hands control back to the user and stops
+	// playback (an in-flight frame is then dropped by the stale-position guard).
+	if key != "p" && key != " " && key != "space" {
+		m.stopPlayback()
+	}
 	switch key {
 	case "q":
 		return tea.Quit, true
@@ -671,10 +768,28 @@ func (m *Model) handleDetailKey(key string) (tea.Cmd, bool) {
 		}
 		return nil, true
 	case "pgdown", "ctrl+d":
+		if m.focus == focusFiles {
+			return m.moveFileCursor(m.filePageStep()), true
+		}
 		m.preview.HalfPageDown()
 		return nil, true
 	case "pgup", "ctrl+u":
+		if m.focus == focusFiles {
+			return m.moveFileCursor(-m.filePageStep()), true
+		}
 		m.preview.HalfPageUp()
+		return nil, true
+	case "g", "home":
+		if m.focus == focusFiles {
+			return m.setFileCursor(0), true
+		}
+		m.preview.GotoTop()
+		return nil, true
+	case "G", "end":
+		if m.focus == focusFiles {
+			return m.setFileCursor(len(files) - 1), true
+		}
+		m.preview.GotoBottom()
 		return nil, true
 	case "/":
 		m.openSearch()
@@ -688,6 +803,14 @@ func (m *Model) handleDetailKey(key string) (tea.Cmd, bool) {
 		}
 		m.statusMessage = "timeline view is only available for vidtrace bundles"
 		return nil, true
+	case "p", " ", "space":
+		// Play/pause the frame sequence (vidtrace bundles, or any stash with ≥2
+		// images). stopPlayback already ran above for non-toggle keys.
+		if m.playing {
+			m.stopPlayback()
+			return nil, true
+		}
+		return m.startPlayback(), true
 	case "r":
 		return m.restoreCmd(), true
 	case "c":
@@ -734,11 +857,16 @@ func (m *Model) handleDiffKey(key string) (tea.Cmd, bool) {
 		return tea.Quit, true
 	case "esc", "h":
 		if m.selected != nil {
+			// Re-enter the stash detail cleanly: the diff left its own text (and
+			// possibly a stale image) in the preview and m.fileIdx may be left over
+			// from an earlier detail session, so reset and reload like openDetail.
 			m.activeView = viewDetail
 			m.focus = focusFiles
-		} else {
-			m.toList()
+			m.fileIdx = 0
+			m.clearPreviewImage()
+			return m.loadFilePreviewCmd(), true
 		}
+		m.toList()
 		return nil, true
 	case "j", "down":
 		m.preview.ScrollDown(1)
@@ -751,6 +879,12 @@ func (m *Model) handleDiffKey(key string) (tea.Cmd, bool) {
 		return nil, true
 	case "pgup", "ctrl+u":
 		m.preview.HalfPageUp()
+		return nil, true
+	case "g", "home":
+		m.preview.GotoTop()
+		return nil, true
+	case "G", "end":
+		m.preview.GotoBottom()
 		return nil, true
 	case "?":
 		m.activeView = viewHelp
@@ -780,6 +914,12 @@ func (m *Model) handleTimelineKey(key string) (tea.Cmd, bool) {
 	case "pgup", "ctrl+u":
 		m.preview.HalfPageUp()
 		return nil, true
+	case "g", "home":
+		m.preview.GotoTop()
+		return nil, true
+	case "G", "end":
+		m.preview.GotoBottom()
+		return nil, true
 	case "?":
 		m.activeView = viewHelp
 		return nil, true
@@ -789,7 +929,7 @@ func (m *Model) handleTimelineKey(key string) (tea.Cmd, bool) {
 
 func (m *Model) handleSearchKey(key string) (tea.Cmd, bool) {
 	switch key {
-	case "q", "esc":
+	case "q", "esc", "h":
 		m.toList()
 		return nil, true
 	case "/":
@@ -819,6 +959,18 @@ func (m *Model) handleSearchKey(key string) (tea.Cmd, bool) {
 		if m.resultIdx > 0 {
 			m.resultIdx--
 			return m.loadResultPreviewCmd(), true
+		}
+		return nil, true
+	case "g", "home":
+		if m.focus == focusPreview {
+			m.preview.GotoTop()
+			return nil, true
+		}
+		return nil, true
+	case "G", "end":
+		if m.focus == focusPreview {
+			m.preview.GotoBottom()
+			return nil, true
 		}
 		return nil, true
 	case "m":
@@ -859,6 +1011,8 @@ func (m *Model) toList() {
 	m.focus = focusList
 	m.query.Blur()
 	m.confirm = confirmNone
+	m.clearPreviewImage()
+	m.stopPlayback()
 }
 
 func (m *Model) openDetail() {
@@ -876,9 +1030,25 @@ func (m *Model) openSearch() {
 	m.activeView = viewSearch
 	m.focus = focusQuery
 	m.query.Focus()
+	// Drop any image/text decoded for the detail pane; otherwise renderPreview
+	// (which also renders previewImg under viewSearch, and otherwise the viewport's
+	// last content) would show the stale detail preview in the search Preview pane
+	// until a result loads — and never, if the query returns zero results.
+	m.clearPreviewImage()
+	m.preview.SetContent("")
 }
 
+// cycleSearchFocus advances query -> results -> preview -> query. With no results
+// there is nothing to navigate to, so it keeps (or restores) focus on the query
+// rather than stranding it on an empty results/preview pane.
 func (m *Model) cycleSearchFocus() {
+	if len(m.searchResults) == 0 {
+		if m.focus != focusQuery {
+			m.focus = focusQuery
+			m.query.Focus()
+		}
+		return
+	}
 	switch m.focus {
 	case focusQuery:
 		m.focus = focusResults
@@ -913,6 +1083,41 @@ func (m *Model) resize() {
 	}
 	m.preview.SetWidth(previewWidth)
 	m.preview.SetHeight(previewHeight)
+}
+
+// clearPreviewImage drops any decoded image so the preview falls back to text.
+func (m *Model) clearPreviewImage() {
+	m.previewImg = nil
+	m.previewImgCap = ""
+	if m.previewImgCache != nil {
+		*m.previewImgCache = imgCache{}
+	}
+}
+
+// setFileCursor moves the detail-view file selection to idx (clamped) and loads
+// that file's preview. It returns nil when the position is unchanged.
+func (m *Model) setFileCursor(idx int) tea.Cmd {
+	files := m.selectedFiles()
+	if len(files) == 0 {
+		return nil
+	}
+	ni := clamp(idx, 0, len(files)-1)
+	if ni == m.fileIdx {
+		return nil
+	}
+	m.fileIdx = ni
+	return m.loadFilePreviewCmd()
+}
+
+// moveFileCursor moves the file selection by delta rows.
+func (m *Model) moveFileCursor(delta int) tea.Cmd {
+	return m.setFileCursor(m.fileIdx + delta)
+}
+
+// filePageStep is the row jump for page-up/down in the Files pane, scaled to the
+// terminal height so it advances roughly a screenful at a time.
+func (m Model) filePageStep() int {
+	return clamp(m.height/3, 1, 40)
 }
 
 // --- helpers ---

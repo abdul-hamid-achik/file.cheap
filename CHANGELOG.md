@@ -11,6 +11,39 @@ Per-release binaries and notes are also on the
 
 _Nothing yet._
 
+## [0.24.0] - 2026-06-23
+
+### Added
+- **Studio: inline image previews.** PNG / JPEG / GIF files now render directly in
+  the preview pane as truecolor half-block art (decoded with the Go standard
+  library — no external tools), instead of "(binary file — not previewable)". Works
+  in the detail Files pane and on search hits — including vidtrace per-frame hits
+  (`frames/f.png @ 12s`), so searching frame OCR shows the matching frame. Renders
+  in Ghostty and any truecolor terminal, with a `format · dimensions · size` caption.
+- **Studio: frame-sequence video player.** Press `p` (or `space`) in a stash detail
+  view to animate a vidtrace bundle's frames in the preview pane at the source
+  frame rate (capped for terminal smoothness). Playback loops, shows a `frame N/M`
+  counter, and the Files-pane cursor tracks along; any other key stops it.
+
+### Fixed
+- **Studio: the Files pane now scrolls.** Its scroll window was sized to the whole
+  terminal rather than the panel, so once the cursor passed the fold the list
+  appeared frozen. Added page (`pgdn`/`pgup`, `ctrl+d`/`ctrl+u`) and jump
+  (`g`/`G`, `home`/`end`) navigation to the file list and stash list.
+- **Studio: returning from a diff** no longer drops you into a detail view that
+  still shows the diff text with a stale or off-screen file cursor — the pane is
+  reset and the selected file reloaded.
+- **Studio: preview correctness.** Navigating files quickly no longer shows the
+  wrong file (out-of-order async loads are now discarded), and the preview is
+  refreshed after compressing the selected stash.
+- **Studio: layout.** File rows and panel titles no longer wrap/overflow on
+  narrower wide-layout widths, and the timeline and diff views now fill the full
+  pane width instead of half.
+- **Studio: keybinding/hint consistency.** Footer hints are focus-aware (`d` drop
+  vs. pager, `m` search mode); `g`/`G`/`home`/`end` work in the diff, timeline, and
+  search preview panes; `h` goes back in search; the stash list gains `g`/`G`
+  first/last with refresh moved to `R`. The help screen matches the actual keys.
+
 ## [0.23.0] - 2026-06-23
 
 ### Added
@@ -199,7 +232,8 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.20.0...v0.21.0

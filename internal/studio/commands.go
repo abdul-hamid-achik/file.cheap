@@ -3,6 +3,7 @@ package studio
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/detect"
 	"github.com/abdul-hamid-achik/file.cheap/internal/diff"
+	"github.com/abdul-hamid-achik/file.cheap/internal/manifest"
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
 )
 
@@ -62,15 +64,25 @@ func (m *Model) loadFilePreviewCmd() tea.Cmd {
 		return nil
 	}
 	rel := files[m.fileIdx].Path
+	size := files[m.fileIdx].Size
 	stashID := ""
 	if st.Manifest != nil {
 		stashID = st.Manifest.ID
 	}
 	compressed := st.Manifest != nil && st.Manifest.Compression != ""
 	dir := st.Dir
+	m.previewSeq++
+	seq := m.previewSeq
 	return func() tea.Msg {
+		// Render raster images inline; fall through to the text reader on any
+		// decode error (corrupt/unsupported file) so the pane still shows something.
+		if !compressed && isImagePath(rel) {
+			if img, format, err := decodeImageFile(filepath.Join(dir, "content", rel)); err == nil {
+				return previewLoadedMsg{seq: seq, stashID: stashID, title: rel, img: img, format: format, size: size}
+			}
+		}
 		content, err := readPreview(dir, rel, compressed)
-		return previewLoadedMsg{stashID: stashID, title: rel, content: content, err: err}
+		return previewLoadedMsg{seq: seq, stashID: stashID, title: rel, content: content, err: err}
 	}
 }
 
@@ -80,29 +92,50 @@ func (m *Model) loadResultPreviewCmd() tea.Cmd {
 		return nil
 	}
 	res := m.searchResults[m.resultIdx]
-	// Find the owning stash to read full file content when available.
+	// Find the owning stash to read full file content when available; keep its
+	// file list so image hits can show a size in the caption (as the detail pane does).
 	var dir string
 	var compressed bool
+	var files []manifest.FileEntry
 	for _, st := range m.stashes {
 		if st.Manifest != nil && st.Manifest.ID == res.StashID {
 			dir = st.Dir
 			compressed = st.Manifest.Compression != ""
+			files = st.Manifest.Files
 			break
 		}
 	}
 	rel := res.File
 	snippet := res.Text
+	m.previewSeq++
+	seq := m.previewSeq
 	return func() tea.Msg {
+		// Render image hits inline, just like the detail pane does. This also
+		// covers vidtrace per-frame hits whose locator is "frames/f.png @ 12s".
+		if dir != "" && !compressed {
+			if imgRel, ok := imageRefFromResult(rel); ok {
+				if img, format, err := decodeImageFile(filepath.Join(dir, "content", imgRel)); err == nil {
+					var size int64
+					for _, fe := range files {
+						if fe.Path == imgRel {
+							size = fe.Size
+							break
+						}
+					}
+					return previewLoadedMsg{seq: seq, stashID: res.StashID, title: imgRel, img: img, format: format, size: size}
+				}
+			}
+		}
 		header := fmt.Sprintf("%s › %s  (score %.2f)\n\n", res.StashID, rel, res.Score)
 		if dir != "" && rel != "" && !compressed {
 			if content, err := readPreview(dir, rel, false); err == nil {
-				return previewLoadedMsg{stashID: res.StashID, title: rel, content: header + content}
+				return previewLoadedMsg{seq: seq, stashID: res.StashID, title: rel, content: header + content}
 			}
 		}
 		if snippet == "" {
 			snippet = "(no snippet available)"
 		}
-		return previewLoadedMsg{stashID: res.StashID, title: rel, content: header + snippet}
+		return previewLoadedMsg{seq: seq, stashID: res.StashID, title: rel, content: header + snippet}
 	}
 }
 
@@ -218,9 +251,11 @@ func readPreview(stashDir, rel string, compressed bool) (string, error) {
 	}
 	defer func() { _ = f.Close() }()
 
+	// ReadFull (vs a single Read, which may return a short buffer) so a file
+	// larger than the limit reliably fills the buffer and is marked truncated.
 	buf := make([]byte, previewLimitBytes)
-	n, err := f.Read(buf)
-	if err != nil && n == 0 {
+	n, err := io.ReadFull(f, buf)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		return "", fmt.Errorf("read %s: %w", rel, err)
 	}
 	data := buf[:n]
@@ -228,8 +263,13 @@ func readPreview(stashDir, rel string, compressed bool) (string, error) {
 		return "(binary file — not previewable)", nil
 	}
 	content := string(data)
-	if n == previewLimitBytes {
-		content += "\n\n… (truncated)"
+	// The buffer filled exactly: probe one more byte to tell "exactly the limit"
+	// from "there's more" so we only show the marker when content is actually cut.
+	if err == nil {
+		var extra [1]byte
+		if m, _ := f.Read(extra[:]); m > 0 {
+			content += "\n\n… (truncated)"
+		}
 	}
 	return content, nil
 }
@@ -337,6 +377,12 @@ func (m *Model) compressCmd() tea.Cmd {
 // indexCmd indexes the active stash for keyword search, streaming per-file
 // progress to drive an animated progress bar.
 func (m *Model) indexCmd() tea.Cmd {
+	// One index at a time: a second run would share m.indexing/progress state with
+	// the first, interleaving the bar and clearing "indexing" while work continues.
+	if m.indexing {
+		m.statusMessage = "indexing already in progress"
+		return nil
+	}
 	st := m.currentStash()
 	if st == nil || st.Manifest == nil {
 		return nil
