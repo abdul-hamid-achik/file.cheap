@@ -132,7 +132,7 @@ func Extract(archivePath, targetDir string) error {
 		}
 		gzReader = gz
 		reader = gz
-		defer gzReader.Close()
+		defer gzReader.Close() //nolint:errcheck
 	default:
 		// try to detect
 	}
