@@ -3,8 +3,8 @@ package cli
 import (
 	"github.com/spf13/cobra"
 
-	fcmcp "github.com/abdul-hamid-achik/file.cheap/internal/mcp"
 	"github.com/abdul-hamid-achik/file.cheap/internal/fcheap/version"
+	fcmcp "github.com/abdul-hamid-achik/file.cheap/internal/mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -32,7 +32,7 @@ Usage in Claude Code MCP config:
   }`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		s := fcmcp.NewServer(cfg.StashDir, cfg.VecgrepPath, version.Short())
+		s := fcmcp.NewServer(cfg.StashDir, cfg.VecgrepPath, version.Short(), embSettings())
 		return s.Run(GetContext(), &mcp.StdioTransport{})
 	},
 }

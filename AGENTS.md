@@ -8,7 +8,7 @@ file.cheap is a local-first CLI tool + MCP server for saving, restoring, compres
 
 ### Key Layers
 
-1. **Stash** (`internal/stash/`) -- the core domain. The `Manager` handles Save, Restore, Drop, List, Info operations on file/folder snapshots. Zero coupling to infrastructure.
+1. **Stash** (`internal/stash/`) -- the core domain. The `Manager` handles Save, Restore (with hash verification), Drop, List, Info, and Compress operations on file/folder snapshots. Save also scans content for likely secrets (`internal/secrets/`) and records findings in the manifest. Zero coupling to infrastructure.
 
 2. **Manifest** (`internal/manifest/`) -- snapshot metadata: ID, name, tags, tool, source path, file count, size, hashes, bundle type. Serialized as `manifest.json` alongside each stash.
 
@@ -16,11 +16,11 @@ file.cheap is a local-first CLI tool + MCP server for saving, restoring, compres
 
 4. **Detect** (`internal/detect/`) -- bundle type detection. Recognizes vidtrace bundles (metadata.json + timeline.json) and generic file trees. Extracts searchable text per type.
 
-5. **Analyze** (`internal/analyze/`) -- built-in BM25 keyword search + optional vecgrep subprocess for semantic search. Indexes stash content for fast retrieval.
+5. **Analyze** (`internal/analyze/`) -- per-file search via the embedded **veclite** vector database (one document per file, tagged with stash ID + relative path). BM25 keyword search by default; when an embedder (`ollama`/`openai`, HTTP so CGO-free) is configured via `EmbedderSettings`/`.WithEmbedder()`, documents also carry a vector in a `files_vec` collection, enabling `search --mode semantic|hybrid` with graceful BM25 fallback. Optional vecgrep subprocess for semantic code search. Index lives at `<stash-dir>/fcheap.veclite`.
 
 6. **Diff** (`internal/diff/`) -- compares a stash against a target directory. Reports files only in stash, only in target, and changed files.
 
-7. **DB** (`internal/db/`) -- SQLite (via modernc.org/sqlite, CGO-free) for queryable metadata. Schema and queries in SQL files; hand-written Go wrapper.
+7. **DB** (`internal/db/`) -- SQLite (via modernc.org/sqlite, CGO-free) for queryable metadata. Schema (`schema.sql`) and queries (`queries.sql`) drive **sqlc**-generated code in `internal/db/gen/`; a thin `Store` wraps it. The manifest.json files remain the source of truth — the DB is a write-through index that self-heals on `List`. Regenerate with `task sqlc-gen`. Index lives at `<stash-dir>/fcheap.db`.
 
 8. **MCP Server** (`internal/mcp/`) -- exposes stash tools via `modelcontextprotocol/go-sdk`. Uses typed input structs with `json` + `jsonschema` tags for auto-schema generation. Each tool validates input, calls stash manager, returns JSON. Also exposes `fcheap_docs` tool for reading documentation.
 

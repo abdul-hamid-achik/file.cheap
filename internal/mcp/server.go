@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
-	"github.com/abdul-hamid-achik/file.cheap/internal/detect"
 	"github.com/abdul-hamid-achik/file.cheap/internal/diff"
 	"github.com/abdul-hamid-achik/file.cheap/internal/manifest"
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
@@ -20,18 +19,25 @@ import (
 
 // Server wraps the MCP server with stash operations.
 type Server struct {
-	stashDir   string
+	stashDir    string
 	vecgrepPath string
-	version    string
+	version     string
+	emb         analyze.EmbedderSettings
 }
 
 // NewServer creates a new MCP server.
-func NewServer(stashDir, vecgrepPath, version string) *Server {
+func NewServer(stashDir, vecgrepPath, version string, emb analyze.EmbedderSettings) *Server {
 	return &Server{
 		stashDir:    stashDir,
 		vecgrepPath: vecgrepPath,
 		version:     version,
+		emb:         emb,
 	}
+}
+
+// analyzer builds an embedder-aware analyzer for this server.
+func (s *Server) analyzer() *analyze.Analyzer {
+	return analyze.NewAnalyzer(s.stashDir, s.vecgrepPath).WithEmbedder(s.emb)
 }
 
 // Run starts the MCP server with the given transport.
@@ -55,6 +61,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		Name   string   `json:"name,omitempty" jsonschema:"Display name for the stash"`
 		Tags   []string `json:"tags,omitempty" jsonschema:"Tags for categorization"`
 		Tool   string   `json:"tool,omitempty" jsonschema:"Tool that produced the content (e.g., vidtrace)"`
+		Source string   `json:"source,omitempty" jsonschema:"Original artifact this stash derives from (provenance)"`
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_save",
@@ -62,7 +69,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &f,
 			OpenWorldHint:   &t,
-			IdempotentHint: false,
+			IdempotentHint:  false,
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in saveInput) (*mcp.CallToolResult, any, error) {
 		mgr, err := stash.NewManager(s.stashDir)
@@ -76,51 +83,82 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		if _, err := os.Stat(absPath); err != nil {
 			return toolError("path not found: %v", err), nil, nil
 		}
-		st, err := mgr.Save(ctx, &stash.SaveOptions{
+		opts := &stash.SaveOptions{
 			SourcePath: absPath,
 			Name:       in.Name,
 			Tags:       in.Tags,
 			Tool:       in.Tool,
-		})
+		}
+		if in.Source != "" {
+			opts.Custom = map[string]string{"source": in.Source}
+		}
+		st, err := mgr.Save(ctx, opts)
 		if err != nil {
 			return toolError("save failed: %v", err), nil, nil
 		}
-		return textResult(st.Manifest), nil, nil
+		out := map[string]any{"manifest": st.Manifest}
+		if len(st.Secrets) > 0 {
+			out["secrets_warning"] = fmt.Sprintf("%d potential secret(s) detected — review before sharing", len(st.Secrets))
+			out["secrets"] = st.Secrets
+		}
+		return textResult(out), nil, nil
 	})
 
 	// fcheap_list
 	type listInput struct {
-		Tag string `json:"tag,omitempty" jsonschema:"Filter by tag"`
+		Tag   string `json:"tag,omitempty" jsonschema:"Filter by tag"`
+		Tool  string `json:"tool,omitempty" jsonschema:"Filter by tool (e.g. vidtrace)"`
+		Since string `json:"since,omitempty" jsonschema:"Only stashes newer than 24h, 7d, 2w, or 2026-06-01"`
+		Limit int    `json:"limit,omitempty" jsonschema:"Maximum number of stashes"`
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_list",
-		Description: "List all stashes, optionally filtered by tag.",
+		Description: "List stashes, optionally filtered by tag, tool, and age. Newest first.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &f,
 			OpenWorldHint:   &f,
-			IdempotentHint: true,
+			IdempotentHint:  true,
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in listInput) (*mcp.CallToolResult, any, error) {
 		mgr, err := stash.NewManager(s.stashDir)
 		if err != nil {
 			return toolError("create stash manager: %v", err), nil, nil
 		}
-		stashes, err := mgr.List(ctx, in.Tag)
+		opts := stash.ListOptions{Tag: in.Tag, Tool: in.Tool, Limit: in.Limit}
+		if in.Since != "" {
+			since, perr := stash.ParseSince(in.Since)
+			if perr != nil {
+				return toolError("%v", perr), nil, nil
+			}
+			opts.Since = since
+		}
+		stashes, err := mgr.ListFiltered(ctx, opts)
 		if err != nil {
 			return toolError("list failed: %v", err), nil, nil
 		}
 		var summaries []map[string]any
 		for _, st := range stashes {
-			summaries = append(summaries, map[string]any{
-				"id":         st.Manifest.ID,
-				"name":       st.Manifest.Name,
-				"tool":       st.Manifest.Tool,
-				"tags":       st.Manifest.Tags,
-				"file_count": st.Manifest.FileCount,
-				"total_size": st.Manifest.TotalSize,
-				"created_at": st.Manifest.CreatedAt,
-				"bundle_type": st.Manifest.BundleType,
-			})
+			m := st.Manifest
+			item := map[string]any{
+				"id":          m.ID,
+				"name":        m.Name,
+				"tool":        m.Tool,
+				"tags":        m.Tags,
+				"file_count":  m.FileCount,
+				"total_size":  m.TotalSize,
+				"created_at":  m.CreatedAt,
+				"bundle_type": m.BundleType,
+			}
+			if m.Compression != "" {
+				item["compression"] = m.Compression
+			}
+			if v := m.Custom["secrets_found"]; v != "" {
+				item["secrets_found"] = v
+			}
+			if v := m.VideoSummary(); v != "" {
+				item["video"] = v
+			}
+			summaries = append(summaries, item)
 		}
 		return textResult(summaries), nil, nil
 	})
@@ -135,7 +173,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &f,
 			OpenWorldHint:   &f,
-			IdempotentHint: true,
+			IdempotentHint:  true,
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in infoInput) (*mcp.CallToolResult, any, error) {
 		mgr, err := stash.NewManager(s.stashDir)
@@ -160,24 +198,24 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &f,
 			OpenWorldHint:   &t,
-			IdempotentHint: false,
+			IdempotentHint:  false,
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in restoreInput) (*mcp.CallToolResult, any, error) {
 		mgr, err := stash.NewManager(s.stashDir)
 		if err != nil {
 			return toolError("create stash manager: %v", err), nil, nil
 		}
-		if err := mgr.Restore(ctx, in.StashID, in.Target); err != nil {
+		res, err := mgr.Restore(ctx, in.StashID, in.Target)
+		if err != nil {
 			return toolError("restore failed: %v", err), nil, nil
 		}
-		target := in.Target
-		if target == "" {
-			target = fmt.Sprintf("/tmp/%s", in.StashID)
-		}
-		return textResult(map[string]string{
-			"stash_id": in.StashID,
-			"target":   target,
-			"status":   "restored",
+		return textResult(map[string]any{
+			"stash_id":   in.StashID,
+			"target":     res.Target,
+			"file_count": res.FileCount,
+			"verified":   res.Verified,
+			"mismatches": res.Mismatches,
+			"status":     "restored",
 		}), nil, nil
 	})
 
@@ -192,7 +230,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &t,
 			OpenWorldHint:   &f,
-			IdempotentHint: false,
+			IdempotentHint:  false,
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in dropInput) (*mcp.CallToolResult, any, error) {
 		if !in.Force {
@@ -205,6 +243,8 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		if err := mgr.Drop(ctx, in.StashID); err != nil {
 			return toolError("drop failed: %v", err), nil, nil
 		}
+		// Best-effort: remove any indexed documents for this stash.
+		_ = analyze.NewAnalyzer(s.stashDir, s.vecgrepPath).DropIndex(in.StashID)
 		return textResult(map[string]string{
 			"stash_id": in.StashID,
 			"status":   "dropped",
@@ -214,25 +254,24 @@ func (s *Server) registerTools(srv *mcp.Server) {
 	// fcheap_search
 	type searchInput struct {
 		Query string `json:"query" jsonschema:"Search query"`
+		Limit int    `json:"limit,omitempty" jsonschema:"Maximum number of results (default 20)"`
+		Mode  string `json:"mode,omitempty" jsonschema:"Search mode: keyword, semantic, or hybrid (default: hybrid if an embedder is configured, else keyword)"`
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_search",
-		Description: "Search across all indexed stashes. Returns matching snippets with scores.",
+		Description: "Search across all indexed stashes. Returns matching snippets with scores. Supports keyword (BM25), semantic (vector), and hybrid search when an embedder is configured.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &f,
 			OpenWorldHint:   &f,
-			IdempotentHint: true,
+			IdempotentHint:  true,
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in searchInput) (*mcp.CallToolResult, any, error) {
-		an := analyze.NewAnalyzer(s.stashDir, s.vecgrepPath)
-		results, err := an.Search(ctx, in.Query)
+		an := s.analyzer()
+		results, err := an.Search(ctx, in.Query, in.Limit, in.Mode)
 		if err != nil {
 			return toolError("search failed: %v", err), nil, nil
 		}
-		// Also try vecgrep
-		vgrepResults, _ := an.SearchWithVecgrep(ctx, in.Query)
-		allResults := append(results, vgrepResults...)
-		return textResult(allResults), nil, nil
+		return textResult(results), nil, nil
 	})
 
 	// fcheap_analyze
@@ -246,7 +285,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &f,
 			OpenWorldHint:   &f,
-			IdempotentHint: true,
+			IdempotentHint:  true,
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in analyzeInput) (*mcp.CallToolResult, any, error) {
 		mgr, err := stash.NewManager(s.stashDir)
@@ -257,24 +296,21 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		if !mgr.Exists(in.StashID) {
 			return toolError("stash not found: %s", in.StashID), nil, nil
 		}
-		an := analyze.NewAnalyzer(s.stashDir, s.vecgrepPath)
-		if err := an.IndexStash(ctx, stashDir); err != nil {
+		an := s.analyzer()
+		idx, err := an.IndexStash(ctx, stashDir)
+		if err != nil {
 			return toolError("index failed: %v", err), nil, nil
 		}
 
-		// Get detection info
-		contentDir := filepath.Join(stashDir, "content")
-		detectResult := detect.Detect(contentDir)
-
 		result := map[string]any{
-			"stash_id":         in.StashID,
-			"status":           "indexed",
-			"bundle_type":      string(detectResult.Type),
-			"searchable_files": len(detectResult.SearchableFiles),
+			"stash_id":      in.StashID,
+			"status":        "indexed",
+			"bundle_type":   idx.BundleType,
+			"files_indexed": idx.FilesIndex,
 		}
 
 		if in.Query != "" {
-			results, err := an.SearchStash(ctx, stashDir, in.Query)
+			results, err := an.SearchStash(ctx, stashDir, in.Query, 0, "")
 			if err != nil {
 				result["search_error"] = err.Error()
 			} else {
@@ -295,7 +331,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &f,
 			OpenWorldHint:   &t,
-			IdempotentHint: true,
+			IdempotentHint:  true,
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in diffInput) (*mcp.CallToolResult, any, error) {
 		mgr, err := stash.NewManager(s.stashDir)
@@ -310,6 +346,72 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		return textResult(result), nil, nil
 	})
 
+	// fcheap_connect
+	type connectInput struct {
+		StashID  string `json:"stash_id" jsonschema:"The stash ID whose content drives the code search"`
+		Codebase string `json:"codebase_dir" jsonschema:"Absolute path to the codebase directory to search"`
+		Query    string `json:"query,omitempty" jsonschema:"Override the query auto-extracted from the stash"`
+		Limit    int    `json:"limit,omitempty" jsonschema:"Max code matches (default 10)"`
+		Index    bool   `json:"index,omitempty" jsonschema:"Build the vecgrep index for the codebase first"`
+		Mode     string `json:"mode,omitempty" jsonschema:"vecgrep search mode: semantic, keyword, or hybrid (default hybrid)"`
+	}
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "fcheap_connect",
+		Description: "Connect a stash to a codebase: run semantic code search (vecgrep) over the codebase using the stashed artifact's text (e.g. a vidtrace bug report) to surface the file:line candidates most likely responsible for the bug.",
+		Annotations: &mcp.ToolAnnotations{
+			DestructiveHint: &f,
+			OpenWorldHint:   &t,
+			IdempotentHint:  true,
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in connectInput) (*mcp.CallToolResult, any, error) {
+		mgr, err := stash.NewManager(s.stashDir)
+		if err != nil {
+			return toolError("create stash manager: %v", err), nil, nil
+		}
+		if !mgr.Exists(in.StashID) {
+			return toolError("stash not found: %s", in.StashID), nil, nil
+		}
+		an := analyze.NewAnalyzer(s.stashDir, s.vecgrepPath)
+		query := in.Query
+		if query == "" {
+			q, err := an.StashQuery(mgr.StashDir(in.StashID), 2000)
+			if err != nil {
+				return toolError("derive query from stash: %v", err), nil, nil
+			}
+			query = q
+		}
+		matches, err := an.VecgrepSearchIn(ctx, in.Codebase, query, in.Limit, in.Index, in.Mode)
+		if err != nil {
+			return toolError("connect failed: %v", err), nil, nil
+		}
+		return textResult(&analyze.ConnectResult{
+			StashID: in.StashID, Codebase: in.Codebase, Query: query, Matches: matches,
+		}), nil, nil
+	})
+
+	// fcheap_vacuum
+	type vacuumInput struct{}
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "fcheap_vacuum",
+		Description: "Remove orphaned metadata- and search-index entries for stashes whose directory no longer exists, then compact the database.",
+		Annotations: &mcp.ToolAnnotations{
+			DestructiveHint: &f,
+			OpenWorldHint:   &f,
+			IdempotentHint:  true,
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in vacuumInput) (*mcp.CallToolResult, any, error) {
+		mgr, err := stash.NewManager(s.stashDir)
+		if err != nil {
+			return toolError("create stash manager: %v", err), nil, nil
+		}
+		an := analyze.NewAnalyzer(s.stashDir, s.vecgrepPath)
+		res, err := mgr.Vacuum(ctx, an.DropIndex)
+		if err != nil {
+			return toolError("vacuum failed: %v", err), nil, nil
+		}
+		return textResult(res), nil, nil
+	})
+
 	// fcheap_docs
 	type docsInput struct {
 		Action string `json:"action" jsonschema:"Action: 'list' (list all doc pages), 'show' (show a specific page), or 'site' (get the docs site URL)"`
@@ -321,7 +423,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &f,
 			OpenWorldHint:   &f,
-			IdempotentHint: true,
+			IdempotentHint:  true,
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in docsInput) (*mcp.CallToolResult, any, error) {
 		switch in.Action {
@@ -392,7 +494,7 @@ func listDocPages() []string {
 		return nil
 	}
 	var pages []string
-	filepath.WalkDir(docsDir, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(docsDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}

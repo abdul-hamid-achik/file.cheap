@@ -25,31 +25,42 @@ var analyzeCmd = &cobra.Command{
 		}
 
 		stashDir := mgr.StashDir(args[0])
-		an := analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath)
+		an := analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath).WithEmbedder(embSettings())
 
-		if err := an.IndexStash(GetContext(), stashDir); err != nil {
+		res, err := an.IndexStash(GetContext(), stashDir)
+		if err != nil {
 			return err
 		}
 
-		if printer.IsJSON() {
-			return printer.JSON(map[string]string{
-				"stash_id": args[0],
-				"status":   "indexed",
-			})
+		if printer.IsJSON() && analyzeQuery == "" {
+			return printer.JSON(res)
 		}
 
-		printer.Success("Indexed stash: %s", args[0])
+		if !printer.IsJSON() {
+			printer.Success("Indexed stash: %s", res.StashID)
+			printer.KeyValue("Files indexed", fmt.Sprintf("%d", res.FilesIndex))
+			if res.BundleType != "generic" {
+				printer.KeyValue("Bundle", res.BundleType)
+			}
+		}
 
-		// If query is provided, search within the stash
+		// If a query is provided, search within the stash.
 		if analyzeQuery != "" {
-			results, err := an.SearchStash(GetContext(), stashDir, analyzeQuery)
+			results, err := an.SearchStash(GetContext(), stashDir, analyzeQuery, 0, "")
 			if err != nil {
 				return err
 			}
+			if printer.IsJSON() {
+				return printer.JSON(map[string]any{"index": res, "results": results})
+			}
 			if len(results) > 0 {
-				printer.Section("Search Results")
+				printer.Section(fmt.Sprintf("Search Results (%d)", len(results)))
 				for _, r := range results {
-					printer.KeyValue("Score", fmt.Sprintf("%.2f", r.Score))
+					label := r.File
+					if label == "" {
+						label = "(derived)"
+					}
+					printer.KeyValue(label, fmt.Sprintf("score %.2f", r.Score))
 					printer.Indent("%s", truncate(r.Text, 200))
 				}
 			} else {

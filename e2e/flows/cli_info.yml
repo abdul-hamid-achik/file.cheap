@@ -4,7 +4,7 @@ name: cli_info
 metadata:
   feature: cli
   owner: core
-  priority: medium
+  priority: normal
   tags:
     - smoke
 

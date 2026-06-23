@@ -1,12 +1,30 @@
--- name: CreateStash :exec
+-- name: UpsertStash :exec
 INSERT INTO stashes (
     id, name, source_path, tool, created_at,
     file_count, total_size, content_hash,
     compression, compressed_size, bundle_type, indexed
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    name = excluded.name,
+    source_path = excluded.source_path,
+    tool = excluded.tool,
+    created_at = excluded.created_at,
+    file_count = excluded.file_count,
+    total_size = excluded.total_size,
+    content_hash = excluded.content_hash,
+    compression = excluded.compression,
+    compressed_size = excluded.compressed_size,
+    bundle_type = excluded.bundle_type,
+    indexed = excluded.indexed;
 
 -- name: AddTag :exec
-INSERT INTO tags (stash_id, tag) VALUES (?, ?);
+INSERT OR IGNORE INTO tags (stash_id, tag) VALUES (?, ?);
+
+-- name: ListStashIDs :many
+SELECT id FROM stashes;
+
+-- name: CountStashes :one
+SELECT COUNT(*) FROM stashes;
 
 -- name: GetStash :one
 SELECT * FROM stashes WHERE id = ?;

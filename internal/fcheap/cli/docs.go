@@ -13,10 +13,9 @@ import (
 )
 
 var (
-	docsPort    int
-	docsOpen    bool
-	docsOutput  string
-	docsPreview bool
+	docsPort   int
+	docsOpen   bool
+	docsOutput string
 )
 
 var docsCmd = &cobra.Command{
@@ -54,7 +53,7 @@ Run 'cd docs && npm install' first if node_modules is missing.`,
 		printer.Info("Starting docs dev server on port %s...", port)
 
 		if docsOpen {
-			go openBrowser(fmt.Sprintf("http://localhost:%s", port))
+			go func() { _ = openBrowser(fmt.Sprintf("http://localhost:%s", port)) }()
 		}
 
 		npmCmd := exec.CommandContext(GetContext(), "npm", "run", "docs:dev", "--", "--port", port)
@@ -210,7 +209,7 @@ Run 'fcheap docs build' first to generate the dist output.`,
 		printer.Info("Starting docs preview server on port %s...", port)
 
 		if docsOpen {
-			go openBrowser(fmt.Sprintf("http://localhost:%s", port))
+			go func() { _ = openBrowser(fmt.Sprintf("http://localhost:%s", port)) }()
 		}
 
 		npmCmd := exec.CommandContext(GetContext(), "npm", "run", "docs:preview", "--", "--port", port)
@@ -278,7 +277,7 @@ func checkDocsDeps(docsDir string) error {
 // findAllDocPages returns all .md files under docs/, relative to docs/.
 func findAllDocPages(docsDir string) []string {
 	var pages []string
-	filepath.Walk(docsDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(docsDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}

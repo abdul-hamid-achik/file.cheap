@@ -48,10 +48,10 @@ var configInitCmd = &cobra.Command{
 		}
 
 		newCfg := &config.Config{
-			StashDir:           cfg.StashDir,
-			Compression:        config.DefaultCompression,
-			CompressThreshold:  config.DefaultCompressThreshold,
-			LogLevel:           config.DefaultLogLevel,
+			StashDir:          cfg.StashDir,
+			Compression:       config.DefaultCompression,
+			CompressThreshold: config.DefaultCompressThreshold,
+			LogLevel:          config.DefaultLogLevel,
 		}
 
 		if err := newCfg.Save(); err != nil {
@@ -68,12 +68,12 @@ var configSetCmd = &cobra.Command{
 	Short: "Set a config value",
 	Long: `Set a configuration value.
 
-Keys: stash_dir, compression, compress_threshold, parallel, log_level, vecgrep_path, embedder, embed_model, ollama_url
+Keys: stash_dir, compression, compress_threshold, log_level, vecgrep_path, embedder, embed_model, ollama_url
 
 Examples:
   fcheap config set stash_dir ~/.local/share/fcheap
   fcheap config set compression zstd
-  fcheap config set parallel 8`,
+  fcheap config set compress_threshold 10485760`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key, value := args[0], args[1]
@@ -89,12 +89,6 @@ Examples:
 				return fmt.Errorf("compress_threshold must be a positive integer")
 			}
 			cfg.CompressThreshold = n
-		case "parallel":
-			p, err := strconv.Atoi(value)
-			if err != nil || p < 1 {
-				return fmt.Errorf("parallel must be a positive integer")
-			}
-			cfg.Parallel = p
 		case "log_level":
 			cfg.LogLevel = value
 		case "vecgrep_path":
@@ -133,8 +127,6 @@ var configGetCmd = &cobra.Command{
 			value = cfg.Compression
 		case "compress_threshold":
 			value = fmt.Sprintf("%d", cfg.CompressThreshold)
-		case "parallel":
-			value = fmt.Sprintf("%d", cfg.Parallel)
 		case "log_level":
 			value = cfg.LogLevel
 		case "vecgrep_path":

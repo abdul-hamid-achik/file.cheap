@@ -19,24 +19,32 @@ var restoreCmd = &cobra.Command{
 			return err
 		}
 
-		if err := mgr.Restore(GetContext(), args[0], restoreTarget); err != nil {
+		res, err := mgr.Restore(GetContext(), args[0], restoreTarget)
+		if err != nil {
 			return err
 		}
 
-		target := restoreTarget
-		if target == "" {
-			target = fmt.Sprintf("/tmp/%s", args[0])
-		}
-
 		if printer.IsJSON() {
-			return printer.JSON(map[string]string{
-				"stash_id": args[0],
-				"target":   target,
-				"status":   "restored",
+			return printer.JSON(map[string]any{
+				"stash_id":   args[0],
+				"target":     res.Target,
+				"file_count": res.FileCount,
+				"verified":   res.Verified,
+				"mismatches": res.Mismatches,
+				"status":     "restored",
 			})
 		}
 
-		printer.Success("Restored %s to %s", args[0], target)
+		printer.Success("Restored %s to %s", args[0], res.Target)
+		printer.KeyValue("Files", fmt.Sprintf("%d", res.FileCount))
+		if res.Verified {
+			printer.KeyValue("Verified", "all files match manifest hashes")
+		} else {
+			printer.Warn("%d file(s) failed verification:", len(res.Mismatches))
+			for _, mm := range res.Mismatches {
+				printer.Indent("%s", mm)
+			}
+		}
 		return nil
 	},
 }

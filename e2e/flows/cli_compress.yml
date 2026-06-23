@@ -4,7 +4,7 @@ name: cli_compress
 metadata:
   feature: cli
   owner: core
-  priority: medium
+  priority: normal
   tags:
     - smoke
 

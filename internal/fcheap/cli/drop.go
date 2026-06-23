@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
 	"github.com/spf13/cobra"
 )
@@ -32,6 +33,8 @@ var dropCmd = &cobra.Command{
 		if err := mgr.Drop(GetContext(), args[0]); err != nil {
 			return err
 		}
+		// Best-effort: remove any indexed documents for this stash.
+		_ = analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath).DropIndex(args[0])
 
 		if printer.IsJSON() {
 			return printer.JSON(map[string]string{

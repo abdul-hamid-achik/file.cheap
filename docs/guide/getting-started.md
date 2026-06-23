@@ -87,7 +87,6 @@ You can override the stash directory with the `--stash-dir` flag or `FCHEAP_STAS
 stash_dir: ~/.local/share/fcheap
 compression: zstd
 compress_threshold: 10485760  # 10MB
-parallel: 8
 log_level: warn
 vecgrep_path: ""              # optional, for semantic search
 ```
@@ -97,6 +96,5 @@ vecgrep_path: ""              # optional, for semantic search
 | Variable | Description |
 |----------|-------------|
 | `FCHEAP_STASH_DIR` | Override stash storage directory |
-| `FCHEAP_JOBS` | Override parallelism |
 | `FCHEAP_LOG_LEVEL` | Override log level (debug, info, warn, error) |
 | `FCHEAP_VECGREP_PATH` | Path to vecgrep binary for semantic search |

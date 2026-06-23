@@ -12,61 +12,77 @@ The Studio requires an interactive terminal. It checks `term.IsTerminal()` on bo
 
 ## Views
 
-### List View
+### List
 
-The default view shows all stashes in a table:
+The default view: a themed table of stashes (ID, tool, file count, size, relative
+age) with colored chips — `zst`/`gz` for compressed stashes and a `⚠ secrets` chip
+when a stash contains likely credentials. Newest first. `j`/`k` to move, `Enter` to
+open detail.
 
-- Stash ID
-- Name
-- Tool (e.g., vidtrace, manual)
-- Tags
-- File count
-- Size
-- Created date
+### Detail
 
-Navigate with `j`/`k` and press `Enter` to open a stash's detail view.
+Provenance (ID, name, source, tool, created, bundle type), tags as chips,
+size/hash, compression status, and a secrets warning when present. A scrollable
+**file tree** sits beside a live **preview** of the selected file's content
+(`Tab` cycles focus). Compressed stashes show a "restore to view" placeholder.
 
-### Detail View
+### Search
 
-Shows the full manifest for a selected stash:
+Press `/` to focus a working query input, type, and `Enter` to run a per-file
+search across all indexed stashes. Results show `stash › file` with a
+relevance-colored score (green → cyan → dim), and the preview pane shows the hit.
+`Tab` cycles query ↔ results ↔ preview. Press `m` (from the results/preview pane)
+to cycle the search **mode** — `auto` → `keyword` → `semantic` → `hybrid` — and
+re-run; the query panel shows the requested mode and the results panel shows the
+mode actually used (semantic/hybrid require a configured embedder).
 
-- Metadata: ID, name, created, source, tool, bundle type
-- File counts and sizes
-- Content hash
-- Tags
-- File tree with sizes
+### Timeline (vidtrace bundles)
 
-### Help View
+Press `t` on a vidtrace bundle to see its evidence timeline — each entry's
+timestamp, frame, OCR text, and transcript — in a scrollable, colored panel.
 
-Press `?` to show keybindings.
+### Diff
+
+Press `x` to diff a stash against a directory. The prompt is pre-filled with the
+stash's source path (just press `Enter`), or type any path. Results are colored:
+green `+` (only in stash), red `-` (only in target), yellow `~` (changed), plus
+an unchanged count — comparison is by content hash.
+
+### Status & Help
+
+`s` shows index health at a glance: stash directory, count, total size, how many
+stashes are indexed/compressed, whether the SQLite metadata index and veclite
+search index exist, and vecgrep availability. `?` shows the keybinding reference.
 
 ## Keybindings
 
 | Key | Action |
 |-----|--------|
-| `j` / `↓` | Move down |
-| `k` / `↑` | Move up |
-| `Enter` | Open detail view |
-| `Esc` / `Backspace` | Go back |
-| `m` | Toggle metadata |
-| `o` | Open selected file externally |
-| `r` | Reveal file in file manager |
-| `c` | Copy path to clipboard |
-| `q` | Quit |
-| `?` | Show help |
+| `j` / `k` (`↓`/`↑`) | Move cursor / scroll |
+| `Enter` / `l` | Open detail |
+| `Esc` / `h` | Back |
+| `Tab` | Cycle pane focus |
+| `/` | Search |
+| `r` | Restore to a temp dir (with hash verification) |
+| `c` | Compress (zstd) |
+| `a` | Analyze / index for search |
+| `x` | Diff against a directory |
+| `t` | vidtrace timeline (bundles only) |
+| `d` | Drop (with `y/n` confirm) |
+| `s` | Status |
+| `g` | Refresh list |
+| `?` | Help |
+| `q` | Quit · `Ctrl+C` force quit |
 
-## Platform Support
-
-The Studio adapts external commands to the platform:
-
-- **macOS**: `open` for files, `open -R` for reveal, `pbcopy` for clipboard
-- **Linux**: `xdg-open` for files, `xdg-open` for reveal, `xclip`/`xsel` for clipboard
-- **Windows**: `cmd /c start` for files, `explorer` for reveal
+Async operations (loading, search, restore, drop, compress) show an animated
+spinner while in flight. Indexing (`a`) streams per-file progress into an
+animated progress bar (`indexing 42/805`). Destructive `d` requires a `y/n`
+confirm in the footer.
 
 ## Tech Stack
 
-- [Bubbletea v2](https://github.com/charmbracelet/bubbletea) -- TUI framework
-- [Lipgloss v2](https://github.com/charmbracelet/lipgloss) -- styling
-- [Bubbles v2](https://github.com/charmbracelet/bubbles) -- components (viewport)
+- [Bubbletea v2](https://charm.land) -- TUI framework (`charm.land/bubbletea/v2`)
+- [Lipgloss v2](https://charm.land) -- styling (`charm.land/lipgloss/v2`)
+- [Bubbles v2](https://charm.land) -- `textinput`, `viewport`, `spinner`, `progress` (`charm.land/bubbles/v2`)
 
-Import paths use `charm.land/` (the Charm project's custom domain).
+Layout is responsive: side-by-side panels at ≥96 columns, stacked below.

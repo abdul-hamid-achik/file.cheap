@@ -31,10 +31,19 @@ Stash Info
   Source: /tmp/artifacts
   Tool: vidtrace
   Bundle: vidtrace
+  Video: /Downloads/OPG-15061.mp4 (124s, 30fps)
   Files: 805
   Size: 45.2 MB
   Content Hash: 52008249f8beedbfe99a598b346750524b0ec1c48987dca88320d73f4528f051
   Tags: [OPG-15061]
+```
+
+For vidtrace bundles, the `Video` line shows the source video and (when present)
+its duration and frame rate, pulled from the bundle's `metadata.json` at save
+time. A `! N potential secret(s)` warning appears when the save-time scan found
+likely credentials.
+
+```
 
 Files (805)
   ├─ README.txt (1.2 KB)

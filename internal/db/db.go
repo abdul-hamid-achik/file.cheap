@@ -1,225 +1,141 @@
-// Package db provides the SQLite database layer for stash metadata.
-// It uses modernc.org/sqlite (pure Go, no CGO).
+// Package db provides the SQLite metadata index for stashes.
+//
+// It uses modernc.org/sqlite (pure Go, no CGO) and sqlc-generated, type-safe
+// queries (see gen/). The manifest.json written alongside each stash remains
+// the portable source of truth; this database is a queryable, write-through
+// index kept in sync with it. All callers treat it as best-effort: if it fails
+// to open, the stash layer falls back to scanning manifests directly.
 package db
 
 import (
+	"context"
 	"database/sql"
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/abdul-hamid-achik/file.cheap/internal/db/gen"
 	_ "modernc.org/sqlite"
 )
 
-// Store wraps the SQLite database for stash metadata.
+//go:embed schema.sql
+var schemaSQL string
+
+// Record is a single stash row. It is an alias for the sqlc-generated model so
+// callers can read fields directly.
+type Record = dbgen.Stash
+
+// Store wraps the SQLite database and its generated queries.
 type Store struct {
-	db *sql.DB
+	sqldb *sql.DB
+	q     *dbgen.Queries
 }
 
-// Open creates or opens a database at the given path.
-// It runs migrations if the database is new.
+// Open creates or opens the database at the given path and applies the schema.
 func Open(dbPath string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
 		return nil, fmt.Errorf("create db dir: %w", err)
 	}
 
-	dsn := "file:" + dbPath + "?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
-	db, err := sql.Open("sqlite", dsn)
+	dsn := "file:" + dbPath + "?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
+	sqldb, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
-
-	if err := db.Ping(); err != nil {
-		db.Close() //nolint:errcheck
+	if err := sqldb.Ping(); err != nil {
+		sqldb.Close() //nolint:errcheck
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
-
-	store := &Store{db: db}
-	if err := store.migrate(); err != nil {
-		db.Close() //nolint:errcheck
-		return nil, fmt.Errorf("migrate: %w", err)
+	if _, err := sqldb.Exec(schemaSQL); err != nil {
+		sqldb.Close() //nolint:errcheck
+		return nil, fmt.Errorf("apply schema: %w", err)
 	}
-	return store, nil
+
+	return &Store{sqldb: sqldb, q: dbgen.New(sqldb)}, nil
 }
 
 // Close closes the database connection.
 func (s *Store) Close() error {
-	return s.db.Close()
-}
-
-// DB returns the underlying *sql.DB for advanced use.
-func (s *Store) DB() *sql.DB {
-	return s.db
-}
-
-func (s *Store) migrate() error {
-	schema := `
-CREATE TABLE IF NOT EXISTS stashes (
-    id          TEXT PRIMARY KEY,
-    name        TEXT NOT NULL DEFAULT '',
-    source_path TEXT NOT NULL DEFAULT '',
-    tool        TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL,
-    file_count  INTEGER NOT NULL DEFAULT 0,
-    total_size  INTEGER NOT NULL DEFAULT 0,
-    content_hash TEXT NOT NULL DEFAULT '',
-    compression TEXT NOT NULL DEFAULT '',
-    compressed_size INTEGER NOT NULL DEFAULT 0,
-    bundle_type TEXT NOT NULL DEFAULT '',
-    indexed     INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS tags (
-    stash_id TEXT NOT NULL,
-    tag      TEXT NOT NULL,
-    PRIMARY KEY (stash_id, tag),
-    FOREIGN KEY (stash_id) REFERENCES stashes(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag);
-CREATE INDEX IF NOT EXISTS idx_stashes_created ON stashes(created_at DESC);
-`
-	_, err := s.db.Exec(schema)
-	return err
-}
-
-// StashRecord is a row in the stashes table.
-type StashRecord struct {
-	ID             string
-	Name           string
-	SourcePath     string
-	Tool           string
-	CreatedAt      string
-	FileCount      int
-	TotalSize      int64
-	ContentHash    string
-	Compression    string
-	CompressedSize int64
-	BundleType     string
-	Indexed        int
-}
-
-// CreateStash inserts a new stash record.
-func (s *Store) CreateStash(r *StashRecord) error {
-	_, err := s.db.Exec(
-		`INSERT INTO stashes (id, name, source_path, tool, created_at, file_count, total_size, content_hash, compression, compressed_size, bundle_type, indexed)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.ID, r.Name, r.SourcePath, r.Tool, r.CreatedAt,
-		r.FileCount, r.TotalSize, r.ContentHash,
-		r.Compression, r.CompressedSize, r.BundleType, r.Indexed,
-	)
-	return err
-}
-
-// AddTag adds a tag to a stash.
-func (s *Store) AddTag(stashID, tag string) error {
-	_, err := s.db.Exec(`INSERT OR IGNORE INTO tags (stash_id, tag) VALUES (?, ?)`, stashID, tag)
-	return err
-}
-
-// GetStash retrieves a stash by ID.
-func (s *Store) GetStash(id string) (*StashRecord, error) {
-	row := s.db.QueryRow(`SELECT id, name, source_path, tool, created_at, file_count, total_size, content_hash, compression, compressed_size, bundle_type, indexed FROM stashes WHERE id = ?`, id)
-	var r StashRecord
-	err := row.Scan(&r.ID, &r.Name, &r.SourcePath, &r.Tool, &r.CreatedAt, &r.FileCount, &r.TotalSize, &r.ContentHash, &r.Compression, &r.CompressedSize, &r.BundleType, &r.Indexed)
-	if err != nil {
-		return nil, err
+	if s == nil || s.sqldb == nil {
+		return nil
 	}
-	return &r, nil
+	return s.sqldb.Close()
 }
 
-// ListStashes returns all stashes ordered by creation date descending.
-func (s *Store) ListStashes() ([]*StashRecord, error) {
-	rows, err := s.db.Query(`SELECT id, name, source_path, tool, created_at, file_count, total_size, content_hash, compression, compressed_size, bundle_type, indexed FROM stashes ORDER BY created_at DESC`)
-	if err != nil {
-		return nil, err
+// Sync upserts a stash row and replaces its tags.
+func (s *Store) Sync(ctx context.Context, r Record, tags []string) error {
+	if err := s.q.UpsertStash(ctx, dbgen.UpsertStashParams(r)); err != nil {
+		return err
 	}
-	defer rows.Close() //nolint:errcheck
-	return scanStashRows(rows)
-}
-
-// ListStashesByTag returns stashes that have the given tag.
-func (s *Store) ListStashesByTag(tag string) ([]*StashRecord, error) {
-	rows, err := s.db.Query(
-		`SELECT s.id, s.name, s.source_path, s.tool, s.created_at, s.file_count, s.total_size, s.content_hash, s.compression, s.compressed_size, s.bundle_type, s.indexed
-		 FROM stashes s JOIN tags t ON s.id = t.stash_id WHERE t.tag = ? ORDER BY s.created_at DESC`,
-		tag)
-	if err != nil {
-		return nil, err
+	if err := s.q.DeleteTagsForStash(ctx, r.ID); err != nil {
+		return err
 	}
-	defer rows.Close() //nolint:errcheck
-	return scanStashRows(rows)
-}
-
-// GetStashTags returns all tags for a stash.
-func (s *Store) GetStashTags(stashID string) ([]string, error) {
-	rows, err := s.db.Query(`SELECT tag FROM tags WHERE stash_id = ?`, stashID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close() //nolint:errcheck
-	var tags []string
-	for rows.Next() {
-		var tag string
-		if err := rows.Scan(&tag); err != nil {
-			return nil, err
+	for _, t := range tags {
+		if err := s.q.AddTag(ctx, dbgen.AddTagParams{StashID: r.ID, Tag: t}); err != nil {
+			return err
 		}
-		tags = append(tags, tag)
 	}
-	return tags, nil
+	return nil
 }
 
-// DeleteStash removes a stash and its tags.
-func (s *Store) DeleteStash(id string) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback() //nolint:errcheck
-
-	if _, err := tx.Exec(`DELETE FROM tags WHERE stash_id = ?`, id); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM stashes WHERE id = ?`, id); err != nil {
-		return err
-	}
-	return tx.Commit()
+// Delete removes a stash and its tags (tags cascade via the foreign key).
+func (s *Store) Delete(ctx context.Context, id string) error {
+	return s.q.DeleteStash(ctx, id)
 }
 
-// MarkIndexed sets the indexed flag for a stash.
-func (s *Store) MarkIndexed(id string) error {
-	_, err := s.db.Exec(`UPDATE stashes SET indexed = 1 WHERE id = ?`, id)
+// SetCompression updates the compression columns for a stash.
+func (s *Store) SetCompression(ctx context.Context, id, algo string, compressedSize int64) error {
+	return s.q.UpdateCompression(ctx, dbgen.UpdateCompressionParams{
+		Compression:    algo,
+		CompressedSize: compressedSize,
+		ID:             id,
+	})
+}
+
+// MarkIndexed flags a stash as indexed.
+func (s *Store) MarkIndexed(ctx context.Context, id string) error {
+	return s.q.MarkIndexed(ctx, id)
+}
+
+// Vacuum compacts the database file, reclaiming space from deleted rows.
+func (s *Store) Vacuum(ctx context.Context) error {
+	_, err := s.sqldb.ExecContext(ctx, "VACUUM")
 	return err
 }
 
-// UpdateCompression updates compression info for a stash.
-func (s *Store) UpdateCompression(id, compression string, compressedSize int64) error {
-	_, err := s.db.Exec(`UPDATE stashes SET compression = ?, compressed_size = ? WHERE id = ?`, compression, compressedSize, id)
-	return err
-}
-
-// SearchStashes searches stash metadata by name, tool, or ID.
-func (s *Store) SearchStashes(pattern string) ([]*StashRecord, error) {
-	like := "%" + pattern + "%"
-	rows, err := s.db.Query(
-		`SELECT id, name, source_path, tool, created_at, file_count, total_size, content_hash, compression, compressed_size, bundle_type, indexed
-		 FROM stashes WHERE name LIKE ? OR tool LIKE ? OR id LIKE ? ORDER BY created_at DESC`,
-		like, like, like)
+// AllIDs returns the set of stash IDs known to the database.
+func (s *Store) AllIDs(ctx context.Context) (map[string]struct{}, error) {
+	ids, err := s.q.ListStashIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close() //nolint:errcheck
-	return scanStashRows(rows)
+	set := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		set[id] = struct{}{}
+	}
+	return set, nil
 }
 
-func scanStashRows(rows *sql.Rows) ([]*StashRecord, error) {
-	var records []*StashRecord
-	for rows.Next() {
-		var r StashRecord
-		if err := rows.Scan(&r.ID, &r.Name, &r.SourcePath, &r.Tool, &r.CreatedAt, &r.FileCount, &r.TotalSize, &r.ContentHash, &r.Compression, &r.CompressedSize, &r.BundleType, &r.Indexed); err != nil {
-			return nil, err
-		}
-		records = append(records, &r)
+// Stats holds aggregate metadata for the status/doctor views.
+type Stats struct {
+	Count     int64
+	TotalSize int64
+}
+
+// Stats returns the stash count and total logical size.
+func (s *Store) Stats(ctx context.Context) (Stats, error) {
+	count, err := s.q.CountStashes(ctx)
+	if err != nil {
+		return Stats{}, err
 	}
-	return records, rows.Err()
+	rows, err := s.q.ListStashes(ctx)
+	if err != nil {
+		return Stats{}, err
+	}
+	var total int64
+	for _, r := range rows {
+		total += r.TotalSize
+	}
+	return Stats{Count: count, TotalSize: total}, nil
 }

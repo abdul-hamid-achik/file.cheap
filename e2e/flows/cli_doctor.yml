@@ -48,7 +48,7 @@ outcomes:
     description: doctor reports the stash directory is usable
     verify:
       screen:
-        contains: "stash dir:"
+        contains: "Stash dir:"
   - id: version_printed
     description: version output is printed
     verify:

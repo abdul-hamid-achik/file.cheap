@@ -10,6 +10,6 @@ var studioCmd = &cobra.Command{
 	Short: "Open the Studio TUI for browsing stashes",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return studio.Run(cfg.StashDir, cfg.VecgrepPath)
+		return studio.Run(cfg.StashDir, cfg.VecgrepPath, embSettings())
 	},
 }

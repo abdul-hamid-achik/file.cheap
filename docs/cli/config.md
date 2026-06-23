@@ -25,7 +25,6 @@ fcheap config <subcommand> [flags]
 | `stash_dir` | string | Stash storage directory |
 | `compression` | string | Compression algorithm (zstd, gzip) |
 | `compress_threshold` | int | Auto-compress threshold in bytes |
-| `parallel` | int | Parallelism for batch operations |
 | `log_level` | string | Log level (debug, info, warn, error) |
 | `vecgrep_path` | string | Path to vecgrep binary |
 | `embedder` | string | Embedding provider (for semantic search) |

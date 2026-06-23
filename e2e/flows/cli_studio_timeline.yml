@@ -1,0 +1,89 @@
+version: 1
+name: cli_studio_timeline
+
+metadata:
+  feature: studio
+  owner: core
+  priority: normal
+  tags:
+    - studio
+    - vidtrace
+
+intent: |
+  Verify the Studio vidtrace timeline view: open a real vidtrace bundle, press
+  't' in the detail view, and confirm the evidence timeline (frame + OCR +
+  transcript) renders. Exits cleanly.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - "export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-tl-store; exec ./bin/fcheap studio"
+  cwd: "."
+  timeoutMs: 20000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: require
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+    - run: "rm -rf /tmp/fcheap-e2e-tl-store /tmp/fcheap-e2e-tl-src && mkdir -p /tmp/fcheap-e2e-tl-src"
+      timeoutMs: 5000
+    - run: |
+        cat > /tmp/fcheap-e2e-tl-src/metadata.json <<'JSON'
+        {"schema_version":"1","source_video":"/Downloads/OPG.mp4","duration_seconds":2}
+        JSON
+      timeoutMs: 5000
+    - run: |
+        cat > /tmp/fcheap-e2e-tl-src/timeline.json <<'JSON'
+        {"schema_version":"1","entries":[
+          {"time_seconds":0,"frame":"frames/f1.png","ocr":{"text":"NullPointerException at checkout"},"transcript":[{"text":"the app crashed when I clicked pay"}]},
+          {"time_seconds":12,"frame":"frames/f2.png","ocr":{"text":"Retry button shown after error"},"transcript":[]}
+        ]}
+        JSON
+      timeoutMs: 5000
+    - run: "FCHEAP_STASH_DIR=/tmp/fcheap-e2e-tl-store ./bin/fcheap save /tmp/fcheap-e2e-tl-src --name OPG-tl --tool vidtrace"
+      timeoutMs: 15000
+
+steps:
+  - wait:
+      screen:
+        contains: "OPG-tl"
+      timeoutMs: 5000
+  - press: "enter"
+  - wait:
+      screen:
+        contains: "Provenance"
+      timeoutMs: 5000
+  - press: "t"
+  - wait:
+      screen:
+        contains: "Timeline"
+      timeoutMs: 5000
+  - wait:
+      screen:
+        contains: "checkout"
+      timeoutMs: 5000
+  - snapshot: timeline
+  - press: "ctrl+c"
+  - wait:
+      process:
+        exitCode: 0
+      timeoutMs: 5000
+
+outcomes:
+  - id: clean_exit
+    description: studio exits cleanly
+    verify:
+      process:
+        exitCode: 0
+  - id: timeline_rendered
+    description: the vidtrace timeline view showed evidence text
+    verify:
+      screen:
+        contains: "clicked pay"

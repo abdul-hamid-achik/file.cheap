@@ -12,22 +12,24 @@ fcheap studio
 
 The Studio TUI provides a terminal interface for browsing and managing stashes:
 
-- **List view**: All stashes with name, tool, tags, file count, size
-- **Detail view**: Manifest metadata, file tree, provenance
-- **Help**: Keybindings reference
+- **List**: themed table with compression + `⚠ secrets` chips
+- **Detail**: provenance, file tree, and a live file preview
+- **Search**: a working query input with relevance-colored, per-file results
+- **Timeline**: the vidtrace evidence timeline (frame → OCR → transcript)
+- **Status / Help**: system info and the keybinding reference
 
-## Keybindings
+See the [Studio overview](/studio/overview) for the full keymap. Highlights:
 
 | Key | Action |
 |-----|--------|
-| `j` / `k` | Navigate up/down |
-| `Enter` | Open stash detail |
-| `m` | Toggle metadata view |
-| `o` | Open file externally |
-| `r` | Reveal file in file manager |
-| `c` | Copy path to clipboard |
-| `q` / `Esc` | Quit |
-| `?` | Show help |
+| `j` / `k` | Navigate / scroll |
+| `Enter` / `l` | Open stash detail |
+| `/` | Search stash content |
+| `r` `c` `a` | Restore · compress · index |
+| `x` | Diff against a directory |
+| `t` | vidtrace timeline (bundles) |
+| `d` | Drop (with `y/n` confirm) |
+| `q` / `Esc` | Back / quit · `?` help |
 
 ## Requirements
 

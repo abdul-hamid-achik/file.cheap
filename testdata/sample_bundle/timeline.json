@@ -1,1 +1,17 @@
-{"entries":[]}
+{
+  "schema_version": "1.0",
+  "entries": [
+    {
+      "time_seconds": 0,
+      "frame": "frames/frame_0001.png",
+      "ocr": { "path": "ocr/frame_0001.txt", "text": "login button not responding" },
+      "transcript": [{ "start_seconds": 0, "end_seconds": 2, "text": "I click login and nothing happens" }]
+    },
+    {
+      "time_seconds": 3,
+      "frame": "frames/frame_0002.png",
+      "ocr": { "path": "ocr/frame_0002.txt", "text": "error 500 internal server" },
+      "transcript": []
+    }
+  ]
+}

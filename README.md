@@ -20,6 +20,7 @@ go install github.com/abdul-hamid-achik/file.cheap/cmd/fcheap@latest
 
 ```bash
 # Save files or folders to the stash vault
+# (content is scanned for likely secrets on save; pass --no-scan to skip)
 fcheap save /tmp/vidtrace-artifacts --tag OPG-15061 --tool vidtrace --source ~/Downloads/OPG-15061.mp4
 
 # List saved stashes, optionally filtered by tag
@@ -44,11 +45,17 @@ fcheap search "Internal Migrant"
 # Diff a stash against a live codebase
 fcheap diff <stash-id> ~/projects/graphite
 
+# Connect a stash to a codebase — find the code that likely owns the bug (via vecgrep)
+fcheap connect <stash-id> ~/projects/graphite --index
+
 # Drop a stash when done (requires --force)
 fcheap drop <stash-id> --force
 
 # Open the Studio TUI for browsing stashes
 fcheap studio
+
+# Reclaim space — remove orphaned index entries and compact the database
+fcheap vacuum
 
 # Check runtime health
 fcheap doctor
@@ -69,7 +76,7 @@ Use `fcheap` as an MCP tool server for AI assistants like Claude:
 }
 ```
 
-This exposes tools: `fcheap_save`, `fcheap_list`, `fcheap_info`, `fcheap_restore`, `fcheap_drop`, `fcheap_search`, `fcheap_analyze`, `fcheap_diff`.
+This exposes tools: `fcheap_save`, `fcheap_list`, `fcheap_info`, `fcheap_restore`, `fcheap_drop`, `fcheap_search`, `fcheap_analyze`, `fcheap_diff`, `fcheap_connect`, `fcheap_vacuum`, `fcheap_docs`.
 
 ## Configuration
 
@@ -82,34 +89,65 @@ Config file (`~/.config/fcheap/config.yaml`):
 ```yaml
 stash_dir: ~/.local/share/fcheap
 compression: zstd
-compress_threshold: 10485760  # 10MB
-parallel: 8
+compress_threshold: 10485760  # 10MB — stashes larger than this auto-compress on save
 log_level: warn
-vecgrep_path: ""              # optional, for semantic search
+vecgrep_path: ""              # optional, for semantic code search via vecgrep
+embedder: ""                  # optional: "ollama" or "openai" — enables semantic/hybrid search
+embed_model: ""               # e.g. nomic-embed-text (ollama)
+ollama_url: ""                # default http://localhost:11434
 ```
 
-Environment variables: `FCHEAP_STASH_DIR`, `FCHEAP_JOBS`, `FCHEAP_LOG_LEVEL`, `FCHEAP_VECGREP_PATH`.
+With an `embedder` configured, `analyze` indexes a vector per document and
+`search --mode semantic|hybrid` finds related meaning even with no shared
+keywords (default `hybrid`). Embedders are HTTP-based, so the binary stays
+CGO-free. See [search](https://file.cheap/cli/search).
+
+Stashes larger than `compress_threshold` are compressed automatically on `save`
+(opt out with `fcheap save --no-compress`).
+
+Pass `--log-level debug` (or set `log_level`) to print operation traces to stderr
+for troubleshooting — stdout and `--json` output stay clean.
+
+Environment variables: `FCHEAP_STASH_DIR`, `FCHEAP_LOG_LEVEL`, `FCHEAP_VECGREP_PATH`.
 
 ## Storage Layout
 
 ```
 ~/.local/share/fcheap/
 ├── <stash-id>/
-│   ├── manifest.json       # metadata, provenance, tags
-│   ├── content/            # file tree (or archive.tar.zst)
-│   └── analysis/           # search index (if analyzed)
-└── fcheap.veclite          # veclite database for keyword search
+│   ├── manifest.json       # metadata, provenance, tags (source of truth)
+│   └── content/            # file tree, OR content.tar.zst when compressed
+├── fcheap.db               # SQLite metadata index (sqlc, CGO-free)
+└── fcheap.veclite          # veclite per-file BM25 search index
 ```
+
+The `manifest.json` in each stash directory is the portable source of truth;
+`fcheap.db` is a write-through index that self-heals from the manifests, and
+`fcheap.veclite` holds the per-file keyword search index.
 
 ## Studio TUI
 
-The Studio is a terminal UI built with Bubbletea v2 for browsing stashes:
+The Studio is a terminal UI built with Bubbletea v2 for browsing, searching, and
+acting on stashes:
 
 ```bash
 fcheap studio
 ```
 
-Navigate with `j/k`, view details with `Enter`, quit with `q`.
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move cursor up/down |
+| `enter` / `l` | Open stash detail (provenance, file tree, live preview) |
+| `esc` / `h` | Back to list |
+| `/` | Search stash content (keyword) |
+| `tab` | Cycle pane focus (query ↔ results ↔ preview) |
+| `r` | Restore the stash to a temp dir (with hash verification) |
+| `c` | Compress the stash (zstd) |
+| `a` | Analyze / index the stash for search |
+| `x` | Diff the stash against a directory |
+| `t` | View the vidtrace evidence timeline (frame → OCR → transcript) |
+| `d` | Drop the stash (with `y/n` confirm) |
+| `s` | Status view · `?` Help · `q` Quit |
 
 ## Project Structure
 
@@ -124,7 +162,7 @@ file.cheap/
 │   ├── analyze/             # BM25 search + vecgrep subprocess
 │   ├── diff/                # Stash-to-directory comparison
 │   ├── db/                  # SQLite metadata storage
-│   ├── mcp/                 # MCP server (8 tools)
+│   ├── mcp/                 # MCP server (11 tools)
 │   ├── studio/              # Bubbletea v2 TUI
 │   ├── fcheap/cli/             # Cobra commands
 │   ├── fcheap/config/          # YAML config

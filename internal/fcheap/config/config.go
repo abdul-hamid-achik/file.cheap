@@ -3,8 +3,6 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"runtime"
-	"strconv"
 
 	"gopkg.in/yaml.v3"
 )
@@ -22,10 +20,6 @@ type Config struct {
 	// Default 10MB.
 	CompressThreshold int64 `yaml:"compress_threshold,omitempty"`
 
-	// Parallel is the number of parallel workers for batch operations.
-	// 0 means runtime.NumCPU().
-	Parallel int `yaml:"parallel,omitempty"`
-
 	// LogLevel: "debug", "info", "warn" (default), "error".
 	LogLevel string `yaml:"log_level,omitempty"`
 
@@ -35,9 +29,9 @@ type Config struct {
 
 	// Embedder config for semantic search via veclite.
 	// If empty, only BM25 keyword search is available.
-	Embedder     string `yaml:"embedder,omitempty"`
-	EmbedModel   string `yaml:"embed_model,omitempty"`
-	OllamaURL    string `yaml:"ollama_url,omitempty"`
+	Embedder   string `yaml:"embedder,omitempty"`
+	EmbedModel string `yaml:"embed_model,omitempty"`
+	OllamaURL  string `yaml:"ollama_url,omitempty"`
 }
 
 const (
@@ -45,9 +39,8 @@ const (
 	DefaultCompressThreshold = 10 * 1024 * 1024 // 10MB
 	DefaultLogLevel          = "warn"
 
-	EnvStashDir   = "FCHEAP_STASH_DIR"
-	EnvJobs       = "FCHEAP_JOBS"
-	EnvLogLevel   = "FCHEAP_LOG_LEVEL"
+	EnvStashDir    = "FCHEAP_STASH_DIR"
+	EnvLogLevel    = "FCHEAP_LOG_LEVEL"
 	EnvVecgrepPath = "FCHEAP_VECGREP_PATH"
 )
 
@@ -89,10 +82,10 @@ func Load() (*Config, error) {
 	}
 
 	cfg := &Config{
-		StashDir:           stashDir,
-		Compression:        DefaultCompression,
-		CompressThreshold:  DefaultCompressThreshold,
-		LogLevel:           DefaultLogLevel,
+		StashDir:          stashDir,
+		Compression:       DefaultCompression,
+		CompressThreshold: DefaultCompressThreshold,
+		LogLevel:          DefaultLogLevel,
 	}
 
 	path, err := Path()
@@ -134,11 +127,6 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv(EnvStashDir); v != "" {
 		cfg.StashDir = v
 	}
-	if v := os.Getenv(EnvJobs); v != "" {
-		if j, err := strconv.Atoi(v); err == nil && j > 0 {
-			cfg.Parallel = j
-		}
-	}
 	if v := os.Getenv(EnvLogLevel); v != "" {
 		cfg.LogLevel = v
 	}
@@ -165,12 +153,4 @@ func (c *Config) Save() error {
 		return err
 	}
 	return os.WriteFile(path, data, 0600)
-}
-
-// EffectiveParallel returns the number of parallel workers to use.
-func (c *Config) EffectiveParallel() int {
-	if c.Parallel <= 0 {
-		return runtime.NumCPU()
-	}
-	return c.Parallel
 }

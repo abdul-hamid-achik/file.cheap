@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestSaveAndList(t *testing.T) {
@@ -103,8 +104,15 @@ func TestRestore(t *testing.T) {
 
 	// Restore to a target directory
 	target := filepath.Join(tmp, "restored")
-	if err := mgr.Restore(context.Background(), st.Manifest.ID, target); err != nil {
+	res, err := mgr.Restore(context.Background(), st.Manifest.ID, target)
+	if err != nil {
 		t.Fatalf("Restore: %v", err)
+	}
+	if !res.Verified {
+		t.Errorf("restore not verified, mismatches: %v", res.Mismatches)
+	}
+	if res.FileCount != 1 {
+		t.Errorf("FileCount = %d, want 1", res.FileCount)
 	}
 
 	// Verify restored file
@@ -115,6 +123,65 @@ func TestRestore(t *testing.T) {
 	}
 	if string(data) != "content" {
 		t.Errorf("restored content = %q, want 'content'", string(data))
+	}
+}
+
+func TestCompressAndRestore(t *testing.T) {
+	tmp := t.TempDir()
+	mgr, err := NewManager(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srcDir := filepath.Join(tmp, "source")
+	if err := os.MkdirAll(filepath.Join(srcDir, "sub"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "a.txt"), []byte("hello world"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "sub", "b.txt"), []byte("nested content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := mgr.Save(context.Background(), &SaveOptions{SourcePath: srcDir, Name: "compress-test"})
+	if err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	id := st.Manifest.ID
+
+	res, err := mgr.Compress(context.Background(), id, "zstd")
+	if err != nil {
+		t.Fatalf("Compress: %v", err)
+	}
+	if res.CompressedSize <= 0 {
+		t.Errorf("CompressedSize = %d, want > 0", res.CompressedSize)
+	}
+
+	// The extracted content tree must be removed to reclaim space.
+	if _, err := os.Stat(filepath.Join(mgr.StashDir(id), "content")); !os.IsNotExist(err) {
+		t.Error("content/ tree should be removed after compress")
+	}
+	// The archive must exist.
+	if _, err := os.Stat(filepath.Join(mgr.StashDir(id), "content.tar.zst")); err != nil {
+		t.Errorf("archive should exist after compress: %v", err)
+	}
+
+	// Restore from the compressed archive and verify integrity.
+	target := filepath.Join(tmp, "restored")
+	rres, err := mgr.Restore(context.Background(), id, target)
+	if err != nil {
+		t.Fatalf("Restore from archive: %v", err)
+	}
+	if !rres.Verified {
+		t.Errorf("restore from archive not verified: %v", rres.Mismatches)
+	}
+	data, err := os.ReadFile(filepath.Join(target, "sub", "b.txt"))
+	if err != nil {
+		t.Fatalf("read restored nested file: %v", err)
+	}
+	if string(data) != "nested content" {
+		t.Errorf("restored content = %q, want 'nested content'", string(data))
 	}
 }
 
@@ -152,6 +219,169 @@ func TestDrop(t *testing.T) {
 	if mgr.Exists(st.Manifest.ID) {
 		t.Error("stash should not exist after drop")
 	}
+}
+
+func TestMetadataIndexSync(t *testing.T) {
+	tmp := t.TempDir()
+	mgr, err := NewManager(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srcDir := filepath.Join(tmp, "source")
+	if err := os.MkdirAll(srcDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "a.txt"), []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := mgr.Save(context.Background(), &SaveOptions{SourcePath: srcDir, Name: "idx", Tags: []string{"x"}})
+	if err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// The SQLite index should be populated by Save.
+	count, total := mgr.Stats(context.Background())
+	if count != 1 {
+		t.Errorf("Stats count = %d, want 1", count)
+	}
+	if total != st.Manifest.TotalSize {
+		t.Errorf("Stats total = %d, want %d", total, st.Manifest.TotalSize)
+	}
+
+	// And cleared by Drop.
+	if err := mgr.Drop(context.Background(), st.Manifest.ID); err != nil {
+		t.Fatalf("Drop: %v", err)
+	}
+	if count, _ := mgr.Stats(context.Background()); count != 0 {
+		t.Errorf("Stats count after drop = %d, want 0", count)
+	}
+}
+
+func TestParseSince(t *testing.T) {
+	now := time.Now()
+	cases := []struct {
+		in   string
+		want time.Duration
+		date string
+		ok   bool
+	}{
+		{in: "24h", want: 24 * time.Hour, ok: true},
+		{in: "90m", want: 90 * time.Minute, ok: true},
+		{in: "7d", want: 7 * 24 * time.Hour, ok: true},
+		{in: "2w", want: 14 * 24 * time.Hour, ok: true},
+		{in: "2026-06-01", date: "2026-06-01", ok: true},
+		{in: "garbage", ok: false},
+		{in: "5x", ok: false},
+	}
+	for _, c := range cases {
+		got, err := ParseSince(c.in)
+		if !c.ok {
+			if err == nil {
+				t.Errorf("ParseSince(%q) = no error, want error", c.in)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("ParseSince(%q) error: %v", c.in, err)
+			continue
+		}
+		if c.date != "" {
+			want, _ := time.Parse("2006-01-02", c.date)
+			if !got.Equal(want) {
+				t.Errorf("ParseSince(%q) = %v, want %v", c.in, got, want)
+			}
+			continue
+		}
+		if d := now.Sub(got) - c.want; d < -2*time.Second || d > 2*time.Second {
+			t.Errorf("ParseSince(%q) cutoff age = %v, want ~%v", c.in, now.Sub(got), c.want)
+		}
+	}
+}
+
+func TestListFiltered(t *testing.T) {
+	tmp := t.TempDir()
+	mgr, err := NewManager(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mk := func(name, tool string) {
+		src := filepath.Join(tmp, "src-"+name)
+		_ = os.MkdirAll(src, 0755)
+		_ = os.WriteFile(filepath.Join(src, "a.txt"), []byte("x"), 0644)
+		if _, err := mgr.Save(context.Background(), &SaveOptions{SourcePath: src, Name: name, Tool: tool, Tags: []string{tool}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("one", "vidtrace")
+	mk("two", "manual")
+
+	if got, _ := mgr.ListFiltered(context.Background(), ListOptions{Tool: "vidtrace"}); len(got) != 1 {
+		t.Errorf("filter by tool = %d, want 1", len(got))
+	}
+	if got, _ := mgr.ListFiltered(context.Background(), ListOptions{Tag: "manual"}); len(got) != 1 {
+		t.Errorf("filter by tag = %d, want 1", len(got))
+	}
+	if got, _ := mgr.ListFiltered(context.Background(), ListOptions{Limit: 1}); len(got) != 1 {
+		t.Errorf("limit = %d, want 1", len(got))
+	}
+	if got, _ := mgr.ListFiltered(context.Background(), ListOptions{Since: time.Now().Add(-time.Hour)}); len(got) != 2 {
+		t.Errorf("since 1h ago = %d, want 2", len(got))
+	}
+	if got, _ := mgr.ListFiltered(context.Background(), ListOptions{Since: time.Now().Add(time.Hour)}); len(got) != 0 {
+		t.Errorf("since 1h future = %d, want 0", len(got))
+	}
+}
+
+func TestVacuum(t *testing.T) {
+	tmp := t.TempDir()
+	mgr, err := NewManager(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(tmp, "src")
+	_ = os.MkdirAll(src, 0755)
+	_ = os.WriteFile(filepath.Join(src, "a.txt"), []byte("x"), 0644)
+
+	keep, err := mgr.Save(context.Background(), &SaveOptions{SourcePath: src, Name: "keep"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone, err := mgr.Save(context.Background(), &SaveOptions{SourcePath: src, Name: "gone"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate a stash directory removed outside `drop` (DB row remains).
+	if err := os.RemoveAll(mgr.StashDir(gone.Manifest.ID)); err != nil {
+		t.Fatal(err)
+	}
+
+	dropped := []string{}
+	res, err := mgr.Vacuum(context.Background(), func(id string) error {
+		dropped = append(dropped, id)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Vacuum: %v", err)
+	}
+	if res.OnDisk != 1 {
+		t.Errorf("OnDisk = %d, want 1", res.OnDisk)
+	}
+	if res.OrphanedRows != 1 || len(res.Orphans) != 1 || res.Orphans[0] != gone.Manifest.ID {
+		t.Errorf("Orphans = %v, want [%s]", res.Orphans, gone.Manifest.ID)
+	}
+	if len(dropped) != 1 || dropped[0] != gone.Manifest.ID {
+		t.Errorf("dropIndex called with %v, want [%s]", dropped, gone.Manifest.ID)
+	}
+
+	// The surviving stash must still be listed; the orphan must not.
+	count, _ := mgr.Stats(context.Background())
+	if count != 1 {
+		t.Errorf("Stats count after vacuum = %d, want 1", count)
+	}
+	_ = keep
 }
 
 func TestSaveSingleFile(t *testing.T) {

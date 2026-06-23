@@ -14,11 +14,13 @@ const loggerKey contextKey = "logger"
 
 var defaultLogger *slog.Logger
 
+// Init configures the default slog logger at the given level. Logs are written
+// to stderr (so they never corrupt stdout / --json output) as readable text.
 func Init(level string) {
 	opts := &slog.HandlerOptions{
 		Level: parseLevel(level),
 	}
-	handler := slog.NewJSONHandler(os.Stdout, opts)
+	handler := slog.NewTextHandler(os.Stderr, opts)
 	defaultLogger = slog.New(handler)
 	slog.SetDefault(defaultLogger)
 }

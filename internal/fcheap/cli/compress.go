@@ -2,9 +2,7 @@ package cli
 
 import (
 	"fmt"
-	"path/filepath"
 
-	"github.com/abdul-hamid-achik/file.cheap/internal/compress"
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
 	"github.com/spf13/cobra"
 )
@@ -21,48 +19,29 @@ var compressCmd = &cobra.Command{
 			return err
 		}
 
-		if !mgr.Exists(args[0]) {
-			return fmt.Errorf("stash not found: %s", args[0])
-		}
-
-		stashDir := mgr.StashDir(args[0])
-		contentDir := filepath.Join(stashDir, "content")
-		archivePath := filepath.Join(stashDir, "content.tar.zst")
-
-		algo := compress.Algorithm(compressAlgo)
+		algo := compressAlgo
 		if algo == "" {
-			algo = compress.Algorithm(cfg.Compression)
+			algo = cfg.Compression
 		}
 
-		if algo == compress.Zstd {
-			archivePath = filepath.Join(stashDir, "content.tar.zst")
-		} else if algo == compress.Gzip {
-			archivePath = filepath.Join(stashDir, "content.tar.gz")
-		} else {
-			archivePath = filepath.Join(stashDir, "content.tar")
-		}
-
-		compressedSize, err := compress.Archive(contentDir, archivePath, algo)
+		res, err := mgr.Compress(GetContext(), args[0], algo)
 		if err != nil {
 			return err
 		}
 
-		// Optionally remove extracted content after compression
-		// (keep for now — user can drop manually)
-
 		if printer.IsJSON() {
-			return printer.JSON(map[string]any{
-				"stash_id":        args[0],
-				"algorithm":       string(algo),
-				"archive_path":    archivePath,
-				"compressed_size": compressedSize,
-			})
+			return printer.JSON(res)
 		}
 
-		printer.Success("Compressed stash: %s", args[0])
-		printer.KeyValue("Algorithm", string(algo))
-		printer.KeyValue("Archive", archivePath)
-		printer.KeyValue("Compressed Size", formatSize(compressedSize))
+		printer.Success("Compressed stash: %s", res.ID)
+		printer.KeyValue("Algorithm", res.Algorithm)
+		printer.KeyValue("Archive", res.ArchivePath)
+		printer.KeyValue("Original Size", formatSize(res.OriginalSize))
+		printer.KeyValue("Compressed Size", formatSize(res.CompressedSize))
+		if res.OriginalSize > 0 {
+			ratio := 100.0 * (1.0 - float64(res.CompressedSize)/float64(res.OriginalSize))
+			printer.KeyValue("Saved", fmt.Sprintf("%.0f%%", ratio))
+		}
 		return nil
 	},
 }

@@ -15,7 +15,8 @@ fcheap save <path> [flags]
 | `--name` | string | derived from path | Display name for the stash |
 | `--tag` | string slice | `[]` | Tags for categorization (repeatable) |
 | `--tool` | string | `""` | Tool that produced the content (e.g., vidtrace) |
-| `--source` | string | `""` | Source path (e.g., original video file) |
+| `--source` | string | `""` | Original artifact this stash derives from (provenance) |
+| `--no-scan` | bool | `false` | Skip the save-time secret scan |
 
 ## Examples
 
@@ -40,7 +41,17 @@ fcheap save ./config.yaml --tag config
 3. Copies the file tree into `content/`
 4. Generates a `manifest.json` with metadata, provenance, file count, size, and content hashes
 5. Auto-detects bundle type (vidtrace, generic)
-6. Prints the stash ID and summary
+6. Scans content for likely secrets (unless `--no-scan`) and records findings in the manifest
+7. Prints the stash ID and summary
+
+## Secret scanning
+
+On save, fcheap scans text files for likely credentials — AWS/GitHub/Slack/Google
+keys, private keys, JWTs, and generic `key = secret` assignments. It records only
+the **file, rule, and line** (never the secret value) in the manifest and prints a
+warning so you don't archive live credentials into a shareable stash. Use
+`--no-scan` to skip, or review with [`info`](/cli/info). A `⚠ secrets` chip also
+appears in [Studio](/studio/overview).
 
 ## Output
 
@@ -52,4 +63,7 @@ Saved stash: my_artifacts_20260622_115254
   Files: 805
   Size: 45.2 MB
   Tags: [OPG-15061]
+! 2 potential secret(s) detected in this stash — review before sharing or restoring elsewhere
+  └─ .env:1 [aws-access-key]
+  └─ config.yaml:7 [generic-secret]
 ```

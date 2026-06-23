@@ -6,9 +6,11 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
 	"github.com/abdul-hamid-achik/file.cheap/internal/fcheap/config"
 	"github.com/abdul-hamid-achik/file.cheap/internal/fcheap/output"
 	"github.com/abdul-hamid-achik/file.cheap/internal/fcheap/version"
+	"github.com/abdul-hamid-achik/file.cheap/internal/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -16,6 +18,7 @@ var (
 	jsonOutput bool
 	quietMode  bool
 	stashDir   string
+	logLevel   string
 
 	cfg     *config.Config
 	printer *output.Printer
@@ -37,6 +40,7 @@ Get started:
   fcheap drop <stash-id>
   fcheap search "error message"
   fcheap diff <stash-id> ~/projects/graphite
+  fcheap connect <stash-id> ~/projects/graphite
   fcheap analyze <stash-id> --query "keyword"
   fcheap studio
   fcheap mcp serve
@@ -70,6 +74,13 @@ Get started:
 			cfg.StashDir = stashDir
 		}
 
+		// Configure logging (stderr); --log-level overrides the config value.
+		lvl := cfg.LogLevel
+		if logLevel != "" {
+			lvl = logLevel
+		}
+		logger.Init(lvl)
+
 		printer = output.New(
 			output.WithJSON(jsonOutput),
 			output.WithQuiet(quietMode),
@@ -94,6 +105,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
 	rootCmd.PersistentFlags().BoolVar(&quietMode, "quiet", false, "Suppress non-error output")
 	rootCmd.PersistentFlags().StringVar(&stashDir, "stash-dir", "", "Stash storage directory (overrides config)")
+	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "", "Log level: debug, info, warn, error (to stderr)")
 
 	rootCmd.SetVersionTemplate("fcheap version {{.Version}}\n")
 
@@ -106,12 +118,15 @@ func init() {
 	rootCmd.AddCommand(analyzeCmd)
 	rootCmd.AddCommand(searchCmd)
 	rootCmd.AddCommand(diffCmd)
+	rootCmd.AddCommand(connectCmd)
+	rootCmd.AddCommand(vacuumCmd)
 	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(studioCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(docsCmd)
 	rootCmd.AddCommand(completionCmd)
+	rootCmd.AddCommand(versionCmd)
 }
 
 // GetContext returns the root context for the CLI command.
@@ -120,4 +135,16 @@ func GetContext() context.Context {
 		return context.Background()
 	}
 	return rootCtx
+}
+
+// embSettings builds the analyzer embedder settings from the loaded config.
+func embSettings() analyze.EmbedderSettings {
+	if cfg == nil {
+		return analyze.EmbedderSettings{}
+	}
+	return analyze.EmbedderSettings{
+		Provider: cfg.Embedder,
+		Model:    cfg.EmbedModel,
+		URL:      cfg.OllamaURL,
+	}
 }

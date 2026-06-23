@@ -2,7 +2,10 @@
 package diff
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,7 +16,7 @@ import (
 
 // DiffResult holds the comparison result.
 type DiffResult struct {
-	OnlyInStash []string
+	OnlyInStash  []string
 	OnlyInTarget []string
 	Changed      []ChangedFile
 	Unchanged    int
@@ -21,8 +24,8 @@ type DiffResult struct {
 
 // ChangedFile describes a file that exists in both but differs.
 type ChangedFile struct {
-	Path      string
-	StashSize int64
+	Path       string
+	StashSize  int64
 	TargetSize int64
 }
 
@@ -39,8 +42,12 @@ func CompareStashToDir(stashDir, targetDir string) (*DiffResult, error) {
 		stashFiles[f.Path] = f
 	}
 
-	// Walk target directory
-	targetFiles := make(map[string]int64)
+	// Walk target directory, recording size + content hash for each file.
+	type targetFile struct {
+		size int64
+		hash string
+	}
+	targetFiles := make(map[string]targetFile)
 	err = filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -52,7 +59,11 @@ func CompareStashToDir(stashDir, targetDir string) (*DiffResult, error) {
 		if err != nil {
 			return err
 		}
-		targetFiles[rel] = info.Size()
+		h, err := hashFile(path)
+		if err != nil {
+			return fmt.Errorf("hash %s: %w", rel, err)
+		}
+		targetFiles[rel] = targetFile{size: info.Size(), hash: h}
 		return nil
 	})
 	if err != nil {
@@ -75,18 +86,27 @@ func CompareStashToDir(stashDir, targetDir string) (*DiffResult, error) {
 		}
 	}
 
-	// Changed files (exist in both but different size)
+	// Changed files: exist in both but differ by content hash. Fall back to a
+	// size comparison only when the stash manifest predates content hashing.
 	for path, stashEntry := range stashFiles {
-		if targetSize, exists := targetFiles[path]; exists {
-			if stashEntry.Size != targetSize {
-				result.Changed = append(result.Changed, ChangedFile{
-					Path:       path,
-					StashSize:  stashEntry.Size,
-					TargetSize: targetSize,
-				})
-			} else {
-				result.Unchanged++
-			}
+		tf, exists := targetFiles[path]
+		if !exists {
+			continue
+		}
+		var changed bool
+		if stashEntry.Hash != "" && tf.hash != "" {
+			changed = stashEntry.Hash != tf.hash
+		} else {
+			changed = stashEntry.Size != tf.size
+		}
+		if changed {
+			result.Changed = append(result.Changed, ChangedFile{
+				Path:       path,
+				StashSize:  stashEntry.Size,
+				TargetSize: tf.size,
+			})
+		} else {
+			result.Unchanged++
 		}
 	}
 
@@ -115,7 +135,7 @@ func (r *DiffResult) Format() string {
 		}
 	}
 	if len(r.Changed) > 0 {
-		sb.WriteString("Changed (size differs):\n")
+		sb.WriteString("Changed (content differs):\n")
 		for _, f := range r.Changed {
 			sb.WriteString(fmt.Sprintf("  ~ %s (stash: %d bytes, target: %d bytes)\n", f.Path, f.StashSize, f.TargetSize))
 		}
@@ -127,4 +147,18 @@ func (r *DiffResult) Format() string {
 		sb.WriteString("No differences found.\n")
 	}
 	return sb.String()
+}
+
+// hashFile returns the hex-encoded SHA-256 of a file's contents.
+func hashFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close() //nolint:errcheck
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
 	"github.com/klauspost/compress/zstd"
 )
 
@@ -18,9 +17,9 @@ import (
 type Algorithm string
 
 const (
-	Zstd  Algorithm = "zstd"
-	Gzip  Algorithm = "gzip"
-	None  Algorithm = "none"
+	Zstd Algorithm = "zstd"
+	Gzip Algorithm = "gzip"
+	None Algorithm = "none"
 )
 
 // Archive creates a compressed tar archive from a directory.
@@ -187,9 +186,4 @@ func isSafePath(base, target string) bool {
 		return false
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
-func init() {
-	// Register extractor with stash package
-	stash.SetExtractor(Extract)
 }

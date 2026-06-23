@@ -3,6 +3,7 @@ package detect
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,10 +19,91 @@ const (
 
 // Result holds detection metadata about a directory.
 type Result struct {
-	Type             BundleType
-	SearchableText   string // concatenated text content for indexing
-	SearchableFiles  []string // paths to text-readable files
-	Metadata         map[string]any // bundle-specific metadata
+	Type            BundleType
+	SearchableText  string         // concatenated text content for indexing
+	SearchableFiles []string       // paths to text-readable files
+	Units           []TextUnit     // structured indexable units (e.g. per-frame evidence)
+	Metadata        map[string]any // bundle-specific metadata
+}
+
+// TextUnit is a structured, individually-searchable chunk of text that does not
+// correspond to a single file on disk -- e.g. one vidtrace timeline entry
+// (a frame at a timestamp with its OCR + transcript).
+type TextUnit struct {
+	Label string // human-readable locator, e.g. "frames/f1.png @ 12s"
+	Text  string
+}
+
+// TimelineEntry is a flattened vidtrace timeline entry: a frame at a timestamp
+// with its OCR text and joined transcript.
+type TimelineEntry struct {
+	TimeSeconds float64 `json:"time_seconds"`
+	Frame       string  `json:"frame"`
+	OCR         string  `json:"ocr"`
+	Transcript  string  `json:"transcript"`
+}
+
+// BundleTypeOf cheaply classifies a directory by structure alone (no content
+// read), suitable for the save path where a full Detect would be wasteful.
+func BundleTypeOf(dir string) BundleType {
+	if fileExists(filepath.Join(dir, "metadata.json")) && fileExists(filepath.Join(dir, "timeline.json")) {
+		return TypeVidtrace
+	}
+	return TypeGeneric
+}
+
+// VidtraceMetadata reads and parses contentDir/metadata.json (a vidtrace bundle's
+// metadata object). Returns false if it is missing or malformed.
+func VidtraceMetadata(dir string) (map[string]any, bool) {
+	data, err := os.ReadFile(filepath.Join(dir, "metadata.json"))
+	if err != nil {
+		return nil, false
+	}
+	var meta map[string]any
+	if json.Unmarshal(data, &meta) != nil {
+		return nil, false
+	}
+	return meta, true
+}
+
+// ParseVidtraceTimeline reads and flattens contentDir/timeline.json. It returns
+// nil if the file is missing or malformed.
+func ParseVidtraceTimeline(contentDir string) []TimelineEntry {
+	data, err := os.ReadFile(filepath.Join(contentDir, "timeline.json"))
+	if err != nil {
+		return nil
+	}
+	var tl struct {
+		Entries []struct {
+			TimeSeconds float64 `json:"time_seconds"`
+			Frame       string  `json:"frame"`
+			OCR         struct {
+				Text string `json:"text"`
+			} `json:"ocr"`
+			Transcript []struct {
+				Text string `json:"text"`
+			} `json:"transcript"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(data, &tl); err != nil {
+		return nil
+	}
+	out := make([]TimelineEntry, 0, len(tl.Entries))
+	for _, e := range tl.Entries {
+		var tr []string
+		for _, seg := range e.Transcript {
+			if seg.Text != "" {
+				tr = append(tr, seg.Text)
+			}
+		}
+		out = append(out, TimelineEntry{
+			TimeSeconds: e.TimeSeconds,
+			Frame:       e.Frame,
+			OCR:         e.OCR.Text,
+			Transcript:  strings.Join(tr, " "),
+		})
+	}
+	return out
 }
 
 // Detector identifies a specific bundle type.
@@ -56,7 +138,7 @@ func (d *vidtraceDetector) Detect(dir string) (Result, bool) {
 	}
 
 	r := Result{
-		Type:    TypeVidtrace,
+		Type:     TypeVidtrace,
 		Metadata: map[string]any{},
 	}
 
@@ -71,18 +153,27 @@ func (d *vidtraceDetector) Detect(dir string) (Result, bool) {
 		}
 	}
 
-	// Parse timeline.json for searchable text (OCR + transcripts)
-	if data, err := os.ReadFile(timelinePath); err == nil {
-		var tl []map[string]any
-		if json.Unmarshal(data, &tl) == nil {
-			for _, entry := range tl {
-				if ocr, ok := entry["ocr_text"].(string); ok && ocr != "" {
-					r.SearchableText += ocr + "\n"
-				}
-				if transcript, ok := entry["transcript"].(string); ok && transcript != "" {
-					r.SearchableText += transcript + "\n"
-				}
+	// Flatten the vidtrace timeline into per-entry searchable text + units so a
+	// hit can point at the exact frame and timestamp, not a concatenated blob.
+	for _, e := range ParseVidtraceTimeline(dir) {
+		var parts []string
+		if e.OCR != "" {
+			r.SearchableText += e.OCR + "\n"
+			parts = append(parts, e.OCR)
+		}
+		if e.Transcript != "" {
+			r.SearchableText += e.Transcript + "\n"
+			parts = append(parts, e.Transcript)
+		}
+		if len(parts) > 0 {
+			label := e.Frame
+			if label == "" {
+				label = "timeline"
 			}
+			r.Units = append(r.Units, TextUnit{
+				Label: fmt.Sprintf("%s @ %.0fs", label, e.TimeSeconds),
+				Text:  strings.Join(parts, " "),
+			})
 		}
 	}
 
@@ -104,7 +195,7 @@ type genericDetector struct{}
 
 func (d *genericDetector) Detect(dir string) (Result, bool) {
 	r := Result{
-		Type:    TypeGeneric,
+		Type:     TypeGeneric,
 		Metadata: map[string]any{},
 	}
 

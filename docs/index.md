@@ -23,7 +23,7 @@ features:
   - title: Diff
     details: Compare any stash against a live codebase to see what changed, what's missing, and what matches.
   - title: MCP Server
-    details: Expose stash operations as MCP tools for AI assistants like Claude. 8 tools with typed schemas.
+    details: Expose stash operations as MCP tools for AI assistants like Claude. 11 tools with typed schemas.
   - title: Studio TUI
     details: Browse stashes, view manifests, and trigger operations from a terminal UI built with Bubbletea v2.
   - title: Bundle Detection

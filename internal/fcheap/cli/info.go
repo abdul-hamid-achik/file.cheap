@@ -41,6 +41,9 @@ var infoCmd = &cobra.Command{
 		if st.Manifest.BundleType != "" {
 			printer.KeyValue("Bundle", st.Manifest.BundleType)
 		}
+		if v := st.Manifest.VideoSummary(); v != "" {
+			printer.KeyValue("Video", v)
+		}
 		printer.KeyValue("Files", fmt.Sprintf("%d", st.Manifest.FileCount))
 		printer.KeyValue("Size", formatSize(st.Manifest.TotalSize))
 		printer.KeyValue("Content Hash", st.Manifest.ContentHash)
@@ -50,6 +53,9 @@ var infoCmd = &cobra.Command{
 		}
 		if len(st.Manifest.Tags) > 0 {
 			printer.KeyValue("Tags", fmt.Sprintf("%v", st.Manifest.Tags))
+		}
+		if c := st.Manifest.Custom["secrets_found"]; c != "" {
+			printer.Warn("%s potential secret(s) detected (%s) — review before sharing", c, st.Manifest.Custom["secrets_rules"])
 		}
 		if len(st.Manifest.Custom) > 0 {
 			printer.Section("Custom Metadata")

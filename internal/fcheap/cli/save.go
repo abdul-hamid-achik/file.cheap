@@ -10,10 +10,12 @@ import (
 )
 
 var (
-	saveName  string
-	saveTags  []string
-	saveTool  string
-	saveSource string
+	saveName       string
+	saveTags       []string
+	saveTool       string
+	saveSource     string
+	saveNoScan     bool
+	saveNoCompress bool
 )
 
 var saveCmd = &cobra.Command{
@@ -39,11 +41,28 @@ var saveCmd = &cobra.Command{
 			Name:       saveName,
 			Tags:       saveTags,
 			Tool:       saveTool,
+			NoScan:     saveNoScan,
+		}
+		// Optional provenance: the original artifact this stash derives from
+		// (e.g. the source video for a vidtrace bundle).
+		if saveSource != "" {
+			opts.Custom = map[string]string{"source": saveSource}
 		}
 
 		st, err := mgr.Save(GetContext(), opts)
 		if err != nil {
 			return err
+		}
+
+		// Auto-compress large stashes to reclaim disk space (configurable via
+		// compress_threshold; opt out with --no-compress).
+		autoCompressed := false
+		if !saveNoCompress && cfg.CompressThreshold > 0 && st.Manifest.TotalSize >= cfg.CompressThreshold {
+			if cres, cerr := mgr.Compress(GetContext(), st.Manifest.ID, cfg.Compression); cerr == nil {
+				st.Manifest.Compression = cres.Algorithm
+				st.Manifest.CompressedSize = cres.CompressedSize
+				autoCompressed = true
+			}
 		}
 
 		if printer.IsJSON() {
@@ -63,6 +82,21 @@ var saveCmd = &cobra.Command{
 		if st.Manifest.BundleType != "generic" {
 			printer.KeyValue("Bundle", st.Manifest.BundleType)
 		}
+		if autoCompressed {
+			printer.KeyValue("Compressed", fmt.Sprintf("%s → %s (%s)", formatSize(st.Manifest.TotalSize), formatSize(st.Manifest.CompressedSize), st.Manifest.Compression))
+		}
+		if len(st.Secrets) > 0 {
+			printer.Warn("%d potential secret(s) detected in this stash — review before sharing or restoring elsewhere", len(st.Secrets))
+			shown := 0
+			for _, f := range st.Secrets {
+				if shown >= 5 {
+					printer.Indent("... and %d more", len(st.Secrets)-shown)
+					break
+				}
+				printer.Indent("%s:%d [%s]", f.File, f.Line, f.Rule)
+				shown++
+			}
+		}
 		return nil
 	},
 }
@@ -71,6 +105,9 @@ func init() {
 	saveCmd.Flags().StringVar(&saveName, "name", "", "Display name for the stash")
 	saveCmd.Flags().StringSliceVar(&saveTags, "tag", nil, "Tags for categorization (comma-separated)")
 	saveCmd.Flags().StringVar(&saveTool, "tool", "", "Tool that produced the content (e.g., vidtrace)")
+	saveCmd.Flags().StringVar(&saveSource, "source", "", "Original artifact this stash derives from (provenance)")
+	saveCmd.Flags().BoolVar(&saveNoScan, "no-scan", false, "Skip the save-time secret scan")
+	saveCmd.Flags().BoolVar(&saveNoCompress, "no-compress", false, "Skip auto-compression of large stashes")
 }
 
 func formatSize(bytes int64) string {

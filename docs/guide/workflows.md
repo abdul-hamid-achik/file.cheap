@@ -33,21 +33,33 @@ fcheap search "Internal Migrant"
 fcheap search "columns not showing"
 ```
 
-### 4. Diff against the codebase
+### 4. Connect to the codebase
+
+This is the connective tissue — point the stashed bug report at the live repo and
+let vecgrep surface the code most likely responsible:
 
 ```bash
-# Compare artifacts against the live codebase where the bug lives
+# Auto-extracts the bundle's OCR + transcript as the query, runs vecgrep
+fcheap connect <stash-id> ~/projects/graphite --index
+```
+
+The output ranks `file:line` candidates by relevance. See [connect](/cli/connect).
+
+### 5. Diff against the codebase
+
+```bash
+# Compare artifacts against the live codebase (which files changed, by hash)
 fcheap diff <stash-id> ~/projects/graphite
 ```
 
-### 5. Restore for deeper investigation
+### 6. Restore for deeper investigation
 
 ```bash
 # Extract the stash to a working directory
 fcheap restore <stash-id> --to /tmp/working-opg-15061/
 ```
 
-### 6. Clean up when done
+### 7. Clean up when done
 
 ```bash
 fcheap drop <stash-id> --force
@@ -69,11 +81,12 @@ When using fcheap as an MCP tool server, an AI agent like Claude can perform the
 ```
 
 The agent can then:
-1. Call `fcheap_save` to stash artifacts
-2. Call `fcheap_analyze` to index and search content
-3. Call `fcheap_diff` to compare against a codebase
-4. Call `fcheap_restore` to extract files for inspection
-5. Call `fcheap_drop` to clean up
+1. Call `fcheap_save` to stash artifacts (secrets are scanned automatically)
+2. Call `fcheap_analyze` to index and search content (per-file BM25)
+3. Call `fcheap_connect` to map the bug report to the responsible code (vecgrep)
+4. Call `fcheap_diff` to compare against a codebase
+5. Call `fcheap_restore` to extract files for inspection
+6. Call `fcheap_drop` to clean up
 
 ## General File Stashing
 

@@ -15,21 +15,21 @@ import (
 // Manifest is the metadata file written alongside each stash.
 // It is stored as manifest.json in the stash directory.
 type Manifest struct {
-	SchemaVersion string            `json:"schema_version"`
-	ID            string            `json:"id"`
-	Name          string            `json:"name,omitempty"`
-	CreatedAt     string            `json:"created_at"`
-	SourcePath    string            `json:"source_path,omitempty"`
-	Tool          string            `json:"tool,omitempty"`
-	Tags          []string          `json:"tags,omitempty"`
-	FileCount     int               `json:"file_count"`
-	TotalSize     int64             `json:"total_size"`
-	ContentHash   string            `json:"content_hash"`
-	Compression   string            `json:"compression,omitempty"`
-	CompressedSize int64            `json:"compressed_size,omitempty"`
-	BundleType    string            `json:"bundle_type,omitempty"`
-	Files         []FileEntry       `json:"files,omitempty"`
-	Custom        map[string]string `json:"custom,omitempty"`
+	SchemaVersion  string            `json:"schema_version"`
+	ID             string            `json:"id"`
+	Name           string            `json:"name,omitempty"`
+	CreatedAt      string            `json:"created_at"`
+	SourcePath     string            `json:"source_path,omitempty"`
+	Tool           string            `json:"tool,omitempty"`
+	Tags           []string          `json:"tags,omitempty"`
+	FileCount      int               `json:"file_count"`
+	TotalSize      int64             `json:"total_size"`
+	ContentHash    string            `json:"content_hash"`
+	Compression    string            `json:"compression,omitempty"`
+	CompressedSize int64             `json:"compressed_size,omitempty"`
+	BundleType     string            `json:"bundle_type,omitempty"`
+	Files          []FileEntry       `json:"files,omitempty"`
+	Custom         map[string]string `json:"custom,omitempty"`
 }
 
 // FileEntry describes a single file within the stash.
@@ -130,6 +130,29 @@ func Load(dir string) (*Manifest, error) {
 		return nil, fmt.Errorf("unmarshal manifest: %w", err)
 	}
 	return &m, nil
+}
+
+// VideoSummary returns a human-readable source-video summary for vidtrace
+// bundles, e.g. "/Downloads/bug.mp4 (120s, 30fps)", or "" if not applicable.
+func (m *Manifest) VideoSummary() string {
+	v := m.Custom["source_video"]
+	if v == "" {
+		return ""
+	}
+	extra := ""
+	if d := m.Custom["duration_seconds"]; d != "" {
+		extra = d + "s"
+	}
+	if fr := m.Custom["frame_rate"]; fr != "" {
+		if extra != "" {
+			extra += ", "
+		}
+		extra += fr + "fps"
+	}
+	if extra != "" {
+		v += " (" + extra + ")"
+	}
+	return v
 }
 
 // HasTag returns true if the manifest contains the given tag.

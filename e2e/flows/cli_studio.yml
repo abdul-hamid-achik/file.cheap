@@ -1,0 +1,159 @@
+version: 1
+name: cli_studio
+
+metadata:
+  feature: studio
+  owner: core
+  priority: high
+  tags:
+    - studio
+    - agent
+
+intent: |
+  Verify that fcheap studio opens in a real PTY, renders the stash list,
+  opens a stash detail view, and exits cleanly with q.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - "export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-studio-store; exec ./bin/fcheap studio"
+  cwd: "."
+  timeoutMs: 20000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: require
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+    - run: "rm -rf /tmp/fcheap-e2e-studio-store /tmp/fcheap-e2e-studio-src && mkdir -p /tmp/fcheap-e2e-studio-src/logs"
+      timeoutMs: 5000
+    - run: "printf 'login failure on retry\\nInternal Migrant flag set\\n' > /tmp/fcheap-e2e-studio-src/logs/app.log"
+      timeoutMs: 5000
+    - run: "printf 'bug report: checkout crashes\\n' > /tmp/fcheap-e2e-studio-src/notes.md"
+      timeoutMs: 5000
+    - run: "FCHEAP_STASH_DIR=/tmp/fcheap-e2e-studio-store ./bin/fcheap save /tmp/fcheap-e2e-studio-src --name e2e-bundle --tool vidtrace --tag e2e"
+      timeoutMs: 15000
+    - run: |
+        export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-studio-store
+        ID=$(./bin/fcheap list --json | grep -o '"id": "[^"]*"' | head -1 | cut -d'"' -f4)
+        ./bin/fcheap analyze "$ID"
+      timeoutMs: 15000
+
+steps:
+  - wait:
+      screen:
+        contains: "studio"
+      timeoutMs: 5000
+  - wait:
+      screen:
+        contains: "e2e-bundle"
+      timeoutMs: 5000
+  - snapshot: list
+  # Index the stash from the TUI (streams progress, then reports completion).
+  - press: "a"
+  - wait:
+      screen:
+        contains: "indexed"
+      timeoutMs: 8000
+  # Status view shows index health (indexed/compressed counts, index presence).
+  - press: "s"
+  - wait:
+      screen:
+        contains: "Search idx"
+      timeoutMs: 5000
+  - snapshot: status
+  - press: "s"
+  - wait:
+      screen:
+        contains: "e2e-bundle"
+      timeoutMs: 5000
+  - press: "enter"
+  - wait:
+      screen:
+        contains: "Provenance"
+      timeoutMs: 5000
+  - wait:
+      screen:
+        contains: "app.log"
+      timeoutMs: 5000
+  - snapshot: detail
+  # Diff the stash against its source dir (prompt is pre-filled with the source).
+  - press: "x"
+  - wait:
+      screen:
+        contains: "diff against"
+      timeoutMs: 5000
+  - press: "enter"
+  - wait:
+      screen:
+        contains: "Unchanged"
+      timeoutMs: 5000
+  - snapshot: diff
+  - press: "esc"
+  - wait:
+      screen:
+        contains: "Provenance"
+      timeoutMs: 5000
+  - press: "esc"
+  - wait:
+      screen:
+        contains: "Stashes"
+      timeoutMs: 5000
+  - press: "?"
+  - wait:
+      screen:
+        contains: "Navigation"
+      timeoutMs: 5000
+  - snapshot: help
+  - press: "esc"
+  - wait:
+      screen:
+        contains: "Stashes"
+      timeoutMs: 5000
+  # Exercise the working search input end-to-end.
+  - press: "/"
+  - wait:
+      screen:
+        contains: "Search"
+      timeoutMs: 5000
+  - press: "l"
+  - press: "o"
+  - press: "g"
+  - press: "i"
+  - press: "n"
+  - press: "enter"
+  - wait:
+      screen:
+        contains: "app.log"
+      timeoutMs: 5000
+  - snapshot: search
+  # Cycle the search mode (tab to results so 'm' isn't typed into the query).
+  - press: "tab"
+  - press: "m"
+  - wait:
+      screen:
+        contains: "mode keyword"
+      timeoutMs: 5000
+  - press: "ctrl+c"
+  - wait:
+      process:
+        exitCode: 0
+      timeoutMs: 5000
+
+outcomes:
+  - id: clean_exit
+    description: q exits the studio cleanly
+    verify:
+      process:
+        exitCode: 0
+  - id: list_rendered
+    description: studio rendered the saved stash
+    verify:
+      command:
+        run: "FCHEAP_STASH_DIR=/tmp/fcheap-e2e-studio-store ./bin/fcheap list --json | grep -q e2e-bundle"

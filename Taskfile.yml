@@ -56,6 +56,12 @@ tasks:
     cmds:
       - go mod tidy
 
+  sqlc-gen:
+    desc: Regenerate sqlc code for the SQLite metadata layer
+    dir: internal/db
+    cmds:
+      - sqlc generate
+
   vet:
     desc: Run go vet
     cmds:
@@ -88,7 +94,7 @@ tasks:
       - glyph run e2e/flows/*.yml --format md
 
   e2e-one:
-    desc: Run a single e2e flow (usage: task e2e-one -- <name>)
+    desc: "Run a single e2e flow (usage: task e2e-one -- <name>)"
     cmds:
       - task: build
       - glyph run e2e/flows/{{.CLI_ARGS}}.yml --format md

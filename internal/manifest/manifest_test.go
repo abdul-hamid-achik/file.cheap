@@ -7,12 +7,31 @@ import (
 	"testing"
 )
 
+func TestVideoSummary(t *testing.T) {
+	cases := []struct {
+		custom map[string]string
+		want   string
+	}{
+		{nil, ""},
+		{map[string]string{"source_video": "/x/bug.mp4"}, "/x/bug.mp4"},
+		{map[string]string{"source_video": "/x/bug.mp4", "duration_seconds": "124"}, "/x/bug.mp4 (124s)"},
+		{map[string]string{"source_video": "/x/bug.mp4", "duration_seconds": "124", "frame_rate": "30"}, "/x/bug.mp4 (124s, 30fps)"},
+		{map[string]string{"frame_rate": "30"}, ""}, // no source video -> empty
+	}
+	for _, c := range cases {
+		m := &Manifest{Custom: c.custom}
+		if got := m.VideoSummary(); got != c.want {
+			t.Errorf("VideoSummary(%v) = %q, want %q", c.custom, got, c.want)
+		}
+	}
+}
+
 func TestScanFiles(t *testing.T) {
 	tmp := t.TempDir()
 	// Create test files
 	files := map[string]string{
-		"a.txt":        "hello",
-		"sub/b.txt":   "world",
+		"a.txt":          "hello",
+		"sub/b.txt":      "world",
 		"sub/deep/c.txt": "!",
 	}
 	for path, content := range files {
