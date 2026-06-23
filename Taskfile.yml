@@ -42,9 +42,11 @@ tasks:
       - go test -race ./...
 
   lint:
-    desc: Run golangci-lint
+    desc: Run golangci-lint (pinned to the version CI uses)
+    vars:
+      GOLANGCI_VERSION: v2.7.2
     cmds:
-      - golangci-lint run
+      - go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_VERSION}} run
 
   fmt:
     desc: Format Go code
