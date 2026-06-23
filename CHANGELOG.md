@@ -11,6 +11,21 @@ Per-release binaries and notes are also on the
 
 _Nothing yet._
 
+## [0.22.0] - 2026-06-23
+
+### Added
+- **Studio: live list filter** (`f`) — type to narrow the stash list by name /
+  tool / tag; `enter` keeps it, `esc` clears. The cursor and every list action
+  operate on the filtered view, with a "N of M" line and a "no match" state.
+
+### Fixed
+- **Studio layout** (from an adversarial multi-agent TUI review): the list panel
+  no longer drops its bottom border when the list overflows; chip-bearing rows no
+  longer wrap at narrow widths; the selected-row highlight matches the panel
+  interior; the footer wraps to the terminal width instead of forcing the UI
+  wider than the screen; and very short terminals no longer render past the
+  bottom.
+
 ## [0.21.0] - 2026-06-23
 
 ### Added
@@ -175,7 +190,8 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.19.2...v0.20.0
 [0.19.2]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.19.1...v0.19.2
