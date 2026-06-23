@@ -8,14 +8,24 @@ The MCP server runs over stdio transport. When an AI assistant needs to save, re
 
 ## Setup
 
+fcheap is a standard **stdio** MCP server, so it works in any MCP-compatible
+client. The invocation is always the same — command `fcheap`, args `mcp serve` —
+only the config format differs. Below are the common clients.
+
 ### Claude Code
 
-Add to your MCP config:
+One-liner (user scope, available in every project):
+
+```bash
+claude mcp add -s user fcheap -- fcheap mcp serve
+```
+
+Or add it to your MCP config by hand:
 
 ```json
 {
   "mcpServers": {
-    "file-cheap": {
+    "fcheap": {
       "command": "fcheap",
       "args": ["mcp", "serve"]
     }
@@ -23,9 +33,38 @@ Add to your MCP config:
 }
 ```
 
-### Other MCP Clients
+### Codex CLI
 
-Any MCP-compatible client that supports stdio transport can connect to `fcheap mcp serve`.
+In `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.fcheap]
+command = "fcheap"
+args = ["mcp", "serve"]
+```
+
+### OpenCode
+
+In `~/.config/opencode/opencode.json`, under `mcp`:
+
+```json
+{
+  "mcp": {
+    "fcheap": {
+      "type": "local",
+      "command": ["fcheap", "mcp", "serve"],
+      "enabled": true
+    }
+  }
+}
+```
+
+### Any other stdio MCP client
+
+Register a server named `fcheap` that runs `fcheap mcp serve` over stdio. Clients
+that read a `.mcp.json` (`mcpServers` map) use the same shape as the Claude Code
+JSON above. On first connect the server advertises all three surfaces — 11 tools,
+2 resources, and 2 prompts.
 
 ## Tools
 
