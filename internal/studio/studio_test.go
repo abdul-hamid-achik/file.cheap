@@ -157,8 +157,18 @@ func TestStashSort(t *testing.T) {
 	}
 
 	m.sortIdx = 4 // SIZE desc
+	m.sortRev = false
 	m.sortStashes()
 	if got := m.stashes[0].Manifest.TotalSize; got != 9000 {
 		t.Errorf("SIZE sort first = %d, want 9000", got)
+	}
+
+	m.sortRev = true // reverse -> smallest first
+	m.sortStashes()
+	if got := m.stashes[0].Manifest.TotalSize; got != 100 {
+		t.Errorf("reversed SIZE sort first = %d, want 100", got)
+	}
+	if m.effectiveSortDesc() {
+		t.Errorf("effectiveSortDesc = true, want false (a reversed descending sort is ascending)")
 	}
 }

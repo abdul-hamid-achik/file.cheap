@@ -92,7 +92,7 @@ func (m Model) renderList(h int) string {
 
 	mode := stashSortModes[m.sortIdx%len(stashSortModes)]
 	arrow := "▲"
-	if mode.desc {
+	if m.effectiveSortDesc() {
 		arrow = "▼"
 	}
 	title := fmt.Sprintf("Stashes · %s %s", mode.name, arrow)
@@ -499,7 +499,7 @@ func (m Model) renderHelp(h int) string {
 		help("x", "diff against a directory"),
 		help("t", "vidtrace timeline (bundles)"),
 		help("d", "drop (confirm y/n) — list / files pane"),
-		help("o", "cycle sort (age/name/tool/files/size)"),
+		help("o / O", "cycle sort / reverse direction"),
 		help("g", "refresh stash list"),
 		"",
 		titleStyle.Render("Preview pane (when focused)"),

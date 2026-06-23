@@ -9,10 +9,14 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.21.0] - 2026-06-23
+
 ### Added
-- **Studio: sort the stash list** with `o` — cycles age / name / tool / files /
-  size; the active sort and direction show in the panel title (`Stashes · SIZE ▼`)
-  and the sorted column is highlighted in the header.
+- **Studio: sort the stash list** — `o` cycles age / name / tool / files / size
+  and `O` reverses the direction; the active sort and direction show in the panel
+  title (`Stashes · SIZE ▼`) and the sorted column is highlighted in the header.
 - **Studio: per-tool color accents** in the list (the TOOL column is colored by
   producing tool), with dimmed size/age columns for quicker scanning.
 
@@ -171,7 +175,8 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.19.2...v0.20.0
 [0.19.2]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.19.1...v0.19.2
 [0.19.1]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.19.0...v0.19.1

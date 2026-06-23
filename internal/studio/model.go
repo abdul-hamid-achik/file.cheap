@@ -68,7 +68,8 @@ type Model struct {
 	stashes []*stash.Stash
 	cursor  int
 	loading bool
-	sortIdx int // index into stashSortModes
+	sortIdx int  // index into stashSortModes
+	sortRev bool // reverse the active sort direction
 
 	// detail view
 	selected  *stash.Stash
@@ -487,15 +488,25 @@ var stashSortModes = []sortMode{
 	{"SIZE", true, func(a, b *stash.Stash) bool { return a.Manifest.TotalSize > b.Manifest.TotalSize }},
 }
 
-// sortStashes orders the list by the active sort mode (stable, nil-safe).
+// sortStashes orders the list by the active sort mode (stable, nil-safe),
+// reversing the direction when sortRev is set.
 func (m *Model) sortStashes() {
 	mode := stashSortModes[m.sortIdx%len(stashSortModes)]
 	sort.SliceStable(m.stashes, func(i, j int) bool {
-		if m.stashes[i].Manifest == nil || m.stashes[j].Manifest == nil {
+		a, b := m.stashes[i], m.stashes[j]
+		if a.Manifest == nil || b.Manifest == nil {
 			return false
 		}
-		return mode.less(m.stashes[i], m.stashes[j])
+		if m.sortRev {
+			a, b = b, a
+		}
+		return mode.less(a, b)
 	})
+}
+
+// effectiveSortDesc reports whether the list is currently shown descending.
+func (m *Model) effectiveSortDesc() bool {
+	return stashSortModes[m.sortIdx%len(stashSortModes)].desc != m.sortRev
 }
 
 func (m *Model) handleListKey(key string) (tea.Cmd, bool) {
@@ -532,6 +543,14 @@ func (m *Model) handleListKey(key string) (tea.Cmd, bool) {
 	case "o":
 		if len(m.stashes) > 0 {
 			m.sortIdx = (m.sortIdx + 1) % len(stashSortModes)
+			m.sortRev = false
+			m.sortStashes()
+			m.cursor = 0
+		}
+		return nil, true
+	case "O":
+		if len(m.stashes) > 0 {
+			m.sortRev = !m.sortRev
 			m.sortStashes()
 			m.cursor = 0
 		}
