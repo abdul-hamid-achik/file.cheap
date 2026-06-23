@@ -11,6 +11,15 @@ Per-release binaries and notes are also on the
 
 _Nothing yet._
 
+## [0.23.0] - 2026-06-23
+
+### Added
+- **Studio: richer detail pane.** The per-stash provenance is now grouped into
+  color-coded sections — IDENTITY / PROVENANCE / CONTENT / STORAGE — showing the
+  tool (colored), relative + absolute created time, the compression space-saved
+  ratio, and indexed status (✓ analyzed with doc count, or not indexed). The
+  provenance is height-capped so the file tree and preview always stay visible.
+
 ## [0.22.0] - 2026-06-23
 
 ### Added
@@ -190,7 +199,8 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.19.2...v0.20.0
