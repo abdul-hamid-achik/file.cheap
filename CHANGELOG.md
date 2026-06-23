@@ -11,6 +11,17 @@ Per-release binaries and notes are also on the
 
 _Nothing yet._
 
+## [0.20.0] - 2026-06-23
+
+### Added
+- **Studio TUI now fills the terminal.** Every view expands to the full height
+  between the header and a bottom-pinned footer (previously content sat at the
+  top with most of the terminal unused). The stash list is now a proper table —
+  aligned `NAME/TOOL/FILES/SIZE/AGE` columns, a NAME column that flexes to the
+  available width, right-aligned numbers, chips reserved on the right, a "… N
+  more" overflow indicator, and the stash count + total size in the header.
+  Detail/search size their preview to the available space.
+
 ## [0.19.2] - 2026-06-23
 
 ### Security
@@ -155,7 +166,8 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.19.2...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.19.2...v0.20.0
 [0.19.2]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.19.1...v0.19.2
 [0.19.1]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.18.0...v0.19.0
