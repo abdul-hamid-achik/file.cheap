@@ -99,3 +99,29 @@ func TestFormatTimeline(t *testing.T) {
 		}
 	}
 }
+
+// TestViewFillsTerminalHeight verifies the rendered TUI occupies the full
+// terminal height (no large dead space below the content) — the layout fix.
+func TestViewFillsTerminalHeight(t *testing.T) {
+	const w, h = 120, 40
+	for _, tc := range []struct {
+		name string
+		view viewName
+	}{
+		{"empty-list", viewList},
+		{"help", viewHelp},
+		{"detail-none", viewDetail},
+	} {
+		m := Model{width: w, height: h, activeView: tc.view, searchMode: "auto"}
+		out := clean(m.render())
+		if got := strings.Count(out, "\n") + 1; got != h {
+			t.Errorf("%s: rendered %d lines, want %d (should fill the terminal)", tc.name, got, h)
+		}
+		for i, ln := range strings.Split(out, "\n") {
+			if cells := len([]rune(ln)); cells > w {
+				t.Errorf("%s: line %d is %d cells wide, want <= %d", tc.name, i, cells, w)
+				break
+			}
+		}
+	}
+}

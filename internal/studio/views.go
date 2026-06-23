@@ -22,24 +22,33 @@ func (m Model) render() string {
 	}
 
 	header := m.renderHeader()
+	footer := m.renderFooter()
+	// The body fills every row between the header and the footer, so views use
+	// the full terminal height and the footer pins to the bottom.
+	bodyH := m.height - lipgloss.Height(header) - lipgloss.Height(footer)
+	if bodyH < 3 {
+		bodyH = 3
+	}
+
 	var body string
 	switch m.activeView {
 	case viewDetail:
-		body = m.renderDetail()
+		body = m.renderDetail(bodyH)
 	case viewSearch:
-		body = m.renderSearch()
+		body = m.renderSearch(bodyH)
 	case viewTimeline:
-		body = m.renderTimeline()
+		body = m.renderTimeline(bodyH)
 	case viewDiff:
-		body = m.renderDiff()
+		body = m.renderDiff(bodyH)
 	case viewStatus:
-		body = m.renderStatus()
+		body = m.renderStatus(bodyH)
 	case viewHelp:
-		body = m.renderHelp()
+		body = m.renderHelp(bodyH)
 	default:
-		body = m.renderList()
+		body = m.renderList(bodyH)
 	}
-	footer := m.renderFooter()
+	// Pad (or clip) the body to exactly bodyH rows so the footer sits at the bottom.
+	body = lipgloss.NewStyle().Height(bodyH).MaxHeight(bodyH).Render(body)
 	return lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
 }
 
@@ -57,9 +66,9 @@ func (m Model) renderHeader() string {
 
 // --- list view ---
 
-func (m Model) renderList() string {
+func (m Model) renderList(h int) string {
 	if m.loading {
-		return panelStyle.Width(m.width - 2).Render(m.spinner.View() + " " + mutedStyle.Render("loading stashes…"))
+		return m.renderPanelH("Stashes", m.spinner.View()+" "+mutedStyle.Render("loading stashes…"), m.width-2, h, true)
 	}
 	if len(m.stashes) == 0 {
 		hint := lipgloss.JoinVertical(lipgloss.Left,
@@ -68,16 +77,16 @@ func (m Model) renderList() string {
 			dimStyle.Render("Create one with:"),
 			keyStyle.Render("  fcheap save <path>"),
 		)
-		return panelStyle.Width(m.width - 2).Render(hint)
+		return m.renderPanelH("Stashes", hint, m.width-2, h, true)
 	}
 
-	rows := m.renderStashRows(m.width - 4)
-	return m.renderPanel("Stashes", rows, m.width-2, true)
+	rows := m.renderStashRows(m.width-4, h)
+	return m.renderPanelH("Stashes", rows, m.width-2, h, true)
 }
 
-func (m Model) renderStashRows(width int) string {
+func (m Model) renderStashRows(width, h int) string {
 	var b strings.Builder
-	maxRows := clamp(m.height-8, 5, len(m.stashes))
+	maxRows := clamp(panelBodyHeight(h), 1, len(m.stashes))
 	start := 0
 	if m.cursor >= maxRows {
 		start = m.cursor - maxRows + 1
@@ -127,9 +136,9 @@ func (m Model) renderStashRow(i, width int) string {
 
 // --- detail view ---
 
-func (m Model) renderDetail() string {
+func (m Model) renderDetail(h int) string {
 	if m.selected == nil || m.selected.Manifest == nil {
-		return panelStyle.Width(m.width - 2).Render(mutedStyle.Render("no stash selected"))
+		return m.renderPanelH("Detail", mutedStyle.Render("no stash selected"), m.width-2, h, true)
 	}
 	man := m.selected.Manifest
 
@@ -176,18 +185,34 @@ func (m Model) renderDetail() string {
 	if m.width >= 96 {
 		leftW := clamp(m.width/2-2, 30, m.width-4)
 		rightW := m.width - leftW - 4
+		// Right preview fills the full body height; the left column stacks
+		// Provenance (natural) above Files (filling the remainder).
+		m.preview.SetHeight(panelBodyHeight(h))
+		right := m.renderPanelH(m.previewTitle(), m.renderPreview(), rightW, h, m.focus == focusPreview)
+		prov := m.sizePanel("Provenance", info.String(), leftW, false)
+		filesH := h - lipgloss.Height(prov)
+		if filesH < 3 {
+			filesH = 3
+		}
 		left := lipgloss.JoinVertical(lipgloss.Left,
-			m.sizePanel("Provenance", info.String(), leftW, false),
-			m.sizePanel(filesTitle, files, leftW, m.focus == focusFiles),
+			prov,
+			m.renderPanelH(filesTitle, files, leftW, filesH, m.focus == focusFiles),
 		)
-		right := m.sizePanel(m.previewTitle(), m.renderPreview(), rightW, m.focus == focusPreview)
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right)
 	}
 
+	// Stacked: Provenance + Files (natural) then Preview fills the remaining rows.
+	prov := m.sizePanel("Provenance", info.String(), m.width-2, false)
+	filesPanel := m.sizePanel(filesTitle, files, m.width-2, m.focus == focusFiles)
+	previewH := h - lipgloss.Height(prov) - lipgloss.Height(filesPanel)
+	if previewH < 4 {
+		previewH = 4
+	}
+	m.preview.SetHeight(panelBodyHeight(previewH))
 	return lipgloss.JoinVertical(lipgloss.Left,
-		m.sizePanel("Provenance", info.String(), m.width-2, false),
-		m.sizePanel(filesTitle, files, m.width-2, m.focus == focusFiles),
-		m.sizePanel(m.previewTitle(), m.renderPreview(), m.width-2, m.focus == focusPreview),
+		prov,
+		filesPanel,
+		m.renderPanelH(m.previewTitle(), m.renderPreview(), m.width-2, previewH, m.focus == focusPreview),
 	)
 }
 
@@ -196,7 +221,7 @@ func (m Model) renderFileTree() string {
 	if len(files) == 0 {
 		return mutedStyle.Render("(no files)")
 	}
-	maxRows := clamp(m.height/2-4, 4, 18)
+	maxRows := clamp(m.height-12, 4, len(files))
 	start := 0
 	if m.fileIdx >= maxRows {
 		start = m.fileIdx - maxRows + 1
@@ -240,8 +265,12 @@ func (m Model) renderPreview() string {
 
 // --- search view ---
 
-func (m Model) renderSearch() string {
+func (m Model) renderSearch(h int) string {
 	queryPanel := m.sizePanel("Search · mode "+m.searchMode, m.query.View(), m.width-2, m.focus == focusQuery)
+	restH := h - lipgloss.Height(queryPanel)
+	if restH < 4 {
+		restH = 4
+	}
 
 	results := m.renderSearchResults()
 	resultsTitle := "Results"
@@ -255,17 +284,22 @@ func (m Model) renderSearch() string {
 	if m.width >= 96 {
 		leftW := clamp(m.width/2-2, 30, m.width-4)
 		rightW := m.width - leftW - 4
-		left := m.sizePanel(resultsTitle, results, leftW, m.focus == focusResults)
-		right := m.sizePanel("Preview", m.renderPreview(), rightW, m.focus == focusPreview)
+		m.preview.SetHeight(panelBodyHeight(restH))
+		left := m.renderPanelH(resultsTitle, results, leftW, restH, m.focus == focusResults)
+		right := m.renderPanelH("Preview", m.renderPreview(), rightW, restH, m.focus == focusPreview)
 		return lipgloss.JoinVertical(lipgloss.Left,
 			queryPanel,
 			lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right),
 		)
 	}
+	// Stacked: split the remaining height between results and preview.
+	resultsH := restH / 2
+	previewH := restH - resultsH
+	m.preview.SetHeight(panelBodyHeight(previewH))
 	return lipgloss.JoinVertical(lipgloss.Left,
 		queryPanel,
-		m.sizePanel(resultsTitle, results, m.width-2, m.focus == focusResults),
-		m.sizePanel("Preview", m.renderPreview(), m.width-2, m.focus == focusPreview),
+		m.renderPanelH(resultsTitle, results, m.width-2, resultsH, m.focus == focusResults),
+		m.renderPanelH("Preview", m.renderPreview(), m.width-2, previewH, m.focus == focusPreview),
 	)
 }
 
@@ -317,27 +351,29 @@ func (m Model) renderSearchResults() string {
 
 // --- timeline view (vidtrace bundles) ---
 
-func (m Model) renderTimeline() string {
+func (m Model) renderTimeline(h int) string {
 	title := "Timeline"
 	if m.selected != nil && m.selected.Manifest != nil && m.selected.Manifest.Name != "" {
 		title = "Timeline · " + m.selected.Manifest.Name
 	}
-	return m.sizePanel(title, m.preview.View(), m.width-2, true)
+	m.preview.SetHeight(panelBodyHeight(h))
+	return m.renderPanelH(title, m.preview.View(), m.width-2, h, true)
 }
 
 // --- diff view ---
 
-func (m Model) renderDiff() string {
+func (m Model) renderDiff(h int) string {
 	title := "Diff"
 	if m.selected != nil && m.selected.Manifest != nil && m.selected.Manifest.Name != "" {
 		title = "Diff · " + m.selected.Manifest.Name
 	}
-	return m.sizePanel(title, m.preview.View(), m.width-2, true)
+	m.preview.SetHeight(panelBodyHeight(h))
+	return m.renderPanelH(title, m.preview.View(), m.width-2, h, true)
 }
 
 // --- status view ---
 
-func (m Model) renderStatus() string {
+func (m Model) renderStatus(h int) string {
 	vec := "not available"
 	vecStyle := warnStyle
 	if m.vecgrepAvailable() {
@@ -372,7 +408,7 @@ func (m Model) renderStatus() string {
 	if m.vecgrepPath != "" {
 		lines = append(lines, dimStyle.Render("Vecgrep path: ")+mutedStyle.Render(m.vecgrepPath))
 	}
-	return m.sizePanel("Status", strings.Join(lines, "\n"), m.width-2, true)
+	return m.renderPanelH("Status", strings.Join(lines, "\n"), m.width-2, h, true)
 }
 
 // presence renders a green "present" / dim "—" indicator.
@@ -385,7 +421,7 @@ func presence(ok bool) string {
 
 // --- help view ---
 
-func (m Model) renderHelp() string {
+func (m Model) renderHelp(h int) string {
 	sections := []string{
 		titleStyle.Render("Navigation"),
 		help("j / k  ↑ / ↓", "move cursor"),
@@ -419,7 +455,7 @@ func (m Model) renderHelp() string {
 		help("m", "cycle mode — auto/keyword/semantic/hybrid (results/preview pane)"),
 		help("tab", "query ↔ results ↔ preview"),
 	}
-	return m.sizePanel("Help", strings.Join(sections, "\n"), m.width-2, true)
+	return m.renderPanelH("Help", strings.Join(sections, "\n"), m.width-2, h, true)
 }
 
 func help(key, action string) string {
@@ -515,6 +551,37 @@ func (m Model) sizePanel(title, body string, width int, focused bool) string {
 		width = 20
 	}
 	return m.renderPanel(title, body, width, focused)
+}
+
+// renderPanelH is sizePanel with a fixed total height (totalH rows including the
+// border), so the box fills the space rather than shrinking to its content.
+func (m Model) renderPanelH(title, body string, width, totalH int, focused bool) string {
+	if width < 20 {
+		width = 20
+	}
+	titleStyleFn := panelTitleStyle
+	style := panelStyle
+	if focused {
+		titleStyleFn = activePanelTitleStyle
+		style = focusedPanelStyle
+	}
+	content := lipgloss.JoinVertical(lipgloss.Left, titleStyleFn.Render(title), body)
+	style = style.Width(width)
+	if totalH > 2 {
+		// Height() sizes the whole bordered block, so pass the full target.
+		style = style.Height(totalH)
+	}
+	return style.Render(content)
+}
+
+// panelBodyHeight returns the rows available for a panel's body given the
+// panel's total height (subtracting the border and the title row).
+func panelBodyHeight(totalH int) int {
+	h := totalH - 3
+	if h < 1 {
+		h = 1
+	}
+	return h
 }
 
 // --- formatting helpers ---

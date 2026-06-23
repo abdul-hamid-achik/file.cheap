@@ -776,11 +776,14 @@ func (m *Model) resize() {
 
 	m.query.SetWidth(clamp(m.width-12, 20, 120))
 
-	previewHeight := clamp(m.height-12, 6, 40)
+	// Generous default preview height; the view renderers refine it per-layout
+	// each frame so the preview fills the available space. This value mainly
+	// drives the scroll amount for page-up/down in the Update path.
+	previewHeight := clamp(m.height-8, 6, m.height)
 	previewWidth := clamp(m.width/2-4, 30, m.width-4)
 	if m.width < 96 {
 		previewWidth = clamp(m.width-4, 30, m.width-4)
-		previewHeight = clamp(m.height/2-6, 5, 30)
+		previewHeight = clamp(m.height/2-6, 5, m.height)
 	}
 	m.preview.SetWidth(previewWidth)
 	m.preview.SetHeight(previewHeight)

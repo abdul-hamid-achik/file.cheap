@@ -90,4 +90,5 @@ confirm in the footer.
 - [Lipgloss v2](https://charm.land) -- styling (`charm.land/lipgloss/v2`)
 - [Bubbles v2](https://charm.land) -- `textinput`, `viewport`, `spinner`, `progress` (`charm.land/bubbles/v2`)
 
-Layout is responsive: side-by-side panels at ≥96 columns, stacked below.
+Layout is responsive: side-by-side panels at ≥96 columns, stacked below. Panels
+expand to fill the full terminal height, with the footer pinned to the bottom.
