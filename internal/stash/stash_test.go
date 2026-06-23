@@ -441,3 +441,46 @@ func TestSaveDirWithDanglingSymlink(t *testing.T) {
 		t.Errorf("expected a symlink at %s (err %v)", link, err)
 	}
 }
+
+// TestStashIDTraversalRejected verifies that a path-traversal stash id cannot
+// escape the stash root — in particular that Drop cannot os.RemoveAll a
+// directory outside the root. Regression test for the high-severity MCP
+// arbitrary-deletion finding.
+func TestStashIDTraversalRejected(t *testing.T) {
+	root := t.TempDir()
+	mgr, err := NewManager(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A victim directory OUTSIDE the stash root that a traversal id would target.
+	outside := t.TempDir()
+	victim := filepath.Join(outside, "victim")
+	if err := os.MkdirAll(victim, 0755); err != nil {
+		t.Fatal(err)
+	}
+	rel, err := filepath.Rel(root, victim) // e.g. "../<tmp>/victim" — has separators/..
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, badID := range []string{rel, "../../etc", "..", ".", "a/b", ""} {
+		if mgr.Exists(badID) {
+			t.Errorf("Exists(%q) = true, want false", badID)
+		}
+		if err := mgr.Drop(context.Background(), badID); err == nil {
+			t.Errorf("Drop(%q) succeeded, want rejection", badID)
+		}
+		if _, err := mgr.Restore(context.Background(), badID, ""); err == nil {
+			t.Errorf("Restore(%q) succeeded, want rejection", badID)
+		}
+		if _, err := mgr.Info(context.Background(), badID); err == nil {
+			t.Errorf("Info(%q) succeeded, want rejection", badID)
+		}
+	}
+
+	// The victim must be untouched — no traversal Drop deleted it.
+	if _, err := os.Stat(victim); err != nil {
+		t.Errorf("victim directory was deleted via traversal: %v", err)
+	}
+}

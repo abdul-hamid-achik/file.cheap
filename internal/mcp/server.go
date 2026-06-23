@@ -319,6 +319,9 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		if err != nil {
 			return toolError("create stash manager: %v", err), nil, nil
 		}
+		if !mgr.Exists(in.StashID) {
+			return toolError("stash not found: %s", in.StashID), nil, nil
+		}
 		stashDir := mgr.StashDir(in.StashID)
 		result, err := diff.CompareStashToDir(stashDir, in.TargetDir)
 		if err != nil {

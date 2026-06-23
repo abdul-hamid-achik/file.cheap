@@ -129,6 +129,15 @@ func (m *Manager) StashDir(id string) string {
 	return filepath.Join(m.rootDir, id)
 }
 
+// validStashID reports whether id is a safe, single-element stash ID. Stash IDs
+// are generated as one directory name, so any id with path separators or
+// traversal is invalid input — and, via the MCP server, a path-traversal attempt
+// (e.g. "../../etc" would otherwise escape the stash root in StashDir, then be
+// passed to os.RemoveAll/Restore). All id-taking Manager methods reject it.
+func validStashID(id string) bool {
+	return id != "" && id != "." && id != ".." && id == filepath.Base(id)
+}
+
 // Save creates a stash from a source path.
 // It copies the source file or directory into the stash, creates a manifest,
 // and optionally compresses.
@@ -250,6 +259,9 @@ type RestoreResult struct {
 // used. The returned result reports whether every manifest file was restored
 // with a matching content hash.
 func (m *Manager) Restore(ctx context.Context, id, target string) (*RestoreResult, error) {
+	if !validStashID(id) {
+		return nil, fmt.Errorf("invalid stash id %q", id)
+	}
 	stashDir := m.StashDir(id)
 	if _, err := os.Stat(stashDir); err != nil {
 		if os.IsNotExist(err) {
@@ -289,6 +301,9 @@ func (m *Manager) Restore(ctx context.Context, id, target string) (*RestoreResul
 
 // Drop removes a stash entirely, including its metadata index row.
 func (m *Manager) Drop(ctx context.Context, id string) error {
+	if !validStashID(id) {
+		return fmt.Errorf("invalid stash id %q", id)
+	}
 	stashDir := m.StashDir(id)
 	if _, err := os.Stat(stashDir); err != nil {
 		if os.IsNotExist(err) {
@@ -563,6 +578,9 @@ func (m *Manager) Compress(ctx context.Context, id, algo string) (*CompressResul
 
 // Info returns detailed info about a single stash.
 func (m *Manager) Info(ctx context.Context, id string) (*Stash, error) {
+	if !validStashID(id) {
+		return nil, fmt.Errorf("invalid stash id %q", id)
+	}
 	stashDir := m.StashDir(id)
 	if _, err := os.Stat(stashDir); err != nil {
 		if os.IsNotExist(err) {
@@ -577,8 +595,13 @@ func (m *Manager) Info(ctx context.Context, id string) (*Stash, error) {
 	return &Stash{Manifest: man, Dir: stashDir}, nil
 }
 
-// Exists returns true if a stash with the given ID exists.
+// Exists returns true if a stash with the given ID exists. An invalid (e.g.
+// traversal) id is never considered to exist, which also guards the callers that
+// gate on Exists before using StashDir (analyze, connect, diff).
 func (m *Manager) Exists(id string) bool {
+	if !validStashID(id) {
+		return false
+	}
 	_, err := os.Stat(m.StashDir(id))
 	return err == nil
 }
