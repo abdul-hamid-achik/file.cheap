@@ -9,7 +9,27 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
-_Nothing yet._
+Security & robustness fixes from a focused security audit.
+
+### Security
+- **Reject path-traversal stash IDs (high).** An unvalidated `stash_id` flowed
+  into `filepath.Join(rootDir, id)` then `os.RemoveAll`/restore, so an MCP agent
+  calling `fcheap_drop(stash_id: "../../dir", force: true)` had an arbitrary
+  directory-deletion primitive. IDs are now validated as a single, non-traversal
+  path element across `Drop`/`Restore`/`Info`/`Exists` (and the MCP `diff` tool).
+- **Block symlink-escape on restore (medium).** `copyFile` and `Extract` followed
+  a symlink pre-planted at a restore destination (no `O_NOFOLLOW`), so a write
+  could clobber a file outside the target — they now remove a pre-existing
+  symlink before writing. `copyDir` drops absolute/`..`-escaping links on restore
+  (matching `Extract`) while still preserving them verbatim on save.
+
+### Changed
+- **Atomic writes:** `manifest.Save` uses temp-file + fsync + rename, and
+  `Compress` was reordered (rename archive → record manifest → reclaim) so an
+  interrupted compress can't leave the manifest/DB diverged from disk.
+- **Bounded memory:** the generic and vidtrace detectors cap `SearchableText`
+  (4 MiB, via `strings.Builder` instead of O(n²) `+=`), and bundle JSON reads are
+  size-capped (32 MiB).
 
 ## [0.19.0] - 2026-06-22
 
