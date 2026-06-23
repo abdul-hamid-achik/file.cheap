@@ -192,14 +192,57 @@ func (a *Analyzer) collFor(db *veclite.DB, emb veclite.Embedder) (*veclite.Colle
 	return coll, nil
 }
 
+// collForReadOnly is like collFor but never creates a collection — it only
+// returns an existing one. Used by the read-only search path so the DB can be
+// opened with WithSharedRead.
+func (a *Analyzer) collForReadOnly(db *veclite.DB, emb veclite.Embedder) (*veclite.Collection, error) {
+	name := filesCollection
+	var profile veclite.EmbeddingProfile
+	if emb != nil {
+		name = filesVecCollection
+		profile = a.embProfile(emb)
+	}
+
+	coll, err := db.GetCollection(name)
+	if err != nil || coll == nil {
+		// When an embedder is configured but the vector collection doesn't
+		// exist, the index was built without an embedder. Treat this as drift
+		// so the caller falls back to keyword search on the text collection.
+		if emb != nil {
+			return nil, fmt.Errorf("%w: vector collection %q not found — run analyze with an embedder to build it",
+				errEmbeddingDrift, filesVecCollection)
+		}
+		return nil, fmt.Errorf("no indexed collection found — run analyze first")
+	}
+
+	// Drift detection: a changed embedding model invalidates stored vectors.
+	if emb != nil {
+		if stored, ok := coll.EmbeddingProfile(); ok {
+			if cerr := stored.Compatible(profile); cerr != nil {
+				return nil, fmt.Errorf("%w (index built with %s/%s, now %s/%s): delete %s and re-run analyze — %v",
+					errEmbeddingDrift, stored.Provider, stored.Model, profile.Provider, profile.Model, a.vecliteDBPath(), cerr)
+			}
+		}
+	}
+	return coll, nil
+}
+
 // vecliteDBPath returns the path to the shared veclite database.
 func (a *Analyzer) vecliteDBPath() string {
 	return filepath.Join(a.stashRoot, "fcheap.veclite")
 }
 
-// openDB opens (or creates) the veclite database.
+// openDB opens (or creates) the veclite database with an exclusive lock.
 func (a *Analyzer) openDB() (*veclite.DB, error) {
 	return veclite.Open(a.vecliteDBPath())
+}
+
+// openDBReadOnly opens the veclite database with a shared read-only lock,
+// allowing multiple processes (or parallel MCP tool calls within the same
+// process) to read the same database simultaneously without blocking each
+// other or a concurrent writer.
+func (a *Analyzer) openDBReadOnly() (*veclite.DB, error) {
+	return veclite.Open(a.vecliteDBPath(), veclite.WithReadOnly(true), veclite.WithSharedRead(true))
 }
 
 // dbLocks serializes veclite access per stash root within this process.
@@ -408,10 +451,9 @@ func (a *Analyzer) search(ctx context.Context, query string, filter veclite.Filt
 		limit = defaultSearchLimit
 	}
 
-	unlock := a.lockDB()
-	defer unlock()
-
-	db, err := a.openDB()
+	// Search is read-only: use a shared lock so parallel MCP tool calls and
+	// concurrent processes can search without blocking each other or a writer.
+	db, err := a.openDBReadOnly()
 	if err != nil {
 		return nil, fmt.Errorf("open index: %w", err)
 	}
@@ -425,7 +467,7 @@ func (a *Analyzer) search(ctx context.Context, query string, filter veclite.Filt
 		mode = "hybrid"
 	}
 
-	coll, err := a.collFor(db, emb)
+	coll, err := a.collForReadOnly(db, emb)
 	if err != nil {
 		if !errors.Is(err, errEmbeddingDrift) {
 			return nil, err
