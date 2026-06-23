@@ -206,6 +206,13 @@ func Extract(archivePath, targetDir string) error {
 			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 				return err
 			}
+			// Refuse to write through a pre-existing symlink at the destination: a
+			// planted link could otherwise redirect the write outside targetDir.
+			if fi, lerr := os.Lstat(target); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
+				if rmErr := os.Remove(target); rmErr != nil {
+					return rmErr
+				}
+			}
 			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, hdr.FileInfo().Mode())
 			if err != nil {
 				return err

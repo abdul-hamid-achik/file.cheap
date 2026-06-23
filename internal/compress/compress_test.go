@@ -109,3 +109,38 @@ func mustSymlink(t *testing.T, oldname, newname string) {
 		t.Fatalf("symlink %s -> %s: %v", newname, oldname, err)
 	}
 }
+
+// TestExtractDoesNotWriteThroughPlantedSymlink verifies that a pre-existing
+// symlink at a restore destination is replaced (not followed), so extraction
+// cannot clobber a file outside the target. Regression test for the medium
+// symlink-escape (no O_NOFOLLOW) finding.
+func TestExtractDoesNotWriteThroughPlantedSymlink(t *testing.T) {
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(src, "config.json"), []byte("real"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	arc := filepath.Join(t.TempDir(), "a.tar.zst")
+	if _, err := Archive(src, arc, Zstd); err != nil {
+		t.Fatal(err)
+	}
+
+	target := t.TempDir()
+	outside := t.TempDir()
+	victim := filepath.Join(outside, "victim.txt")
+	if err := os.WriteFile(victim, []byte("ORIGINAL"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mustSymlink(t, victim, filepath.Join(target, "config.json")) // plant before extract
+
+	if err := Extract(arc, target); err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	if b, _ := os.ReadFile(victim); string(b) != "ORIGINAL" {
+		t.Errorf("victim outside target was overwritten through a planted symlink: %q", b)
+	}
+	fi, err := os.Lstat(filepath.Join(target, "config.json"))
+	if err != nil || fi.Mode()&os.ModeSymlink != 0 {
+		t.Errorf("config.json should be a real file, not a symlink (err %v)", err)
+	}
+}

@@ -173,7 +173,7 @@ func (m *Manager) Save(ctx context.Context, opts *SaveOptions) (*Stash, error) {
 	}
 
 	if srcInfo.IsDir() {
-		if err := copyDir(opts.SourcePath, contentDir); err != nil {
+		if err := copyDir(opts.SourcePath, contentDir, false); err != nil {
 			_ = os.RemoveAll(stashDir)
 			return nil, fmt.Errorf("copy directory: %w", err)
 		}
@@ -280,7 +280,7 @@ func (m *Manager) Restore(ctx context.Context, id, target string) (*RestoreResul
 	}
 
 	if dirExists(contentDir) {
-		if err := copyDir(contentDir, target); err != nil {
+		if err := copyDir(contentDir, target, true); err != nil {
 			return nil, apperror.WrapWithMessage(err, "restore_failed", "failed to copy content")
 		}
 	} else if archivePath, ok := findArchive(stashDir); ok {
@@ -624,7 +624,11 @@ func generateID(name, sourcePath string) string {
 	return fmt.Sprintf("%s_%s", base, timestamp)
 }
 
-func copyDir(src, dst string) error {
+// copyDir copies src into dst. When restore is true (restoring a stash into a
+// user-chosen target) it refuses symlinks that resolve outside dst, matching
+// compress.Extract's policy; when false (saving into the vault) it preserves
+// symlinks verbatim so the stash faithfully mirrors the source.
+func copyDir(src, dst string, restore bool) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -637,13 +641,15 @@ func copyDir(src, dst string) error {
 		if info.IsDir() {
 			return os.MkdirAll(target, info.Mode())
 		}
-		// Recreate symlinks verbatim rather than dereferencing them: copyFile
-		// uses os.Open, which follows links, so a dangling symlink would abort
-		// the entire save. Preserving the link also keeps the stash faithful.
+		// Recreate symlinks rather than dereferencing them: copyFile uses os.Open,
+		// which follows links, so a dangling symlink would abort the whole copy.
 		if info.Mode()&os.ModeSymlink != 0 {
 			linkDest, lerr := os.Readlink(path)
 			if lerr != nil {
 				return nil // skip links whose metadata can't be read
+			}
+			if restore && symlinkEscapes(dst, target, linkDest) {
+				return nil // never materialize an escaping link into the target
 			}
 			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 				return err
@@ -655,6 +661,20 @@ func copyDir(src, dst string) error {
 	})
 }
 
+// symlinkEscapes reports whether a symlink at linkPath pointing to linkDest would
+// resolve outside base (absolute, or relative-escaping).
+func symlinkEscapes(base, linkPath, linkDest string) bool {
+	if filepath.IsAbs(linkDest) {
+		return true
+	}
+	resolved := filepath.Join(filepath.Dir(linkPath), linkDest)
+	rel, err := filepath.Rel(base, resolved)
+	if err != nil {
+		return true
+	}
+	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 func copyFile(src, dst string) error {
 	srcFile, err := os.Open(src)
 	if err != nil {
@@ -664,6 +684,14 @@ func copyFile(src, dst string) error {
 
 	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
 		return err
+	}
+
+	// Refuse to write through a pre-existing symlink at the destination: a
+	// planted link could otherwise redirect the write outside the restore target.
+	if fi, lerr := os.Lstat(dst); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
+		if rmErr := os.Remove(dst); rmErr != nil {
+			return rmErr
+		}
 	}
 
 	dstFile, err := os.Create(dst)

@@ -484,3 +484,41 @@ func TestStashIDTraversalRejected(t *testing.T) {
 		t.Errorf("victim directory was deleted via traversal: %v", err)
 	}
 }
+
+// TestRestoreDropsEscapingSymlinks verifies that symlinks which would resolve
+// outside the restore target are not materialized on restore (matching the
+// archive path), even though Save preserves them verbatim in the vault.
+func TestRestoreDropsEscapingSymlinks(t *testing.T) {
+	root := t.TempDir()
+	mgr, err := NewManager(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(src, "ok.txt"), []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/etc/passwd", filepath.Join(src, "abslink")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../../escape", filepath.Join(src, "relesc")); err != nil {
+		t.Fatal(err)
+	}
+	st, err := mgr.Save(context.Background(), &SaveOptions{SourcePath: src, Name: "links"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	target := t.TempDir()
+	if _, err := mgr.Restore(context.Background(), st.Manifest.ID, target); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	for _, bad := range []string{"abslink", "relesc"} {
+		if _, err := os.Lstat(filepath.Join(target, bad)); !os.IsNotExist(err) {
+			t.Errorf("escaping symlink %q should be dropped on restore (err %v)", bad, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(target, "ok.txt")); err != nil {
+		t.Errorf("safe file ok.txt should be restored: %v", err)
+	}
+}
