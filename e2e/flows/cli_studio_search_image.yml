@@ -1,0 +1,108 @@
+version: 1
+name: cli_studio_search_image
+
+metadata:
+  feature: studio
+  owner: core
+  priority: normal
+  tags:
+    - studio
+    - images
+    - search
+    - vidtrace
+    - agent
+
+intent: |
+  Verify that searching a vidtrace bundle by frame OCR text and selecting the hit
+  renders the matching frame image inline in the search preview pane (the per-frame
+  locator "frames/f.png @ 12s" resolves to the frame). Driven in a real PTY.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - "export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-simg-store; exec ./bin/fcheap studio"
+  cwd: "."
+  timeoutMs: 25000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: require
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+    - run: "rm -rf /tmp/fcheap-e2e-simg-store /tmp/fcheap-e2e-simg-src"
+      timeoutMs: 5000
+    # Real frame PNGs (frames/frame_0001.png …) referenced by the timeline below.
+    - run: "go run ./e2e/gen/genframes /tmp/fcheap-e2e-simg-src 4"
+      timeoutMs: 60000
+    - run: |
+        cat > /tmp/fcheap-e2e-simg-src/metadata.json <<'JSON'
+        {"schema_version":"1","source_video":"/Downloads/OPG.mp4","duration_seconds":24}
+        JSON
+      timeoutMs: 5000
+    - run: |
+        cat > /tmp/fcheap-e2e-simg-src/timeline.json <<'JSON'
+        {"schema_version":"1","entries":[
+          {"time_seconds":0,"frame":"frames/frame_0001.png","ocr":{"text":"NullPointerException at checkout"},"transcript":[{"text":"the app crashed when I clicked pay"}]},
+          {"time_seconds":12,"frame":"frames/frame_0002.png","ocr":{"text":"Retry button shown after error"},"transcript":[]}
+        ]}
+        JSON
+      timeoutMs: 5000
+    - run: "FCHEAP_STASH_DIR=/tmp/fcheap-e2e-simg-store ./bin/fcheap save /tmp/fcheap-e2e-simg-src --name OPG-frames --tool vidtrace"
+      timeoutMs: 15000
+    - run: |
+        export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-simg-store
+        ID=$(./bin/fcheap list --json | grep -o '"id": "[^"]*"' | head -1 | cut -d'"' -f4)
+        ./bin/fcheap analyze "$ID"
+      timeoutMs: 20000
+
+steps:
+  - wait:
+      screen:
+        contains: "OPG-frames"
+      timeoutMs: 5000
+  # Open search and query the frame OCR text.
+  - press: "/"
+  - wait:
+      screen:
+        contains: "Search"
+      timeoutMs: 5000
+  - type: "checkout"
+  - press: "enter"
+  # The hit's locator is "frames/frame_0001.png @ 0s"; the preview decodes the frame.
+  - wait:
+      screen:
+        contains: "frame_0001"
+      timeoutMs: 8000
+  - wait:
+      screen:
+        contains: "48×32"
+      timeoutMs: 8000
+  - snapshot: search-image
+  - press: "ctrl+c"
+  - wait:
+      process:
+        exitCode: 0
+      timeoutMs: 5000
+
+outcomes:
+  - id: clean_exit
+    description: studio exits cleanly
+    verify:
+      process:
+        exitCode: 0
+  - id: frame_image_rendered
+    description: the search preview shows the matching frame as inline image art
+    verify:
+      screen:
+        contains: "48×32"
+  - id: not_binary_message
+    description: the frame hit is not shown as the un-previewable binary message
+    verify:
+      screen:
+        notContains: "not previewable"

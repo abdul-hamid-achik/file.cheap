@@ -304,7 +304,6 @@ func (m Model) renderDetail(h int) string {
 		kvLine(&info, "Indexed", mutedStyle.Render("— not indexed"))
 	}
 
-	files := m.renderFileTree()
 	filesTitle := fmt.Sprintf("Files (%d)", man.FileCount)
 
 	infoStr := info.String()
@@ -315,38 +314,69 @@ func (m Model) renderDetail(h int) string {
 		rightW := m.width - leftW - 4
 		// Right preview fills the full body height; the left column stacks
 		// Provenance (capped so Files keeps room) above Files (the remainder).
+		// Size the viewport to the actual right-panel interior (panel width minus
+		// border+padding) so both text and image art fit exactly at any width.
+		m.preview.SetWidth(rightW - 4)
 		m.preview.SetHeight(panelBodyHeight(h))
 		right := m.renderPanelH(m.previewTitle(), m.renderPreview(), rightW, h, m.focus == focusPreview)
 		provH := clamp(provNatural, 6, h-6)
 		filesH := h - provH
 		left := lipgloss.JoinVertical(lipgloss.Left,
 			m.renderPanelClip("Provenance", infoStr, leftW, provH, false),
-			m.renderPanelClip(filesTitle, files, leftW, filesH, m.focus == focusFiles),
+			m.renderPanelClip(filesTitle, m.renderFileTree(panelBodyHeight(filesH), leftW-4), leftW, filesH, m.focus == focusFiles),
 		)
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right)
 	}
 
 	// Stacked: Provenance, Files, Preview — each capped so all three stay visible.
 	provH := clamp(provNatural, 5, h-9)
-	filesH := clamp(lipgloss.Height(files)+3, 4, h-provH-4)
+	naturalFiles := len(m.selectedFiles()) + 1 // file rows + a possible "… more" line
+	filesH := clamp(naturalFiles+3, 4, h-provH-4)
 	previewH := h - provH - filesH
 	if previewH < 3 {
 		previewH = 3
 	}
+	// Full-width preview panel (m.width-2): interior is m.width-6.
+	m.preview.SetWidth(clamp(m.width-6, 20, m.width))
 	m.preview.SetHeight(panelBodyHeight(previewH))
 	return lipgloss.JoinVertical(lipgloss.Left,
 		m.renderPanelClip("Provenance", infoStr, m.width-2, provH, false),
-		m.renderPanelClip(filesTitle, files, m.width-2, filesH, m.focus == focusFiles),
+		m.renderPanelClip(filesTitle, m.renderFileTree(panelBodyHeight(filesH), m.width-6), m.width-2, filesH, m.focus == focusFiles),
 		m.renderPanelH(m.previewTitle(), m.renderPreview(), m.width-2, previewH, m.focus == focusPreview),
 	)
 }
 
-func (m Model) renderFileTree() string {
+// renderFileTree renders the file list windowed to exactly bodyRows visible rows
+// (the panel's interior height) so the cursor always stays on screen. Sizing the
+// scroll window to the real panel height — not the whole terminal — is what makes
+// the list scroll instead of appearing frozen once the cursor passes the fold.
+func (m Model) renderFileTree(bodyRows, interior int) string {
 	files := m.selectedFiles()
 	if len(files) == 0 {
 		return mutedStyle.Render("(no files)")
 	}
-	maxRows := clamp(m.height-12, 4, len(files))
+	if bodyRows < 1 {
+		bodyRows = 1
+	}
+	if interior < 12 {
+		interior = 12
+	}
+	// clip guarantees a row never wraps the panel (MaxWidth truncates ANSI-aware,
+	// rather than wrapping, which would corrupt the columnar layout, double the row
+	// count vs. the scroll math, and push the bottom border off-screen). pathW flexes
+	// the name column to the panel width so columns stay aligned at any size.
+	clip := func(s string) string { return lipgloss.NewStyle().MaxWidth(interior).Render(s) }
+	const markerW, sizeW = 2, 8
+	pathW := interior - markerW - sizeW - 1
+	if pathW < 8 {
+		pathW = 8
+	}
+	// Reserve a row for the "… N more" indicator when the list overflows so it
+	// doesn't hide the last file.
+	maxRows := bodyRows
+	if len(files) > bodyRows && maxRows > 1 {
+		maxRows--
+	}
 	start := 0
 	if m.fileIdx >= maxRows {
 		start = m.fileIdx - maxRows + 1
@@ -359,16 +389,16 @@ func (m Model) renderFileTree() string {
 		if i == m.fileIdx {
 			marker = "▸ "
 		}
-		line := fmt.Sprintf("%s%-40s %8s", marker, truncate(files[i].Path, 40), formatSize(files[i].Size))
+		line := fmt.Sprintf("%s%-*s %*s", marker, pathW, truncate(files[i].Path, pathW), sizeW, formatSize(files[i].Size))
 		if i == m.fileIdx && m.focus == focusFiles {
-			b.WriteString(selectedRowStyle.Render(line))
+			b.WriteString(clip(selectedRowStyle.Render(line)))
 		} else {
-			b.WriteString(line)
+			b.WriteString(clip(line))
 		}
 		b.WriteString("\n")
 	}
 	if end < len(files) {
-		b.WriteString(mutedStyle.Render(fmt.Sprintf("  … %d more", len(files)-end)))
+		b.WriteString(clip(mutedStyle.Render(fmt.Sprintf("  … %d more", len(files)-end))))
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
@@ -385,7 +415,39 @@ func (m Model) previewTitle() string {
 }
 
 func (m Model) renderPreview() string {
+	// Image previews bypass the viewport (the art is fit to the pane, nothing to
+	// scroll). Only the detail and search panes load images, so gate on those.
+	if m.previewImg != nil && (m.activeView == viewDetail || m.activeView == viewSearch) {
+		return m.imageArt()
+	}
 	return m.preview.View()
+}
+
+// imageArt renders the loaded image to half-block art sized to the current preview
+// pane. It memoizes the result (keyed by image + pane size) so repeated frames —
+// e.g. while a spinner ticks — don't re-rasterize. The render funcs set the
+// viewport width to the panel interior, so cols is exactly the available width and
+// the un-wrappable block art never wraps.
+func (m Model) imageArt() string {
+	cols := m.preview.Width()
+	rows := m.preview.Height()
+	if cols < 1 {
+		cols = 38
+	}
+	if rows < 4 {
+		rows = 4
+	}
+	if c := m.previewImgCache; c != nil && c.img == m.previewImg && c.cols == cols && c.rows == rows {
+		return c.str
+	}
+	art := renderImageBlocks(m.previewImg, cols, rows-2)
+	if m.previewImgCap != "" {
+		art += "\n\n" + m.previewImgCap
+	}
+	if c := m.previewImgCache; c != nil {
+		*c = imgCache{img: m.previewImg, cols: cols, rows: rows, str: art}
+	}
+	return art
 }
 
 // --- search view ---
@@ -397,7 +459,6 @@ func (m Model) renderSearch(h int) string {
 		restH = 4
 	}
 
-	results := m.renderSearchResults()
 	resultsTitle := "Results"
 	if len(m.searchResults) > 0 {
 		resultsTitle = fmt.Sprintf("Results %d/%d", m.resultIdx+1, len(m.searchResults))
@@ -409,8 +470,9 @@ func (m Model) renderSearch(h int) string {
 	if m.width >= 96 {
 		leftW := clamp(m.width/2-2, 30, m.width-4)
 		rightW := m.width - leftW - 4
+		m.preview.SetWidth(rightW - 4) // panel interior
 		m.preview.SetHeight(panelBodyHeight(restH))
-		left := m.renderPanelH(resultsTitle, results, leftW, restH, m.focus == focusResults)
+		left := m.renderPanelH(resultsTitle, m.renderSearchResults(panelBodyHeight(restH)), leftW, restH, m.focus == focusResults)
 		right := m.renderPanelH("Preview", m.renderPreview(), rightW, restH, m.focus == focusPreview)
 		return lipgloss.JoinVertical(lipgloss.Left,
 			queryPanel,
@@ -420,15 +482,16 @@ func (m Model) renderSearch(h int) string {
 	// Stacked: split the remaining height between results and preview.
 	resultsH := restH / 2
 	previewH := restH - resultsH
+	m.preview.SetWidth(clamp(m.width-6, 20, m.width)) // panel interior
 	m.preview.SetHeight(panelBodyHeight(previewH))
 	return lipgloss.JoinVertical(lipgloss.Left,
 		queryPanel,
-		m.renderPanelH(resultsTitle, results, m.width-2, resultsH, m.focus == focusResults),
+		m.renderPanelH(resultsTitle, m.renderSearchResults(panelBodyHeight(resultsH)), m.width-2, resultsH, m.focus == focusResults),
 		m.renderPanelH("Preview", m.renderPreview(), m.width-2, previewH, m.focus == focusPreview),
 	)
 }
 
-func (m Model) renderSearchResults() string {
+func (m Model) renderSearchResults(bodyRows int) string {
 	if m.searching {
 		return m.spinner.View() + " " + mutedStyle.Render("searching…")
 	}
@@ -442,7 +505,7 @@ func (m Model) renderSearchResults() string {
 	if m.width < 96 {
 		width = m.width - 6
 	}
-	maxRows := clamp(m.height-12, 5, len(m.searchResults))
+	maxRows := clamp(bodyRows, 1, len(m.searchResults))
 	start := 0
 	if m.resultIdx >= maxRows {
 		start = m.resultIdx - maxRows + 1
@@ -481,6 +544,9 @@ func (m Model) renderTimeline(h int) string {
 	if m.selected != nil && m.selected.Manifest != nil && m.selected.Manifest.Name != "" {
 		title = "Timeline · " + m.selected.Manifest.Name
 	}
+	// Full-width panel: fill its interior (the side-by-side widths from resize()
+	// would otherwise leave the right half blank and wrap lines early).
+	m.preview.SetWidth(clamp(m.width-6, 20, m.width))
 	m.preview.SetHeight(panelBodyHeight(h))
 	return m.renderPanelH(title, m.preview.View(), m.width-2, h, true)
 }
@@ -492,6 +558,8 @@ func (m Model) renderDiff(h int) string {
 	if m.selected != nil && m.selected.Manifest != nil && m.selected.Manifest.Name != "" {
 		title = "Diff · " + m.selected.Manifest.Name
 	}
+	// Full-width panel: fill its interior so diff lines use the whole width.
+	m.preview.SetWidth(clamp(m.width-6, 20, m.width))
 	m.preview.SetHeight(panelBodyHeight(h))
 	return m.renderPanelH(title, m.preview.View(), m.width-2, h, true)
 }
@@ -550,6 +618,8 @@ func (m Model) renderHelp(h int) string {
 	sections := []string{
 		titleStyle.Render("Navigation"),
 		help("j / k  ↑ / ↓", "move cursor"),
+		help("g / G", "first / last"),
+		help("pgdn / pgup", "page down / up"),
 		help("enter / l", "open stash detail"),
 		help("esc / h", "back to list"),
 		help("tab", "cycle pane focus"),
@@ -568,13 +638,21 @@ func (m Model) renderHelp(h int) string {
 		help("d", "drop (confirm y/n) — list / files pane"),
 		help("f", "filter list (name / tool / tag)"),
 		help("o / O", "cycle sort / reverse direction"),
-		help("g", "refresh stash list"),
+		help("R", "refresh stash list"),
+		"",
+		titleStyle.Render("Files pane (detail, when focused)"),
+		help("j / k", "select prev / next file"),
+		help("pgdn / pgup", "jump a page of files"),
+		help("ctrl+d / ctrl+u", "jump a page of files"),
+		help("g / G", "first / last file"),
+		help("images", "render inline (png/jpg/gif)"),
 		"",
 		titleStyle.Render("Preview pane (when focused)"),
 		help("j / k", "scroll one line"),
 		help("d / u", "half-page down / up"),
 		help("pgdn / pgup", "half-page down / up"),
 		help("ctrl+d / ctrl+u", "half-page down / up"),
+		help("g / G", "top / bottom"),
 		"",
 		titleStyle.Render("Search"),
 		help("/", "focus query input"),
@@ -632,18 +710,30 @@ func (m Model) contextHints() string {
 		}
 		hints = append(hints,
 			keyHint("r", "restore"), keyHint("c", "compress"),
-			keyHint("a", "index"), keyHint("x", "diff"), keyHint("d", "drop"), keyHint("esc", "back"),
+			keyHint("a", "index"), keyHint("x", "diff"),
 		)
+		// `d` is "drop" only off the preview pane; there it's the half-page pager,
+		// so don't advertise a destructive action that won't happen.
+		if m.focus == focusPreview {
+			hints = append(hints, keyHint("d/u", "page"))
+		} else {
+			hints = append(hints, keyHint("d", "drop"))
+		}
+		hints = append(hints, keyHint("esc", "back"))
 		return strings.Join(hints, "  ")
 	case viewTimeline, viewDiff:
 		return strings.Join([]string{
-			keyHint("j/k", "scroll"), keyHint("esc", "back"), keyHint("q", "quit"),
+			keyHint("j/k", "scroll"), keyHint("g/G", "top/btm"), keyHint("esc", "back"), keyHint("q", "quit"),
 		}, "  ")
 	case viewSearch:
-		return strings.Join([]string{
-			keyHint("/", "query"), keyHint("enter", "search"), keyHint("tab", "focus"),
-			keyHint("m", "mode"), keyHint("esc", "back"),
-		}, "  ")
+		hints := []string{keyHint("/", "query"), keyHint("enter", "search"), keyHint("tab", "focus")}
+		// `m` (cycle mode) is live only once focus leaves the query input; while
+		// typing it would just insert an 'm', so don't advertise it there.
+		if m.focus != focusQuery {
+			hints = append(hints, keyHint("m", "mode"))
+		}
+		hints = append(hints, keyHint("esc", "back"))
+		return strings.Join(hints, "  ")
 	case viewStatus, viewHelp:
 		return keyHint("esc", "back")
 	default:
@@ -651,7 +741,7 @@ func (m Model) contextHints() string {
 			keyHint("enter", "open"), keyHint("/", "search"), keyHint("f", "filter"),
 			keyHint("o", "sort"), keyHint("r", "restore"), keyHint("c", "compress"),
 			keyHint("a", "index"), keyHint("x", "diff"), keyHint("d", "drop"),
-			keyHint("s", "status"), keyHint("?", "help"), keyHint("q", "quit"),
+			keyHint("R", "refresh"), keyHint("s", "status"), keyHint("?", "help"), keyHint("q", "quit"),
 		}, "  ")
 	}
 }
@@ -692,6 +782,12 @@ func (m Model) renderPanelH(title, body string, width, totalH int, focused bool)
 	if focused {
 		titleStyleFn = activePanelTitleStyle
 		style = focusedPanelStyle
+	}
+	// Keep the title to one row: a title wider than the interior (border+padding =
+	// 4 cols) would wrap, making the box taller than totalH so its bottom border
+	// gets clipped. This single guard protects every titled panel.
+	if interior := width - 4; interior > 0 {
+		title = truncate(title, interior)
 	}
 	content := lipgloss.JoinVertical(lipgloss.Left, titleStyleFn.Render(title), body)
 	style = style.Width(width)

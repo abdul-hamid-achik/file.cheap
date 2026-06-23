@@ -1,0 +1,128 @@
+version: 1
+name: cli_studio_images
+
+metadata:
+  feature: studio
+  owner: core
+  priority: high
+  tags:
+    - studio
+    - images
+    - agent
+
+intent: |
+  Verify that fcheap studio renders raster image files inline in the preview pane
+  (half-block art + a format/dimensions caption) and that the Files pane scrolls to
+  reveal files below the fold — the regression for the "stuck on the same files"
+  frozen-list bug. Driven in a real PTY.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - "export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-img-store; exec ./bin/fcheap studio"
+  cwd: "."
+  timeoutMs: 20000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: require
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+    - run: "rm -rf /tmp/fcheap-e2e-img-store /tmp/fcheap-e2e-img-src"
+      timeoutMs: 5000
+    # 30 deterministic 48x32 PNG frames + a README.txt, so the file list overflows
+    # the pane (scroll testable) and the preview has real images to render.
+    - run: "go run ./e2e/gen/genframes /tmp/fcheap-e2e-img-src 30"
+      timeoutMs: 60000
+    - run: "FCHEAP_STASH_DIR=/tmp/fcheap-e2e-img-store ./bin/fcheap save /tmp/fcheap-e2e-img-src --name e2e-frames --tool vidtrace --tag e2e"
+      timeoutMs: 15000
+
+steps:
+  - wait:
+      screen:
+        contains: "studio"
+      timeoutMs: 5000
+  - wait:
+      screen:
+        contains: "e2e-frames"
+      timeoutMs: 5000
+  - press: "enter"
+  - wait:
+      screen:
+        contains: "Provenance"
+      timeoutMs: 5000
+  - wait:
+      screen:
+        contains: "Files ("
+      timeoutMs: 5000
+  # Top of the file list is visible.
+  - wait:
+      screen:
+        contains: "frame_0001.png"
+      timeoutMs: 5000
+  - snapshot: detail-files-top
+  # Jump to the last file: this scrolls the list to a file that was below the fold
+  # (the frozen-list regression) AND selects an image, so the preview renders.
+  - press: "G"
+  - wait:
+      screen:
+        contains: "frame_0030.png"
+      timeoutMs: 5000
+  - wait:
+      screen:
+        contains: "48×32"
+      timeoutMs: 5000
+  - snapshot: detail-image
+  # Jump back to the top: the window scrolls back and the cursor stays visible.
+  - press: "g"
+  - wait:
+      screen:
+        contains: "frame_0001.png"
+      timeoutMs: 5000
+  # Page down with the pager keys (the other scroll path) lands further down.
+  - press: "ctrl+d"
+  - wait:
+      screen:
+        contains: "frame_00"
+      timeoutMs: 5000
+  # End on an image so the final-screen outcomes assert the rendered preview.
+  - press: "G"
+  - wait:
+      screen:
+        contains: "48×32"
+      timeoutMs: 5000
+  - press: "ctrl+c"
+  - wait:
+      process:
+        exitCode: 0
+      timeoutMs: 5000
+
+outcomes:
+  - id: clean_exit
+    description: studio exits cleanly
+    verify:
+      process:
+        exitCode: 0
+  - id: image_rendered
+    description: an interior preview cell is a rendered half-block glyph
+    verify:
+      cell:
+        x: 80
+        y: 10
+        char: "▀"
+  - id: image_caption
+    description: the image caption shows format and native dimensions
+    verify:
+      screen:
+        contains: "48×32"
+  - id: not_binary_message
+    description: image files are not shown as the un-previewable binary message
+    verify:
+      screen:
+        notContains: "not previewable"
