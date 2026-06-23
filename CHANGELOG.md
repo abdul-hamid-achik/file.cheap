@@ -9,6 +9,10 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.19.0] - 2026-06-22
+
 Fixes from an exhaustive multi-agent code/docs audit.
 
 ### Fixed
@@ -117,7 +121,8 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.15.1...v0.16.0
