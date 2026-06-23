@@ -1,6 +1,7 @@
 package studio
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -207,5 +208,46 @@ func TestStashFilter(t *testing.T) {
 	m.filter = "zzz" // no match
 	if got := len(m.visible()); got != 0 {
 		t.Errorf("no-match filter: %d visible, want 0", got)
+	}
+}
+
+// TestListLayoutBounds verifies the list panel keeps its bottom border and no
+// line exceeds the terminal width when the list overflows — across widths and
+// down to a tiny terminal. Regression test for the TUI-review layout findings.
+func TestListLayoutBounds(t *testing.T) {
+	var ss []*stash.Stash
+	for i := 0; i < 50; i++ {
+		ss = append(ss, &stash.Stash{Manifest: &manifest.Manifest{
+			ID: fmt.Sprintf("stash-%02d", i), Name: fmt.Sprintf("stash-%02d", i),
+			Tool: "vidtrace", FileCount: i, TotalSize: int64(i) * 1000,
+			CreatedAt: "2026-06-23T06:00:00Z", Compression: "zstd",
+			Custom: map[string]string{"secrets_found": "2"},
+		}})
+	}
+	for _, w := range []int{70, 90, 120, 200} {
+		m := Model{width: w, height: 24, activeView: viewList, searchMode: "auto", stashes: ss}
+		out := clean(m.render())
+		lines := strings.Split(out, "\n")
+		bottom := false
+		for _, ln := range lines {
+			if strings.ContainsAny(ln, "╰└") {
+				bottom = true
+			}
+			if cells := len([]rune(ln)); cells > w {
+				t.Errorf("w=%d: a line is %d cells wide, want <= %d", w, cells, w)
+				break
+			}
+		}
+		if !bottom {
+			t.Errorf("w=%d: list panel lost its bottom border on overflow", w)
+		}
+		if got := len(lines); got != 24 {
+			t.Errorf("w=%d: rendered %d lines, want 24", w, got)
+		}
+	}
+	// A terminal too short for the chrome must not overflow.
+	m := Model{width: 60, height: 3, activeView: viewList, searchMode: "auto", stashes: ss}
+	if got := len(strings.Split(clean(m.render()), "\n")); got > 3 {
+		t.Errorf("tiny terminal rendered %d lines, want <= 3", got)
 	}
 }

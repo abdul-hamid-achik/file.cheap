@@ -23,13 +23,22 @@ func (m Model) render() string {
 		return "fcheap studio\n\nloading…"
 	}
 
-	header := m.renderHeader()
-	footer := m.renderFooter()
+	header := lipgloss.NewStyle().MaxWidth(m.width).Render(m.renderHeader())
+	// Wrap a long footer to the terminal width (at the "  " gaps between hints)
+	// instead of overflowing, which would force the whole UI wider than the screen.
+	footer := lipgloss.NewStyle().Width(m.width).Render(m.renderFooter())
+	headerH := lipgloss.Height(header)
+	footerH := lipgloss.Height(footer)
+	// Too short to hold header + a body row + footer: show just the footer (it
+	// carries the drop-confirm and diff prompts), clipped to the terminal.
+	if m.height < headerH+footerH+1 {
+		return lipgloss.NewStyle().Height(m.height).MaxHeight(m.height).Render(footer)
+	}
 	// The body fills every row between the header and the footer, so views use
 	// the full terminal height and the footer pins to the bottom.
-	bodyH := m.height - lipgloss.Height(header) - lipgloss.Height(footer)
-	if bodyH < 3 {
-		bodyH = 3
+	bodyH := m.height - headerH - footerH
+	if bodyH < 1 {
+		bodyH = 1
 	}
 
 	var body string
@@ -98,7 +107,8 @@ func (m Model) renderList(h int) string {
 		arrow = "▼"
 	}
 	title := fmt.Sprintf("Stashes · %s %s", mode.name, arrow)
-	rows := m.renderStashRows(m.width-4, h)
+	// m.width-6 is the panel interior (m.width-2 box minus the 4-col border+padding).
+	rows := m.renderStashRows(m.width-6, h)
 	return m.renderPanelH(title, rows, m.width-2, h, true)
 }
 
@@ -121,6 +131,9 @@ func (m Model) renderStashRows(width, h int) string {
 	vis := m.visible()
 	nameW := nameColWidth(width)
 	var b strings.Builder
+	// clip truncates a line to the panel interior (ANSI-aware) so chip-bearing or
+	// long lines never wrap and corrupt the columnar layout at narrow widths.
+	clip := func(s string) string { return lipgloss.NewStyle().MaxWidth(width).Render(s) }
 
 	bodyRows := panelBodyHeight(h) - 1 // minus the column-header row
 
@@ -128,10 +141,10 @@ func (m Model) renderStashRows(width, h int) string {
 	if m.filtering || m.filter != "" {
 		bodyRows--
 		if m.filtering {
-			b.WriteString(mutedStyle.Render("filter: ") + m.filterInput.View())
+			b.WriteString(clip(mutedStyle.Render("filter: ") + m.filterInput.View()))
 		} else {
-			b.WriteString(mutedStyle.Render("filter: ") + inkStyle.Render(m.filter) +
-				mutedStyle.Render(fmt.Sprintf("   %d of %d  ·  f edit · esc clear", len(vis), len(m.stashes))))
+			b.WriteString(clip(mutedStyle.Render("filter: ") + inkStyle.Render(m.filter) +
+				mutedStyle.Render(fmt.Sprintf("   %d of %d  ·  f edit · esc clear", len(vis), len(m.stashes)))))
 		}
 		b.WriteString("\n")
 	}
@@ -147,14 +160,20 @@ func (m Model) renderStashRows(width, h int) string {
 		}
 		return colHeaderStyle.Render(s)
 	}
-	b.WriteString("  " + hcell("NAME", nameW, false) + "  " + hcell("TOOL", colTool, false) +
+	b.WriteString(clip("  " + hcell("NAME", nameW, false) + "  " + hcell("TOOL", colTool, false) +
 		"  " + hcell("FILES", colFiles, true) + "  " + hcell("SIZE", colSize, true) +
-		"  " + hcell("AGE", colAge, false))
+		"  " + hcell("AGE", colAge, false)))
 	b.WriteString("\n")
 
 	if len(vis) == 0 {
 		b.WriteString(mutedStyle.Render("  no stashes match the filter"))
 		return b.String()
+	}
+
+	// Reserve a row for the "… N more" indicator when the list overflows, so the
+	// panel's bottom border isn't pushed out and clipped.
+	if len(vis) > bodyRows {
+		bodyRows--
 	}
 
 	maxRows := clamp(bodyRows, 1, len(vis))
@@ -166,7 +185,7 @@ func (m Model) renderStashRows(width, h int) string {
 
 	for i := start; i < end; i++ {
 		selected := i == m.cursor && m.activeView == viewList
-		row := m.renderStashRow(vis[i], i == m.cursor, nameW, selected)
+		row := clip(m.renderStashRow(vis[i], i == m.cursor, nameW, selected))
 		if selected {
 			b.WriteString(selectedRowStyle.Width(width).Render(row))
 		} else {
