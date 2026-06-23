@@ -171,7 +171,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 	// fcheap_restore
 	type restoreInput struct {
 		StashID string `json:"stash_id" jsonschema:"The stash ID to restore"`
-		Target  string `json:"target,omitempty" jsonschema:"Target directory (default: /tmp/<stash-id>)"`
+		Target  string `json:"target,omitempty" jsonschema:"Target directory (default: the system temp dir under a <stash-id> subdirectory)"`
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_restore",

@@ -10,36 +10,37 @@ fcheap doctor
 
 ## What It Checks
 
-- **Stash directory**: exists and writable
-- **Config file**: loaded and valid
-- **SQLite**: embedded database accessible
-- **veclite**: keyword search database accessible
-- **vecgrep**: optional semantic search binary (reports if found in PATH or configured path)
-- **Compression**: zstd library available (built-in)
+- **System dependencies** (looked up on `PATH`, with resolved path and version):
+  - `vecgrep` — optional semantic code search
+  - `zstd` — standalone zstd compression binary
+  - `tar` — archive creation
+- **Stash storage**: the stash directory, and the stash count + total size.
+- **Indexes**: the SQLite metadata index (`fcheap.db`) and the veclite search
+  index (`fcheap.veclite`), each reported once it has been created.
+- **Embedder**: when an embedder is configured, pings it and reports whether it
+  is reachable and its vector dimension (otherwise notes keyword-only search).
 
 ## Output
 
 ```
+System Dependencies
+  vecgrep    /opt/homebrew/bin/vecgrep
+    vecgrep 0.x.x
+  zstd       /opt/homebrew/bin/zstd
+    zstd 1.5.6
+  tar        /usr/bin/tar
+    bsdtar 3.5.3
+
+Stash Storage
+  Stash dir: ~/.local/share/fcheap
+    3 stash(es), 4.2 MB total
+  metadata index (SQLite): ~/.local/share/fcheap/fcheap.db
+  search index (veclite): ~/.local/share/fcheap/fcheap.veclite
+  embedder: not configured (keyword search only)
+
 fcheap doctor: ok
-
-  Stash dir: ~/.local/share/fcheap (writable)
-  Config: ~/.config/fcheap/config.yaml (loaded)
-  SQLite: ok
-  veclite: ok
-  vecgrep: not found (optional, for semantic search)
-  zstd: built-in (klauspost/compress)
 ```
 
-If there are issues, doctor reports them with suggestions:
-
-```
-fcheap doctor: issues found
-
-  Stash dir: /custom/path (not found)
-  Config: ~/.config/fcheap/config.yaml (loaded)
-  SQLite: ok
-  vecgrep: found at /usr/local/bin/vecgrep
-  zstd: built-in
-
-Run `fcheap config set stash_dir ~/.local/share/fcheap` to fix.
-```
+Optional dependencies that are missing are reported as warnings (e.g. `vecgrep
+not found`) but do not fail the command. Use `--json` for a machine-readable
+report (`{ dependencies, stash_dir, all_ok }`).

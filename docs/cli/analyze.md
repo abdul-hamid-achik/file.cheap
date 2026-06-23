@@ -42,17 +42,15 @@ fcheap automatically detects bundle types:
 
 ```
 Indexed stash: my_artifacts_20260622_115254
+  Files indexed: 803
   Bundle: vidtrace
-  Searchable files: 803
 ```
 
-With `--query`:
+With `--query` (each hit names the matching file and its score):
 
 ```
 Search Results (3)
 
-my_artifacts_20260622_115254
-  Source: keyword
-  Score: 2.45
-  └─ ...Internal Migrant conditions not showing...
+logs/app.log: score 2.45
+  ...Internal Migrant conditions not showing...
 ```

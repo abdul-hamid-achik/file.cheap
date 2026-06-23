@@ -81,7 +81,11 @@ This exposes 11 **tools**: `fcheap_save`, `fcheap_list`, `fcheap_info`, `fcheap_
 ## Configuration
 
 ```bash
-fcheap config           # print current config
+fcheap config show              # print current config
+fcheap config path              # print the config file path
+fcheap config get <key>         # read one key
+fcheap config set <key> <value> # write one key
+fcheap config init [--force]    # write a fresh default config
 ```
 
 Config file (`~/.config/fcheap/config.yaml`):

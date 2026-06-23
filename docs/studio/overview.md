@@ -68,11 +68,16 @@ search index exist, and vecgrep availability. `?` shows the keybinding reference
 | `a` | Analyze / index for search |
 | `x` | Diff against a directory |
 | `t` | vidtrace timeline (bundles only) |
-| `d` | Drop (with `y/n` confirm) |
+| `d` | Drop (with `y/n` confirm) — from the list or the files pane |
 | `s` | Status |
-| `g` | Refresh list |
+| `g` | Refresh list (list view) |
 | `?` | Help |
 | `q` | Quit · `Ctrl+C` force quit |
+
+`Enter`/`l` (open) and `g` (refresh) apply in the **list** view. In a **focused
+preview pane**, `j`/`k` scroll a line, and `d`/`u`, `PgDn`/`PgUp`, and
+`Ctrl+D`/`Ctrl+U` half-page — there, `d` pages down rather than dropping (drop a
+stash from the list or the files pane).
 
 Async operations (loading, search, restore, drop, compress) show an animated
 spinner while in flight. Indexing (`a`) streams per-file progress into an

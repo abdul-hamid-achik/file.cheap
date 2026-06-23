@@ -12,7 +12,7 @@ fcheap compress <stash-id> [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--algo` | string | `zstd` | Compression algorithm (zstd, gzip) |
+| `--algo` | string | `zstd` | Compression algorithm (`zstd`, `gzip`, or `none` for an uncompressed tar) |
 
 ## Examples
 

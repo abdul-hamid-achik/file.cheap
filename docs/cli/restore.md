@@ -12,7 +12,10 @@ fcheap restore <stash-id> [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--to` | string | `/tmp/<stash-id>` | Target directory for extraction |
+| `--to` | string | `<system-temp>/<stash-id>` | Target directory for extraction |
+
+The default target is the OS temp directory (`os.TempDir()` — `$TMPDIR` on macOS,
+`/tmp` on Linux), under a subdirectory named after the stash ID.
 
 ## Examples
 
@@ -20,7 +23,7 @@ fcheap restore <stash-id> [flags]
 # Restore to a specific directory
 fcheap restore my_artifacts_20260622_115254 --to /tmp/working/
 
-# Restore to default location (/tmp/<stash-id>)
+# Restore to the default location (system temp dir / <stash-id>)
 fcheap restore my_artifacts_20260622_115254
 ```
 

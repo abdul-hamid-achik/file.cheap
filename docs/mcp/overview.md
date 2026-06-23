@@ -64,7 +64,8 @@ In `~/.config/opencode/opencode.json`, under `mcp`:
 Register a server named `fcheap` that runs `fcheap mcp serve` over stdio. Clients
 that read a `.mcp.json` (`mcpServers` map) use the same shape as the Claude Code
 JSON above. On first connect the server advertises all three surfaces — 11 tools,
-2 resources, and 2 prompts.
+the `fcheap://stashes` resource plus the `fcheap://stash/{id}` resource template,
+and 2 prompts.
 
 ## Tools
 
@@ -111,7 +112,7 @@ Restore a stash to a target directory.
 
 **Input:**
 - `stash_id` (string, required) -- the stash ID
-- `target` (string, optional) -- target directory (default: /tmp/<stash-id>)
+- `target` (string, optional) -- target directory (default: the system temp dir under a `<stash-id>` subdirectory)
 
 **Output:** Restoration confirmation
 

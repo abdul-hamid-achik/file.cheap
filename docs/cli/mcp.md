@@ -36,9 +36,16 @@ Add fcheap to your Claude Code MCP config:
 | `fcheap_info` | Get detailed info about a stash |
 | `fcheap_restore` | Restore a stash to a target directory |
 | `fcheap_drop` | Permanently delete a stash (requires force=true) |
-| `fcheap_search` | Search across all indexed stashes |
+| `fcheap_search` | Search across all indexed stashes (keyword / semantic / hybrid) |
 | `fcheap_analyze` | Index a stash and optionally search within it |
 | `fcheap_diff` | Compare a stash against a target directory |
+| `fcheap_connect` | Connect a stash to a codebase via vecgrep semantic search to surface candidate `file:line` locations |
+| `fcheap_vacuum` | Remove orphaned metadata/index entries for stashes whose directory is gone, then compact the DB |
+| `fcheap_docs` | Access fcheap documentation (list pages, show a page, or get the docs site URL) |
+
+The server also exposes **resources** (`fcheap://stashes`, `fcheap://stash/{id}`)
+and **prompts** (`investigate_stash`, `find_across_stashes`) — see the
+[MCP overview](/mcp/overview).
 
 ## Tool Schemas
 

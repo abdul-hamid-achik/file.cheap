@@ -50,5 +50,5 @@ var restoreCmd = &cobra.Command{
 }
 
 func init() {
-	restoreCmd.Flags().StringVar(&restoreTarget, "to", "", "Target directory (default: /tmp/<stash-id>)")
+	restoreCmd.Flags().StringVar(&restoreTarget, "to", "", "Target directory (default: system temp dir / <stash-id>)")
 }

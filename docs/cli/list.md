@@ -37,8 +37,8 @@ fcheap list --json
 
 ## Output
 
-A table sorted newest-first, with colored compression (`zst`/`gz`) and `⚠ secrets`
-indicators where applicable:
+A table sorted newest-first, with colored compression (`zst`/`gz`) indicators
+where applicable (the Studio TUI additionally shows a `⚠ secrets` chip):
 
 ```
 Stashes (3)

@@ -105,9 +105,10 @@ Built with glyphrun. Specs live in `e2e/flows/`. Each spec builds the binary as 
 ~/.local/share/fcheap/           (XDG_DATA_HOME or ~/.local/share)
 ├── <stash-id>/
 │   ├── manifest.json            # metadata, provenance, tags
-│   ├── content/                 # extracted file tree (or archive.tar.zst)
-│   └── analysis/                # search index (if analyzed)
-└── fcheap.veclite               # veclite database for keyword search
+│   └── content/                 # extracted file tree
+│       (or content.tar.zst / content.tar.gz / content.tar when compressed)
+├── fcheap.db                    # SQLite metadata index (sqlc)
+└── fcheap.veclite               # veclite search index (BM25 + optional vectors)
 ```
 
 ## External Dependencies
