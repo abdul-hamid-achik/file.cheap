@@ -9,6 +9,10 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.19.2] - 2026-06-23
+
 ### Security
 - Restore with no `--to` now uses a fresh, unique temp directory
   (`os.MkdirTemp`) instead of a predictable `os.TempDir()/<id>` path, so nothing
@@ -151,7 +155,8 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.19.1...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.19.2...HEAD
+[0.19.2]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.19.1...v0.19.2
 [0.19.1]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.17.0...v0.18.0
