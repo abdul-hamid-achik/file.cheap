@@ -7,6 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
 )
 
 func (m Model) View() tea.View {
@@ -116,7 +118,24 @@ func nameColWidth(width int) int {
 }
 
 func (m Model) renderStashRows(width, h int) string {
+	vis := m.visible()
 	nameW := nameColWidth(width)
+	var b strings.Builder
+
+	bodyRows := panelBodyHeight(h) - 1 // minus the column-header row
+
+	// Filter line, when filtering or a filter is applied.
+	if m.filtering || m.filter != "" {
+		bodyRows--
+		if m.filtering {
+			b.WriteString(mutedStyle.Render("filter: ") + m.filterInput.View())
+		} else {
+			b.WriteString(mutedStyle.Render("filter: ") + inkStyle.Render(m.filter) +
+				mutedStyle.Render(fmt.Sprintf("   %d of %d  ·  f edit · esc clear", len(vis), len(m.stashes))))
+		}
+		b.WriteString("\n")
+	}
+
 	active := stashSortModes[m.sortIdx%len(stashSortModes)].name
 	hcell := func(label string, w int, right bool) string {
 		s := fmt.Sprintf("%-*s", w, label)
@@ -128,22 +147,26 @@ func (m Model) renderStashRows(width, h int) string {
 		}
 		return colHeaderStyle.Render(s)
 	}
-	var b strings.Builder
 	b.WriteString("  " + hcell("NAME", nameW, false) + "  " + hcell("TOOL", colTool, false) +
 		"  " + hcell("FILES", colFiles, true) + "  " + hcell("SIZE", colSize, true) +
 		"  " + hcell("AGE", colAge, false))
 	b.WriteString("\n")
 
-	maxRows := clamp(panelBodyHeight(h)-1, 1, len(m.stashes)) // -1 for the header row
+	if len(vis) == 0 {
+		b.WriteString(mutedStyle.Render("  no stashes match the filter"))
+		return b.String()
+	}
+
+	maxRows := clamp(bodyRows, 1, len(vis))
 	start := 0
 	if m.cursor >= maxRows {
 		start = m.cursor - maxRows + 1
 	}
-	end := clamp(start+maxRows, 0, len(m.stashes))
+	end := clamp(start+maxRows, 0, len(vis))
 
 	for i := start; i < end; i++ {
 		selected := i == m.cursor && m.activeView == viewList
-		row := m.renderStashRow(i, nameW, selected)
+		row := m.renderStashRow(vis[i], i == m.cursor, nameW, selected)
 		if selected {
 			b.WriteString(selectedRowStyle.Width(width).Render(row))
 		} else {
@@ -151,17 +174,16 @@ func (m Model) renderStashRows(width, h int) string {
 		}
 		b.WriteString("\n")
 	}
-	if end < len(m.stashes) {
-		b.WriteString(mutedStyle.Render(fmt.Sprintf("  … %d more", len(m.stashes)-end)))
+	if end < len(vis) {
+		b.WriteString(mutedStyle.Render(fmt.Sprintf("  … %d more", len(vis)-end)))
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func (m Model) renderStashRow(i, nameW int, selected bool) string {
-	st := m.stashes[i]
+func (m Model) renderStashRow(st *stash.Stash, cursor bool, nameW int, selected bool) string {
 	man := st.Manifest
 	marker := "  "
-	if i == m.cursor {
+	if cursor {
 		marker = "▸ "
 	}
 	name := man.ID
@@ -499,6 +521,7 @@ func (m Model) renderHelp(h int) string {
 		help("x", "diff against a directory"),
 		help("t", "vidtrace timeline (bundles)"),
 		help("d", "drop (confirm y/n) — list / files pane"),
+		help("f", "filter list (name / tool / tag)"),
 		help("o / O", "cycle sort / reverse direction"),
 		help("g", "refresh stash list"),
 		"",
@@ -580,10 +603,10 @@ func (m Model) contextHints() string {
 		return keyHint("esc", "back")
 	default:
 		return strings.Join([]string{
-			keyHint("enter", "open"), keyHint("/", "search"), keyHint("o", "sort"),
-			keyHint("r", "restore"), keyHint("c", "compress"), keyHint("a", "index"),
-			keyHint("x", "diff"), keyHint("d", "drop"), keyHint("s", "status"),
-			keyHint("?", "help"), keyHint("q", "quit"),
+			keyHint("enter", "open"), keyHint("/", "search"), keyHint("f", "filter"),
+			keyHint("o", "sort"), keyHint("r", "restore"), keyHint("c", "compress"),
+			keyHint("a", "index"), keyHint("x", "diff"), keyHint("d", "drop"),
+			keyHint("s", "status"), keyHint("?", "help"), keyHint("q", "quit"),
 		}, "  ")
 	}
 }

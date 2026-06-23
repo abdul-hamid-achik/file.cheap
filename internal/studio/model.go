@@ -71,6 +71,11 @@ type Model struct {
 	sortIdx int  // index into stashSortModes
 	sortRev bool // reverse the active sort direction
 
+	// live list filter
+	filter      string
+	filtering   bool // the filter input is focused
+	filterInput textinput.Model
+
 	// detail view
 	selected  *stash.Stash
 	fileIdx   int
@@ -181,6 +186,12 @@ func NewModel(ctx context.Context, stashDir, vecgrepPath string, emb analyze.Emb
 	di.SetWidth(60)
 	di.SetStyles(styles)
 
+	fi := textinput.New()
+	fi.Placeholder = "filter by name / tool / tag…"
+	fi.Prompt = "› "
+	fi.SetWidth(40)
+	fi.SetStyles(styles)
+
 	vp := viewport.New(viewport.WithWidth(60), viewport.WithHeight(16))
 
 	sp := spinner.New()
@@ -199,6 +210,7 @@ func NewModel(ctx context.Context, stashDir, vecgrepPath string, emb analyze.Emb
 		focus:       focusList,
 		query:       ti,
 		diffInput:   di,
+		filterInput: fi,
 		preview:     vp,
 		spinner:     sp,
 		searchMode:  "auto",
@@ -259,8 +271,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sortStashes()
 		m.errMessage = ""
 		m.statusMessage = fmt.Sprintf("%d stash(es)", len(m.stashes))
-		if m.cursor >= len(m.stashes) {
-			m.cursor = clamp(len(m.stashes)-1, 0, len(m.stashes))
+		if nv := len(m.visible()); m.cursor >= nv {
+			m.cursor = clamp(nv-1, 0, nv)
 		}
 		// Re-sync the selected stash after a reload (drop/compress): refresh it
 		// from the new list, or fall back to the list view if it's gone.
@@ -360,6 +372,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.confirm == confirmNone {
 		var cmd tea.Cmd
 		switch {
+		case m.filtering:
+			m.filterInput, cmd = m.filterInput.Update(msg)
+			m.filter = m.filterInput.Value()
+			m.cursor = 0 // refining the filter; reset to the top of the matches
 		case m.diffPrompting:
 			m.diffInput, cmd = m.diffInput.Update(msg)
 		case m.activeView == viewSearch && m.focus == focusQuery:
@@ -418,6 +434,24 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			m.diffPrompting = false
 			m.diffInput.Blur()
 			m.statusMessage = "diff cancelled"
+			return nil, true
+		}
+		return nil, false // let the textinput consume the keystroke
+	}
+
+	// List filter input intercepts keys until enter (apply) or esc (clear).
+	if m.filtering {
+		switch key {
+		case "enter":
+			m.filtering = false
+			m.filterInput.Blur()
+			return nil, true
+		case "esc":
+			m.filtering = false
+			m.filterInput.Blur()
+			m.filterInput.SetValue("")
+			m.filter = ""
+			m.cursor = 0
 			return nil, true
 		}
 		return nil, false // let the textinput consume the keystroke
@@ -509,12 +543,34 @@ func (m *Model) effectiveSortDesc() bool {
 	return stashSortModes[m.sortIdx%len(stashSortModes)].desc != m.sortRev
 }
 
+// visible returns the stashes matching the current filter (case-insensitive
+// substring over name / id / tool / tags). Empty filter returns all stashes.
+// The list cursor and all list actions operate on this slice.
+func (m Model) visible() []*stash.Stash {
+	q := strings.ToLower(strings.TrimSpace(m.filter))
+	if q == "" {
+		return m.stashes
+	}
+	out := make([]*stash.Stash, 0, len(m.stashes))
+	for _, s := range m.stashes {
+		if s.Manifest == nil {
+			continue
+		}
+		man := s.Manifest
+		hay := strings.ToLower(man.Name + " " + man.ID + " " + man.Tool + " " + strings.Join(man.Tags, " "))
+		if strings.Contains(hay, q) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func (m *Model) handleListKey(key string) (tea.Cmd, bool) {
 	switch key {
 	case "q", "esc":
 		return tea.Quit, true
 	case "j", "down":
-		if m.cursor < len(m.stashes)-1 {
+		if m.cursor < len(m.visible())-1 {
 			m.cursor++
 		}
 		return nil, true
@@ -524,7 +580,7 @@ func (m *Model) handleListKey(key string) (tea.Cmd, bool) {
 		}
 		return nil, true
 	case "enter", "l":
-		if len(m.stashes) > 0 {
+		if len(m.visible()) > 0 {
 			m.openDetail()
 			return m.loadFilePreviewCmd(), true
 		}
@@ -532,6 +588,10 @@ func (m *Model) handleListKey(key string) (tea.Cmd, bool) {
 	case "/":
 		m.openSearch()
 		return nil, true
+	case "f":
+		m.filtering = true
+		m.filterInput.SetValue(m.filter)
+		return m.filterInput.Focus(), true
 	case "s":
 		m.activeView = viewStatus
 		return nil, true
@@ -562,12 +622,12 @@ func (m *Model) handleListKey(key string) (tea.Cmd, bool) {
 	case "a":
 		return m.indexCmd(), true
 	case "x":
-		if len(m.stashes) > 0 {
+		if len(m.visible()) > 0 {
 			return m.startDiffPrompt(), true
 		}
 		return nil, true
 	case "d":
-		if len(m.stashes) > 0 {
+		if len(m.visible()) > 0 {
 			m.confirm = confirmDrop
 		}
 		return nil, true
@@ -802,7 +862,11 @@ func (m *Model) toList() {
 }
 
 func (m *Model) openDetail() {
-	m.selected = m.stashes[m.cursor]
+	vis := m.visible()
+	if m.cursor < 0 || m.cursor >= len(vis) {
+		return
+	}
+	m.selected = vis[m.cursor]
 	m.activeView = viewDetail
 	m.focus = focusFiles
 	m.fileIdx = 0
@@ -906,8 +970,9 @@ func (m Model) currentStash() *stash.Stash {
 		}
 		return nil
 	default:
-		if m.cursor >= 0 && m.cursor < len(m.stashes) {
-			return m.stashes[m.cursor]
+		vis := m.visible()
+		if m.cursor >= 0 && m.cursor < len(vis) {
+			return vis[m.cursor]
 		}
 	}
 	return nil

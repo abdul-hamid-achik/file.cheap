@@ -172,3 +172,40 @@ func TestStashSort(t *testing.T) {
 		t.Errorf("effectiveSortDesc = true, want false (a reversed descending sort is ascending)")
 	}
 }
+
+// TestStashFilter verifies the live list filter (case-insensitive substring over
+// name / id / tool / tags).
+func TestStashFilter(t *testing.T) {
+	mk := func(name, tool string, tags ...string) *stash.Stash {
+		return &stash.Stash{Manifest: &manifest.Manifest{ID: name, Name: name, Tool: tool, Tags: tags}}
+	}
+	m := &Model{stashes: []*stash.Stash{
+		mk("alpha-bug", "vidtrace", "urgent"),
+		mk("beta-notes", "generic"),
+		mk("gamma-auth", "vidtrace", "auth"),
+	}}
+
+	if got := len(m.visible()); got != 3 {
+		t.Errorf("no filter: %d visible, want 3", got)
+	}
+	m.filter = "vidtrace" // by tool
+	if got := len(m.visible()); got != 2 {
+		t.Errorf("tool filter: %d visible, want 2", got)
+	}
+	m.filter = "beta" // by name substring
+	if got := m.visible(); len(got) != 1 || got[0].Manifest.Name != "beta-notes" {
+		t.Errorf("name filter: %+v, want only beta-notes", got)
+	}
+	m.filter = "ALPHA" // case-insensitive
+	if got := len(m.visible()); got != 1 {
+		t.Errorf("case-insensitive filter: %d visible, want 1", got)
+	}
+	m.filter = "auth" // by tag
+	if got := len(m.visible()); got != 1 {
+		t.Errorf("tag filter: %d visible, want 1", got)
+	}
+	m.filter = "zzz" // no match
+	if got := len(m.visible()); got != 0 {
+		t.Errorf("no-match filter: %d visible, want 0", got)
+	}
+}
