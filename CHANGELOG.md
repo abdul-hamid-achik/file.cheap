@@ -9,7 +9,35 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
-_Nothing yet._
+Fixes from an exhaustive multi-agent code/docs audit.
+
+### Fixed
+- **compress:** `Archive()` discarded final-flush/close errors, so a failed
+  flush could be reported as success and `Compress()` would then delete the
+  source tree (data loss). Errors are now checked before success is reported.
+  `Archive` also no longer crashes on symlinks, and `Extract` recreates them
+  safely (rejecting escape links) rather than dropping them.
+- **stash/manifest:** `Save()` aborted on a source directory containing a
+  dangling symlink; symlinks are now recreated/hashed without dereferencing.
+- **analyze:** an embedding-model change bricked all search (incl. keyword);
+  search now degrades to BM25 on drift. veclite access is serialized per stash
+  root so concurrent MCP calls no longer fail on the file lock, and search/index
+  honor context cancellation.
+- **config:** `config set`/`config init` no longer bake env/flag overrides into
+  `config.yaml`; `config init` requires `--force` to overwrite; `config set`
+  validates compression/log_level; `config show --json` emits snake_case.
+- **drop:** `drop --json`/`--quiet` without `--force` now returns a non-zero
+  error and a structured object instead of a silent exit-0 no-op.
+- **version:** `version --json` now emits JSON (was ignored).
+- **studio:** `d`/`u` page the preview when it is focused instead of dropping.
+- **secrets:** scan no longer silently truncates on an over-long single line.
+- **mcp:** the `fcheap://stash/{id}` resource surfaces real read errors instead
+  of masking them all as not-found.
+
+### Changed
+- Added a `--no-color` flag (also honors `NO_COLOR`).
+- Documentation brought back in sync with the code across CLI/MCP/Studio/AGENTS,
+  and `StashQuery` truncates on rune boundaries.
 
 ## [0.18.0] - 2026-06-22
 

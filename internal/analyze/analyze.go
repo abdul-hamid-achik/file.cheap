@@ -628,8 +628,10 @@ func (a *Analyzer) StashQuery(stashDir string, maxLen int) (string, error) {
 		text = strings.TrimSpace(b.String())
 	}
 	text = strings.Join(strings.Fields(text), " ") // collapse whitespace
-	if maxLen > 0 && len(text) > maxLen {
-		text = text[:maxLen]
+	if maxLen > 0 {
+		if r := []rune(text); len(r) > maxLen {
+			text = string(r[:maxLen]) // truncate on a rune boundary, not mid-UTF-8
+		}
 	}
 	return text, nil
 }

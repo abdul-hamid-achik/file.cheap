@@ -65,6 +65,3 @@ func (t *Table) Render() {
 		printRow(row)
 	}
 }
-
-func (t *Table) SetColMinWidth(col int, width int) {
-}

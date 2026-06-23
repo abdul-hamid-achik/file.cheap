@@ -7,6 +7,7 @@ package secrets
 
 import (
 	"bufio"
+	"bytes"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -73,6 +74,23 @@ func scanFile(root, path string) []Finding {
 		for _, r := range rules {
 			if r.re.MatchString(text) {
 				findings = append(findings, Finding{File: rel, Rule: r.name, Line: line})
+			}
+		}
+	}
+	if sc.Err() != nil {
+		// A line exceeded the scan buffer (e.g. a minified single-line file).
+		// Fall back to a whole-file regex scan so secrets are not silently
+		// missed; line numbers are approximate in this case. The file size was
+		// already capped at maxScanFileBytes above, so this read is bounded.
+		if data, rerr := os.ReadFile(path); rerr == nil {
+			for _, r := range rules {
+				if loc := r.re.FindIndex(data); loc != nil {
+					findings = append(findings, Finding{
+						File: rel,
+						Rule: r.name,
+						Line: 1 + bytes.Count(data[:loc[0]], []byte{'\n'}),
+					})
+				}
 			}
 		}
 	}

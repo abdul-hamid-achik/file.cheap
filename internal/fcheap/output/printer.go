@@ -59,6 +59,9 @@ func New(opts ...Option) *Printer {
 	}
 	if p.noColor {
 		color.NoColor = true
+		// The status icons are colorized at package init, before this runs, so
+		// reset them to plain glyphs to honor --no-color / NO_COLOR.
+		successIcon, errorIcon, warnIcon, infoIcon, indentIcon = "✓", "✗", "!", "→", "└─"
 	}
 	return p
 }

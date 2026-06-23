@@ -17,6 +17,7 @@ import (
 var (
 	jsonOutput bool
 	quietMode  bool
+	noColor    bool
 	stashDir   string
 	logLevel   string
 
@@ -84,6 +85,7 @@ Get started:
 		printer = output.New(
 			output.WithJSON(jsonOutput),
 			output.WithQuiet(quietMode),
+			output.WithNoColor(noColor || os.Getenv("NO_COLOR") != ""),
 		)
 
 		return nil
@@ -104,6 +106,7 @@ func Execute() error {
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
 	rootCmd.PersistentFlags().BoolVar(&quietMode, "quiet", false, "Suppress non-error output")
+	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output (also honors NO_COLOR)")
 	rootCmd.PersistentFlags().StringVar(&stashDir, "stash-dir", "", "Stash storage directory (overrides config)")
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "", "Log level: debug, info, warn, error (to stderr)")
 

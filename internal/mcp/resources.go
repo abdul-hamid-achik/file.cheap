@@ -59,9 +59,14 @@ func (s *Server) registerResources(srv *mcp.Server) {
 		if err != nil {
 			return nil, fmt.Errorf("create stash manager: %w", err)
 		}
+		if !mgr.Exists(id) {
+			return nil, mcp.ResourceNotFoundError(req.Params.URI)
+		}
 		st, err := mgr.Info(ctx, id)
 		if err != nil {
-			return nil, mcp.ResourceNotFoundError(req.Params.URI)
+			// The stash exists but its manifest could not be read (I/O, corrupt
+			// JSON): surface the real error instead of masking it as not-found.
+			return nil, fmt.Errorf("read stash %s: %w", id, err)
 		}
 		return jsonResource(req.Params.URI, st.Manifest)
 	})
