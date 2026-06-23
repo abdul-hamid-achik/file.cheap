@@ -251,3 +251,26 @@ func TestListLayoutBounds(t *testing.T) {
 		t.Errorf("tiny terminal rendered %d lines, want <= 3", got)
 	}
 }
+
+// TestDetailProvenance verifies the richer detail pane renders the grouped
+// sections, colored values, compression ratio, and indexed status.
+func TestDetailProvenance(t *testing.T) {
+	man := &manifest.Manifest{
+		ID: "demo_123", Name: "demo-stash", Tool: "vidtrace",
+		CreatedAt: "2026-06-23T06:00:00Z", FileCount: 1, TotalSize: 1000,
+		CompressedSize: 400, Compression: "zstd", ContentHash: "sha256:abcdef0123456789",
+		Tags: []string{"t1"}, Custom: map[string]string{"indexed": "true", "indexed_files": "1"},
+		Files: []manifest.FileEntry{{Path: "a.txt"}},
+	}
+	m := Model{width: 120, height: 40, activeView: viewDetail, focus: focusFiles,
+		selected: &stash.Stash{Manifest: man}}
+	out := clean(m.render())
+	for _, want := range []string{
+		"IDENTITY", "PROVENANCE", "CONTENT", "STORAGE",
+		"demo-stash", "vidtrace", "✓ analyzed", "60% smaller", "Files (1)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("detail view missing %q", want)
+		}
+	}
+}

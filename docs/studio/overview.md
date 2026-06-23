@@ -21,8 +21,10 @@ open detail.
 
 ### Detail
 
-Provenance (ID, name, source, tool, created, bundle type), tags as chips,
-size/hash, compression status, and a secrets warning when present. A scrollable
+A grouped, color-coded **provenance** pane with **IDENTITY** (id, name),
+**PROVENANCE** (source, tool, created with relative + absolute time, bundle),
+**CONTENT** (files, size, hash, tags, secrets warning), and **STORAGE**
+(compression with the space-saved ratio, and indexed status). A scrollable
 **file tree** sits beside a live **preview** of the selected file's content
 (`Tab` cycles focus). Compressed stashes show a "restore to view" placeholder.
 

@@ -242,75 +242,101 @@ func (m Model) renderDetail(h int) string {
 	man := m.selected.Manifest
 
 	var info strings.Builder
-	addLine(&info, "ID", man.ID)
+
+	detailSection(&info, "IDENTITY")
+	kvLine(&info, "ID", dimStyle.Render(man.ID))
 	if man.Name != "" {
-		addLine(&info, "Name", man.Name)
+		kvLine(&info, "Name", inkStyle.Render(man.Name))
 	}
+
+	detailSection(&info, "PROVENANCE")
 	if man.SourcePath != "" {
-		addLine(&info, "Source", man.SourcePath)
+		kvLine(&info, "Source", inkStyle.Render(man.SourcePath))
 	}
 	if man.Tool != "" {
-		addLine(&info, "Tool", man.Tool)
+		kvLine(&info, "Tool", toolStyle(man.Tool).Render(man.Tool))
 	}
-	addLine(&info, "Created", relTime(man.CreatedAt))
+	created := inkStyle.Render(relTime(man.CreatedAt))
+	if abs := absTime(man.CreatedAt); abs != "" {
+		created += dimStyle.Render("  ·  " + abs)
+	}
+	kvLine(&info, "Created", created)
 	if man.BundleType != "" && man.BundleType != "generic" {
-		info.WriteString(dimStyle.Render(fmt.Sprintf("%-9s", "Bundle:")) + bundleChipStyle(man.BundleType).Render(man.BundleType) + "\n")
+		kvLine(&info, "Bundle", bundleChipStyle(man.BundleType).Render(man.BundleType))
 	}
 	if v := man.VideoSummary(); v != "" {
-		addLine(&info, "Video", v)
+		kvLine(&info, "Video", inkStyle.Render(v))
 	}
-	addLine(&info, "Files", fmt.Sprintf("%d", man.FileCount))
-	addLine(&info, "Size", formatSize(man.TotalSize))
-	addLine(&info, "Hash", shortHash(man.ContentHash))
-	if man.Compression != "" {
-		addLine(&info, "Stored", fmt.Sprintf("%s (%s)", compLabel(man.Compression), formatSize(man.CompressedSize)))
-	} else {
-		addLine(&info, "Stored", "uncompressed")
-	}
-	if c := man.Custom["secrets_found"]; c != "" {
-		info.WriteString(dimStyle.Render(fmt.Sprintf("%-9s", "Secrets:")) + warnChipStyle.Render("⚠ "+c+" potential") + "\n")
-	}
+
+	detailSection(&info, "CONTENT")
+	kvLine(&info, "Files", inkStyle.Render(fmt.Sprintf("%d", man.FileCount)))
+	kvLine(&info, "Size", inkStyle.Render(formatSize(man.TotalSize)))
+	kvLine(&info, "Hash", dimStyle.Render(shortHash(man.ContentHash)))
 	if len(man.Tags) > 0 {
 		chips := make([]string, 0, len(man.Tags))
 		for _, t := range man.Tags {
 			chips = append(chips, tagChipStyle.Render(t))
 		}
-		info.WriteString(dimStyle.Render("Tags:   ") + strings.Join(chips, " ") + "\n")
+		kvLine(&info, "Tags", strings.Join(chips, " "))
+	}
+	if c := man.Custom["secrets_found"]; c != "" {
+		kvLine(&info, "Secrets", warnChipStyle.Render("⚠ "+c+" potential"))
+	}
+
+	detailSection(&info, "STORAGE")
+	if man.Compression != "" {
+		stored := inkStyle.Render(fmt.Sprintf("%s · %s", compLabel(man.Compression), formatSize(man.CompressedSize)))
+		if man.TotalSize > 0 && man.CompressedSize > 0 && man.CompressedSize < man.TotalSize {
+			pct := 100 - (man.CompressedSize*100)/man.TotalSize
+			stored += dimStyle.Render(fmt.Sprintf("  ·  %d%% smaller", pct))
+		}
+		kvLine(&info, "Stored", stored)
+	} else {
+		kvLine(&info, "Stored", mutedStyle.Render("uncompressed"))
+	}
+	if man.Custom["indexed"] == "true" {
+		idx := goodStyle.Render("✓ analyzed")
+		if n := man.Custom["indexed_files"]; n != "" {
+			idx += dimStyle.Render("  (" + n + " docs)")
+		}
+		kvLine(&info, "Indexed", idx)
+	} else {
+		kvLine(&info, "Indexed", mutedStyle.Render("— not indexed"))
 	}
 
 	files := m.renderFileTree()
 	filesTitle := fmt.Sprintf("Files (%d)", man.FileCount)
 
+	infoStr := info.String()
+	provNatural := lipgloss.Height(infoStr) + 3 // content + border(2) + title(1)
+
 	if m.width >= 96 {
 		leftW := clamp(m.width/2-2, 30, m.width-4)
 		rightW := m.width - leftW - 4
 		// Right preview fills the full body height; the left column stacks
-		// Provenance (natural) above Files (filling the remainder).
+		// Provenance (capped so Files keeps room) above Files (the remainder).
 		m.preview.SetHeight(panelBodyHeight(h))
 		right := m.renderPanelH(m.previewTitle(), m.renderPreview(), rightW, h, m.focus == focusPreview)
-		prov := m.sizePanel("Provenance", info.String(), leftW, false)
-		filesH := h - lipgloss.Height(prov)
-		if filesH < 3 {
-			filesH = 3
-		}
+		provH := clamp(provNatural, 6, h-6)
+		filesH := h - provH
 		left := lipgloss.JoinVertical(lipgloss.Left,
-			prov,
-			m.renderPanelH(filesTitle, files, leftW, filesH, m.focus == focusFiles),
+			m.renderPanelClip("Provenance", infoStr, leftW, provH, false),
+			m.renderPanelClip(filesTitle, files, leftW, filesH, m.focus == focusFiles),
 		)
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right)
 	}
 
-	// Stacked: Provenance + Files (natural) then Preview fills the remaining rows.
-	prov := m.sizePanel("Provenance", info.String(), m.width-2, false)
-	filesPanel := m.sizePanel(filesTitle, files, m.width-2, m.focus == focusFiles)
-	previewH := h - lipgloss.Height(prov) - lipgloss.Height(filesPanel)
-	if previewH < 4 {
-		previewH = 4
+	// Stacked: Provenance, Files, Preview — each capped so all three stay visible.
+	provH := clamp(provNatural, 5, h-9)
+	filesH := clamp(lipgloss.Height(files)+3, 4, h-provH-4)
+	previewH := h - provH - filesH
+	if previewH < 3 {
+		previewH = 3
 	}
 	m.preview.SetHeight(panelBodyHeight(previewH))
 	return lipgloss.JoinVertical(lipgloss.Left,
-		prov,
-		filesPanel,
+		m.renderPanelClip("Provenance", infoStr, m.width-2, provH, false),
+		m.renderPanelClip(filesTitle, files, m.width-2, filesH, m.focus == focusFiles),
 		m.renderPanelH(m.previewTitle(), m.renderPreview(), m.width-2, previewH, m.focus == focusPreview),
 	)
 }
@@ -676,6 +702,14 @@ func (m Model) renderPanelH(title, body string, width, totalH int, focused bool)
 	return style.Render(content)
 }
 
+// renderPanelClip is renderPanelH but clips the body to the panel's content
+// height first (lipgloss Height only grows a box, so tall content must be
+// trimmed to keep the panel at totalH).
+func (m Model) renderPanelClip(title, body string, width, totalH int, focused bool) string {
+	body = lipgloss.NewStyle().MaxHeight(panelBodyHeight(totalH)).Render(body)
+	return m.renderPanelH(title, body, width, totalH, focused)
+}
+
 // panelBodyHeight returns the rows available for a panel's body given the
 // panel's total height (subtracting the border and the title row).
 func panelBodyHeight(totalH int) int {
@@ -688,8 +722,28 @@ func panelBodyHeight(totalH int) int {
 
 // --- formatting helpers ---
 
-func addLine(b *strings.Builder, label, value string) {
-	b.WriteString(dimStyle.Render(fmt.Sprintf("%-9s", label+":")) + inkStyle.Render(value) + "\n")
+// detailSection writes a colored group header (with a blank line before it,
+// except the first) into the provenance pane.
+func detailSection(b *strings.Builder, title string) {
+	if b.Len() > 0 {
+		b.WriteByte('\n')
+	}
+	b.WriteString(sectionStyle.Render(title) + "\n")
+}
+
+// kvLine writes an aligned "  label  value" row; value is already styled.
+func kvLine(b *strings.Builder, label, value string) {
+	b.WriteString(dimStyle.Render(fmt.Sprintf("  %-9s", label)) + value + "\n")
+}
+
+// absTime formats an RFC3339 timestamp as a readable absolute time, or "" if it
+// can't be parsed.
+func absTime(ts string) string {
+	t, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return ""
+	}
+	return t.Format("2006-01-02 15:04")
 }
 
 func formatSize(bytes int64) string {

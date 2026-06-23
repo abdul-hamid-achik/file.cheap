@@ -37,6 +37,9 @@ var (
 	// selectedRowStyle highlights the row under the cursor.
 	selectedRowStyle = lipgloss.NewStyle().Foreground(colorInk).Background(colorSelect).Bold(true)
 
+	// sectionStyle styles the group headers in the detail/provenance pane.
+	sectionStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
+
 	// colHeaderStyle styles the stash-list column header row.
 	colHeaderStyle = lipgloss.NewStyle().Foreground(colorDim).Bold(true)
 	// colHeaderActiveStyle marks the column the list is currently sorted by.

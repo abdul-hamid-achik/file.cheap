@@ -78,6 +78,15 @@ steps:
       screen:
         contains: "Provenance"
       timeoutMs: 5000
+  # Richer detail pane: grouped sections + indexed status.
+  - wait:
+      screen:
+        contains: "STORAGE"
+      timeoutMs: 5000
+  - wait:
+      screen:
+        contains: "analyzed"
+      timeoutMs: 5000
   - wait:
       screen:
         contains: "app.log"
