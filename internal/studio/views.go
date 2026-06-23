@@ -56,7 +56,17 @@ func (m Model) render() string {
 
 func (m Model) renderHeader() string {
 	left := brandStyle.Render("fcheap") + " " + titleStyle.Render("studio")
-	right := mutedStyle.Render(fmt.Sprintf("%d stash(es)", len(m.stashes)))
+	summary := fmt.Sprintf("%d stash(es)", len(m.stashes))
+	if len(m.stashes) > 0 {
+		var total int64
+		for _, s := range m.stashes {
+			if s.Manifest != nil {
+				total += s.Manifest.TotalSize
+			}
+		}
+		summary = fmt.Sprintf("%d stashes · %s", len(m.stashes), formatSize(total))
+	}
+	right := mutedStyle.Render(summary)
 	pad := m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if pad > 1 {
 		return left + strings.Repeat(" ", pad) + right
@@ -84,9 +94,29 @@ func (m Model) renderList(h int) string {
 	return m.renderPanelH("Stashes", rows, m.width-2, h, true)
 }
 
+// stash-list column widths (the NAME column flexes to fill the rest).
+const (
+	colTool  = 12
+	colFiles = 6
+	colSize  = 10
+	colAge   = 11
+	colChips = 22 // reserved on the right for compression + secrets chips (+ gaps)
+)
+
+// nameColWidth flexes the NAME column to use the available horizontal space.
+func nameColWidth(width int) int {
+	fixed := 2 + colTool + colFiles + colSize + colAge + 4*2 + colChips
+	return clamp(width-fixed, 16, 72)
+}
+
 func (m Model) renderStashRows(width, h int) string {
+	nameW := nameColWidth(width)
 	var b strings.Builder
-	maxRows := clamp(panelBodyHeight(h), 1, len(m.stashes))
+	b.WriteString(colHeaderStyle.Render(fmt.Sprintf("  %-*s  %-*s  %*s  %*s  %-*s",
+		nameW, "NAME", colTool, "TOOL", colFiles, "FILES", colSize, "SIZE", colAge, "AGE")))
+	b.WriteString("\n")
+
+	maxRows := clamp(panelBodyHeight(h)-1, 1, len(m.stashes)) // -1 for the header row
 	start := 0
 	if m.cursor >= maxRows {
 		start = m.cursor - maxRows + 1
@@ -94,7 +124,7 @@ func (m Model) renderStashRows(width, h int) string {
 	end := clamp(start+maxRows, 0, len(m.stashes))
 
 	for i := start; i < end; i++ {
-		row := m.renderStashRow(i, width)
+		row := m.renderStashRow(i, nameW)
 		if i == m.cursor && m.activeView == viewList {
 			b.WriteString(selectedRowStyle.Width(width).Render(row))
 		} else {
@@ -102,10 +132,13 @@ func (m Model) renderStashRows(width, h int) string {
 		}
 		b.WriteString("\n")
 	}
+	if end < len(m.stashes) {
+		b.WriteString(mutedStyle.Render(fmt.Sprintf("  … %d more", len(m.stashes)-end)))
+	}
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func (m Model) renderStashRow(i, width int) string {
+func (m Model) renderStashRow(i, nameW int) string {
 	st := m.stashes[i]
 	man := st.Manifest
 	marker := "  "
@@ -117,21 +150,19 @@ func (m Model) renderStashRow(i, width int) string {
 		name = man.Name
 	}
 
-	cols := []string{
-		fmt.Sprintf("%s%-22s", marker, truncate(name, 22)),
-		fmt.Sprintf("%-10s", truncate(man.Tool, 10)),
-		fmt.Sprintf("%4d f", man.FileCount),
-		fmt.Sprintf("%9s", formatSize(man.TotalSize)),
-		fmt.Sprintf("%-12s", relTime(man.CreatedAt)),
-	}
-	row := strings.Join(cols, "  ")
+	row := fmt.Sprintf("%s%-*s  %-*s  %*d  %*s  %-*s",
+		marker, nameW, truncate(name, nameW),
+		colTool, truncate(man.Tool, colTool),
+		colFiles, man.FileCount,
+		colSize, formatSize(man.TotalSize),
+		colAge, truncate(relTime(man.CreatedAt), colAge))
 	if man.Compression != "" {
 		row += "  " + zstChipStyle.Render(compLabel(man.Compression))
 	}
 	if man.Custom["secrets_found"] != "" {
 		row += "  " + warnChipStyle.Render("⚠ secrets")
 	}
-	return truncate(row, width)
+	return row
 }
 
 // --- detail view ---

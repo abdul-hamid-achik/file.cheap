@@ -37,6 +37,9 @@ var (
 	// selectedRowStyle highlights the row under the cursor.
 	selectedRowStyle = lipgloss.NewStyle().Foreground(colorInk).Background(colorSelect).Bold(true)
 
+	// colHeaderStyle styles the stash-list column header row.
+	colHeaderStyle = lipgloss.NewStyle().Foreground(colorDim).Bold(true)
+
 	zstChipStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#1E1E1E")).Background(colorAccent).Padding(0, 1).Bold(true)
 	tagChipStyle  = lipgloss.NewStyle().Foreground(colorAccent).Background(colorChipBg).Padding(0, 1)
 	warnChipStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#1E1E1E")).Background(colorWarn).Padding(0, 1).Bold(true)
