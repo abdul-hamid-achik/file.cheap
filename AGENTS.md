@@ -22,7 +22,7 @@ file.cheap is a local-first CLI tool + MCP server for saving, restoring, compres
 
 7. **DB** (`internal/db/`) -- SQLite (via modernc.org/sqlite, CGO-free) for queryable metadata. Schema (`schema.sql`) and queries (`queries.sql`) drive **sqlc**-generated code in `internal/db/gen/`; a thin `Store` wraps it. The manifest.json files remain the source of truth — the DB is a write-through index that self-heals on `List`. Regenerate with `task sqlc-gen`. Index lives at `<stash-dir>/fcheap.db`.
 
-8. **MCP Server** (`internal/mcp/`) -- exposes stash tools via `modelcontextprotocol/go-sdk`. Uses typed input structs with `json` + `jsonschema` tags for auto-schema generation. Each tool validates input, calls stash manager, returns JSON. Also exposes `fcheap_docs` tool for reading documentation.
+8. **MCP Server** (`internal/mcp/`) -- exposes stash operations via `modelcontextprotocol/go-sdk` across all three MCP surfaces. **Tools** (`server.go`) use typed input structs with `json` + `jsonschema` tags for auto-schema generation; each validates input, calls the stash manager, returns JSON (incl. `fcheap_docs` for reading documentation). **Resources** and **prompts** (`resources.go`) expose stash data by URI (`fcheap://stashes`, `fcheap://stash/{id}`) and one-shot agent workflows (`investigate_stash`, `find_across_stashes`).
 
 9. **CLI** (`internal/fcheap/cli/`) -- Cobra commands. Each command file handles args/flags, calls stash manager, prints output via the printer. Includes `docs` command for serving, building, and reading the VitePress docs.
 

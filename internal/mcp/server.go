@@ -12,7 +12,6 @@ import (
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
 	"github.com/abdul-hamid-achik/file.cheap/internal/diff"
-	"github.com/abdul-hamid-achik/file.cheap/internal/manifest"
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -48,6 +47,8 @@ func (s *Server) Run(ctx context.Context, transport mcp.Transport) error {
 		Version: s.version,
 	}, nil)
 	s.registerTools(srv)
+	s.registerResources(srv)
+	s.registerPrompts(srv)
 	return srv.Run(ctx, transport)
 }
 
@@ -136,29 +137,9 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		if err != nil {
 			return toolError("list failed: %v", err), nil, nil
 		}
-		var summaries []map[string]any
+		summaries := make([]map[string]any, 0, len(stashes))
 		for _, st := range stashes {
-			m := st.Manifest
-			item := map[string]any{
-				"id":          m.ID,
-				"name":        m.Name,
-				"tool":        m.Tool,
-				"tags":        m.Tags,
-				"file_count":  m.FileCount,
-				"total_size":  m.TotalSize,
-				"created_at":  m.CreatedAt,
-				"bundle_type": m.BundleType,
-			}
-			if m.Compression != "" {
-				item["compression"] = m.Compression
-			}
-			if v := m.Custom["secrets_found"]; v != "" {
-				item["secrets_found"] = v
-			}
-			if v := m.VideoSummary(); v != "" {
-				item["video"] = v
-			}
-			summaries = append(summaries, item)
+			summaries = append(summaries, stashSummary(st.Manifest))
 		}
 		return textResult(summaries), nil, nil
 	})
@@ -483,9 +464,6 @@ func textResult(v any) *mcp.CallToolResult {
 		},
 	}
 }
-
-// Ensure manifest is imported (used in save tool)
-var _ = manifest.SchemaVersion
 
 // listDocPages returns all .md doc pages relative to the docs/ directory.
 func listDocPages() []string {

@@ -1,10 +1,10 @@
 # MCP Server Overview
 
-fcheap includes a built-in MCP (Model Context Protocol) server that exposes stash operations as tools for AI assistants like Claude.
+fcheap includes a built-in MCP (Model Context Protocol) server that exposes stash operations to AI assistants like Claude across all three MCP surfaces: **tools** (actions), **resources** (readable stash data by URI), and **prompts** (one-shot agent workflows).
 
 ## How It Works
 
-The MCP server runs over stdio transport. When an AI assistant needs to save, restore, analyze, or diff files, it calls fcheap's MCP tools. The server creates a stash manager, performs the operation, and returns results as JSON.
+The MCP server runs over stdio transport. When an AI assistant needs to save, restore, analyze, or diff files, it calls fcheap's MCP tools. The server creates a stash manager, performs the operation, and returns results as JSON. Agents can also read stash metadata as **resources** (without spending a tool call) and launch multi-step investigations from **prompts**.
 
 ## Setup
 
@@ -152,6 +152,41 @@ Access fcheap documentation. Useful for agents that need to look up how a comman
 
 **Output:** List of pages, page content, or site URL
 
+## Resources
+
+Resources expose stash data as readable URIs, so an agent can pull stash metadata
+straight into context without spending a tool call. Both return `application/json`.
+
+### `fcheap://stashes`
+
+The full stash index — the same summaries as `fcheap_list` (id, name, tool, tags,
+file count, size, created_at, bundle type, plus compression / secrets_found / video
+flags where present), newest first.
+
+### `fcheap://stash/{id}`
+
+A resource **template**: read a single stash's full manifest by ID — provenance,
+the file list with hashes, tags, compression, detected secrets, and bundle
+metadata. Reading an unknown ID returns a resource-not-found error.
+
+## Prompts
+
+Prompts are reusable, parameterized workflows a user can launch with one command;
+each expands into a guided message that drives the tools and resources above.
+
+### `investigate_stash`
+
+Plan an end-to-end investigation of a stash. **Arguments:** `stash_id` (required),
+`codebase_dir` (optional). Walks the agent through reading the manifest, indexing
+and searching the stash, optionally `fcheap_connect`-ing it to a codebase to surface
+`file:line` candidates, and summarizing findings — the flagship vidtrace-evidence →
+code workflow.
+
+### `find_across_stashes`
+
+Search every indexed stash for a query and synthesize where the answer lives.
+**Arguments:** `query` (required), `mode` (optional: `keyword`/`semantic`/`hybrid`).
+
 ## Architecture
 
-The MCP server is built with the official [modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk). Tools use typed input structs with `jsonschema` tags for automatic schema generation. The `DestructiveHint`, `OpenWorldHint`, and `IdempotentHint` annotations help AI assistants understand the safety properties of each tool.
+The MCP server is built with the official [modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk). Tools use typed input structs with `jsonschema` tags for automatic schema generation. The `DestructiveHint`, `OpenWorldHint`, and `IdempotentHint` annotations help AI assistants understand the safety properties of each tool. Resources and prompts are registered alongside the tools (see `internal/mcp/resources.go`), so a single `fcheap mcp serve` advertises all three capabilities.

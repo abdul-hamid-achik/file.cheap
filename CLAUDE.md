@@ -15,7 +15,7 @@ file.cheap is a local-first CLI tool + MCP server that saves, restores, compress
 - `internal/analyze/` -- BM25 keyword search (veclite) + vecgrep subprocess
 - `internal/diff/` -- stash-to-directory comparison
 - `internal/db/` -- SQLite metadata (modernc.org/sqlite, CGO-free)
-- `internal/mcp/` -- MCP server with 9 tools including fcheap_docs (modelcontextprotocol/go-sdk)
+- `internal/mcp/` -- MCP server: 11 tools (incl. fcheap_docs) + resources (`fcheap://stashes`, `fcheap://stash/{id}`) + prompts (`investigate_stash`, `find_across_stashes`) (modelcontextprotocol/go-sdk)
 - `internal/studio/` -- Bubbletea v2 TUI
 - `internal/fcheap/cli/` -- Cobra CLI commands
 - `internal/fcheap/config/` -- YAML config + env overrides

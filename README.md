@@ -76,7 +76,7 @@ Use `fcheap` as an MCP tool server for AI assistants like Claude:
 }
 ```
 
-This exposes tools: `fcheap_save`, `fcheap_list`, `fcheap_info`, `fcheap_restore`, `fcheap_drop`, `fcheap_search`, `fcheap_analyze`, `fcheap_diff`, `fcheap_connect`, `fcheap_vacuum`, `fcheap_docs`.
+This exposes 11 **tools**: `fcheap_save`, `fcheap_list`, `fcheap_info`, `fcheap_restore`, `fcheap_drop`, `fcheap_search`, `fcheap_analyze`, `fcheap_diff`, `fcheap_connect`, `fcheap_vacuum`, `fcheap_docs` — plus **resources** (`fcheap://stashes`, `fcheap://stash/{id}`) for reading stash data by URI and **prompts** (`investigate_stash`, `find_across_stashes`) for one-shot agent workflows. See [docs/mcp/overview.md](docs/mcp/overview.md).
 
 ## Configuration
 
@@ -162,7 +162,7 @@ file.cheap/
 │   ├── analyze/             # BM25 search + vecgrep subprocess
 │   ├── diff/                # Stash-to-directory comparison
 │   ├── db/                  # SQLite metadata storage
-│   ├── mcp/                 # MCP server (11 tools)
+│   ├── mcp/                 # MCP server (11 tools + resources + prompts)
 │   ├── studio/              # Bubbletea v2 TUI
 │   ├── fcheap/cli/             # Cobra commands
 │   ├── fcheap/config/          # YAML config
