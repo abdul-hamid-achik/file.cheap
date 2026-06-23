@@ -33,11 +33,21 @@ Fixes from an exhaustive multi-agent code/docs audit.
 - **secrets:** scan no longer silently truncates on an over-long single line.
 - **mcp:** the `fcheap://stash/{id}` resource surfaces real read errors instead
   of masking them all as not-found.
+- **detect:** vidtrace OCR/transcript text is no longer double/triple-indexed
+  (raw `ocr/`/`transcript/` files are skipped when the timeline already yields
+  per-frame units), which previously skewed BM25 scores.
+- **analyze:** unknown search modes are rejected with a clear error (were
+  silently treated as keyword); `DropIndex` no longer creates an empty index DB
+  for a never-indexed stash.
+- **studio:** very small terminals no longer overflow the layout (inverted
+  clamp bounds are tolerated), and a diff launched from the list view is anchored
+  to its stash (titled panel + `esc` returns to that stash).
 
 ### Changed
 - Added a `--no-color` flag (also honors `NO_COLOR`).
 - Documentation brought back in sync with the code across CLI/MCP/Studio/AGENTS,
-  and `StashQuery` truncates on rune boundaries.
+  the in-app Studio help documents the preview pager keys, and `StashQuery`
+  truncates on rune boundaries.
 
 ## [0.18.0] - 2026-06-22
 
