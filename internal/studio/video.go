@@ -12,8 +12,12 @@ import (
 )
 
 // hasFrames reports whether the selected stash holds a playable image sequence
-// (≥2 raster files), which enables the video player.
+// (≥2 raster files in an uncompressed stash), which enables the video player.
 func (m Model) hasFrames() bool {
+	// A compressed stash's content/ tree is gone, so its frames can't be decoded.
+	if m.selected == nil || m.selected.Manifest == nil || m.selected.Manifest.Compression != "" {
+		return false
+	}
 	n := 0
 	for _, f := range m.selectedFiles() {
 		if isImagePath(f.Path) {
@@ -28,6 +32,12 @@ func (m Model) hasFrames() bool {
 // startPlayback begins animating the stash's image frames in the preview pane,
 // starting at the currently-selected frame (or the first). Needs ≥2 images.
 func (m *Model) startPlayback() tea.Cmd {
+	// A compressed stash has no on-disk frames; refuse with a clear message rather
+	// than spinning a decode-fails-forever loop (mirrors the timeline 't' guard).
+	if m.selected != nil && m.selected.Manifest != nil && m.selected.Manifest.Compression != "" {
+		m.statusMessage = "stash is compressed — restore it to play frames"
+		return nil
+	}
 	files := m.selectedFiles()
 	frames := make([]int, 0, len(files))
 	for i, f := range files {
@@ -49,14 +59,27 @@ func (m *Model) startPlayback() tea.Cmd {
 		}
 	}
 	m.playFPS = m.frameRate()
+	// Supersede any in-flight file/result preview load so its late result can't
+	// clobber the first played frame (videoFrameMsg carries no seq of its own).
+	m.previewSeq++
 	m.playing = true
 	return m.playFrameCmd(m.playPos)
 }
 
 // stopPlayback halts playback. Any frame still decoding is dropped by the
-// videoFrameMsg handler's !playing / stale-position guard.
+// videoFrameMsg handler's !playing / stale-position guard. The frozen frame's
+// caption is flipped from ▶ to ⏸ so a paused state is distinguishable.
 func (m *Model) stopPlayback() {
+	if !m.playing {
+		return
+	}
 	m.playing = false
+	if m.previewImgCap != "" {
+		m.previewImgCap = strings.Replace(m.previewImgCap, "▶", "⏸", 1)
+		if m.previewImgCache != nil {
+			*m.previewImgCache = imgCache{} // force a re-render so the new caption shows
+		}
+	}
 }
 
 // frameRate resolves the playback fps from the manifest's frame_rate, capped for
