@@ -9,6 +9,10 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.24.1] - 2026-06-23
+
 ### Fixed
 - **Studio: video player hardening.** Pressing `p` on a compressed stash is now
   refused with a clear message instead of silently spinning a never-rendering
@@ -245,7 +249,8 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.24.1...HEAD
+[0.24.1]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.24.0...v0.24.1
 [0.24.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.21.0...v0.22.0
