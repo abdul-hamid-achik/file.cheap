@@ -69,6 +69,7 @@ search index exist, and vecgrep availability. `?` shows the keybinding reference
 | `x` | Diff against a directory |
 | `t` | vidtrace timeline (bundles only) |
 | `d` | Drop (with `y/n` confirm) — from the list or the files pane |
+| `o` | Cycle the list sort: age / name / tool / files / size (list view) |
 | `s` | Status |
 | `g` | Refresh list (list view) |
 | `?` | Help |

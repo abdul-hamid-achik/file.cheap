@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/progress"
@@ -67,6 +68,7 @@ type Model struct {
 	stashes []*stash.Stash
 	cursor  int
 	loading bool
+	sortIdx int // index into stashSortModes
 
 	// detail view
 	selected  *stash.Stash
@@ -253,6 +255,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.stashes = msg.stashes
+		m.sortStashes()
 		m.errMessage = ""
 		m.statusMessage = fmt.Sprintf("%d stash(es)", len(m.stashes))
 		if m.cursor >= len(m.stashes) {
@@ -462,6 +465,39 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, false
 }
 
+// sortMode describes one stash-list ordering, cycled with the "o" key.
+type sortMode struct {
+	name string // column label it sorts by
+	desc bool   // true => ▼ (descending)
+	less func(a, b *stash.Stash) bool
+}
+
+func stashDisplayName(s *stash.Stash) string {
+	if s.Manifest.Name != "" {
+		return s.Manifest.Name
+	}
+	return s.Manifest.ID
+}
+
+var stashSortModes = []sortMode{
+	{"AGE", true, func(a, b *stash.Stash) bool { return a.Manifest.CreatedAt > b.Manifest.CreatedAt }},
+	{"NAME", false, func(a, b *stash.Stash) bool { return stashDisplayName(a) < stashDisplayName(b) }},
+	{"TOOL", false, func(a, b *stash.Stash) bool { return a.Manifest.Tool < b.Manifest.Tool }},
+	{"FILES", true, func(a, b *stash.Stash) bool { return a.Manifest.FileCount > b.Manifest.FileCount }},
+	{"SIZE", true, func(a, b *stash.Stash) bool { return a.Manifest.TotalSize > b.Manifest.TotalSize }},
+}
+
+// sortStashes orders the list by the active sort mode (stable, nil-safe).
+func (m *Model) sortStashes() {
+	mode := stashSortModes[m.sortIdx%len(stashSortModes)]
+	sort.SliceStable(m.stashes, func(i, j int) bool {
+		if m.stashes[i].Manifest == nil || m.stashes[j].Manifest == nil {
+			return false
+		}
+		return mode.less(m.stashes[i], m.stashes[j])
+	})
+}
+
 func (m *Model) handleListKey(key string) (tea.Cmd, bool) {
 	switch key {
 	case "q", "esc":
@@ -493,6 +529,13 @@ func (m *Model) handleListKey(key string) (tea.Cmd, bool) {
 		return nil, true
 	case "g":
 		return loadStashesCmd(m.stashDir), true
+	case "o":
+		if len(m.stashes) > 0 {
+			m.sortIdx = (m.sortIdx + 1) % len(stashSortModes)
+			m.sortStashes()
+			m.cursor = 0
+		}
+		return nil, true
 	case "r":
 		return m.restoreCmd(), true
 	case "c":

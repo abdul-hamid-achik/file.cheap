@@ -39,6 +39,8 @@ var (
 
 	// colHeaderStyle styles the stash-list column header row.
 	colHeaderStyle = lipgloss.NewStyle().Foreground(colorDim).Bold(true)
+	// colHeaderActiveStyle marks the column the list is currently sorted by.
+	colHeaderActiveStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Underline(true)
 
 	zstChipStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#1E1E1E")).Background(colorAccent).Padding(0, 1).Bold(true)
 	tagChipStyle  = lipgloss.NewStyle().Foreground(colorAccent).Background(colorChipBg).Padding(0, 1)
@@ -101,4 +103,20 @@ func bundleChipStyle(bundleType string) lipgloss.Style {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#1E1E1E")).Background(colorAccent2).Padding(0, 1).Bold(true)
 	}
 	return lipgloss.NewStyle().Foreground(colorMuted).Background(colorChipBg).Padding(0, 1)
+}
+
+// toolStyle colors the TOOL column by producing tool, so rows are scannable.
+func toolStyle(tool string) lipgloss.Style {
+	switch tool {
+	case "vidtrace":
+		return lipgloss.NewStyle().Foreground(colorAccent2) // magenta
+	case "vecgrep":
+		return lipgloss.NewStyle().Foreground(colorGood) // green
+	case "tinyvault", "tvault":
+		return lipgloss.NewStyle().Foreground(colorWarn) // yellow
+	case "", "generic":
+		return lipgloss.NewStyle().Foreground(colorMuted)
+	default:
+		return lipgloss.NewStyle().Foreground(colorAccent) // cyan
+	}
 }

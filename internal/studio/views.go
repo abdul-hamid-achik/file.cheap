@@ -90,8 +90,14 @@ func (m Model) renderList(h int) string {
 		return m.renderPanelH("Stashes", hint, m.width-2, h, true)
 	}
 
+	mode := stashSortModes[m.sortIdx%len(stashSortModes)]
+	arrow := "▲"
+	if mode.desc {
+		arrow = "▼"
+	}
+	title := fmt.Sprintf("Stashes · %s %s", mode.name, arrow)
 	rows := m.renderStashRows(m.width-4, h)
-	return m.renderPanelH("Stashes", rows, m.width-2, h, true)
+	return m.renderPanelH(title, rows, m.width-2, h, true)
 }
 
 // stash-list column widths (the NAME column flexes to fill the rest).
@@ -111,9 +117,21 @@ func nameColWidth(width int) int {
 
 func (m Model) renderStashRows(width, h int) string {
 	nameW := nameColWidth(width)
+	active := stashSortModes[m.sortIdx%len(stashSortModes)].name
+	hcell := func(label string, w int, right bool) string {
+		s := fmt.Sprintf("%-*s", w, label)
+		if right {
+			s = fmt.Sprintf("%*s", w, label)
+		}
+		if label == active {
+			return colHeaderActiveStyle.Render(s)
+		}
+		return colHeaderStyle.Render(s)
+	}
 	var b strings.Builder
-	b.WriteString(colHeaderStyle.Render(fmt.Sprintf("  %-*s  %-*s  %*s  %*s  %-*s",
-		nameW, "NAME", colTool, "TOOL", colFiles, "FILES", colSize, "SIZE", colAge, "AGE")))
+	b.WriteString("  " + hcell("NAME", nameW, false) + "  " + hcell("TOOL", colTool, false) +
+		"  " + hcell("FILES", colFiles, true) + "  " + hcell("SIZE", colSize, true) +
+		"  " + hcell("AGE", colAge, false))
 	b.WriteString("\n")
 
 	maxRows := clamp(panelBodyHeight(h)-1, 1, len(m.stashes)) // -1 for the header row
@@ -124,8 +142,9 @@ func (m Model) renderStashRows(width, h int) string {
 	end := clamp(start+maxRows, 0, len(m.stashes))
 
 	for i := start; i < end; i++ {
-		row := m.renderStashRow(i, nameW)
-		if i == m.cursor && m.activeView == viewList {
+		selected := i == m.cursor && m.activeView == viewList
+		row := m.renderStashRow(i, nameW, selected)
+		if selected {
 			b.WriteString(selectedRowStyle.Width(width).Render(row))
 		} else {
 			b.WriteString(row)
@@ -138,7 +157,7 @@ func (m Model) renderStashRows(width, h int) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func (m Model) renderStashRow(i, nameW int) string {
+func (m Model) renderStashRow(i, nameW int, selected bool) string {
 	st := m.stashes[i]
 	man := st.Manifest
 	marker := "  "
@@ -150,12 +169,20 @@ func (m Model) renderStashRow(i, nameW int) string {
 		name = man.Name
 	}
 
-	row := fmt.Sprintf("%s%-*s  %-*s  %*d  %*s  %-*s",
-		marker, nameW, truncate(name, nameW),
-		colTool, truncate(man.Tool, colTool),
-		colFiles, man.FileCount,
-		colSize, formatSize(man.TotalSize),
-		colAge, truncate(relTime(man.CreatedAt), colAge))
+	nameCol := fmt.Sprintf("%-*s", nameW, truncate(name, nameW))
+	toolCol := fmt.Sprintf("%-*s", colTool, truncate(man.Tool, colTool))
+	filesCol := fmt.Sprintf("%*d", colFiles, man.FileCount)
+	sizeCol := fmt.Sprintf("%*s", colSize, formatSize(man.TotalSize))
+	ageCol := fmt.Sprintf("%-*s", colAge, truncate(relTime(man.CreatedAt), colAge))
+	// Color the columns only on unselected rows — the selection style owns the
+	// look of the highlighted row.
+	if !selected {
+		toolCol = toolStyle(man.Tool).Render(toolCol)
+		sizeCol = dimStyle.Render(sizeCol)
+		ageCol = mutedStyle.Render(ageCol)
+	}
+
+	row := marker + nameCol + "  " + toolCol + "  " + filesCol + "  " + sizeCol + "  " + ageCol
 	if man.Compression != "" {
 		row += "  " + zstChipStyle.Render(compLabel(man.Compression))
 	}
@@ -472,6 +499,7 @@ func (m Model) renderHelp(h int) string {
 		help("x", "diff against a directory"),
 		help("t", "vidtrace timeline (bundles)"),
 		help("d", "drop (confirm y/n) — list / files pane"),
+		help("o", "cycle sort (age/name/tool/files/size)"),
 		help("g", "refresh stash list"),
 		"",
 		titleStyle.Render("Preview pane (when focused)"),
@@ -552,9 +580,10 @@ func (m Model) contextHints() string {
 		return keyHint("esc", "back")
 	default:
 		return strings.Join([]string{
-			keyHint("enter", "open"), keyHint("/", "search"), keyHint("r", "restore"),
-			keyHint("c", "compress"), keyHint("a", "index"), keyHint("x", "diff"),
-			keyHint("d", "drop"), keyHint("s", "status"), keyHint("?", "help"), keyHint("q", "quit"),
+			keyHint("enter", "open"), keyHint("/", "search"), keyHint("o", "sort"),
+			keyHint("r", "restore"), keyHint("c", "compress"), keyHint("a", "index"),
+			keyHint("x", "diff"), keyHint("d", "drop"), keyHint("s", "status"),
+			keyHint("?", "help"), keyHint("q", "quit"),
 		}, "  ")
 	}
 }

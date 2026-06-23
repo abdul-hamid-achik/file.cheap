@@ -9,7 +9,12 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Studio: sort the stash list** with `o` — cycles age / name / tool / files /
+  size; the active sort and direction show in the panel title (`Stashes · SIZE ▼`)
+  and the sorted column is highlighted in the header.
+- **Studio: per-tool color accents** in the list (the TOOL column is colored by
+  producing tool), with dimmed size/age columns for quicker scanning.
 
 ## [0.20.0] - 2026-06-23
 

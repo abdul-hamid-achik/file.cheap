@@ -7,6 +7,8 @@ import (
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/detect"
 	"github.com/abdul-hamid-achik/file.cheap/internal/diff"
+	"github.com/abdul-hamid-achik/file.cheap/internal/manifest"
+	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
 )
 
 // ansi strips terminal escape sequences so assertions test the text content.
@@ -123,5 +125,40 @@ func TestViewFillsTerminalHeight(t *testing.T) {
 				break
 			}
 		}
+	}
+}
+
+// TestStashSort verifies the list sort modes cycled by the "o" key.
+func TestStashSort(t *testing.T) {
+	mk := func(name, tool string, size int64, created string) *stash.Stash {
+		return &stash.Stash{Manifest: &manifest.Manifest{
+			ID: name, Name: name, Tool: tool, TotalSize: size, CreatedAt: created,
+		}}
+	}
+	m := &Model{stashes: []*stash.Stash{
+		mk("c-old-small", "generic", 100, "2026-06-20T00:00:00Z"),
+		mk("a-new-big", "vidtrace", 9000, "2026-06-23T00:00:00Z"),
+		mk("b-mid", "vecgrep", 500, "2026-06-21T00:00:00Z"),
+	}}
+
+	m.sortIdx = 0 // AGE desc (newest first)
+	m.sortStashes()
+	if got := m.stashes[0].Manifest.Name; got != "a-new-big" {
+		t.Errorf("AGE sort first = %q, want a-new-big", got)
+	}
+
+	m.sortIdx = 1 // NAME asc
+	m.sortStashes()
+	if got := m.stashes[0].Manifest.Name; got != "a-new-big" {
+		t.Errorf("NAME sort first = %q, want a-new-big", got)
+	}
+	if got := m.stashes[2].Manifest.Name; got != "c-old-small" {
+		t.Errorf("NAME sort last = %q, want c-old-small", got)
+	}
+
+	m.sortIdx = 4 // SIZE desc
+	m.sortStashes()
+	if got := m.stashes[0].Manifest.TotalSize; got != 9000 {
+		t.Errorf("SIZE sort first = %d, want 9000", got)
 	}
 }
