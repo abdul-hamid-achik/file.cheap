@@ -128,14 +128,40 @@ func (m *Manifest) ScanFiles(dir string) error {
 	return nil
 }
 
-// Save writes the manifest to manifest.json in the given directory.
+// Save writes the manifest to manifest.json in the given directory. The write is
+// atomic (temp file + rename) so an interrupted write never leaves a truncated
+// or half-written manifest.json — which, since the manifest is what makes a stash
+// discoverable, would otherwise hide or corrupt an otherwise-intact stash.
 func (m *Manifest) Save(dir string) error {
 	path := filepath.Join(dir, "manifest.json")
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal manifest: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+	tmp, err := os.CreateTemp(dir, ".manifest-*.json.tmp")
+	if err != nil {
+		return fmt.Errorf("create temp manifest: %w", err)
+	}
+	tmpPath := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("write temp manifest: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("sync temp manifest: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("close temp manifest: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("rename manifest into place: %w", err)
+	}
+	return nil
 }
 
 // Load reads a manifest from manifest.json in the given directory.

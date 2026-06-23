@@ -536,12 +536,14 @@ func (m *Manager) Compress(ctx context.Context, id, algo string) (*CompressResul
 		return nil, fmt.Errorf("archive: %w", err)
 	}
 
-	// Drop any pre-existing archives (possibly a different algorithm), then
-	// atomically move the new archive into place.
-	for _, name := range archiveNames {
-		_ = os.Remove(filepath.Join(stashDir, name))
-	}
+	// Move the new archive into place FIRST — a same-named existing archive is
+	// replaced in a single atomic rename — so there is never a crash window with
+	// zero archives on disk.
 	if err := os.Rename(tmpArchive, archivePath); err != nil {
+		if cleanupTmp != "" {
+			_ = os.RemoveAll(cleanupTmp)
+		}
+		_ = os.Remove(tmpArchive)
 		return nil, fmt.Errorf("finalize archive: %w", err)
 	}
 
@@ -551,19 +553,28 @@ func (m *Manager) Compress(ctx context.Context, id, algo string) (*CompressResul
 	}
 	compressedSize := fi.Size()
 
-	// Reclaim space: remove the extracted tree and any temp extraction.
-	_ = os.RemoveAll(filepath.Join(stashDir, "content"))
-	if cleanupTmp != "" {
-		_ = os.RemoveAll(cleanupTmp)
-	}
-
+	// Record compression in the manifest (atomically) BEFORE reclaiming the
+	// content tree, so a crash never leaves the manifest/DB claiming
+	// "uncompressed" while the content tree is already gone.
 	man.Compression = algo
 	man.CompressedSize = compressedSize
 	if err := man.Save(stashDir); err != nil {
 		return nil, fmt.Errorf("save manifest: %w", err)
 	}
-
 	m.syncToDB(ctx, man)
+
+	// Now reclaim space: stale archives of other algorithms, the extracted tree,
+	// and any temp extraction. A crash here only leaves reclaimable files behind,
+	// not an inconsistent stash.
+	for _, other := range archiveNames {
+		if other != name {
+			_ = os.Remove(filepath.Join(stashDir, other))
+		}
+	}
+	_ = os.RemoveAll(filepath.Join(stashDir, "content"))
+	if cleanupTmp != "" {
+		_ = os.RemoveAll(cleanupTmp)
+	}
 
 	slog.Debug("stash compressed", "id", id, "algo", algo,
 		"original", man.TotalSize, "compressed", compressedSize)

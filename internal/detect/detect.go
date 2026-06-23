@@ -15,7 +15,26 @@ type BundleType string
 const (
 	TypeVidtrace BundleType = "vidtrace"
 	TypeGeneric  BundleType = "generic"
+
+	// maxSearchableTextBytes caps the synthesized SearchableText so detecting a
+	// large stash can't accumulate an unbounded string (OOM / O(n^2) churn).
+	maxSearchableTextBytes = 4 << 20 // 4 MiB
+	// maxBundleJSONBytes caps reads of bundle JSON (metadata.json / timeline.json)
+	// so a malformed or oversized bundle can't exhaust memory.
+	maxBundleJSONBytes = 32 << 20 // 32 MiB
 )
+
+// readCappedFile reads path but refuses files larger than max bytes.
+func readCappedFile(path string, max int64) ([]byte, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if fi.Size() > max {
+		return nil, fmt.Errorf("%s too large (%d bytes > %d cap)", filepath.Base(path), fi.Size(), max)
+	}
+	return os.ReadFile(path)
+}
 
 // Result holds detection metadata about a directory.
 type Result struct {
@@ -55,7 +74,7 @@ func BundleTypeOf(dir string) BundleType {
 // VidtraceMetadata reads and parses contentDir/metadata.json (a vidtrace bundle's
 // metadata object). Returns false if it is missing or malformed.
 func VidtraceMetadata(dir string) (map[string]any, bool) {
-	data, err := os.ReadFile(filepath.Join(dir, "metadata.json"))
+	data, err := readCappedFile(filepath.Join(dir, "metadata.json"), maxBundleJSONBytes)
 	if err != nil {
 		return nil, false
 	}
@@ -69,7 +88,7 @@ func VidtraceMetadata(dir string) (map[string]any, bool) {
 // ParseVidtraceTimeline reads and flattens contentDir/timeline.json. It returns
 // nil if the file is missing or malformed.
 func ParseVidtraceTimeline(contentDir string) []TimelineEntry {
-	data, err := os.ReadFile(filepath.Join(contentDir, "timeline.json"))
+	data, err := readCappedFile(filepath.Join(contentDir, "timeline.json"), maxBundleJSONBytes)
 	if err != nil {
 		return nil
 	}
@@ -142,13 +161,16 @@ func (d *vidtraceDetector) Detect(dir string) (Result, bool) {
 		Metadata: map[string]any{},
 	}
 
-	// Parse metadata.json for searchable text
-	if data, err := os.ReadFile(metaPath); err == nil {
+	// Parse metadata.json for searchable text. SearchableText is built in a
+	// bounded Builder to avoid unbounded accumulation / O(n^2) churn.
+	var st strings.Builder
+	if data, err := readCappedFile(metaPath, maxBundleJSONBytes); err == nil {
 		var meta map[string]any
 		if json.Unmarshal(data, &meta) == nil {
 			r.Metadata["vidtrace_metadata"] = meta
 			if source, ok := meta["source_video"].(string); ok {
-				r.SearchableText += source + "\n"
+				st.WriteString(source)
+				st.WriteByte('\n')
 			}
 		}
 	}
@@ -158,11 +180,17 @@ func (d *vidtraceDetector) Detect(dir string) (Result, bool) {
 	for _, e := range ParseVidtraceTimeline(dir) {
 		var parts []string
 		if e.OCR != "" {
-			r.SearchableText += e.OCR + "\n"
+			if st.Len() < maxSearchableTextBytes {
+				st.WriteString(e.OCR)
+				st.WriteByte('\n')
+			}
 			parts = append(parts, e.OCR)
 		}
 		if e.Transcript != "" {
-			r.SearchableText += e.Transcript + "\n"
+			if st.Len() < maxSearchableTextBytes {
+				st.WriteString(e.Transcript)
+				st.WriteByte('\n')
+			}
 			parts = append(parts, e.Transcript)
 		}
 		if len(parts) > 0 {
@@ -176,6 +204,7 @@ func (d *vidtraceDetector) Detect(dir string) (Result, bool) {
 			})
 		}
 	}
+	r.SearchableText = st.String()
 
 	// Only index the raw ocr/ and transcript/ text files when the timeline
 	// produced no per-frame units. When units exist, that same OCR/transcript
@@ -202,19 +231,24 @@ func (d *genericDetector) Detect(dir string) (Result, bool) {
 	// Collect all text-readable files
 	r.SearchableFiles = collectTextFiles(dir, nil)
 
-	// Read small text files into searchable text
+	// Read small text files into searchable text, bounded total (Builder avoids
+	// the O(n^2) churn of repeated string concatenation on a large stash).
+	var sb strings.Builder
 	for _, f := range r.SearchableFiles {
+		if sb.Len() >= maxSearchableTextBytes {
+			break
+		}
 		fullPath := filepath.Join(dir, f)
 		info, err := os.Stat(fullPath)
 		if err != nil || info.Size() > 100*1024 { // skip files > 100KB
 			continue
 		}
-		if data, err := os.ReadFile(fullPath); err == nil {
-			if isPrintable(data) {
-				r.SearchableText += string(data) + "\n"
-			}
+		if data, err := os.ReadFile(fullPath); err == nil && isPrintable(data) {
+			sb.Write(data)
+			sb.WriteByte('\n')
 		}
 	}
+	r.SearchableText = sb.String()
 
 	return r, true
 }
