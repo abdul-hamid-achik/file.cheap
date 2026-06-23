@@ -99,6 +99,12 @@ type Model struct {
 	previewImgCap   string    // styled caption line (format · dims · size)
 	previewImgCache *imgCache // memoized art, keyed by image + pane size
 
+	// video playback: animate a vidtrace frame sequence in the preview pane.
+	playing    bool
+	playFrames []int // indices (into selectedFiles) of the image frames, in order
+	playPos    int   // current position within playFrames
+	playFPS    int
+
 	// search view
 	query         textinput.Model
 	searchResults []analyze.SearchResult
@@ -183,6 +189,15 @@ type indexProgressClosedMsg struct{}
 type diffDoneMsg struct {
 	content string
 	err     error
+}
+
+// videoFrameMsg carries one decoded frame during vidtrace playback.
+type videoFrameMsg struct {
+	pos    int // position within m.playFrames this frame was requested for
+	img    image.Image
+	format string
+	size   int64
+	err    error
 }
 
 // NewModel constructs the initial studio model.
@@ -282,6 +297,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.focus = focusPreview
 		m.statusMessage = "diff complete"
 		return m, nil
+
+	case videoFrameMsg:
+		// Stop cleanly if playback was cancelled (a navigation/view change) while
+		// this frame was decoding, or the position is stale.
+		if !m.playing || m.activeView != viewDetail || msg.pos != m.playPos {
+			return m, nil
+		}
+		if msg.err == nil && msg.img != nil {
+			m.previewImg = msg.img
+			m.previewImgCap = m.playCaption(msg.img, msg.format, msg.size)
+			if fi := m.playFrames[msg.pos]; fi >= 0 && fi < len(m.selectedFiles()) {
+				m.fileIdx = fi // keep the Files-pane cursor in step with playback
+			}
+		}
+		// Advance to the next frame (looping) and schedule it.
+		m.playPos = (msg.pos + 1) % len(m.playFrames)
+		return m, m.playFrameCmd(m.playPos)
 
 	case stashesLoadedMsg:
 		m.loading = false
@@ -697,6 +729,11 @@ func (m *Model) handleListKey(key string) (tea.Cmd, bool) {
 
 func (m *Model) handleDetailKey(key string) (tea.Cmd, bool) {
 	files := m.selectedFiles()
+	// Any key other than the play toggle hands control back to the user and stops
+	// playback (an in-flight frame is then dropped by the stale-position guard).
+	if key != "p" && key != " " && key != "space" {
+		m.stopPlayback()
+	}
 	switch key {
 	case "q":
 		return tea.Quit, true
@@ -766,6 +803,14 @@ func (m *Model) handleDetailKey(key string) (tea.Cmd, bool) {
 		}
 		m.statusMessage = "timeline view is only available for vidtrace bundles"
 		return nil, true
+	case "p", " ", "space":
+		// Play/pause the frame sequence (vidtrace bundles, or any stash with ≥2
+		// images). stopPlayback already ran above for non-toggle keys.
+		if m.playing {
+			m.stopPlayback()
+			return nil, true
+		}
+		return m.startPlayback(), true
 	case "r":
 		return m.restoreCmd(), true
 	case "c":
@@ -967,6 +1012,7 @@ func (m *Model) toList() {
 	m.query.Blur()
 	m.confirm = confirmNone
 	m.clearPreviewImage()
+	m.stopPlayback()
 }
 
 func (m *Model) openDetail() {

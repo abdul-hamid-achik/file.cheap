@@ -1,0 +1,88 @@
+version: 1
+name: cli_studio_video
+
+metadata:
+  feature: studio
+  owner: core
+  priority: normal
+  tags:
+    - studio
+    - images
+    - video
+    - agent
+
+intent: |
+  Verify the studio frame-sequence video player: in a stash detail view, pressing
+  'p' animates the image frames in the preview pane, showing block art and a frame
+  counter caption. Driven in a real PTY.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - "export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-vid-store; exec ./bin/fcheap studio"
+  cwd: "."
+  timeoutMs: 20000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: require
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+    - run: "rm -rf /tmp/fcheap-e2e-vid-store /tmp/fcheap-e2e-vid-src"
+      timeoutMs: 5000
+    - run: "go run ./e2e/gen/genframes /tmp/fcheap-e2e-vid-src 30"
+      timeoutMs: 60000
+    - run: "FCHEAP_STASH_DIR=/tmp/fcheap-e2e-vid-store ./bin/fcheap save /tmp/fcheap-e2e-vid-src --name e2e-video --tool vidtrace --tag e2e"
+      timeoutMs: 15000
+
+steps:
+  - wait:
+      screen:
+        contains: "e2e-video"
+      timeoutMs: 5000
+  - press: "enter"
+  - wait:
+      screen:
+        contains: "Files ("
+      timeoutMs: 5000
+  # Start playback: the preview pane animates the frame sequence.
+  - press: "p"
+  - wait:
+      screen:
+        contains: "frame"
+      timeoutMs: 8000
+  - wait:
+      screen:
+        contains: "/30"
+      timeoutMs: 8000
+  - snapshot: video-playing
+  - press: "ctrl+c"
+  - wait:
+      process:
+        exitCode: 0
+      timeoutMs: 5000
+
+outcomes:
+  - id: clean_exit
+    description: studio exits cleanly during playback
+    verify:
+      process:
+        exitCode: 0
+  - id: frame_counter
+    description: the playback caption shows a frame counter
+    verify:
+      screen:
+        contains: "/30"
+  - id: frame_rendered
+    description: a frame is rendered as half-block art in the preview pane
+    verify:
+      cell:
+        x: 80
+        y: 10
+        char: "▀"

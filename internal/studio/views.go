@@ -646,6 +646,7 @@ func (m Model) renderHelp(h int) string {
 		help("ctrl+d / ctrl+u", "jump a page of files"),
 		help("g / G", "first / last file"),
 		help("images", "render inline (png/jpg/gif)"),
+		help("p / space", "play frame sequence (video)"),
 		"",
 		titleStyle.Render("Preview pane (when focused)"),
 		help("j / k", "scroll one line"),
@@ -707,6 +708,11 @@ func (m Model) contextHints() string {
 		hints := []string{keyHint("tab", "pane")}
 		if m.selected != nil && m.selected.Manifest != nil && m.selected.Manifest.BundleType == "vidtrace" {
 			hints = append(hints, keyHint("t", "timeline"))
+		}
+		if m.playing {
+			hints = append(hints, keyHint("p", "stop ▶"))
+		} else if m.hasFrames() {
+			hints = append(hints, keyHint("p", "play ▶"))
 		}
 		hints = append(hints,
 			keyHint("r", "restore"), keyHint("c", "compress"),
