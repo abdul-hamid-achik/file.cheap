@@ -112,7 +112,7 @@ Restore a stash to a target directory.
 
 **Input:**
 - `stash_id` (string, required) -- the stash ID
-- `target` (string, optional) -- target directory (default: the system temp dir under a `<stash-id>` subdirectory)
+- `target` (string, optional) -- target directory (default: a fresh, unique temp directory, reported in the result)
 
 **Output:** Restoration confirmation
 

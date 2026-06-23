@@ -12,10 +12,12 @@ fcheap restore <stash-id> [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--to` | string | `<system-temp>/<stash-id>` | Target directory for extraction |
+| `--to` | string | a fresh temp dir | Target directory for extraction |
 
-The default target is the OS temp directory (`os.TempDir()` — `$TMPDIR` on macOS,
-`/tmp` on Linux), under a subdirectory named after the stash ID.
+With no `--to`, restore creates a fresh, unique temp directory (e.g.
+`$TMPDIR/<stash-id>-XXXXXX`) rather than a predictable shared path — so repeated
+restores never merge into one another, and nothing can be pre-planted at a known
+destination. The chosen directory is reported in the output.
 
 ## Examples
 
@@ -23,7 +25,7 @@ The default target is the OS temp directory (`os.TempDir()` — `$TMPDIR` on mac
 # Restore to a specific directory
 fcheap restore my_artifacts_20260622_115254 --to /tmp/working/
 
-# Restore to the default location (system temp dir / <stash-id>)
+# Restore to a fresh temp directory (path is printed)
 fcheap restore my_artifacts_20260622_115254
 ```
 

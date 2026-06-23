@@ -9,7 +9,13 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Security
+- Restore with no `--to` now uses a fresh, unique temp directory
+  (`os.MkdirTemp`) instead of a predictable `os.TempDir()/<id>` path, so nothing
+  can be pre-planted at a known restore destination and repeated restores don't
+  merge.
+- `Extract` now enforces a total-extraction byte cap (defense-in-depth against a
+  decompression bomb that would otherwise fill the disk).
 
 ## [0.19.1] - 2026-06-23
 

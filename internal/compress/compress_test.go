@@ -3,6 +3,7 @@ package compress
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -142,5 +143,27 @@ func TestExtractDoesNotWriteThroughPlantedSymlink(t *testing.T) {
 	fi, err := os.Lstat(filepath.Join(target, "config.json"))
 	if err != nil || fi.Mode()&os.ModeSymlink != 0 {
 		t.Errorf("config.json should be a real file, not a symlink (err %v)", err)
+	}
+}
+
+// TestExtractEnforcesByteCap verifies the total-extraction budget rejects an
+// archive whose contents exceed the cap (decompression-bomb defense).
+func TestExtractEnforcesByteCap(t *testing.T) {
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(src, "big.bin"), make([]byte, 4096), 0644); err != nil {
+		t.Fatal(err)
+	}
+	arc := filepath.Join(t.TempDir(), "a.tar.zst")
+	if _, err := Archive(src, arc, Zstd); err != nil {
+		t.Fatal(err)
+	}
+
+	orig := maxExtractedBytes
+	maxExtractedBytes = 1024 // below the 4096-byte entry
+	defer func() { maxExtractedBytes = orig }()
+
+	err := Extract(arc, t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "extraction cap") {
+		t.Errorf("expected an extraction-cap error, got %v", err)
 	}
 }

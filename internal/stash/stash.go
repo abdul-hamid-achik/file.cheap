@@ -273,9 +273,15 @@ func (m *Manager) Restore(ctx context.Context, id, target string) (*RestoreResul
 	contentDir := filepath.Join(stashDir, "content")
 
 	if target == "" {
-		target = filepath.Join(os.TempDir(), id)
-	}
-	if err := os.MkdirAll(target, 0755); err != nil {
+		// Use a fresh, unpredictable temp directory rather than a shared
+		// os.TempDir()/<id> path. The predictable path let an attacker pre-plant
+		// symlinks (or stale files) at known destinations before a restore.
+		dir, err := os.MkdirTemp("", id+"-*")
+		if err != nil {
+			return nil, fmt.Errorf("create temp target dir: %w", err)
+		}
+		target = dir
+	} else if err := os.MkdirAll(target, 0755); err != nil {
 		return nil, fmt.Errorf("create target dir: %w", err)
 	}
 

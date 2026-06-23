@@ -22,6 +22,12 @@ const (
 	None Algorithm = "none"
 )
 
+// maxExtractedBytes caps total bytes written during a single Extract, as
+// defense-in-depth against a decompression bomb (a small archive that expands to
+// fill the disk). It is far above any realistic agent-workflow stash. A var (not
+// const) so tests can lower it.
+var maxExtractedBytes int64 = 20 << 30 // 20 GiB
+
 // Archive creates a compressed tar archive from a directory.
 // The archive is written to outputPath. If algo is None, creates an uncompressed tar.
 //
@@ -184,6 +190,7 @@ func Extract(archivePath, targetDir string) error {
 	}
 
 	tr := tar.NewReader(reader)
+	var extracted int64 // running total, bounded by maxExtractedBytes
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -217,11 +224,18 @@ func Extract(archivePath, targetDir string) error {
 			if err != nil {
 				return err
 			}
-			if _, err := io.Copy(out, tr); err != nil {
-				out.Close() //nolint:errcheck
-				return err
-			}
+			// Bound each entry by the remaining budget so a bomb can't write past
+			// the cap. CopyN(remaining+1) returns >remaining only when over budget.
+			remaining := maxExtractedBytes - extracted
+			n, cerr := io.CopyN(out, tr, remaining+1)
 			out.Close() //nolint:errcheck
+			extracted += n
+			if n > remaining {
+				return fmt.Errorf("archive exceeds %d-byte extraction cap (possible decompression bomb)", maxExtractedBytes)
+			}
+			if cerr != nil && cerr != io.EOF {
+				return cerr
+			}
 		case tar.TypeSymlink:
 			// Recreate the link, but refuse any that would resolve outside the
 			// extraction root (classic tar symlink-escape attack). Unsafe links
