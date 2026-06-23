@@ -22,6 +22,11 @@ func (m Model) render() string {
 	if m.width == 0 {
 		return "fcheap studio\n\nloading…"
 	}
+	// Panels have a minimum width (20); below it the bordered boxes would overflow
+	// the terminal, so show a clipped notice instead of a broken layout.
+	if m.width < 20 {
+		return lipgloss.NewStyle().MaxWidth(m.width).Height(m.height).MaxHeight(m.height).Render("too narrow")
+	}
 
 	header := lipgloss.NewStyle().MaxWidth(m.width).Render(m.renderHeader())
 	// Wrap a long footer to the terminal width (at the "  " gaps between hints)
@@ -337,7 +342,7 @@ func (m Model) renderDetail(h int) string {
 		previewH = 3
 	}
 	// Full-width preview panel (m.width-2): interior is m.width-6.
-	m.preview.SetWidth(clamp(m.width-6, 20, m.width))
+	m.preview.SetWidth(clamp(max(m.width-2, 20)-4, 1, m.width))
 	m.preview.SetHeight(panelBodyHeight(previewH))
 	return lipgloss.JoinVertical(lipgloss.Left,
 		m.renderPanelClip("Provenance", infoStr, m.width-2, provH, false),
@@ -482,7 +487,7 @@ func (m Model) renderSearch(h int) string {
 	// Stacked: split the remaining height between results and preview.
 	resultsH := restH / 2
 	previewH := restH - resultsH
-	m.preview.SetWidth(clamp(m.width-6, 20, m.width)) // panel interior
+	m.preview.SetWidth(clamp(max(m.width-2, 20)-4, 1, m.width)) // panel interior
 	m.preview.SetHeight(panelBodyHeight(previewH))
 	return lipgloss.JoinVertical(lipgloss.Left,
 		queryPanel,
@@ -546,7 +551,7 @@ func (m Model) renderTimeline(h int) string {
 	}
 	// Full-width panel: fill its interior (the side-by-side widths from resize()
 	// would otherwise leave the right half blank and wrap lines early).
-	m.preview.SetWidth(clamp(m.width-6, 20, m.width))
+	m.preview.SetWidth(clamp(max(m.width-2, 20)-4, 1, m.width))
 	m.preview.SetHeight(panelBodyHeight(h))
 	return m.renderPanelH(title, m.preview.View(), m.width-2, h, true)
 }
@@ -559,7 +564,7 @@ func (m Model) renderDiff(h int) string {
 		title = "Diff · " + m.selected.Manifest.Name
 	}
 	// Full-width panel: fill its interior so diff lines use the whole width.
-	m.preview.SetWidth(clamp(m.width-6, 20, m.width))
+	m.preview.SetWidth(clamp(max(m.width-2, 20)-4, 1, m.width))
 	m.preview.SetHeight(panelBodyHeight(h))
 	return m.renderPanelH(title, m.preview.View(), m.width-2, h, true)
 }

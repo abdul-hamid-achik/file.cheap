@@ -9,7 +9,20 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+- **Studio: video player hardening.** Pressing `p` on a compressed stash is now
+  refused with a clear message instead of silently spinning a never-rendering
+  decode loop; a frame that fails to decode mid-playback stops cleanly; pausing
+  shows a `⏸` indicator instead of a misleading `▶`.
+- **Studio: preview races.** Starting playback, or switching to the diff/timeline
+  view, can no longer be clobbered by a file/result preview that finished decoding
+  late.
+- **Studio: narrow terminals.** The preview viewport is sized to the true panel
+  interior, so image / timeline / diff content no longer wraps or overflows on
+  narrow widths; terminals under 20 columns show a concise notice rather than
+  broken boxes.
+- **Studio: search results** — `g` / `G` jump to the first / last match (parity
+  with the list and files panes).
 
 ## [0.24.0] - 2026-06-23
 

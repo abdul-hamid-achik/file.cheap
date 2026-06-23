@@ -304,12 +304,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.playing || m.activeView != viewDetail || msg.pos != m.playPos {
 			return m, nil
 		}
-		if msg.err == nil && msg.img != nil {
-			m.previewImg = msg.img
-			m.previewImgCap = m.playCaption(msg.img, msg.format, msg.size)
-			if fi := m.playFrames[msg.pos]; fi >= 0 && fi < len(m.selectedFiles()) {
-				m.fileIdx = fi // keep the Files-pane cursor in step with playback
-			}
+		if msg.err != nil || msg.img == nil {
+			// A frame failed to decode (e.g. content removed mid-play); stop rather
+			// than spin re-decoding a missing file.
+			m.stopPlayback()
+			return m, nil
+		}
+		m.previewImg = msg.img
+		m.previewImgCap = m.playCaption(msg.img, msg.format, msg.size)
+		if fi := m.playFrames[msg.pos]; fi >= 0 && fi < len(m.selectedFiles()) {
+			m.fileIdx = fi // keep the Files-pane cursor in step with playback
 		}
 		// Advance to the next frame (looping) and schedule it.
 		m.playPos = (msg.pos + 1) % len(m.playFrames)
@@ -370,6 +374,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// quickly, several decode/read goroutines are in flight and may finish out
 		// of order — only the newest request's result should reach the pane.
 		if msg.seq != m.previewSeq {
+			return m, nil
+		}
+		// Only detail/search display file/result previews; a load that lands after a
+		// switch to diff/timeline/list must not overwrite that pane's content.
+		if m.activeView != viewDetail && m.activeView != viewSearch {
 			return m, nil
 		}
 		if msg.err != nil {
@@ -966,11 +975,19 @@ func (m *Model) handleSearchKey(key string) (tea.Cmd, bool) {
 			m.preview.GotoTop()
 			return nil, true
 		}
+		if len(m.searchResults) > 0 { // results pane: jump to the first match
+			m.resultIdx = 0
+			return m.loadResultPreviewCmd(), true
+		}
 		return nil, true
 	case "G", "end":
 		if m.focus == focusPreview {
 			m.preview.GotoBottom()
 			return nil, true
+		}
+		if n := len(m.searchResults); n > 0 { // results pane: jump to the last match
+			m.resultIdx = n - 1
+			return m.loadResultPreviewCmd(), true
 		}
 		return nil, true
 	case "m":
