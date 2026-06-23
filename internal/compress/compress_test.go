@@ -69,3 +69,43 @@ func TestExtractRejectsTraversal(t *testing.T) {
 		t.Error("safe path should be accepted")
 	}
 }
+
+// TestArchiveExtractSymlinks verifies symlinks survive an archive/extract round
+// trip: safe relative links (incl. dangling) are preserved, while links that
+// would escape the extraction root are dropped (not fatal). Regression test for
+// the "Archive crashes on symlinks" and "Extract silently drops symlinks" bugs.
+func TestArchiveExtractSymlinks(t *testing.T) {
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(src, "real.txt"), []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mustSymlink(t, "real.txt", filepath.Join(src, "link.txt"))            // safe, valid
+	mustSymlink(t, "nonexistent.txt", filepath.Join(src, "dangling.txt")) // safe, dangling
+	mustSymlink(t, "/etc/passwd", filepath.Join(src, "evil.txt"))         // unsafe (absolute)
+
+	arc := filepath.Join(t.TempDir(), "out.tar.zst")
+	if _, err := Archive(src, arc, Zstd); err != nil {
+		t.Fatalf("Archive must not fail on symlinks: %v", err)
+	}
+	dst := t.TempDir()
+	if err := Extract(arc, dst); err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	if got, err := os.Readlink(filepath.Join(dst, "link.txt")); err != nil || got != "real.txt" {
+		t.Errorf("link.txt = %q (err %v); want real.txt", got, err)
+	}
+	if got, err := os.Readlink(filepath.Join(dst, "dangling.txt")); err != nil || got != "nonexistent.txt" {
+		t.Errorf("dangling.txt = %q (err %v); want nonexistent.txt", got, err)
+	}
+	if _, err := os.Lstat(filepath.Join(dst, "evil.txt")); !os.IsNotExist(err) {
+		t.Errorf("unsafe absolute symlink should be dropped on extract, got err=%v", err)
+	}
+}
+
+func mustSymlink(t *testing.T, oldname, newname string) {
+	t.Helper()
+	if err := os.Symlink(oldname, newname); err != nil {
+		t.Fatalf("symlink %s -> %s: %v", newname, oldname, err)
+	}
+}

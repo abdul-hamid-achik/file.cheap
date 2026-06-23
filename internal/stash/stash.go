@@ -614,6 +614,20 @@ func copyDir(src, dst string) error {
 		if info.IsDir() {
 			return os.MkdirAll(target, info.Mode())
 		}
+		// Recreate symlinks verbatim rather than dereferencing them: copyFile
+		// uses os.Open, which follows links, so a dangling symlink would abort
+		// the entire save. Preserving the link also keeps the stash faithful.
+		if info.Mode()&os.ModeSymlink != 0 {
+			linkDest, lerr := os.Readlink(path)
+			if lerr != nil {
+				return nil // skip links whose metadata can't be read
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			_ = os.Remove(target) // overwrite if it already exists
+			return os.Symlink(linkDest, target)
+		}
 		return copyFile(path, target)
 	})
 }

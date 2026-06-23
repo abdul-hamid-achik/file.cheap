@@ -75,6 +75,24 @@ func (m *Manifest) ScanFiles(dir string) error {
 			Path: rel,
 			Size: info.Size(),
 		}
+		// Symlinks: hash the link target text instead of dereferencing it
+		// (os.Open follows links and would fail on a dangling target). Keeps the
+		// link in the manifest and content hash, and is deterministic so a
+		// restored tree re-hashes identically.
+		if info.Mode()&os.ModeSymlink != 0 {
+			linkDest, lerr := os.Readlink(path)
+			if lerr != nil {
+				return nil // skip links whose metadata can't be read
+			}
+			sum := sha256.Sum256([]byte("symlink:" + linkDest))
+			entry.Hash = hex.EncodeToString(sum[:])
+			entry.Size = int64(len(linkDest))
+			hasher.Write([]byte(entry.Path))
+			hasher.Write([]byte(entry.Hash))
+			entries = append(entries, entry)
+			totalSize += entry.Size
+			return nil
+		}
 		// Hash file content for dedup and integrity
 		f, err := os.Open(path)
 		if err != nil {

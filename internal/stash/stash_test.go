@@ -409,3 +409,35 @@ func TestSaveSingleFile(t *testing.T) {
 		t.Errorf("FileCount = %d, want 1", st.Manifest.FileCount)
 	}
 }
+
+// TestSaveDirWithDanglingSymlink verifies a directory containing a dangling
+// symlink can still be stashed (the link is preserved, not dereferenced).
+// Regression test for "Save aborts on a source dir with a dangling symlink".
+func TestSaveDirWithDanglingSymlink(t *testing.T) {
+	root := t.TempDir()
+	mgr, err := NewManager(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(src, "ok.txt"), []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/no/such/target", filepath.Join(src, "broken")); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := mgr.Save(context.Background(), &SaveOptions{SourcePath: src, Name: "with-link"})
+	if err != nil {
+		t.Fatalf("Save with a dangling symlink should succeed, got: %v", err)
+	}
+	if st.Manifest.FileCount < 2 {
+		t.Errorf("FileCount = %d, want >= 2 (file + symlink)", st.Manifest.FileCount)
+	}
+
+	// The recreated symlink should still be a (dangling) link in the stash.
+	link := filepath.Join(st.Dir, "content", "broken")
+	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("expected a symlink at %s (err %v)", link, err)
+	}
+}

@@ -79,3 +79,47 @@ func TestEnvOverrides(t *testing.T) {
 		t.Errorf("LogLevel = %s, want debug", cfg.LogLevel)
 	}
 }
+
+// TestLoadFromDiskIgnoresEnvOverrides verifies that LoadFromDisk (used by
+// `config set`/`config init`) does NOT apply env overrides, so transient
+// FCHEAP_* vars are never persisted into config.yaml — while Load (runtime)
+// still applies them. Regression test for "env overrides baked into config.yaml".
+func TestLoadFromDiskIgnoresEnvOverrides(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv(EnvStashDir, "/tmp/env-override-stashdir")
+
+	disk, err := LoadFromDisk()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if disk.StashDir == "/tmp/env-override-stashdir" {
+		t.Errorf("LoadFromDisk leaked the env override: %q", disk.StashDir)
+	}
+
+	rt, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rt.StashDir != "/tmp/env-override-stashdir" {
+		t.Errorf("Load() should apply the env override, got %q", rt.StashDir)
+	}
+
+	// Simulate `config set compression gzip` against the disk config, then ensure
+	// the persisted file did not capture the env override.
+	disk.Compression = "gzip"
+	if err := disk.Save(); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := LoadFromDisk()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.StashDir == "/tmp/env-override-stashdir" {
+		t.Errorf("saved config leaked the env override onto disk: %q", reloaded.StashDir)
+	}
+	if reloaded.Compression != "gzip" {
+		t.Errorf("expected persisted compression=gzip, got %q", reloaded.Compression)
+	}
+}

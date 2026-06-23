@@ -7,31 +7,32 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config holds fcheap stash configuration.
+// Config holds fcheap stash configuration. JSON tags mirror the YAML keys so
+// `config show --json` emits snake_case identical to the on-disk file.
 type Config struct {
 	// StashDir is the root directory for stash storage.
 	// Defaults to ~/.local/share/fcheap (XDG_DATA_HOME or ~/.local/share).
-	StashDir string `yaml:"stash_dir,omitempty"`
+	StashDir string `yaml:"stash_dir,omitempty" json:"stash_dir,omitempty"`
 
 	// Compression algorithm: "zstd" (default), "gzip", or "none".
-	Compression string `yaml:"compression,omitempty"`
+	Compression string `yaml:"compression,omitempty" json:"compression,omitempty"`
 
 	// CompressThreshold is the size in bytes above which a stash is auto-compressed.
 	// Default 10MB.
-	CompressThreshold int64 `yaml:"compress_threshold,omitempty"`
+	CompressThreshold int64 `yaml:"compress_threshold,omitempty" json:"compress_threshold,omitempty"`
 
 	// LogLevel: "debug", "info", "warn" (default), "error".
-	LogLevel string `yaml:"log_level,omitempty"`
+	LogLevel string `yaml:"log_level,omitempty" json:"log_level,omitempty"`
 
 	// VecgrepPath is the path to the vecgrep binary for external analysis.
 	// If empty, searches PATH.
-	VecgrepPath string `yaml:"vecgrep_path,omitempty"`
+	VecgrepPath string `yaml:"vecgrep_path,omitempty" json:"vecgrep_path,omitempty"`
 
 	// Embedder config for semantic search via veclite.
 	// If empty, only BM25 keyword search is available.
-	Embedder   string `yaml:"embedder,omitempty"`
-	EmbedModel string `yaml:"embed_model,omitempty"`
-	OllamaURL  string `yaml:"ollama_url,omitempty"`
+	Embedder   string `yaml:"embedder,omitempty" json:"embedder,omitempty"`
+	EmbedModel string `yaml:"embed_model,omitempty" json:"embed_model,omitempty"`
+	OllamaURL  string `yaml:"ollama_url,omitempty" json:"ollama_url,omitempty"`
 }
 
 const (
@@ -74,8 +75,10 @@ func DefaultStashDir() (string, error) {
 	return filepath.Join(home, ".local", "share", "fcheap"), nil
 }
 
-// Load reads the config from file and applies env overrides.
-func Load() (*Config, error) {
+// LoadFromDisk reads the config from file (filling in defaults) WITHOUT applying
+// environment overrides. Use this for `config set`/`config init` so transient
+// env vars (FCHEAP_*) are never persisted back into config.yaml.
+func LoadFromDisk() (*Config, error) {
 	stashDir, err := DefaultStashDir()
 	if err != nil {
 		return nil, err
@@ -96,7 +99,6 @@ func Load() (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			applyEnvOverrides(cfg)
 			return cfg, nil
 		}
 		return nil, err
@@ -119,6 +121,16 @@ func Load() (*Config, error) {
 		cfg.LogLevel = DefaultLogLevel
 	}
 
+	return cfg, nil
+}
+
+// Load reads the config from disk and applies env overrides. This is the runtime
+// view of config; do NOT Save() the result, or env overrides leak onto disk.
+func Load() (*Config, error) {
+	cfg, err := LoadFromDisk()
+	if err != nil {
+		return nil, err
+	}
 	applyEnvOverrides(cfg)
 	return cfg, nil
 }

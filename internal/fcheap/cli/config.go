@@ -2,12 +2,15 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/fcheap/config"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
+
+var configInitForce bool
 
 var configCmd = &cobra.Command{
 	Use:   "config",
@@ -39,16 +42,30 @@ var configShowCmd = &cobra.Command{
 
 var configInitCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Create default config file",
-	Args:  cobra.NoArgs,
+	Short: "Create a fresh default config file",
+	Long: `Write a fresh config.yaml with default values.
+
+This overwrites any existing config (resetting compression/embedder/vecgrep keys
+to defaults), so it requires --force when a config file already exists.`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		path, err := config.Path()
 		if err != nil {
 			return err
 		}
 
+		if _, statErr := os.Stat(path); statErr == nil && !configInitForce {
+			printer.Warn("Config already exists: %s", path)
+			printer.Warn("Use --force to overwrite (resets compression/embedder/vecgrep keys to defaults).")
+			return nil
+		}
+
+		stashDir, err := config.DefaultStashDir()
+		if err != nil {
+			return err
+		}
 		newCfg := &config.Config{
-			StashDir:          cfg.StashDir,
+			StashDir:          stashDir,
 			Compression:       config.DefaultCompression,
 			CompressThreshold: config.DefaultCompressThreshold,
 			LogLevel:          config.DefaultLogLevel,
@@ -78,32 +95,49 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key, value := args[0], args[1]
 
+		// Persist against the ON-DISK config (no env/flag overrides), so a
+		// transient FCHEAP_* env var or --stash-dir is never baked into the file.
+		diskCfg, err := config.LoadFromDisk()
+		if err != nil {
+			return err
+		}
+
 		switch key {
 		case "stash_dir":
-			cfg.StashDir = value
+			diskCfg.StashDir = value
 		case "compression":
-			cfg.Compression = value
+			switch value {
+			case "zstd", "gzip", "none":
+			default:
+				return fmt.Errorf("compression must be one of: zstd, gzip, none")
+			}
+			diskCfg.Compression = value
 		case "compress_threshold":
 			n, err := strconv.ParseInt(value, 10, 64)
 			if err != nil || n <= 0 {
 				return fmt.Errorf("compress_threshold must be a positive integer")
 			}
-			cfg.CompressThreshold = n
+			diskCfg.CompressThreshold = n
 		case "log_level":
-			cfg.LogLevel = value
+			switch value {
+			case "debug", "info", "warn", "error":
+			default:
+				return fmt.Errorf("log_level must be one of: debug, info, warn, error")
+			}
+			diskCfg.LogLevel = value
 		case "vecgrep_path":
-			cfg.VecgrepPath = value
+			diskCfg.VecgrepPath = value
 		case "embedder":
-			cfg.Embedder = value
+			diskCfg.Embedder = value
 		case "embed_model":
-			cfg.EmbedModel = value
+			diskCfg.EmbedModel = value
 		case "ollama_url":
-			cfg.OllamaURL = value
+			diskCfg.OllamaURL = value
 		default:
 			return fmt.Errorf("unknown config key: %s", key)
 		}
 
-		if err := cfg.Save(); err != nil {
+		if err := diskCfg.Save(); err != nil {
 			return err
 		}
 
@@ -167,6 +201,7 @@ var configPathCmd = &cobra.Command{
 }
 
 func init() {
+	configInitCmd.Flags().BoolVar(&configInitForce, "force", false, "Overwrite an existing config file")
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configInitCmd)
 	configCmd.AddCommand(configSetCmd)

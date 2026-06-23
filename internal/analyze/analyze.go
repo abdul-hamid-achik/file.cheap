@@ -12,6 +12,7 @@ package analyze
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -24,6 +25,11 @@ import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/manifest"
 	"github.com/abdul-hamid-achik/veclite"
 )
+
+// errEmbeddingDrift signals that the stored vector index was built with a
+// different embedding model than the one now configured. Indexing treats this as
+// fatal (you must rebuild), but search degrades to BM25 instead of failing.
+var errEmbeddingDrift = errors.New("embedding model changed")
 
 // veclite collection holding one document per indexed file.
 const (
@@ -167,8 +173,8 @@ func (a *Analyzer) collFor(db *veclite.DB, emb veclite.Embedder) (*veclite.Colle
 		if emb != nil {
 			if stored, ok := coll.EmbeddingProfile(); ok {
 				if cerr := stored.Compatible(profile); cerr != nil {
-					return nil, fmt.Errorf("embedding model changed (index built with %s/%s, now %s/%s): delete %s and re-run analyze — %w",
-						stored.Provider, stored.Model, profile.Provider, profile.Model, a.vecliteDBPath(), cerr)
+					return nil, fmt.Errorf("%w (index built with %s/%s, now %s/%s): delete %s and re-run analyze — %v",
+						errEmbeddingDrift, stored.Provider, stored.Model, profile.Provider, profile.Model, a.vecliteDBPath(), cerr)
 				}
 			}
 		}
@@ -387,7 +393,25 @@ func (a *Analyzer) search(query string, filter veclite.Filter, limit int, mode s
 
 	coll, err := a.collFor(db, emb)
 	if err != nil {
-		return nil, err
+		if !errors.Is(err, errEmbeddingDrift) {
+			return nil, err
+		}
+		// Stale/incompatible vector index: the BM25 text index is still valid
+		// regardless of the vector profile, so degrade to keyword search instead
+		// of failing every query. Re-running analyze rebuilds the vectors.
+		slog.Warn("embedding profile drift; using keyword search — re-run analyze to rebuild vectors", "err", err)
+		emb = nil
+		mode = "keyword"
+		coll = nil
+		for _, n := range []string{filesVecCollection, filesCollection} {
+			if c, gerr := db.GetCollection(n); gerr == nil && c != nil {
+				coll = c
+				break
+			}
+		}
+		if coll == nil {
+			return nil, nil
+		}
 	}
 
 	opts := []veclite.SearchOption{veclite.TopK(limit)}
