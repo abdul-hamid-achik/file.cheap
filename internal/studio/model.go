@@ -573,7 +573,18 @@ func (m *Model) handleDetailKey(key string) (tea.Cmd, bool) {
 	case "x":
 		return m.startDiffPrompt(), true
 	case "d":
+		// Only drop from the files pane; in the preview pane `d` is the
+		// half-page-down pager key and must not trigger a destructive drop.
+		if m.focus == focusPreview {
+			m.preview.HalfPageDown()
+			return nil, true
+		}
 		m.confirm = confirmDrop
+		return nil, true
+	case "u":
+		if m.focus == focusPreview {
+			m.preview.HalfPageUp()
+		}
 		return nil, true
 	}
 	return nil, false

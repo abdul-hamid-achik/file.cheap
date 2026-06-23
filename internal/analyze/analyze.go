@@ -19,6 +19,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/compress"
 	"github.com/abdul-hamid-achik/file.cheap/internal/detect"
@@ -201,6 +202,21 @@ func (a *Analyzer) openDB() (*veclite.DB, error) {
 	return veclite.Open(a.vecliteDBPath())
 }
 
+// dbLocks serializes veclite access per stash root within this process.
+var dbLocks sync.Map // stashRoot -> *sync.Mutex
+
+// lockDB acquires the per-root lock and returns the release func. veclite takes
+// an exclusive, non-blocking file lock, so concurrent opens (e.g. parallel MCP
+// tool calls, which each build a fresh Analyzer) would otherwise fail with a
+// lock error; this makes the second caller wait instead. Callers must hold it
+// for the whole open→use→close window: `unlock := a.lockDB(); defer unlock()`.
+func (a *Analyzer) lockDB() func() {
+	mu, _ := dbLocks.LoadOrStore(a.stashRoot, &sync.Mutex{})
+	m := mu.(*sync.Mutex)
+	m.Lock()
+	return m.Unlock
+}
+
 // insertDoc inserts a document, attaching an embedding vector when an embedder
 // is active (enabling semantic search); on embed failure it falls back to a
 // text-only insert so the document stays BM25-searchable.
@@ -253,6 +269,9 @@ func (a *Analyzer) IndexStashWithProgress(ctx context.Context, stashDir string, 
 
 	result := detect.Detect(contentDir)
 
+	unlock := a.lockDB()
+	defer unlock()
+
 	db, err := a.openDB()
 	if err != nil {
 		return nil, fmt.Errorf("open index: %w", err)
@@ -287,6 +306,9 @@ func (a *Analyzer) IndexStashWithProgress(ctx context.Context, stashDir string, 
 
 	indexed := 0
 	for _, rel := range result.SearchableFiles {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		text, ok := readTextFile(filepath.Join(contentDir, rel))
 		if !ok {
 			report(indexed)
@@ -357,25 +379,31 @@ func (a *Analyzer) IndexStashWithProgress(ctx context.Context, stashDir string, 
 // "semantic", "hybrid", or "" (auto: hybrid when an embedder is configured, else
 // keyword). A limit <= 0 falls back to the default.
 func (a *Analyzer) Search(ctx context.Context, query string, limit int, mode string) ([]SearchResult, error) {
-	return a.search(query, nil, limit, mode)
+	return a.search(ctx, query, nil, limit, mode)
 }
 
 // SearchStash searches within a single stash. See Search for mode/limit.
 func (a *Analyzer) SearchStash(ctx context.Context, stashDir, query string, limit int, mode string) ([]SearchResult, error) {
 	stashID := filepath.Base(stashDir)
-	return a.search(query, veclite.Equal("stash_id", stashID), limit, mode)
+	return a.search(ctx, query, veclite.Equal("stash_id", stashID), limit, mode)
 }
 
 // search runs a query with an optional payload filter. With an embedder it can
 // do semantic (vector) or hybrid (vector+BM25) search, falling back to BM25
 // keyword search when no embedder is available or the query embed fails.
-func (a *Analyzer) search(query string, filter veclite.Filter, limit int, mode string) ([]SearchResult, error) {
+func (a *Analyzer) search(ctx context.Context, query string, filter veclite.Filter, limit int, mode string) ([]SearchResult, error) {
 	if strings.TrimSpace(query) == "" {
 		return nil, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	if limit <= 0 {
 		limit = defaultSearchLimit
 	}
+
+	unlock := a.lockDB()
+	defer unlock()
 
 	db, err := a.openDB()
 	if err != nil {
@@ -417,6 +445,10 @@ func (a *Analyzer) search(query string, filter veclite.Filter, limit int, mode s
 	opts := []veclite.SearchOption{veclite.TopK(limit)}
 	if filter != nil {
 		opts = append(opts, veclite.WithFilter(filter))
+	}
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	var hits []veclite.Result
@@ -604,6 +636,9 @@ func (a *Analyzer) StashQuery(stashDir string, maxLen int) (string, error) {
 
 // DropIndex removes all indexed documents for a stash from veclite.
 func (a *Analyzer) DropIndex(stashID string) error {
+	unlock := a.lockDB()
+	defer unlock()
+
 	db, err := a.openDB()
 	if err != nil {
 		return err

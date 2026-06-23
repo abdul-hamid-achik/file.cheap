@@ -25,9 +25,19 @@ var dropCmd = &cobra.Command{
 		}
 
 		if !dropForce {
-			printer.Warn("This will permanently delete stash: %s", args[0])
-			printer.Warn("Use --force to confirm.")
-			return nil
+			if printer.IsJSON() {
+				_ = printer.JSON(map[string]string{
+					"stash_id": args[0],
+					"status":   "not_confirmed",
+					"requires": "--force",
+				})
+			} else {
+				printer.Warn("This will permanently delete stash: %s", args[0])
+				printer.Warn("Use --force to confirm.")
+			}
+			// Return a non-zero error so --json/--quiet callers can detect that
+			// nothing was deleted (a silent exit 0 looked like success).
+			return fmt.Errorf("refusing to drop stash %s without --force", args[0])
 		}
 
 		if err := mgr.Drop(GetContext(), args[0]); err != nil {
