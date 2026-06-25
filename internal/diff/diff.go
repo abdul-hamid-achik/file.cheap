@@ -125,23 +125,23 @@ func (r *DiffResult) Format() string {
 	if len(r.OnlyInStash) > 0 {
 		sb.WriteString("Only in stash:\n")
 		for _, f := range r.OnlyInStash {
-			sb.WriteString(fmt.Sprintf("  + %s\n", f))
+			fmt.Fprintf(&sb, "  + %s\n", f)
 		}
 	}
 	if len(r.OnlyInTarget) > 0 {
 		sb.WriteString("Only in target:\n")
 		for _, f := range r.OnlyInTarget {
-			sb.WriteString(fmt.Sprintf("  - %s\n", f))
+			fmt.Fprintf(&sb, "  - %s\n", f)
 		}
 	}
 	if len(r.Changed) > 0 {
 		sb.WriteString("Changed (content differs):\n")
 		for _, f := range r.Changed {
-			sb.WriteString(fmt.Sprintf("  ~ %s (stash: %d bytes, target: %d bytes)\n", f.Path, f.StashSize, f.TargetSize))
+			fmt.Fprintf(&sb, "  ~ %s (stash: %d bytes, target: %d bytes)\n", f.Path, f.StashSize, f.TargetSize)
 		}
 	}
 	if r.Unchanged > 0 {
-		sb.WriteString(fmt.Sprintf("Unchanged: %d files\n", r.Unchanged))
+		fmt.Fprintf(&sb, "Unchanged: %d files\n", r.Unchanged)
 	}
 	if sb.Len() == 0 {
 		sb.WriteString("No differences found.\n")
