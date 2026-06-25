@@ -165,6 +165,9 @@ func stashSummary(m *manifest.Manifest) map[string]any {
 	if v := m.Custom["secrets_found"]; v != "" {
 		item["secrets_found"] = v
 	}
+	if m.ExpiresAt != "" {
+		item["expires_at"] = m.ExpiresAt
+	}
 	if v := m.VideoSummary(); v != "" {
 		item["video"] = v
 	}

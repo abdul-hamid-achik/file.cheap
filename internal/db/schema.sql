@@ -14,8 +14,11 @@ CREATE TABLE IF NOT EXISTS stashes (
     compression TEXT NOT NULL DEFAULT '',
     compressed_size INTEGER NOT NULL DEFAULT 0,
     bundle_type TEXT NOT NULL DEFAULT '',
+    expires_at  TEXT NOT NULL DEFAULT '',
     indexed     INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE INDEX IF NOT EXISTS idx_stashes_expires ON stashes(expires_at);
 
 CREATE TABLE IF NOT EXISTS tags (
     stash_id TEXT NOT NULL,

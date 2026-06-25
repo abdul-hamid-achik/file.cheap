@@ -98,6 +98,20 @@ func (s *Store) MarkIndexed(ctx context.Context, id string) error {
 	return s.q.MarkIndexed(ctx, id)
 }
 
+// SetExpiry updates the expires_at column for a stash.
+func (s *Store) SetExpiry(ctx context.Context, id, expiresAt string) error {
+	return s.q.UpdateExpiry(ctx, dbgen.UpdateExpiryParams{
+		ExpiresAt: expiresAt,
+		ID:        id,
+	})
+}
+
+// ListExpired returns stashes whose expires_at is non-empty and before the
+// given cutoff (typically now, formatted as RFC3339).
+func (s *Store) ListExpired(ctx context.Context, cutoff string) ([]Record, error) {
+	return s.q.ListExpiredStashes(ctx, cutoff)
+}
+
 // Vacuum compacts the database file, reclaiming space from deleted rows.
 func (s *Store) Vacuum(ctx context.Context) error {
 	_, err := s.sqldb.ExecContext(ctx, "VACUUM")

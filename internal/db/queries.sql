@@ -2,8 +2,8 @@
 INSERT INTO stashes (
     id, name, source_path, tool, created_at,
     file_count, total_size, content_hash,
-    compression, compressed_size, bundle_type, indexed
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    compression, compressed_size, bundle_type, expires_at, indexed
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     name = excluded.name,
     source_path = excluded.source_path,
@@ -15,6 +15,7 @@ ON CONFLICT(id) DO UPDATE SET
     compression = excluded.compression,
     compressed_size = excluded.compressed_size,
     bundle_type = excluded.bundle_type,
+    expires_at = excluded.expires_at,
     indexed = excluded.indexed;
 
 -- name: AddTag :exec
@@ -49,6 +50,12 @@ UPDATE stashes SET indexed = 1 WHERE id = ?;
 
 -- name: UpdateCompression :exec
 UPDATE stashes SET compression = ?, compressed_size = ? WHERE id = ?;
+
+-- name: UpdateExpiry :exec
+UPDATE stashes SET expires_at = ? WHERE id = ?;
+
+-- name: ListExpiredStashes :many
+SELECT * FROM stashes WHERE expires_at != '' AND expires_at < ? ORDER BY expires_at ASC;
 
 -- name: GetStashTags :many
 SELECT tag FROM tags WHERE stash_id = ?;

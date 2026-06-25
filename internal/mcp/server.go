@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
+	"github.com/abdul-hamid-achik/file.cheap/internal/cleanup"
 	"github.com/abdul-hamid-achik/file.cheap/internal/diff"
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -63,6 +64,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		Tags   []string `json:"tags,omitempty" jsonschema:"Tags for categorization"`
 		Tool   string   `json:"tool,omitempty" jsonschema:"Tool that produced the content (e.g., vidtrace)"`
 		Source string   `json:"source,omitempty" jsonschema:"Original artifact this stash derives from (provenance)"`
+		TTL    string   `json:"ttl,omitempty" jsonschema:"Time-to-live for this stash (e.g. 7d, 24h, 30d, or 2026-12-31); empty = never expires"`
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_save",
@@ -89,6 +91,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 			Name:       in.Name,
 			Tags:       in.Tags,
 			Tool:       in.Tool,
+			TTL:        in.TTL,
 		}
 		if in.Source != "" {
 			opts.Custom = map[string]string{"source": in.Source}
@@ -394,6 +397,179 @@ func (s *Server) registerTools(srv *mcp.Server) {
 			return toolError("vacuum failed: %v", err), nil, nil
 		}
 		return textResult(res), nil, nil
+	})
+
+	// fcheap_ttl
+	type ttlInput struct {
+		StashID string `json:"stash_id" jsonschema:"The stash ID to set the TTL on"`
+		TTL     string `json:"ttl" jsonschema:"Time-to-live (e.g. 7d, 24h, 30d, or 2026-12-31); empty string clears the TTL (makes the stash permanent)"`
+	}
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "fcheap_ttl",
+		Description: "Set or update the time-to-live for a stash. The stash will auto-expire after the given duration from its creation time. Pass an empty TTL to clear the expiry (make the stash permanent). Use fcheap_sweep to actually drop expired stashes.",
+		Annotations: &mcp.ToolAnnotations{
+			DestructiveHint: &f,
+			OpenWorldHint:   &f,
+			IdempotentHint:  true,
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in ttlInput) (*mcp.CallToolResult, any, error) {
+		mgr, err := stash.NewManager(s.stashDir)
+		if err != nil {
+			return toolError("create stash manager: %v", err), nil, nil
+		}
+		if !mgr.Exists(in.StashID) {
+			return toolError("stash not found: %s", in.StashID), nil, nil
+		}
+		if err := mgr.SetExpiry(ctx, in.StashID, in.TTL); err != nil {
+			return toolError("set ttl failed: %v", err), nil, nil
+		}
+		st, _ := mgr.Info(ctx, in.StashID)
+		expiresAt := ""
+		if st != nil && st.Manifest != nil {
+			expiresAt = st.Manifest.ExpiresAt
+		}
+		return textResult(map[string]string{
+			"stash_id":   in.StashID,
+			"expires_at": expiresAt,
+		}), nil, nil
+	})
+
+	// fcheap_sweep
+	type sweepInput struct {
+		Apply      bool   `json:"apply,omitempty" jsonschema:"Actually drop expired stashes (default: dry-run)"`
+		KeepTag    string `json:"keep_tag,omitempty" jsonschema:"Tag that exempts a stash from sweeping (default: keep)"`
+		IncludeTag string `json:"include_tag,omitempty" jsonschema:"Only sweep stashes with this tag (e.g. codemap-snapshot)"`
+	}
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "fcheap_sweep",
+		Description: "Find and optionally drop stashes whose TTL has expired. By default a dry-run; pass apply=true to actually delete expired stashes. Stashes with the keep tag (default: keep) are never swept.",
+		Annotations: &mcp.ToolAnnotations{
+			DestructiveHint: &t,
+			OpenWorldHint:   &f,
+			IdempotentHint:  true,
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in sweepInput) (*mcp.CallToolResult, any, error) {
+		mgr, err := stash.NewManager(s.stashDir)
+		if err != nil {
+			return toolError("create stash manager: %v", err), nil, nil
+		}
+		keepTag := in.KeepTag
+		if keepTag == "" {
+			keepTag = "keep"
+		}
+		an := analyze.NewAnalyzer(s.stashDir, s.vecgrepPath)
+		res, err := mgr.SweepExpired(ctx, in.Apply, keepTag, an.DropIndex)
+		if err != nil {
+			return toolError("sweep failed: %v", err), nil, nil
+		}
+		// Filter by include-tag if specified.
+		if in.IncludeTag != "" && len(res.Expired) > 0 {
+			filtered := res.Expired[:0]
+			for _, id := range res.Expired {
+				st, err := mgr.Info(ctx, id)
+				if err != nil {
+					continue
+				}
+				if st.Manifest.HasTag(in.IncludeTag) {
+					filtered = append(filtered, id)
+				}
+			}
+			res.Expired = filtered
+		}
+		return textResult(res), nil, nil
+	})
+
+	// fcheap_cleanup
+	type cleanupInput struct {
+		Apply       bool     `json:"apply,omitempty" jsonschema:"Actually drop stashes (default: dry-run). In scoring mode, only 'drop' verdicts are dropped; in smart mode, all non-keep stashes are dropped"`
+		KeepTag     string   `json:"keep_tag,omitempty" jsonschema:"Tag that exempts a stash from cleanup (default: keep)"`
+		Tool        string   `json:"tool,omitempty" jsonschema:"Scoring mode: only analyze stashes from this tool"`
+		Tag         string   `json:"tag,omitempty" jsonschema:"Scoring mode: only analyze stashes with this tag"`
+		DropOnly    bool     `json:"drop_only,omitempty" jsonschema:"Scoring mode: only show stashes scored as drop (default: show all)"`
+		Expired     bool     `json:"expired,omitempty" jsonschema:"Scoring mode: include stashes with an expired TTL even if not yet swept"`
+		Smart       bool     `json:"smart,omitempty" jsonschema:"Use category-based smart analysis (expired/orphaned/superseded/duplicate/branch-gone/stale/keep) instead of scoring mode"`
+		Categories  []string `json:"categories,omitempty" jsonschema:"Smart mode: filter to specific categories (comma-separated: expired,orphaned,superseded,duplicate,branch-gone,stale,keep)"`
+		StaleDays   int      `json:"stale_days,omitempty" jsonschema:"Smart mode: days without access to be considered stale (0 = disabled)"`
+		ProjectsDir string   `json:"projects_dir,omitempty" jsonschema:"Smart mode: path to ~/projects for orphan detection (default: ~/projects)"`
+		NotesDir    string   `json:"notes_dir,omitempty" jsonschema:"Smart mode: path to ~/notes/projects for orphan detection (default: ~/notes/projects)"`
+	}
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "fcheap_cleanup",
+		Description: "Analyze stashes for cleanup. Two modes: (1) scoring mode (default) scores each stash 0-100 on droppability with weighted heuristics and returns verdicts (drop/review/keep); (2) smart mode (smart=true) categorizes each stash into exactly one cleanup category (expired/orphaned/superseded/duplicate/branch-gone/stale/keep). By default a dry-run; pass apply=true to drop candidates.",
+		Annotations: &mcp.ToolAnnotations{
+			DestructiveHint: &t,
+			OpenWorldHint:   &f,
+			IdempotentHint:  true,
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in cleanupInput) (*mcp.CallToolResult, any, error) {
+		mgr, err := stash.NewManager(s.stashDir)
+		if err != nil {
+			return toolError("create stash manager: %v", err), nil, nil
+		}
+
+		if in.Smart {
+			// Smart mode: category-based analysis.
+			projectsDir := in.ProjectsDir
+			if projectsDir == "" {
+				home, _ := os.UserHomeDir()
+				projectsDir = filepath.Join(home, "projects")
+			}
+			notesDir := in.NotesDir
+			if notesDir == "" {
+				home, _ := os.UserHomeDir()
+				notesDir = filepath.Join(home, "notes", "projects")
+			}
+			result, err := mgr.AnalyzeCleanup(ctx, stash.CleanupOptions{
+				StaleDays:   in.StaleDays,
+				ProjectsDir: projectsDir,
+				NotesDir:    notesDir,
+				Categories:  in.Categories,
+			})
+			if err != nil {
+				return toolError("cleanup failed: %v", err), nil, nil
+			}
+			// Apply: drop all non-keep stashes (respecting keep-tag).
+			if in.Apply {
+				an := analyze.NewAnalyzer(s.stashDir, s.vecgrepPath)
+				keepTag := in.KeepTag
+				if keepTag == "" {
+					keepTag = "keep"
+				}
+				for _, rec := range result.Recommendations {
+					if rec.Category == stash.CatKeep {
+						continue
+					}
+					// Respect keep-tag: skip stashes bearing it.
+					if st, err := mgr.Info(ctx, rec.ID); err == nil && st.Manifest.HasTag(keepTag) {
+						continue
+					}
+					if err := mgr.Drop(ctx, rec.ID); err != nil {
+						continue
+					}
+					_ = an.DropIndex(rec.ID)
+				}
+			}
+			return textResult(result), nil, nil
+		}
+
+		// Scoring mode (default): heuristic analysis.
+		keepTag := in.KeepTag
+		if keepTag == "" {
+			keepTag = "keep"
+		}
+		an := analyze.NewAnalyzer(s.stashDir, s.vecgrepPath)
+		result, err := cleanup.Run(ctx, mgr, an.DropIndex, cleanup.Options{
+			Apply:    in.Apply,
+			KeepTag:  keepTag,
+			Tool:     in.Tool,
+			Tag:      in.Tag,
+			DropOnly: in.DropOnly,
+			Expired:  in.Expired,
+		})
+		if err != nil {
+			return toolError("cleanup failed: %v", err), nil, nil
+		}
+		return textResult(result), nil, nil
 	})
 
 	// fcheap_docs

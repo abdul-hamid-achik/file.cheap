@@ -16,6 +16,7 @@ fcheap save <path> [flags]
 | `--tag` | string slice | `[]` | Tags for categorization (repeatable) |
 | `--tool` | string | `""` | Tool that produced the content (e.g., vidtrace) |
 | `--source` | string | `""` | Original artifact this stash derives from (provenance) |
+| `--ttl` | string | `""` | Time-to-live (e.g. `7d`, `24h`, `30d`); empty = never expires |
 | `--no-scan` | bool | `false` | Skip the save-time secret scan |
 
 ## Examples
@@ -29,6 +30,9 @@ fcheap save ./report.pdf --tag evidence --tag pdf --tool manual
 
 # Save with source provenance
 fcheap save /tmp/vidtrace-output --tag OPG-15061 --tool vidtrace --source ~/Downloads/OPG-15061.mp4
+
+# Save with a 7-day TTL (auto-expires; use `fcheap sweep --apply` to clean up)
+fcheap save /tmp/codemap-snapshot --tag codemap-snapshot --tool codemap --ttl 7d
 
 # Save a single file
 fcheap save ./config.yaml --tag config

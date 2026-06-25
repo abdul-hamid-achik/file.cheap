@@ -33,12 +33,28 @@ type Config struct {
 	Embedder   string `yaml:"embedder,omitempty" json:"embedder,omitempty"`
 	EmbedModel string `yaml:"embed_model,omitempty" json:"embed_model,omitempty"`
 	OllamaURL  string `yaml:"ollama_url,omitempty" json:"ollama_url,omitempty"`
+
+	// DefaultTTL is the default time-to-live applied to stashes when the
+	// saving tool doesn't have a specific TTL rule. Examples: "14d", "7d",
+	// "never" (or empty = no default). Applied by `fcheap save` when
+	// --ttl is not explicitly set and no per-tool rule matches.
+	DefaultTTL string `yaml:"default_ttl,omitempty" json:"default_ttl,omitempty"`
+
+	// TTLRules maps tool names to TTL strings (e.g. "vidtrace": "30d").
+	// The value "never" or "" means no TTL for that tool. Checked first
+	// before falling back to DefaultTTL.
+	TTLRules map[string]string `yaml:"ttl_rules,omitempty" json:"ttl_rules,omitempty"`
 }
 
 const (
 	DefaultCompression       = "zstd"
 	DefaultCompressThreshold = 10 * 1024 * 1024 // 10MB
 	DefaultLogLevel          = "warn"
+
+	// DefaultDefaultTTL is the default value for the default_ttl config key.
+	// Empty means "no default TTL" — stashes are permanent unless a per-tool
+	// rule or --ttl says otherwise.
+	DefaultDefaultTTL = ""
 
 	EnvStashDir    = "FCHEAP_STASH_DIR"
 	EnvLogLevel    = "FCHEAP_LOG_LEVEL"
@@ -165,4 +181,24 @@ func (c *Config) Save() error {
 		return err
 	}
 	return os.WriteFile(path, data, 0600)
+}
+
+// TTLForTool resolves the TTL that should be applied to a stash saved by the
+// given tool. It checks TTLRules first, then falls back to DefaultTTL, and
+// finally returns "" (no TTL / permanent). The sentinel "never" is
+// normalized to "" so callers can treat both as "no expiry".
+func (c *Config) TTLForTool(tool string) string {
+	if tool != "" {
+		if v, ok := c.TTLRules[tool]; ok {
+			if v == "never" {
+				return ""
+			}
+			return v
+		}
+	}
+	v := c.DefaultTTL
+	if v == "never" {
+		return ""
+	}
+	return v
 }

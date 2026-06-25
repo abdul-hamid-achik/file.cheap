@@ -3,7 +3,9 @@ package cli
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/fcheap/config"
 	"github.com/spf13/cobra"
@@ -46,7 +48,10 @@ var configInitCmd = &cobra.Command{
 	Long: `Write a fresh config.yaml with default values.
 
 This overwrites any existing config (resetting compression/embedder/vecgrep keys
-to defaults), so it requires --force when a config file already exists.`,
+to defaults), so it requires --force when a config file already exists.
+
+The generated config includes default_ttl and ttl_rules keys (empty by default)
+for per-tool TTL auto-application on save.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		path, err := config.Path()
@@ -69,6 +74,7 @@ to defaults), so it requires --force when a config file already exists.`,
 			Compression:       config.DefaultCompression,
 			CompressThreshold: config.DefaultCompressThreshold,
 			LogLevel:          config.DefaultLogLevel,
+			DefaultTTL:        config.DefaultDefaultTTL,
 		}
 
 		if err := newCfg.Save(); err != nil {
@@ -85,12 +91,14 @@ var configSetCmd = &cobra.Command{
 	Short: "Set a config value",
 	Long: `Set a configuration value.
 
-Keys: stash_dir, compression, compress_threshold, log_level, vecgrep_path, embedder, embed_model, ollama_url
+Keys: stash_dir, compression, compress_threshold, log_level, vecgrep_path, embedder, embed_model, ollama_url, default_ttl, ttl_rules
 
 Examples:
   fcheap config set stash_dir ~/.local/share/fcheap
   fcheap config set compression zstd
-  fcheap config set compress_threshold 10485760`,
+  fcheap config set compress_threshold 10485760
+  fcheap config set default_ttl 14d
+  fcheap config set ttl_rules vidtrace=30d,codemap=7d`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key, value := args[0], args[1]
@@ -133,6 +141,14 @@ Examples:
 			diskCfg.EmbedModel = value
 		case "ollama_url":
 			diskCfg.OllamaURL = value
+		case "default_ttl":
+			diskCfg.DefaultTTL = value
+		case "ttl_rules":
+			rules, err := parseTTLRules(value)
+			if err != nil {
+				return err
+			}
+			diskCfg.TTLRules = rules
 		default:
 			return fmt.Errorf("unknown config key: %s", key)
 		}
@@ -171,6 +187,10 @@ var configGetCmd = &cobra.Command{
 			value = cfg.EmbedModel
 		case "ollama_url":
 			value = cfg.OllamaURL
+		case "default_ttl":
+			value = cfg.DefaultTTL
+		case "ttl_rules":
+			value = formatTTLRules(cfg.TTLRules)
 		default:
 			return fmt.Errorf("unknown config key: %s", key)
 		}
@@ -207,4 +227,46 @@ func init() {
 	configCmd.AddCommand(configSetCmd)
 	configCmd.AddCommand(configGetCmd)
 	configCmd.AddCommand(configPathCmd)
+}
+
+// parseTTLRules parses a comma-separated key=value string into a map.
+// Example: "vidtrace=30d,codemap=7d" -> {"vidtrace":"30d", "codemap":"7d"}
+func parseTTLRules(s string) (map[string]string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
+	rules := make(map[string]string)
+	for _, pair := range strings.Split(s, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		parts := strings.SplitN(pair, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid ttl_rule %q (expected key=value, e.g. vidtrace=30d)", pair)
+		}
+		key := strings.TrimSpace(parts[0])
+		val := strings.TrimSpace(parts[1])
+		if key == "" {
+			return nil, fmt.Errorf("invalid ttl_rule %q (empty tool name)", pair)
+		}
+		rules[key] = val
+	}
+	return rules, nil
+}
+
+// formatTTLRules renders a TTL rules map back to the comma-separated
+// key=value form used by `config set ttl_rules`.
+func formatTTLRules(rules map[string]string) string {
+	if len(rules) == 0 {
+		return ""
+	}
+	var parts []string
+	for k, v := range rules {
+		parts = append(parts, k+"="+v)
+	}
+	// Sort for stable output.
+	sort.Strings(parts)
+	return strings.Join(parts, ",")
 }

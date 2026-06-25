@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/abdul-hamid-achik/file.cheap/internal/fcheap/config"
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
 	"github.com/spf13/cobra"
 )
@@ -14,6 +15,7 @@ var (
 	saveTags       []string
 	saveTool       string
 	saveSource     string
+	saveTTL        string
 	saveNoScan     bool
 	saveNoCompress bool
 )
@@ -31,6 +33,16 @@ var saveCmd = &cobra.Command{
 			return fmt.Errorf("source not found: %w", err)
 		}
 
+		// Auto-apply TTL from config when --ttl was not explicitly set.
+		appliedTTL := saveTTL
+		ttlFromConfig := ""
+		if !cmd.Flags().Changed("ttl") {
+			if v := cfg.TTLForTool(saveTool); v != "" {
+				appliedTTL = v
+				ttlFromConfig = v
+			}
+		}
+
 		mgr, err := stash.NewManager(cfg.StashDir)
 		if err != nil {
 			return err
@@ -41,6 +53,7 @@ var saveCmd = &cobra.Command{
 			Name:       saveName,
 			Tags:       saveTags,
 			Tool:       saveTool,
+			TTL:        appliedTTL,
 			NoScan:     saveNoScan,
 		}
 		// Optional provenance: the original artifact this stash derives from
@@ -82,6 +95,12 @@ var saveCmd = &cobra.Command{
 		if st.Manifest.BundleType != "generic" {
 			printer.KeyValue("Bundle", st.Manifest.BundleType)
 		}
+		if st.Manifest.ExpiresAt != "" {
+			printer.KeyValue("Expires", st.Manifest.ExpiresAt)
+			if ttlFromConfig != "" {
+				printer.KeyValue("TTL source", fmt.Sprintf("config (%s)", describeTTLSource(saveTool, ttlFromConfig, cfg)))
+			}
+		}
 		if autoCompressed {
 			printer.KeyValue("Compressed", fmt.Sprintf("%s → %s (%s)", formatSize(st.Manifest.TotalSize), formatSize(st.Manifest.CompressedSize), st.Manifest.Compression))
 		}
@@ -106,6 +125,7 @@ func init() {
 	saveCmd.Flags().StringSliceVar(&saveTags, "tag", nil, "Tags for categorization (comma-separated)")
 	saveCmd.Flags().StringVar(&saveTool, "tool", "", "Tool that produced the content (e.g., vidtrace)")
 	saveCmd.Flags().StringVar(&saveSource, "source", "", "Original artifact this stash derives from (provenance)")
+	saveCmd.Flags().StringVar(&saveTTL, "ttl", "", "Time-to-live for this stash (e.g. 7d, 24h, 30d); empty = never expires")
 	saveCmd.Flags().BoolVar(&saveNoScan, "no-scan", false, "Skip the save-time secret scan")
 	saveCmd.Flags().BoolVar(&saveNoCompress, "no-compress", false, "Skip auto-compression of large stashes")
 }
@@ -121,4 +141,25 @@ func formatSize(bytes int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// describeTTLSource returns a human-readable label for which config key
+// provided the auto-applied TTL. It distinguishes between a per-tool rule
+// (ttl_rules.<tool>) and the default_ttl fallback.
+func describeTTLSource(tool, ttl string, cfg *config.Config) string {
+	if tool != "" {
+		if v, ok := cfg.TTLRules[tool]; ok && normalizeTTL(v) == ttl {
+			return fmt.Sprintf("ttl_rules.%s=%s", tool, v)
+		}
+	}
+	return fmt.Sprintf("default_ttl=%s", cfg.DefaultTTL)
+}
+
+// normalizeTTL converts "never" to "" so it can be compared with the
+// already-normalized value returned by TTLForTool.
+func normalizeTTL(v string) string {
+	if v == "never" {
+		return ""
+	}
+	return v
 }

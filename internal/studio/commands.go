@@ -19,14 +19,16 @@ import (
 // previewLimitBytes caps how much of a file we read into the preview pane.
 const previewLimitBytes = 64 * 1024
 
-// loadStashesCmd lists all stashes from disk.
+// loadStashesCmd lists all stashes from disk, including expired ones.
+// Expired stashes are visually marked in the list (EXP chip) and detail view,
+// so the user can see what needs sweeping rather than silently hiding them.
 func loadStashesCmd(stashDir string) tea.Cmd {
 	return func() tea.Msg {
 		mgr, err := stash.NewManager(stashDir)
 		if err != nil {
 			return stashesLoadedMsg{err: err}
 		}
-		stashes, err := mgr.List(context.Background(), "")
+		stashes, err := mgr.ListFiltered(context.Background(), stash.ListOptions{IncludeExpired: true})
 		if err != nil {
 			return stashesLoadedMsg{err: err}
 		}

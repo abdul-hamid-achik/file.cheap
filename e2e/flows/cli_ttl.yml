@@ -1,0 +1,79 @@
+version: 1
+name: cli_ttl
+
+metadata:
+  feature: cli
+  owner: core
+  priority: normal
+  tags:
+    - smoke
+
+intent: |
+  Verify that the fcheap CLI can set a TTL on a stash, list it with the
+  expiry column, and that the ttl command reports the expiry correctly.
+  Also verifies that expired stashes are hidden from list by default and
+  shown with --include-expired.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - |
+      export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-stash-ttl
+      rm -rf /tmp/fcheap-e2e-stash-ttl /tmp/fcheap-e2e-ttl-src
+      mkdir -p /tmp/fcheap-e2e-ttl-src
+      echo "ttl me" > /tmp/fcheap-e2e-ttl-src/file.txt
+      ./bin/fcheap save /tmp/fcheap-e2e-ttl-src --tag ttl-test
+      STASH_ID=$(./bin/fcheap list --tag ttl-test --json | grep -o '"id": "[^"]*"' | head -1 | cut -d'"' -f4)
+      echo "Stash ID: $STASH_ID"
+      ./bin/fcheap ttl "$STASH_ID" 7d
+      echo "---"
+      ./bin/fcheap list --tag ttl-test
+      echo "--- SET SHORT TTL ---"
+      ./bin/fcheap ttl "$STASH_ID" 1s
+      sleep 2
+      echo "--- LIST (should be empty, expired hidden) ---"
+      ./bin/fcheap list --tag ttl-test
+      echo "--- LIST --include-expired (should show expired stash) ---"
+      ./bin/fcheap list --tag ttl-test --include-expired
+  cwd: "."
+  timeoutMs: 30000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: save, ttl, and list exit successfully
+    verify:
+      process:
+        exitCode: 0
+  - id: ttl_set
+    description: ttl reports the expiry was set
+    verify:
+      screen:
+        contains: "Set TTL"
+  - id: expired_hidden
+    description: expired stash is hidden from list by default
+    verify:
+      screen:
+        contains: "--- LIST --include-expired"
+  - id: expired_shown
+    description: expired stash is shown with --include-expired
+    verify:
+      screen:
+        contains: "EXP"

@@ -11,9 +11,10 @@ import (
 )
 
 var (
-	listTag   string
-	listTool  string
-	listSince string
+	listTag            string
+	listTool           string
+	listSince          string
+	listIncludeExpired bool
 )
 
 var listCmd = &cobra.Command{
@@ -26,7 +27,7 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
-		opts := stash.ListOptions{Tag: listTag, Tool: listTool}
+		opts := stash.ListOptions{Tag: listTag, Tool: listTool, IncludeExpired: listIncludeExpired}
 		if listSince != "" {
 			since, err := stash.ParseSince(listSince)
 			if err != nil {
@@ -49,6 +50,7 @@ var listCmd = &cobra.Command{
 				FileCount   int      `json:"file_count"`
 				TotalSize   int64    `json:"total_size"`
 				Compression string   `json:"compression,omitempty"`
+				ExpiresAt   string   `json:"expires_at,omitempty"`
 				CreatedAt   string   `json:"created_at"`
 			}
 			items := make([]listItem, 0, len(stashes))
@@ -61,6 +63,7 @@ var listCmd = &cobra.Command{
 					FileCount:   st.Manifest.FileCount,
 					TotalSize:   st.Manifest.TotalSize,
 					Compression: st.Manifest.Compression,
+					ExpiresAt:   st.Manifest.ExpiresAt,
 					CreatedAt:   st.Manifest.CreatedAt,
 				})
 			}
@@ -73,7 +76,7 @@ var listCmd = &cobra.Command{
 		}
 
 		printer.Header(fmt.Sprintf("Stashes (%d)", len(stashes)))
-		table := output.NewTable([]string{"ID", "TOOL", "TAGS", "FILES", "SIZE", "AGE", "COMP"}, printer.IsQuiet())
+		table := output.NewTable([]string{"ID", "TOOL", "TAGS", "FILES", "SIZE", "AGE", "EXP", "COMP"}, printer.IsQuiet())
 		for _, st := range stashes {
 			m := st.Manifest
 			tool := m.Tool
@@ -91,6 +94,7 @@ var listCmd = &cobra.Command{
 				fmt.Sprintf("%d", m.FileCount),
 				formatSize(m.TotalSize),
 				humanAge(m.CreatedAt),
+				expiryLabel(m.ExpiresAt),
 				compLabel(m.Compression),
 			})
 		}
@@ -103,6 +107,7 @@ func init() {
 	listCmd.Flags().StringVar(&listTag, "tag", "", "Filter by tag")
 	listCmd.Flags().StringVar(&listTool, "tool", "", "Filter by tool")
 	listCmd.Flags().StringVar(&listSince, "since", "", "Only show stashes newer than e.g. 24h, 7d, 2w, or 2026-06-01")
+	listCmd.Flags().BoolVar(&listIncludeExpired, "include-expired", false, "Include expired stashes (hidden by default)")
 }
 
 // compLabel renders a short compression indicator.
@@ -118,6 +123,32 @@ func compLabel(compression string) string {
 		return "-"
 	default:
 		return compression
+	}
+}
+
+// expiryLabel renders a short expiry indicator. An empty expires_at shows "-";
+// an expired stash shows "EXPIRED"; a future expiry shows a compact age.
+func expiryLabel(expiresAt string) string {
+	if expiresAt == "" {
+		return "-"
+	}
+	t, err := time.Parse(time.RFC3339, expiresAt)
+	if err != nil {
+		return "?"
+	}
+	if time.Now().After(t) {
+		return "EXPIRED"
+	}
+	d := time.Until(t)
+	switch {
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	default:
+		return t.Format("2006-01-02")
 	}
 }
 

@@ -30,6 +30,7 @@ type SaveOptions struct {
 	Name       string            // optional display name
 	Tags       []string          // tags for categorization
 	Tool       string            // tool that produced the content (e.g., "vidtrace")
+	TTL        string            // optional time-to-live, e.g. "7d", "24h"; empty = never expires
 	Custom     map[string]string // agent-provided metadata
 	NoScan     bool              // skip the secret scan
 }
@@ -104,6 +105,7 @@ func recordFromManifest(man *manifest.Manifest) db.Record {
 		Compression:    man.Compression,
 		CompressedSize: man.CompressedSize,
 		BundleType:     man.BundleType,
+		ExpiresAt:      man.ExpiresAt,
 		Indexed:        indexed,
 	}
 }
@@ -192,6 +194,20 @@ func (m *Manager) Save(ctx context.Context, opts *SaveOptions) (*Stash, error) {
 	man.Tool = opts.Tool
 	man.Tags = opts.Tags
 	man.Custom = opts.Custom
+
+	// Optional TTL: compute the expiry timestamp from CreatedAt + duration.
+	// Parsed before ScanFiles so an invalid TTL aborts early (before copying
+	// would be wasted, though copy already happened above — at least we fail
+	// before the manifest is written and the stash is committed).
+	if opts.TTL != "" {
+		ttl, err := ParseTTL(opts.TTL)
+		if err != nil {
+			_ = os.RemoveAll(stashDir)
+			return nil, fmt.Errorf("invalid ttl: %w", err)
+		}
+		created, _ := time.Parse(time.RFC3339, man.CreatedAt)
+		man.ExpiresAt = created.Add(ttl).UTC().Format(time.RFC3339)
+	}
 
 	if err := man.ScanFiles(contentDir); err != nil {
 		_ = os.RemoveAll(stashDir)
@@ -330,10 +346,11 @@ func (m *Manager) Drop(ctx context.Context, id string) error {
 
 // ListOptions filters and bounds a List query. Zero values mean "no filter".
 type ListOptions struct {
-	Tag   string
-	Tool  string
-	Since time.Time // only stashes created at/after this time
-	Limit int       // 0 = unlimited
+	Tag            string
+	Tool           string
+	Since          time.Time // only stashes created at/after this time
+	Limit          int       // 0 = unlimited
+	IncludeExpired bool      // include expired stashes (default: hide them)
 }
 
 // List returns all stashes, optionally filtered by tag.
@@ -371,6 +388,12 @@ func (m *Manager) ListFiltered(ctx context.Context, opts ListOptions) ([]*Stash,
 				continue
 			}
 		}
+		// Hide expired stashes unless the caller explicitly opts in. Expired
+		// stashes are still on disk — they're cleaned up by SweepExpired, not
+		// by hiding them — but listing them by default would be noise.
+		if !opts.IncludeExpired && IsExpired(man) {
+			continue
+		}
 		stashes = append(stashes, &Stash{Manifest: man, Dir: stashDir})
 	}
 
@@ -393,13 +416,16 @@ func (m *Manager) ListFiltered(ctx context.Context, opts ListOptions) ([]*Stash,
 	return stashes, nil
 }
 
-// ParseSince resolves an age expression to an absolute cutoff time. It accepts
-// Go durations (24h, 90m), day/week shorthands (7d, 2w), and dates (2006-01-02).
-func ParseSince(s string) (time.Time, error) {
+// parseDuration resolves a human duration expression to a Go time.Duration.
+// It accepts Go durations (24h, 90m), day/week shorthands (7d, 2w). Shared by
+// ParseSince (age — subtracted from now) and ParseTTL (future expiry — added
+// to now). Dates are NOT handled here because they have different semantics
+// for since (absolute cutoff) vs TTL (relative until-date); those callers
+// handle dates themselves.
+func parseDuration(s string) (time.Duration, error) {
 	s = strings.TrimSpace(s)
-	now := time.Now()
 	if d, err := time.ParseDuration(s); err == nil {
-		return now.Add(-d), nil
+		return d, nil
 	}
 	if len(s) > 1 {
 		switch unit := s[len(s)-1]; unit {
@@ -409,14 +435,59 @@ func ParseSince(s string) (time.Time, error) {
 				if unit == 'w' {
 					mult = 7 * 24 * time.Hour
 				}
-				return now.Add(-time.Duration(n) * mult), nil
+				return time.Duration(n) * mult, nil
 			}
 		}
 	}
+	return 0, fmt.Errorf("invalid duration %q (use e.g. 24h, 7d, or 2w)", s)
+}
+
+// parseDateOrDuration returns either an absolute time (for a date string like
+// "2006-01-02") or a duration. This lets ParseSince treat a date as a cutoff
+// and ParseTTL treat it as "expire on this date".
+func parseDateOrDuration(s string) (time.Duration, time.Time, error) {
+	s = strings.TrimSpace(s)
+	// Try date first — a date means different things for since vs TTL.
 	if t, err := time.Parse("2006-01-02", s); err == nil {
-		return t, nil
+		return 0, t, nil
 	}
-	return time.Time{}, fmt.Errorf("invalid since value %q (use e.g. 24h, 7d, 2w, or 2026-06-01)", s)
+	d, err := parseDuration(s)
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+	return d, time.Time{}, nil
+}
+
+// ParseSince resolves an age expression to an absolute cutoff time. It accepts
+// Go durations (24h, 90m), day/week shorthands (7d, 2w), and dates (2006-01-02).
+// A date is the cutoff itself (stashes older than this date).
+func ParseSince(s string) (time.Time, error) {
+	d, date, err := parseDateOrDuration(s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid since value %q (use e.g. 24h, 7d, 2w, or 2026-06-01)", s)
+	}
+	if !date.IsZero() {
+		return date, nil
+	}
+	return time.Now().Add(-d), nil
+}
+
+// ParseTTL resolves a time-to-live expression to a Go duration. It accepts
+// the same shorthands as ParseSince (24h, 7d, 2w). A date (2006-01-02) is
+// interpreted as "expire on this date" (the duration from now until that date).
+func ParseTTL(s string) (time.Duration, error) {
+	d, date, err := parseDateOrDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("invalid ttl %q (use e.g. 24h, 7d, 2w, or 2026-06-01)", s)
+	}
+	if !date.IsZero() {
+		dur := time.Until(date)
+		if dur < 0 {
+			return 0, fmt.Errorf("ttl date %q is in the past", s)
+		}
+		return dur, nil
+	}
+	return d, nil
 }
 
 // VacuumResult reports what a vacuum reclaimed.

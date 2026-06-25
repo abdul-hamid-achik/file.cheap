@@ -15,6 +15,7 @@ fcheap list [flags]
 | `--tag` | string | `""` | Filter by tag |
 | `--tool` | string | `""` | Filter by tool (e.g. vidtrace) |
 | `--since` | string | `""` | Only show stashes newer than `24h`, `7d`, `2w`, or `2026-06-01` |
+| `--include-expired` | bool | `false` | Include expired stashes (hidden by default) |
 | `--json` | bool | `false` | Output as JSON |
 
 ## Examples
@@ -33,6 +34,9 @@ fcheap list --since 7d
 
 # JSON output (for scripting)
 fcheap list --json
+
+# Include expired stashes (past their TTL)
+fcheap list --include-expired
 ```
 
 ## Output
@@ -43,8 +47,10 @@ where applicable (the Studio TUI additionally shows a `⚠ secrets` chip):
 ```
 Stashes (3)
 
-ID                         TOOL      TAGS        FILES  SIZE     AGE       COMP
-opg_15061_20260622         vidtrace  bug,login   805    45.2 MiB  2h ago   zst
-config_snap_20260622       -         config      1      2.1 KiB   5h ago   -
-logs_20260622              -         logs        42     1.2 MiB   1d ago   -
+ID                         TOOL      TAGS        FILES  SIZE     AGE       EXP    COMP
+opg_15061_20260622         vidtrace  bug,login   805    45.2 MiB  2h ago   -      zst
+config_snap_20260622       -         config      1      2.1 KiB   5h ago   7d     -
+logs_20260622              -         logs        42     1.2 MiB   1d ago   -      -
 ```
+
+The `EXP` column shows the remaining TTL (e.g. `7d`, `12h`) or `EXPIRED` when past. A `-` means no TTL (permanent).

@@ -30,6 +30,7 @@ type Manifest struct {
 	Compression    string            `json:"compression,omitempty"`
 	CompressedSize int64             `json:"compressed_size,omitempty"`
 	BundleType     string            `json:"bundle_type,omitempty"`
+	ExpiresAt      string            `json:"expires_at,omitempty"` // RFC3339; empty = never expires
 	Files          []FileEntry       `json:"files,omitempty"`
 	Custom         map[string]string `json:"custom,omitempty"`
 }

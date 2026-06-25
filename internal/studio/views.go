@@ -232,6 +232,13 @@ func (m Model) renderStashRow(st *stash.Stash, cursor bool, nameW int, selected 
 	if man.Compression != "" {
 		row += "  " + zstChipStyle.Render(compLabel(man.Compression))
 	}
+	if man.ExpiresAt != "" {
+		if stash.IsExpired(man) {
+			row += "  " + warnChipStyle.Render("EXP")
+		} else {
+			row += "  " + expChipStyle.Render("TTL")
+		}
+	}
 	if man.Custom["secrets_found"] != "" {
 		row += "  " + warnChipStyle.Render("⚠ secrets")
 	}
@@ -266,6 +273,13 @@ func (m Model) renderDetail(h int) string {
 		created += dimStyle.Render("  ·  " + abs)
 	}
 	kvLine(&info, "Created", created)
+	if man.ExpiresAt != "" {
+		expires := expiryDisplay(man.ExpiresAt)
+		if stash.IsExpired(man) {
+			expires = errorStyle.Render("expired · ") + expires
+		}
+		kvLine(&info, "Expires", expires)
+	}
 	if man.BundleType != "" && man.BundleType != "generic" {
 		kvLine(&info, "Bundle", bundleChipStyle(man.BundleType).Render(man.BundleType))
 	}
@@ -593,12 +607,21 @@ func (m Model) renderStatus(h int) string {
 	}
 	hasDB, hasVec := m.indexFiles()
 
+	// Count expired stashes (not hidden by the TUI's list loader since it uses IncludeExpired=false).
+	expired := 0
+	for _, st := range m.stashes {
+		if st.Manifest != nil && stash.IsExpired(st.Manifest) {
+			expired++
+		}
+	}
+
 	lines := []string{
 		dimStyle.Render("Stash dir:    ") + inkStyle.Render(m.stashDir),
 		dimStyle.Render("Stashes:      ") + inkStyle.Render(fmt.Sprintf("%d", len(m.stashes))),
 		dimStyle.Render("Total size:   ") + inkStyle.Render(formatSize(m.totalSize())),
 		dimStyle.Render("Indexed:      ") + inkStyle.Render(fmt.Sprintf("%d / %d", indexed, len(m.stashes))),
 		dimStyle.Render("Compressed:   ") + inkStyle.Render(fmt.Sprintf("%d / %d", compressed, len(m.stashes))),
+		dimStyle.Render("Expired:      ") + presenceExpired(expired),
 		dimStyle.Render("Metadata idx: ") + presence(hasDB),
 		dimStyle.Render("Search idx:   ") + presence(hasVec),
 		dimStyle.Render("Vecgrep:      ") + vecStyle.Render(vec),
@@ -615,6 +638,14 @@ func presence(ok bool) string {
 		return goodStyle.Render("present")
 	}
 	return mutedStyle.Render("—")
+}
+
+// presenceExpired renders an expired count with appropriate styling.
+func presenceExpired(n int) string {
+	if n > 0 {
+		return warnStyle.Render(fmt.Sprintf("%d expired", n))
+	}
+	return mutedStyle.Render("none")
 }
 
 // --- help view ---
@@ -907,6 +938,30 @@ func relTime(ts string) string {
 		return fmt.Sprintf("%dh ago", int(d.Hours()))
 	case d < 7*24*time.Hour:
 		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	default:
+		return t.Format("2006-01-02")
+	}
+}
+
+// expiryDisplay renders an RFC3339 expiry timestamp as a short relative-or-absolute string.
+func expiryDisplay(ts string) string {
+	if ts == "" {
+		return "never"
+	}
+	t, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return ts
+	}
+	d := time.Until(t)
+	switch {
+	case d < 0:
+		return "expired"
+	case d < time.Hour:
+		return fmt.Sprintf("in %dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("in %dh", int(d.Hours()))
+	case d < 7*24*time.Hour:
+		return fmt.Sprintf("in %dd", int(d.Hours()/24))
 	default:
 		return t.Format("2006-01-02")
 	}

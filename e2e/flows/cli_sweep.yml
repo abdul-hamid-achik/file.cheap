@@ -1,0 +1,76 @@
+version: 1
+name: cli_sweep
+
+metadata:
+  feature: cli
+  owner: core
+  priority: normal
+  tags:
+    - smoke
+
+intent: |
+  Verify that the fcheap CLI sweep command finds expired stashes in dry-run
+  mode, reports them without dropping, then with --apply actually drops them.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - |
+      export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-stash-sweep
+      rm -rf /tmp/fcheap-e2e-stash-sweep /tmp/fcheap-e2e-sweep-src /tmp/fcheap-e2e-keep-src
+      mkdir -p /tmp/fcheap-e2e-sweep-src /tmp/fcheap-e2e-keep-src
+      echo "sweep me" > /tmp/fcheap-e2e-sweep-src/file.txt
+      echo "keep me" > /tmp/fcheap-e2e-keep-src/file.txt
+      # Save a stash with a 1-second TTL so it expires immediately
+      ./bin/fcheap save /tmp/fcheap-e2e-sweep-src --tag sweep-test --ttl 1s
+      # Save a protected stash (keep tag + expired TTL)
+      ./bin/fcheap save /tmp/fcheap-e2e-keep-src --tag keep --ttl 1s
+      sleep 2
+      echo "--- DRY RUN ---"
+      ./bin/fcheap sweep
+      echo "--- APPLY ---"
+      ./bin/fcheap sweep --apply
+      echo "--- LIST AFTER SWEEP (keep stash should survive) ---"
+      ./bin/fcheap list --include-expired
+  cwd: "."
+  timeoutMs: 30000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: save, sleep, sweep, and list exit successfully
+    verify:
+      process:
+        exitCode: 0
+  - id: sweep_dry_run
+    description: sweep reports expired stash in dry-run mode
+    verify:
+      screen:
+        contains: "DRY RUN"
+  - id: sweep_applied
+    description: sweep --apply reports it dropped the expired stash
+    verify:
+      screen:
+        contains: "dropped"
+  - id: keep_survives_sweep
+    description: keep-tag stash survives sweep --apply
+    verify:
+      screen:
+        contains: "keep"

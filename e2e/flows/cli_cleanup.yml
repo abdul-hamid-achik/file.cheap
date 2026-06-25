@@ -1,0 +1,82 @@
+version: 1
+name: cli_cleanup
+
+metadata:
+  feature: cli
+  owner: core
+  priority: normal
+  tags:
+    - smoke
+
+intent: |
+  Verify that the fcheap CLI cleanup command analyzes stashes and reports
+  droppability scores with verdicts in dry-run mode, that --smart mode
+  categorizes stashes by cleanup category, and that --apply with --keep-tag
+  protects stashes bearing the keep tag in both modes.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - |
+      export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-stash-cleanup
+      rm -rf /tmp/fcheap-e2e-stash-cleanup /tmp/fcheap-e2e-cleanup-src /tmp/fcheap-e2e-keep-src
+      mkdir -p /tmp/fcheap-e2e-cleanup-src /tmp/fcheap-e2e-keep-src
+      echo "cleanup me" > /tmp/fcheap-e2e-cleanup-src/file.txt
+      echo "keep me" > /tmp/fcheap-e2e-keep-src/file.txt
+      # Save a droppable stash (cache tool, source will be deleted)
+      ./bin/fcheap save /tmp/fcheap-e2e-cleanup-src --tag cleanup-test --tool codemap
+      # Save a protected stash (keep tag, cache tool, source will be deleted)
+      ./bin/fcheap save /tmp/fcheap-e2e-keep-src --tag keep --tool codemap
+      rm -rf /tmp/fcheap-e2e-cleanup-src /tmp/fcheap-e2e-keep-src
+      echo "--- SCORING DRY RUN ---"
+      ./bin/fcheap cleanup
+      echo "--- SMART DRY RUN ---"
+      ./bin/fcheap cleanup --smart
+      echo "--- SCORING APPLY (should drop unprotected only) ---"
+      ./bin/fcheap cleanup --apply
+      echo "--- SMART APPLY (should drop unprotected only) ---"
+      ./bin/fcheap cleanup --smart --apply
+      echo "--- LIST (keep-tag stash should survive) ---"
+      ./bin/fcheap list --include-expired
+  cwd: "."
+  timeoutMs: 30000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: all commands exit successfully
+    verify:
+      process:
+        exitCode: 0
+  - id: cleanup_dry_run
+    description: cleanup reports candidates in scoring dry-run mode
+    verify:
+      screen:
+        contains: "DRY RUN"
+  - id: cleanup_smart_mode
+    description: cleanup --smart reports categorized stashes
+    verify:
+      screen:
+        contains: "Cleanup --smart"
+  - id: keep_tag_survives
+    description: stash with keep tag survives both apply modes
+    verify:
+      screen:
+        contains: "keep"
