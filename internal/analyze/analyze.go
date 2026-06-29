@@ -237,10 +237,10 @@ func (a *Analyzer) openDB() (*veclite.DB, error) {
 	return veclite.Open(a.vecliteDBPath())
 }
 
-// openDBReadOnly opens the veclite database with a shared read-only lock,
-// allowing multiple processes (or parallel MCP tool calls within the same
-// process) to read the same database simultaneously without blocking each
-// other or a concurrent writer.
+// openDBReadOnly opens the veclite database lock-free (read-only, no flock),
+// so multiple processes (or parallel MCP tool calls within the same process)
+// can read the same database simultaneously without blocking each other or a
+// concurrent writer. Readers see a point-in-time snapshot.
 func (a *Analyzer) openDBReadOnly() (*veclite.DB, error) {
 	return veclite.Open(a.vecliteDBPath(), veclite.WithReadOnly(true), veclite.WithSharedRead(true))
 }
