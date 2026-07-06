@@ -11,7 +11,52 @@ Per-release binaries and notes are also on the
 
 _Nothing yet._
 
+## [0.27.0] - 2026-07-06
+
+### Added
+- **Multi-tag AND list filtering.** `fcheap list --tag` is now repeatable (AND
+  across flags, comma-separated), so `fcheap list --tag codemap-index --tag
+  repo:<hash>` matches stashes containing every listed tag — the contract codemap's
+  per-branch index cache needs. Mirrors `save --tag`. `ListOptions.Tags []string`
+  added; the legacy single `Tag` is kept and merged. The MCP `fcheap_list` tool
+  gains `tags []string` (AND) alongside the legacy `tag`.
+- **`custom` in list output.** `fcheap list --json` and the MCP `stashSummary`
+  (shared by `fcheap_list` and the `fcheap://stashes` resource) now surface the
+  full `manifest.Custom` map, so a caller rebuilds its pointer file from `list`
+  alone with no per-stash `info` calls.
+
+### Changed
+- Bumped veclite to v0.22.1 (HNSW panic fix) and v0.22.0 (lock-free read-only
+  opens) for safer parallel MCP search.
+
+## [0.26.2] - 2026-06-29
+
+### Internal
+- Pinned goreleaser to `~> v2` (was `latest`) and updated GitHub Actions to the
+  latest versions (fixes Node.js 20 deprecation). No user-facing change.
+
+## [0.26.1] - 2026-06-29
+
+### Fixed
+- Replaced `WriteString(Sprintf)` with `Fprintf` in the diff output path
+  (avoids an intermediate allocation).
+
+## [0.26.0] - 2026-06-25
+
+### Added
+- **TTL expiry and smart cleanup.** Stashes can carry a TTL (`--ttl 7d, 24h,
+  30d`) and are hidden/expired automatically; `fcheap sweep` (expired) and
+  `fcheap cleanup` (scoring + category-based smart analysis) reclaim space, with
+  TUI integration and per-tool TTL rules.
+
+## [0.25.0] - 2026-06-24
+
+### Changed
+- veclite `WithSharedRead` for parallel MCP search (read-only opens are
+  lock-free), so concurrent `fcheap_search` no longer serializes on the index.
+
 ## [0.24.1] - 2026-06-23
+
 
 ### Fixed
 - **Studio: video player hardening.** Pressing `p` on a compressed stash is now
@@ -249,7 +294,12 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.24.1...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.26.2...v0.27.0
+[0.26.2]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.26.1...v0.26.2
+[0.26.1]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.26.0...v0.26.1
+[0.26.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.25.0...v0.26.0
+[0.25.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.24.1...v0.25.0
 [0.24.1]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.24.0...v0.24.1
 [0.24.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.22.0...v0.23.0

@@ -89,13 +89,16 @@ credentials.
 List stashes, optionally filtered by tag, tool, and age. Newest first.
 
 **Input:**
-- `tag` (string, optional) -- filter by tag
+- `tag` (string, optional) -- filter by tag (single; merged with `tags`)
+- `tags` (string[], optional) -- filter by tags, AND across entries (a stash must contain every tag). Repeatable on the CLI: `--tag a --tag b`.
 - `tool` (string, optional) -- filter by tool (e.g. vidtrace)
 - `since` (string, optional) -- only stashes newer than `24h`, `7d`, `2w`, or `2026-06-01`
 - `limit` (int, optional) -- maximum number of stashes
 
 **Output:** Array of stash summaries (id, name, tool, tags, sizes, created, bundle
-type, plus compression / secrets_found / video where present)
+type, plus compression / secrets_found / video / `custom` where present). `custom`
+carries the full `manifest.Custom` map (e.g. `source` base-sha, `branch`,
+`embedding_profile`), so a caller can rebuild a pointer file from `list` alone.
 
 ### fcheap_info
 
@@ -200,8 +203,8 @@ straight into context without spending a tool call. Both return `application/jso
 ### `fcheap://stashes`
 
 The full stash index — the same summaries as `fcheap_list` (id, name, tool, tags,
-file count, size, created_at, bundle type, plus compression / secrets_found / video
-flags where present), newest first.
+file count, size, created_at, bundle type, plus compression / secrets_found / video /
+`custom` flags where present), newest first.
 
 ### `fcheap://stash/{id}`
 
