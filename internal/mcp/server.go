@@ -110,10 +110,11 @@ func (s *Server) registerTools(srv *mcp.Server) {
 
 	// fcheap_list
 	type listInput struct {
-		Tag   string `json:"tag,omitempty" jsonschema:"Filter by tag"`
-		Tool  string `json:"tool,omitempty" jsonschema:"Filter by tool (e.g. vidtrace)"`
-		Since string `json:"since,omitempty" jsonschema:"Only stashes newer than 24h, 7d, 2w, or 2026-06-01"`
-		Limit int    `json:"limit,omitempty" jsonschema:"Maximum number of stashes"`
+		Tag   string   `json:"tag,omitempty" jsonschema:"Filter by tag (single; merged with tags)"`
+		Tags  []string `json:"tags,omitempty" jsonschema:"Filter by tags — AND across entries (stash must contain every tag)"`
+		Tool  string   `json:"tool,omitempty" jsonschema:"Filter by tool (e.g. vidtrace)"`
+		Since string   `json:"since,omitempty" jsonschema:"Only stashes newer than 24h, 7d, 2w, or 2026-06-01"`
+		Limit int      `json:"limit,omitempty" jsonschema:"Maximum number of stashes"`
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_list",
@@ -128,7 +129,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		if err != nil {
 			return toolError("create stash manager: %v", err), nil, nil
 		}
-		opts := stash.ListOptions{Tag: in.Tag, Tool: in.Tool, Limit: in.Limit}
+		opts := stash.ListOptions{Tag: in.Tag, Tags: in.Tags, Tool: in.Tool, Limit: in.Limit}
 		if in.Since != "" {
 			since, perr := stash.ParseSince(in.Since)
 			if perr != nil {

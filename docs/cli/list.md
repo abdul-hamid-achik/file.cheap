@@ -12,7 +12,7 @@ fcheap list [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--tag` | string | `""` | Filter by tag |
+| `--tag` | string (repeatable) | `[]` | Filter by tag — AND across repeats (a stash must contain **every** listed tag). Comma-separated values accepted. |
 | `--tool` | string | `""` | Filter by tool (e.g. vidtrace) |
 | `--since` | string | `""` | Only show stashes newer than `24h`, `7d`, `2w`, or `2026-06-01` |
 | `--include-expired` | bool | `false` | Include expired stashes (hidden by default) |
@@ -26,6 +26,10 @@ fcheap list
 
 # Filter by tag or tool
 fcheap list --tag OPG-15061
+
+# Filter by multiple tags (AND — stash must contain all of them).
+# Used by codemap's per-branch index cache: list codemap snapshots for one repo.
+fcheap list --tag codemap-index --tag repo:abc123
 fcheap list --tool vidtrace
 
 # Only stashes from the last day / week

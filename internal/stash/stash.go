@@ -345,8 +345,14 @@ func (m *Manager) Drop(ctx context.Context, id string) error {
 }
 
 // ListOptions filters and bounds a List query. Zero values mean "no filter".
+//
+// Tag filtering is AND semantics: a stash must contain every listed tag to
+// match. This lets callers narrow to a precise intersection, e.g. the codemap
+// per-branch index cache lists with both `codemap-index` and `repo:<hash>`.
+// `Tag` (single) is kept for backward compatibility and merged with `Tags`.
 type ListOptions struct {
 	Tag            string
+	Tags           []string
 	Tool           string
 	Since          time.Time // only stashes created at/after this time
 	Limit          int       // 0 = unlimited
@@ -356,6 +362,21 @@ type ListOptions struct {
 // List returns all stashes, optionally filtered by tag.
 func (m *Manager) List(ctx context.Context, tag string) ([]*Stash, error) {
 	return m.ListFiltered(ctx, ListOptions{Tag: tag})
+}
+
+// hasAllTags reports whether man contains every tag in the union of tag and
+// tags. An empty set matches (no filter). Used for the AND tag filter in
+// ListFiltered.
+func hasAllTags(man *manifest.Manifest, tag string, tags []string) bool {
+	if tag != "" && !man.HasTag(tag) {
+		return false
+	}
+	for _, t := range tags {
+		if !man.HasTag(t) {
+			return false
+		}
+	}
+	return true
 }
 
 // ListFiltered returns stashes matching the given options, newest first. The
@@ -376,7 +397,9 @@ func (m *Manager) ListFiltered(ctx context.Context, opts ListOptions) ([]*Stash,
 		if err != nil {
 			continue // skip invalid stashes
 		}
-		if opts.Tag != "" && !man.HasTag(opts.Tag) {
+		// AND tag filter: merge the legacy single Tag with Tags and require
+		// the manifest to contain every one of them.
+		if !hasAllTags(man, opts.Tag, opts.Tags) {
 			continue
 		}
 		if opts.Tool != "" && man.Tool != opts.Tool {

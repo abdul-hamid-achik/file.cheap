@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	listTag            string
+	listTags           []string
 	listTool           string
 	listSince          string
 	listIncludeExpired bool
@@ -27,7 +27,7 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
-		opts := stash.ListOptions{Tag: listTag, Tool: listTool, IncludeExpired: listIncludeExpired}
+	opts := stash.ListOptions{Tags: listTags, Tool: listTool, IncludeExpired: listIncludeExpired}
 		if listSince != "" {
 			since, err := stash.ParseSince(listSince)
 			if err != nil {
@@ -43,15 +43,16 @@ var listCmd = &cobra.Command{
 
 		if printer.IsJSON() {
 			type listItem struct {
-				ID          string   `json:"id"`
-				Name        string   `json:"name,omitempty"`
-				Tool        string   `json:"tool,omitempty"`
-				Tags        []string `json:"tags,omitempty"`
-				FileCount   int      `json:"file_count"`
-				TotalSize   int64    `json:"total_size"`
-				Compression string   `json:"compression,omitempty"`
-				ExpiresAt   string   `json:"expires_at,omitempty"`
-				CreatedAt   string   `json:"created_at"`
+				ID          string            `json:"id"`
+				Name        string            `json:"name,omitempty"`
+				Tool        string            `json:"tool,omitempty"`
+				Tags        []string          `json:"tags,omitempty"`
+				FileCount   int               `json:"file_count"`
+				TotalSize   int64             `json:"total_size"`
+				Compression string            `json:"compression,omitempty"`
+				ExpiresAt   string            `json:"expires_at,omitempty"`
+				CreatedAt   string            `json:"created_at"`
+				Custom      map[string]string `json:"custom,omitempty"`
 			}
 			items := make([]listItem, 0, len(stashes))
 			for _, st := range stashes {
@@ -65,6 +66,7 @@ var listCmd = &cobra.Command{
 					Compression: st.Manifest.Compression,
 					ExpiresAt:   st.Manifest.ExpiresAt,
 					CreatedAt:   st.Manifest.CreatedAt,
+					Custom:      st.Manifest.Custom,
 				})
 			}
 			return printer.JSON(items)
@@ -104,7 +106,7 @@ var listCmd = &cobra.Command{
 }
 
 func init() {
-	listCmd.Flags().StringVar(&listTag, "tag", "", "Filter by tag")
+	listCmd.Flags().StringSliceVar(&listTags, "tag", nil, "Filter by tag (AND across repeated flags; comma-separated)")
 	listCmd.Flags().StringVar(&listTool, "tool", "", "Filter by tool")
 	listCmd.Flags().StringVar(&listSince, "since", "", "Only show stashes newer than e.g. 24h, 7d, 2w, or 2026-06-01")
 	listCmd.Flags().BoolVar(&listIncludeExpired, "include-expired", false, "Include expired stashes (hidden by default)")

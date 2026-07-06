@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -331,6 +332,45 @@ func TestListFiltered(t *testing.T) {
 	}
 	if got, _ := mgr.ListFiltered(context.Background(), ListOptions{Since: time.Now().Add(time.Hour)}); len(got) != 0 {
 		t.Errorf("since 1h future = %d, want 0", len(got))
+	}
+}
+
+func TestListFilteredMultiTag(t *testing.T) {
+	tmp := t.TempDir()
+	mgr, err := NewManager(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Stash A: codemap-index + repo:abc. Stash B: codemap-index + repo:def.
+	// Stash C: codemap-index only.
+	for _, tags := range [][]string{
+		{"codemap-index", "repo:abc"},
+		{"codemap-index", "repo:def"},
+		{"codemap-index"},
+	} {
+		src := filepath.Join(tmp, "src-"+strings.Join(tags, "_"))
+		_ = os.MkdirAll(src, 0755)
+		_ = os.WriteFile(filepath.Join(src, "a.txt"), []byte("x"), 0644)
+		if _, err := mgr.Save(context.Background(), &SaveOptions{SourcePath: src, Tags: tags}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// AND: codemap-index + repo:abc -> exactly one (stash A).
+	if got, _ := mgr.ListFiltered(context.Background(), ListOptions{Tags: []string{"codemap-index", "repo:abc"}}); len(got) != 1 {
+		t.Errorf("multi-tag AND {codemap-index, repo:abc} = %d, want 1", len(got))
+	}
+	// AND with a tag no stash has -> 0.
+	if got, _ := mgr.ListFiltered(context.Background(), ListOptions{Tags: []string{"codemap-index", "repo:zzz"}}); len(got) != 0 {
+		t.Errorf("multi-tag AND {codemap-index, repo:zzz} = %d, want 0", len(got))
+	}
+	// Single tag via the legacy Tag field still works -> all 3.
+	if got, _ := mgr.ListFiltered(context.Background(), ListOptions{Tag: "codemap-index"}); len(got) != 3 {
+		t.Errorf("legacy single Tag = %d, want 3", len(got))
+	}
+	// Legacy Tag + Tags merged (AND) -> 1.
+	if got, _ := mgr.ListFiltered(context.Background(), ListOptions{Tag: "codemap-index", Tags: []string{"repo:def"}}); len(got) != 1 {
+		t.Errorf("Tag+Tags merge = %d, want 1", len(got))
 	}
 }
 
