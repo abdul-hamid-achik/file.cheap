@@ -87,16 +87,16 @@ var saveCmd = &cobra.Command{
 		var indexed *analyze.IndexResult
 		if saveIndex {
 			an := analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath).WithEmbedder(embSettings())
-			indexed, err = an.IndexStash(GetContext(), mgr.StashDir(st.Manifest.ID))
-			if err != nil {
-				printer.Warn("index after save failed: %v (run 'fcheap analyze %s')", err, st.Manifest.ID)
-				err = nil
-			} else if st.Manifest.Custom == nil {
-				st.Manifest.Custom = map[string]string{}
-			}
-			if indexed != nil {
+			idx, ierr := an.IndexStash(GetContext(), mgr.StashDir(st.Manifest.ID))
+			if ierr != nil {
+				printer.Warn("index after save failed: %v (run 'fcheap analyze %s')", ierr, st.Manifest.ID)
+			} else {
+				indexed = idx
+				if st.Manifest.Custom == nil {
+					st.Manifest.Custom = map[string]string{}
+				}
 				st.Manifest.Custom["indexed"] = "true"
-				st.Manifest.Custom["indexed_files"] = fmt.Sprintf("%d", indexed.FilesIndex)
+				st.Manifest.Custom["indexed_files"] = fmt.Sprintf("%d", idx.FilesIndex)
 			}
 		}
 
