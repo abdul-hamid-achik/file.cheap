@@ -2,6 +2,7 @@ package studio
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
 	"github.com/abdul-hamid-achik/file.cheap/internal/detect"
 	"github.com/abdul-hamid-achik/file.cheap/internal/diff"
 	"github.com/abdul-hamid-achik/file.cheap/internal/manifest"
@@ -54,6 +56,11 @@ func (m *Model) searchCmd() tea.Cmd {
 	}
 	return func() tea.Msg {
 		results, err := analyzer.Search(ctx, query, 0, mode)
+		if err != nil && errors.Is(err, analyze.ErrNotIndexed) {
+			// Nothing indexed yet: show a friendly hint, not a scary error.
+			err = errors.New("no stashes indexed — press 'a' on a stash to index it")
+			results = nil
+		}
 		return searchDoneMsg{query: query, results: results, err: err}
 	}
 }

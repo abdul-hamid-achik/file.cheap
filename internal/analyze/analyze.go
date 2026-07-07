@@ -32,6 +32,12 @@ import (
 // fatal (you must rebuild), but search degrades to BM25 instead of failing.
 var errEmbeddingDrift = errors.New("embedding model changed")
 
+// ErrNotIndexed signals that no search index exists yet — the caller should
+// treat this as an empty result (exit 0), not a tool failure. Search returns it
+// when the veclite database has no indexed collection, so callers can distinguish
+// "not indexed" from a real error.
+var ErrNotIndexed = errors.New("no search index — run analyze first")
+
 // veclite collection holding one document per indexed file.
 const (
 	// filesCollection holds one text-only (BM25) document per file.
@@ -53,6 +59,7 @@ type SearchResult struct {
 	Score   float64 `json:"score"`
 	Text    string  `json:"text"`
 	File    string  `json:"file,omitempty"`
+	Line    int     `json:"line,omitempty"`
 	Source  string  `json:"source,omitempty"`
 }
 
@@ -212,7 +219,7 @@ func (a *Analyzer) collForReadOnly(db *veclite.DB, emb veclite.Embedder) (*vecli
 			return nil, fmt.Errorf("%w: vector collection %q not found — run analyze with an embedder to build it",
 				errEmbeddingDrift, filesVecCollection)
 		}
-		return nil, fmt.Errorf("no indexed collection found — run analyze first")
+		return nil, ErrNotIndexed
 	}
 
 	// Drift detection: a changed embedding model invalidates stored vectors.
@@ -486,7 +493,7 @@ func (a *Analyzer) search(ctx context.Context, query string, filter veclite.Filt
 			}
 		}
 		if coll == nil {
-			return nil, nil
+			return nil, ErrNotIndexed
 		}
 	}
 
@@ -584,15 +591,12 @@ func parseVecgrepJSON(output []byte) []SearchResult {
 
 	results := make([]SearchResult, 0, len(hits))
 	for _, r := range hits {
-		file := r.FilePath
-		if r.StartLine > 0 {
-			file = fmt.Sprintf("%s:%d", r.FilePath, r.StartLine)
-		}
 		results = append(results, SearchResult{
 			StashID: "vecgrep",
 			Score:   r.Score,
 			Text:    r.Content,
-			File:    file,
+			File:    r.FilePath,
+			Line:    r.StartLine,
 			Source:  "vecgrep",
 		})
 	}
@@ -601,16 +605,30 @@ func parseVecgrepJSON(output []byte) []SearchResult {
 
 // ConnectResult is the outcome of connecting a stash to a codebase.
 type ConnectResult struct {
-	StashID  string         `json:"stash_id"`
-	Codebase string         `json:"codebase"`
-	Query    string         `json:"query"`
-	Matches  []SearchResult `json:"matches"`
+	StashID     string         `json:"stash_id"`
+	Codebase    string         `json:"codebase"`
+	Query       string         `json:"query"`
+	Matches     []SearchResult `json:"matches"`
+	IndexStatus string         `json:"index_status,omitempty"` // "indexed" or "missing"
+}
+
+// VecgrepResult is the raw outcome of a vecgrep codebase search: the matches
+// and whether the codebase had a usable index. IndexStatus is "indexed" when
+// vecgrep had a built index to search, or "missing" when the codebase was not
+// initialized/indexed (so the caller can report an empty result, not an error).
+type VecgrepResult struct {
+	Matches     []SearchResult `json:"matches"`
+	IndexStatus string         `json:"index_status"` // "indexed" | "missing"
 }
 
 // VecgrepSearchIn runs vecgrep search within a codebase directory, optionally
 // (re)building the index first. This is the engine behind `fcheap connect`:
 // point the stashed bug report's text at the code that likely owns the bug.
-func (a *Analyzer) VecgrepSearchIn(ctx context.Context, codebaseDir, query string, limit int, doIndex bool, mode string) ([]SearchResult, error) {
+//
+// When doIndex is false and the codebase has no vecgrep index, it returns a
+// VecgrepResult with IndexStatus "missing" and no matches (rather than an
+// error), so callers can distinguish "not indexed" from a real failure.
+func (a *Analyzer) VecgrepSearchIn(ctx context.Context, codebaseDir, query string, limit int, doIndex bool, mode string) (*VecgrepResult, error) {
 	bin := a.vecgrepBin()
 	if bin == "" {
 		return nil, fmt.Errorf("vecgrep not found; install it or set vecgrep_path in config")
@@ -636,6 +654,10 @@ func (a *Analyzer) VecgrepSearchIn(ctx context.Context, codebaseDir, query strin
 		if out, err := idx.CombinedOutput(); err != nil {
 			return nil, fmt.Errorf("vecgrep index failed: %v: %s", err, strings.TrimSpace(string(out)))
 		}
+	} else if !a.vecgrepIndexed(ctx, bin, codebaseDir) {
+		// Fresh workspace: no index yet. Report an empty "missing" result rather
+		// than erroring so callers treat it as data (exit 0), not a tool failure.
+		return &VecgrepResult{Matches: []SearchResult{}, IndexStatus: "missing"}, nil
 	}
 
 	// vecgrep's default mode is "hybrid" (semantic + BM25). Pass -m only when the
@@ -648,11 +670,40 @@ func (a *Analyzer) VecgrepSearchIn(ctx context.Context, codebaseDir, query strin
 
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = codebaseDir
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("vecgrep search failed (is the codebase indexed? re-run with --index): %w", err)
+		// Defensive: if the pre-flight check somehow missed (e.g. the project was
+		// removed between the check and the search), vecgrep reports "not in a
+		// vecgrep project". Treat that as a missing index, not a hard failure.
+		if strings.Contains(stderr.String(), "not in a vecgrep project") {
+			return &VecgrepResult{Matches: []SearchResult{}, IndexStatus: "missing"}, nil
+		}
+		return nil, fmt.Errorf("vecgrep search failed: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
-	return parseVecgrepJSON(output), nil
+	return &VecgrepResult{Matches: parseVecgrepJSON(output), IndexStatus: "indexed"}, nil
+}
+
+// vecgrepIndexed reports whether the codebase has a built vecgrep index with at
+// least one indexed file. It runs `vecgrep status -f json`; an error or zero
+// indexed files means the codebase is not searchable yet.
+func (a *Analyzer) vecgrepIndexed(ctx context.Context, bin, codebaseDir string) bool {
+	cmd := exec.CommandContext(ctx, bin, "status", "-f", "json")
+	cmd.Dir = codebaseDir
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	var st struct {
+		Stats struct {
+			Files int `json:"files"`
+		} `json:"stats"`
+	}
+	if err := json.Unmarshal(out, &st); err != nil {
+		return false
+	}
+	return st.Stats.Files > 0
 }
 
 // StashQuery returns representative searchable text for a stash, suitable as a

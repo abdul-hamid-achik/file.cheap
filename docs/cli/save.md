@@ -18,6 +18,8 @@ fcheap save <path> [flags]
 | `--source` | string | `""` | Original artifact this stash derives from (provenance) |
 | `--ttl` | string | `""` | Time-to-live (e.g. `7d`, `24h`, `30d`); empty = never expires |
 | `--no-scan` | bool | `false` | Skip the save-time secret scan |
+| `--no-compress` | bool | `false` | Skip auto-compression of large stashes |
+| `--index` | bool | `false` | Index the stash for search immediately after saving (no separate `analyze` step) |
 
 ## Examples
 
@@ -36,6 +38,9 @@ fcheap save /tmp/codemap-snapshot --tag codemap-snapshot --tool codemap --ttl 7d
 
 # Save a single file
 fcheap save ./config.yaml --tag config
+
+# Save and index in one step — searchable immediately, no separate `analyze`
+fcheap save /tmp/evidence --tag bug-42 --tool cortex --index
 ```
 
 ## What Happens
@@ -47,6 +52,7 @@ fcheap save ./config.yaml --tag config
 5. Auto-detects bundle type (vidtrace, generic)
 6. Scans content for likely secrets (unless `--no-scan`) and records findings in the manifest
 7. Prints the stash ID and summary
+8. With `--index`, indexes the stash into the search database (same as `fcheap analyze`) so it's searchable immediately; records `custom.indexed` on the manifest
 
 ## Secret scanning
 

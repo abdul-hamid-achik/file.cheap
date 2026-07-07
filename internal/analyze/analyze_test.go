@@ -2,6 +2,7 @@ package analyze
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -195,5 +196,66 @@ func TestDropIndex(t *testing.T) {
 	}
 	if res, _ := an.Search(context.Background(), "droptest-keyword", 0, ""); len(res) != 0 {
 		t.Errorf("expected no results after drop, got %d", len(res))
+	}
+}
+
+// TestSearchNotIndexedReturnsErrNotIndexed verifies that searching a stash root
+// with no built index returns ErrNotIndexed (not a generic error), so callers
+// can treat "not indexed" as empty data (exit 0) rather than a tool failure.
+func TestSearchNotIndexedReturnsErrNotIndexed(t *testing.T) {
+	root := t.TempDir()
+	an := NewAnalyzer(root, "")
+	_, err := an.Search(context.Background(), "anything", 0, "")
+	if !errors.Is(err, ErrNotIndexed) {
+		t.Fatalf("Search on unindexed root: err = %v, want ErrNotIndexed", err)
+	}
+}
+
+// TestSearchStashNotIndexedReturnsErrNotIndexed verifies the stash-scoped path
+// also surfaces ErrNotIndexed when the stash was never analyzed.
+func TestSearchStashNotIndexedReturnsErrNotIndexed(t *testing.T) {
+	root := t.TempDir()
+	an := NewAnalyzer(root, "")
+	stashDir := makeContent(t, root, "s1", map[string]string{"a.txt": "hello world"})
+	_, err := an.SearchStash(context.Background(), stashDir, "hello", 0, "")
+	if !errors.Is(err, ErrNotIndexed) {
+		t.Fatalf("SearchStash on unindexed stash: err = %v, want ErrNotIndexed", err)
+	}
+}
+
+// TestParseVecgrepJSONLineField verifies that connect matches carry a clean
+// file path (no ":line" suffix) plus a separate integer line field, so callers
+// can build a Location{File, StartLine} without splitting a string.
+func TestParseVecgrepJSONLineField(t *testing.T) {
+	in := []byte(`[{"file_path":"internal/auth.go","content":"func refreshToken","score":0.81,"start_line":42}]`)
+	results := parseVecgrepJSON(in)
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1", len(results))
+	}
+	r := results[0]
+	if r.File != "internal/auth.go" {
+		t.Errorf("File = %q, want internal/auth.go (no :line suffix)", r.File)
+	}
+	if r.Line != 42 {
+		t.Errorf("Line = %d, want 42", r.Line)
+	}
+	if r.StashID != "vecgrep" || r.Source != "vecgrep" {
+		t.Errorf("StashID/Source = %q/%q, want vecgrep/vecgrep", r.StashID, r.Source)
+	}
+}
+
+// TestParseVecgrepJSONNoLine verifies a match without a start_line yields a
+// clean file and a zero (omittable) line.
+func TestParseVecgrepJSONNoLine(t *testing.T) {
+	in := []byte(`[{"file_path":"README.md","content":"docs","score":0.1,"start_line":0}]`)
+	results := parseVecgrepJSON(in)
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1", len(results))
+	}
+	if results[0].File != "README.md" {
+		t.Errorf("File = %q, want README.md", results[0].File)
+	}
+	if results[0].Line != 0 {
+		t.Errorf("Line = %d, want 0", results[0].Line)
 	}
 }

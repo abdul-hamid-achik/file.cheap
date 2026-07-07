@@ -9,7 +9,22 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **`save --index`** auto-indexes a stash for search right after saving, so
+  callers (e.g. Cortex) that save evidence can search it without a separate
+  `fcheap analyze` step. Records `custom.indexed` on the manifest. Mirrored on
+  the MCP `fcheap_save` tool as an `index` field.
+
+### Changed
+- **`search`/`connect` return exit 0 (not 1) when nothing is indexed.** With
+  `--json`, `search` returns `[]` and `connect` returns
+  `{"matches":[],"index_status":"missing"}`; a non-zero exit is reserved for
+  real errors, so callers can distinguish "not indexed" from a tool failure.
+  Mirrored on the MCP `fcheap_search`/`fcheap_connect` tools.
+- **Structured `line` on `connect`/`search` matches.** Vecgrep matches now
+  carry a clean `file` path (no `:line` suffix) plus a separate integer `line`
+  field, so callers can build a `Location{File, StartLine}` without splitting a
+  string. `line` is `0`/omitted when unknown.
 
 ## [0.27.0] - 2026-07-06
 

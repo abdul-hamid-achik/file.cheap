@@ -43,7 +43,16 @@ fcheap search "checkout" --stash OPG-15061_20260622
    which holds one document per indexed file (run `fcheap analyze <id>` to index a
    stash).
 2. Each result names the stash **and the matching file** (`stash › file`), with a
-   relevance score and a snippet centered on the match.
+   relevance score and a snippet centered on the match. Connect/vecgrep matches
+   also carry an integer `line` field (see [`connect`](/cli/connect)).
+
+### Nothing indexed yet
+
+If no stash has been analyzed, `fcheap search` does **not** error out. With
+`--json` it exits `0` and returns an empty array `[]`; without `--json` it prints
+a hint to run `fcheap analyze <stash-id>`. A non-zero exit is reserved for real
+errors, so callers can tell "not indexed" (success, empty) from a tool failure.
+Save a stash with `--index` to make it searchable in one step.
 
 `search` operates purely on your **stashes**. To search a **codebase** (and map a
 stashed bug report to the code that owns it), use [`connect`](/cli/connect)

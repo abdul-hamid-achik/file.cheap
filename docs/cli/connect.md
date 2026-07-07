@@ -47,6 +47,36 @@ fcheap connect OPG-15061 ~/projects/graphite --query "login token refresh" --lim
    codebase first (idempotent).
 3. It runs `vecgrep search` in the codebase and reports ranked code chunks.
 
+### Not indexed (graceful)
+
+If the codebase has no vecgrep index and you didn't pass `--index`, `connect`
+does **not** error out. With `--json` it exits `0` and returns
+`{"stash_id":…, "matches":[], "index_status":"missing"}`; without `--json` it
+prints a hint to re-run with `--index`. A non-zero exit is reserved for real
+errors (e.g. vecgrep not installed), so callers can distinguish "not indexed"
+from a tool failure.
+
+### JSON shape
+
+Each match is a `SearchResult` with a **clean** `file` path (no `:line`
+suffix) and a separate integer `line` field, so callers can build a
+`Location{File, StartLine}` without splitting a string:
+
+```json
+{
+  "stash_id": "OPG-15061_20260622",
+  "codebase": "~/projects/graphite",
+  "query": "login token refresh failed ...",
+  "matches": [
+    {"stash_id":"vecgrep","score":0.81,"text":"func refreshToken(t string) ...","file":"auth/login.go","line":3,"source":"vecgrep"}
+  ],
+  "index_status": "indexed"
+}
+```
+
+`line` is `0` (omitted) when the match has no known line; `index_status` is
+`"indexed"` or `"missing"`.
+
 Requires `vecgrep` on `PATH` (or `vecgrep_path` in config). Check with
 [`doctor`](/cli/doctor).
 

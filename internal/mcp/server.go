@@ -4,6 +4,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -65,6 +66,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		Tool   string   `json:"tool,omitempty" jsonschema:"Tool that produced the content (e.g., vidtrace)"`
 		Source string   `json:"source,omitempty" jsonschema:"Original artifact this stash derives from (provenance)"`
 		TTL    string   `json:"ttl,omitempty" jsonschema:"Time-to-live for this stash (e.g. 7d, 24h, 30d, or 2026-12-31); empty = never expires"`
+		Index  bool     `json:"index,omitempty" jsonschema:"Index the stash for search immediately after saving (so it's searchable without a separate fcheap_analyze call)"`
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_save",
@@ -104,6 +106,19 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		if len(st.Secrets) > 0 {
 			out["secrets_warning"] = fmt.Sprintf("%d potential secret(s) detected — review before sharing", len(st.Secrets))
 			out["secrets"] = st.Secrets
+		}
+		// Best-effort auto-index so the stash is searchable without a separate
+		// fcheap_analyze call. A save that succeeds is never failed by indexing.
+		if in.Index {
+			an := s.analyzer()
+			if idx, ierr := an.IndexStash(ctx, mgr.StashDir(st.Manifest.ID)); ierr != nil {
+				out["index_error"] = ierr.Error()
+			} else {
+				out["indexed"] = map[string]any{
+					"bundle_type":   idx.BundleType,
+					"files_indexed": idx.FilesIndex,
+				}
+			}
 		}
 		return textResult(out), nil, nil
 	})
@@ -254,6 +269,10 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		an := s.analyzer()
 		results, err := an.Search(ctx, in.Query, in.Limit, in.Mode)
 		if err != nil {
+			if errors.Is(err, analyze.ErrNotIndexed) {
+				// Not indexed is data (empty), not a tool failure.
+				return textResult([]any{}), nil, nil
+			}
 			return toolError("search failed: %v", err), nil, nil
 		}
 		return textResult(results), nil, nil
@@ -368,12 +387,12 @@ func (s *Server) registerTools(srv *mcp.Server) {
 			}
 			query = q
 		}
-		matches, err := an.VecgrepSearchIn(ctx, in.Codebase, query, in.Limit, in.Index, in.Mode)
+		vres, err := an.VecgrepSearchIn(ctx, in.Codebase, query, in.Limit, in.Index, in.Mode)
 		if err != nil {
 			return toolError("connect failed: %v", err), nil, nil
 		}
 		return textResult(&analyze.ConnectResult{
-			StashID: in.StashID, Codebase: in.Codebase, Query: query, Matches: matches,
+			StashID: in.StashID, Codebase: in.Codebase, Query: query, Matches: vres.Matches, IndexStatus: vres.IndexStatus,
 		}), nil, nil
 	})
 

@@ -1,13 +1,13 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
 	"github.com/spf13/cobra"
 )
-
 var (
 	searchLimit int
 	searchStash string
@@ -37,6 +37,18 @@ var searchCmd = &cobra.Command{
 			results, err = an.Search(GetContext(), args[0], searchLimit, searchMode)
 		}
 		if err != nil {
+			if errors.Is(err, analyze.ErrNotIndexed) {
+				// Not indexed is data (empty), not a tool failure: exit 0.
+				if printer.IsJSON() {
+					return printer.JSON([]any{})
+				}
+				if searchStash != "" {
+					printer.Println(fmt.Sprintf("Stash %s is not indexed. Run 'fcheap analyze %s' to make it searchable.", searchStash, searchStash))
+				} else {
+					printer.Println("No stashes are indexed yet. Run 'fcheap analyze <stash-id>' to make a stash searchable.")
+				}
+				return nil
+			}
 			return err
 		}
 

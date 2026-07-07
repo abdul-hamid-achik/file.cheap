@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
@@ -54,28 +55,36 @@ Examples:
 			query = q
 		}
 
-		matches, err := an.VecgrepSearchIn(GetContext(), codebase, query, connectLimit, connectIndex, connectMode)
-		if err != nil {
-			return err
-		}
+	vres, err := an.VecgrepSearchIn(GetContext(), codebase, query, connectLimit, connectIndex, connectMode)
+	if err != nil {
+		return err
+	}
 
-		res := &analyze.ConnectResult{StashID: id, Codebase: codebase, Query: query, Matches: matches}
-		if printer.IsJSON() {
-			return printer.JSON(res)
-		}
+	res := &analyze.ConnectResult{StashID: id, Codebase: codebase, Query: query, Matches: vres.Matches, IndexStatus: vres.IndexStatus}
+	if printer.IsJSON() {
+		return printer.JSON(res)
+	}
 
-		printer.Header(fmt.Sprintf("Connect %s → %s", id, codebase))
-		printer.KeyValue("Query", truncate(query, 80))
-		if len(matches) == 0 {
-			printer.Println("No related code found. Try --index to (re)build the codebase index, or refine --query.")
-			return nil
-		}
-		printer.Section(fmt.Sprintf("Candidate code (%d)", len(matches)))
-		for _, m := range matches {
-			printer.KeyValue(m.File, fmt.Sprintf("score %.2f", m.Score))
-			printer.Indent("%s", truncate(m.Text, 160))
-		}
+	printer.Header(fmt.Sprintf("Connect %s → %s", id, codebase))
+	printer.KeyValue("Query", truncate(query, 80))
+	if res.IndexStatus == "missing" {
+		printer.Println("Codebase not indexed. Re-run with --index to build the codebase index, or point at an indexed repo.")
 		return nil
+	}
+	if len(res.Matches) == 0 {
+		printer.Println("No related code found. Try --index to (re)build the codebase index, or refine --query.")
+		return nil
+	}
+	printer.Section(fmt.Sprintf("Candidate code (%d)", len(res.Matches)))
+	for _, m := range res.Matches {
+		loc := m.File
+		if m.Line > 0 {
+			loc = m.File + ":" + strconv.Itoa(m.Line)
+		}
+		printer.KeyValue(loc, fmt.Sprintf("score %.2f", m.Score))
+		printer.Indent("%s", truncate(m.Text, 160))
+	}
+	return nil
 	},
 }
 

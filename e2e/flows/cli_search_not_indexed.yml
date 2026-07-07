@@ -1,0 +1,61 @@
+version: 1
+name: cli_search_not_indexed
+
+metadata:
+  feature: cli
+  owner: core
+  priority: high
+  tags:
+    - smoke
+
+intent: |
+  Verify that `fcheap search --json` against a stash root with no built index
+  exits 0 and returns an empty JSON array `[]` (not exit 1), so callers can
+  distinguish "not indexed" (success, empty) from a real tool failure.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - |
+      export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-stash-notindexed
+      rm -rf /tmp/fcheap-e2e-stash-notindexed /tmp/fcheap-e2e-notindexed-src
+      mkdir -p /tmp/fcheap-e2e-notindexed-src
+      echo "never analyzed content" > /tmp/fcheap-e2e-notindexed-src/file.txt
+      # Save WITHOUT --index, so the stash exists but is not indexed.
+      ./bin/fcheap save /tmp/fcheap-e2e-notindexed-src --tag notindexed-test >/dev/null
+      echo "---"
+      # JSON search must exit 0 and emit an empty array, not error out.
+      ./bin/fcheap search "never analyzed" --json
+      echo "EXIT=$?"
+  cwd: "."
+  timeoutMs: 30000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: search on an unindexed stash exits 0 (not 1)
+    verify:
+      process:
+        exitCode: 0
+  - id: empty_array
+    description: JSON search returns an empty array, not an error
+    verify:
+      screen:
+        contains: "[]"

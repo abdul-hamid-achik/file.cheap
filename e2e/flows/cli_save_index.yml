@@ -1,0 +1,63 @@
+version: 1
+name: cli_save_index
+
+metadata:
+  feature: cli
+  owner: core
+  priority: high
+  tags:
+    - smoke
+
+intent: |
+  Verify that `fcheap save --index` indexes the stash for search immediately,
+  so a follow-up `fcheap search` finds the content without a separate
+  `fcheap analyze` step (the contract Cortex relies on).
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - |
+      export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-stash-saveindex
+      rm -rf /tmp/fcheap-e2e-stash-saveindex /tmp/fcheap-e2e-saveindex-src
+      mkdir -p /tmp/fcheap-e2e-saveindex-src
+      echo "The Internal Migrant condition is not working" > /tmp/fcheap-e2e-saveindex-src/notes.txt
+      ./bin/fcheap save /tmp/fcheap-e2e-saveindex-src --tag saveindex-test --index
+      echo "---"
+      ./bin/fcheap search "Internal Migrant" --json
+  cwd: "."
+  timeoutMs: 30000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: save --index and search exit successfully
+    verify:
+      process:
+        exitCode: 0
+  - id: save_indexed
+    description: save reports the stash was indexed
+    verify:
+      screen:
+        contains: "Indexed"
+  - id: search_finds_content
+    description: search finds the just-saved content without a separate analyze
+    verify:
+      screen:
+        contains: "Internal Migrant"

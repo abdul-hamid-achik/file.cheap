@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
 	"github.com/abdul-hamid-achik/file.cheap/internal/fcheap/config"
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
 	"github.com/spf13/cobra"
@@ -18,6 +19,7 @@ var (
 	saveTTL        string
 	saveNoScan     bool
 	saveNoCompress bool
+	saveIndex      bool
 )
 
 var saveCmd = &cobra.Command{
@@ -78,6 +80,26 @@ var saveCmd = &cobra.Command{
 			}
 		}
 
+		// Optionally index the stash for search right after saving, so callers
+		// (e.g. Cortex) that save evidence can search it without a separate
+		// `fcheap analyze` step. Best-effort: a save that succeeds is never failed
+		// by an indexing error.
+		var indexed *analyze.IndexResult
+		if saveIndex {
+			an := analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath).WithEmbedder(embSettings())
+			indexed, err = an.IndexStash(GetContext(), mgr.StashDir(st.Manifest.ID))
+			if err != nil {
+				printer.Warn("index after save failed: %v (run 'fcheap analyze %s')", err, st.Manifest.ID)
+				err = nil
+			} else if st.Manifest.Custom == nil {
+				st.Manifest.Custom = map[string]string{}
+			}
+			if indexed != nil {
+				st.Manifest.Custom["indexed"] = "true"
+				st.Manifest.Custom["indexed_files"] = fmt.Sprintf("%d", indexed.FilesIndex)
+			}
+		}
+
 		if printer.IsJSON() {
 			return printer.JSON(st.Manifest)
 		}
@@ -104,6 +126,9 @@ var saveCmd = &cobra.Command{
 		if autoCompressed {
 			printer.KeyValue("Compressed", fmt.Sprintf("%s → %s (%s)", formatSize(st.Manifest.TotalSize), formatSize(st.Manifest.CompressedSize), st.Manifest.Compression))
 		}
+		if indexed != nil {
+			printer.KeyValue("Indexed", fmt.Sprintf("%d file(s) [%s]", indexed.FilesIndex, indexed.BundleType))
+		}
 		if len(st.Secrets) > 0 {
 			printer.Warn("%d potential secret(s) detected in this stash — review before sharing or restoring elsewhere", len(st.Secrets))
 			shown := 0
@@ -128,6 +153,7 @@ func init() {
 	saveCmd.Flags().StringVar(&saveTTL, "ttl", "", "Time-to-live for this stash (e.g. 7d, 24h, 30d); empty = never expires")
 	saveCmd.Flags().BoolVar(&saveNoScan, "no-scan", false, "Skip the save-time secret scan")
 	saveCmd.Flags().BoolVar(&saveNoCompress, "no-compress", false, "Skip auto-compression of large stashes")
+	saveCmd.Flags().BoolVar(&saveIndex, "index", false, "Index the stash for search immediately after saving (so it's searchable without a separate 'fcheap analyze' step)")
 }
 
 func formatSize(bytes int64) string {
