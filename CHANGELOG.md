@@ -9,22 +9,72 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-07-12
+
 ### Added
-- **`save --index`** auto-indexes a stash for search right after saving, so
-  callers (e.g. Cortex) that save evidence can search it without a separate
-  `fcheap analyze` step. Records `custom.indexed` on the manifest. Mirrored on
-  the MCP `fcheap_save` tool as an `index` field.
+- **Embedded read-only docs.** `fcheap docs list/show` and MCP `fcheap_docs`
+  list/show now work from installed binaries without a source checkout.
+- **Verified-recovery controls.** `restore --allow-mismatch` and MCP
+  `allow_mismatch` let you explicitly accept restored files that fail manifest
+  verification; strict verification remains the default.
+- **Remote-secret policy.** The new `allow_remote_secrets` config key defaults to
+  false and provides an explicit opt-in for remote embedding of flagged stashes.
 
 ### Changed
-- **`search`/`connect` return exit 0 (not 1) when nothing is indexed.** With
-  `--json`, `search` returns `[]` and `connect` returns
-  `{"matches":[],"index_status":"missing"}`; a non-zero exit is reserved for
-  real errors, so callers can distinguish "not indexed" from a tool failure.
-  Mirrored on the MCP `fcheap_search`/`fcheap_connect` tools.
-- **Structured `line` on `connect`/`search` matches.** Vecgrep matches now
-  carry a clean `file` path (no `:line` suffix) plus a separate integer `line`
-  field, so callers can build a `Location{File, StartLine}` without splitting a
-  string. `line` is `0`/omitted when unknown.
+- **Cleanup is conservative by contract.** Applied cleanup auto-deletes only
+  expired TTLs or regenerable `codemap`/`vecgrep` caches. Sweep keeps `--auto`
+  dry-run unless `--apply` is also present. Smart cleanup and expired-TTL sweep
+  JSON distinguish the plan from dropped, failed, and skipped operations.
+- **Configuration follows XDG path semantics.** fcheap honors
+  `XDG_CONFIG_HOME`, expands `~`, and resolves relative configured paths from the
+  config directory. `ecosystem-status` now separates logical size from stored
+  size for compressed stashes.
+- Release validation now builds the documentation and scans reachable Go code
+  for known vulnerabilities; release archives include the license.
+- Save, drop, cleanup, and sweep now emit their complete structured result
+  before returning nonzero for partial post-save, metadata, or index failures.
+
+### Removed
+- Removed the misleading cleanup `--projects-dir` / `--notes-dir` flags and
+  corresponding MCP input fields. Orphan analysis now uses only the recorded
+  source path; optional project and note layouts are not deletion evidence.
+
+### Fixed
+- Restore verification mismatches now produce a nonzero CLI result and an MCP
+  error result unless explicitly allowed, while still returning the full status.
+- `sweep --include-tag` filters the plan before deletion. Smart cleanup and
+  expired-TTL sweep report planned IDs separately from IDs actually dropped.
+- Search now covers mixed keyword/vector vaults, hides expired or missing
+  stashes, and records indexing success only after the index is durable.
+- Existing metadata databases migrate and validate safely at startup, and Studio
+  clears stale previews while new or empty results load.
+- `fcheap docs build --output` now sends the requested output directory to
+  VitePress instead of only printing it.
+
+### Security
+- Embedded documentation readers reject absolute, traversal, and non-canonical
+  page paths before lookup.
+- Remote indexing blocks stashes flagged by the save-time secret scanner by
+  default. BM25 and loopback Ollama remain local; non-loopback Ollama endpoints
+  follow the same opt-in policy as OpenAI.
+- Save and restore reject paths that overlap the vault, including symlinked
+  paths. The vault remains private, stash IDs are collision-resistant, and file
+  copies reject unsupported special files and avoid following planted links.
+
+## [0.28.0] - 2026-07-07
+
+### Added
+- **`save --index`** auto-indexes a stash for search right after saving, so
+  callers can search it without a separate `fcheap analyze` step. The MCP
+  `fcheap_save` tool exposes the same `index` field.
+- **Structured `line` on `connect`/`search` matches.** Vecgrep matches carry a
+  clean `file` path plus a separate integer `line` field.
+
+### Changed
+- **`search`/`connect` return exit 0 when nothing is indexed.** With `--json`,
+  `search` returns `[]` and `connect` returns
+  `{"matches":[],"index_status":"missing"}`, reserving nonzero exits for real
+  failures. MCP uses the same empty-result contract.
 
 ## [0.27.0] - 2026-07-06
 
@@ -309,7 +359,9 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.29.0...HEAD
+[0.29.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.28.0...v0.29.0
+[0.28.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.26.2...v0.27.0
 [0.26.2]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.26.1...v0.26.2
 [0.26.1]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.26.0...v0.26.1
