@@ -57,6 +57,8 @@ Per-release binaries and notes are also on the
 - Remote indexing blocks stashes flagged by the save-time secret scanner by
   default. BM25 and loopback Ollama remain local; non-loopback Ollama endpoints
   follow the same opt-in policy as OpenAI.
+- CI and release builds require Go 1.25.12 or newer so shipped binaries include
+  the latest Go 1.25 standard-library security fixes.
 - Save and restore reject paths that overlap the vault, including symlinked
   paths. The vault remains private, stash IDs are collision-resistant, and file
   copies reject unsupported special files and avoid following planted links.
