@@ -4,7 +4,7 @@ layout: home
 hero:
   name: file.cheap
   text: Local-first stash tool
-  tagline: Save, restore, compress, analyze, and diff files for agent workflows. No cloud, no accounts, no uploads.
+  tagline: Save, restore, compress, analyze, and diff files for agent workflows. Local storage with optional remote embeddings.
   actions:
     - theme: brand
       text: Get Started
@@ -19,11 +19,11 @@ features:
   - title: Compress
     details: tar+zstd archiving with automatic threshold-based compression. Save disk space without losing data.
   - title: Analyze
-    details: Built-in BM25 keyword search via veclite. Optional semantic search with vecgrep subprocess integration.
+    details: Built-in local BM25 search via veclite. Ollama defaults to localhost; explicitly configured HTTP embedders add semantic search.
   - title: Diff
     details: Compare any stash against a live codebase to see what changed, what's missing, and what matches.
   - title: MCP Server
-    details: Expose stash operations as MCP tools for AI assistants like Claude. 11 tools with typed schemas.
+    details: Expose stash operations as MCP tools for AI assistants like Claude. 14 tools with typed schemas.
   - title: Studio TUI
     details: Browse stashes, view manifests, and trigger operations from a terminal UI built with Bubbletea v2.
   - title: Bundle Detection

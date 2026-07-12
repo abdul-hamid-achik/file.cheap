@@ -63,8 +63,9 @@ instead — that's where vecgrep comes in.
 By default fcheap uses **keyword** (BM25) search. If you configure an embedding
 model, it also indexes a vector per document, enabling:
 
-- `--mode semantic` — pure vector similarity (finds related meaning even with no
-  shared words).
+- `--mode semantic` — vector similarity for vector-indexed documents. In a mixed
+  vault, fcheap also merges BM25 hits from stashes indexed without vectors so
+  those stashes do not disappear from results.
 - `--mode hybrid` — vector + BM25 fused (the default when an embedder is set).
 
 ```bash
@@ -75,6 +76,11 @@ fcheap search "refresh login token" --mode hybrid # finds "renews session creden
 ```
 
 Embedders are HTTP-based (`ollama` or `openai`) so the binary stays CGO-free.
+OpenAI and non-loopback Ollama endpoints receive each semantic/hybrid query as
+well as document text during indexing. Scanner-flagged stashes are blocked from
+remote indexing unless you explicitly enable `allow_remote_secrets`; loopback
+Ollama is exempt, and the guard does not scan query text. See
+[`config`](/cli/config#remote-embedding-safety).
 Check availability with [`doctor`](/cli/doctor). Without an embedder, `semantic`/
 `hybrid` transparently fall back to keyword search.
 

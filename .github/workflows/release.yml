@@ -6,12 +6,18 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
+  validation:
+    uses: ./.github/workflows/ci.yml
+
   release:
+    needs: validation
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v5

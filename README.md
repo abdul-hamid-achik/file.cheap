@@ -1,6 +1,9 @@
 # file.cheap
 
-Local-first stash tool for saving, restoring, compressing, and analyzing files and folders for agent workflows. Everything runs on your machine -- no cloud, no accounts, no uploads.
+Local-first stash tool for saving, restoring, compressing, and analyzing files and
+folders for agent workflows. Vault storage and BM25 stay local. Ollama defaults
+to localhost; OpenAI and non-loopback Ollama endpoints send indexed text and
+semantic/hybrid search queries to the configured service.
 
 ## Install
 
@@ -9,8 +12,11 @@ Local-first stash tool for saving, restoring, compressing, and analyzing files a
 brew install --no-quarantine abdul-hamid-achik/tap/fcheap
 
 # Linux (deb)
-curl -LO https://github.com/abdul-hamid-achik/file.cheap/releases/latest/download/fcheap_linux_amd64.deb
-sudo dpkg -i fcheap_linux_amd64.deb
+tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/abdul-hamid-achik/file.cheap/releases/latest)"
+tag="${tag##*/}"
+version="${tag#v}"
+curl -fLO "https://github.com/abdul-hamid-achik/file.cheap/releases/download/${tag}/fcheap_${version}_linux_amd64.deb"
+sudo dpkg -i "fcheap_${version}_linux_amd64.deb"
 
 # From source
 go install github.com/abdul-hamid-achik/file.cheap/cmd/fcheap@latest
@@ -30,7 +36,7 @@ fcheap list --tag OPG-15061
 # Get detailed info about a stash
 fcheap info <stash-id>
 
-# Restore a stash to a working directory
+# Restore and verify a stash (hash mismatches exit nonzero by default)
 fcheap restore <stash-id> --to /tmp/working/
 
 # Compress a stash to save space
@@ -76,7 +82,13 @@ Use `fcheap` as an MCP tool server for AI assistants like Claude:
 }
 ```
 
-This exposes 11 **tools**: `fcheap_save`, `fcheap_list`, `fcheap_info`, `fcheap_restore`, `fcheap_drop`, `fcheap_search`, `fcheap_analyze`, `fcheap_diff`, `fcheap_connect`, `fcheap_vacuum`, `fcheap_docs` — plus **resources** (`fcheap://stashes`, `fcheap://stash/{id}`) for reading stash data by URI and **prompts** (`investigate_stash`, `find_across_stashes`) for one-shot agent workflows. See [docs/mcp/overview.md](docs/mcp/overview.md).
+This exposes 14 **tools**: `fcheap_save`, `fcheap_list`, `fcheap_info`,
+`fcheap_restore`, `fcheap_drop`, `fcheap_search`, `fcheap_analyze`,
+`fcheap_diff`, `fcheap_connect`, `fcheap_vacuum`, `fcheap_ttl`, `fcheap_sweep`,
+`fcheap_cleanup`, and `fcheap_docs` — plus **resources**
+(`fcheap://stashes`, `fcheap://stash/{id}`) and **prompts**
+(`investigate_stash`, `find_across_stashes`). See
+[docs/mcp/overview.md](docs/mcp/overview.md).
 
 ## Configuration
 
@@ -88,7 +100,7 @@ fcheap config set <key> <value> # write one key
 fcheap config init [--force]    # write a fresh default config
 ```
 
-Config file (`~/.config/fcheap/config.yaml`):
+Config file (`${XDG_CONFIG_HOME:-$HOME/.config}/fcheap/config.yaml`):
 
 ```yaml
 stash_dir: ~/.local/share/fcheap
@@ -99,12 +111,24 @@ vecgrep_path: ""              # optional, for semantic code search via vecgrep
 embedder: ""                  # optional: "ollama" or "openai" — enables semantic/hybrid search
 embed_model: ""               # e.g. nomic-embed-text (ollama)
 ollama_url: ""                # default http://localhost:11434
+allow_remote_secrets: false  # block remote indexing for stashes flagged by the secret scanner
+default_ttl: ""              # empty or "never" means permanent
+ttl_rules: {}                # optional per-tool retention, e.g. {codemap: 7d}
 ```
 
 With an `embedder` configured, `analyze` indexes a vector per document and
 `search --mode semantic|hybrid` finds related meaning even with no shared
 keywords (default `hybrid`). Embedders are HTTP-based, so the binary stays
-CGO-free. See [search](https://file.cheap/cli/search).
+CGO-free. OpenAI and non-loopback Ollama endpoints receive document text during
+indexing and each semantic/hybrid query for embedding. fcheap blocks remote
+indexing of scanner-flagged stashes unless you explicitly set
+`allow_remote_secrets: true`; that setting does not inspect search queries.
+Loopback Ollama endpoints remain local and do not require that opt-in. See
+[search](https://file.cheap/cli/search).
+
+For `stash_dir` and `vecgrep_path`, fcheap expands `~` and resolves relative
+values against the config directory, not the current working directory.
+`XDG_CONFIG_HOME` must be absolute when set.
 
 Stashes larger than `compress_threshold` are compressed automatically on `save`
 (opt out with `fcheap save --no-compress`).
@@ -112,7 +136,9 @@ Stashes larger than `compress_threshold` are compressed automatically on `save`
 Pass `--log-level debug` (or set `log_level`) to print operation traces to stderr
 for troubleshooting — stdout and `--json` output stay clean.
 
-Environment variables: `FCHEAP_STASH_DIR`, `FCHEAP_LOG_LEVEL`, `FCHEAP_VECGREP_PATH`.
+Environment variables: `FCHEAP_STASH_DIR`, `FCHEAP_LOG_LEVEL`,
+`FCHEAP_VECGREP_PATH`. Standard `XDG_CONFIG_HOME` and `XDG_DATA_HOME` select the
+config and data roots.
 
 ## Storage Layout
 
@@ -166,7 +192,7 @@ file.cheap/
 │   ├── analyze/             # BM25 search + vecgrep subprocess
 │   ├── diff/                # Stash-to-directory comparison
 │   ├── db/                  # SQLite metadata storage
-│   ├── mcp/                 # MCP server (11 tools + resources + prompts)
+│   ├── mcp/                 # MCP server (14 tools + resources + prompts)
 │   ├── studio/              # Bubbletea v2 TUI
 │   ├── fcheap/cli/             # Cobra commands
 │   ├── fcheap/config/          # YAML config

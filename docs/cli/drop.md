@@ -30,3 +30,8 @@ The `--force` flag is required to prevent accidental deletion. Without it, fchea
 ```
 Dropped stash: my_artifacts_20260622_115254
 ```
+
+The stash bytes and metadata row are removed first, followed by derived search
+index cleanup. If that final cleanup fails, JSON reports
+`status: "dropped_with_failures"` with a `failed` entry and the command exits
+nonzero; [`vacuum`](/cli/vacuum) can repair the derived index later.

@@ -15,7 +15,7 @@ fcheap cleanup --smart [flags]       # category-based smart mode
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--apply` | bool | `false` | Actually drop stashes (default: dry-run) |
+| `--apply` | bool | `false` | Apply the plan to eligible stashes (default: dry-run) |
 | `--keep-tag` | string | `keep` | Tag that exempts a stash from cleanup |
 
 ### Scoring mode flags
@@ -34,8 +34,6 @@ fcheap cleanup --smart [flags]       # category-based smart mode
 | `--smart` | bool | `false` | Use category-based smart analysis |
 | `--categories` | string | — | Filter to specific categories (comma-separated: expired,orphaned,superseded,duplicate,branch-gone,stale,keep) |
 | `--stale-days` | int | `0` | Days without access to be considered stale (0 = disabled) |
-| `--projects-dir` | string | `~/projects` | Path to ~/projects for orphan detection |
-| `--notes-dir` | string | `~/notes/projects` | Path to ~/notes/projects for orphan detection |
 
 ## Scoring mode (default)
 
@@ -54,8 +52,8 @@ Scores each stash 0-100 on "droppability" using weighted signals:
 
 | Verdict | Score Range | Action with `--apply` |
 |--------|-------------|---------------------|
-| **drop** | >= 60 | Dropped |
-| **review** | 30-59 | Not dropped (needs manual review) |
+| **drop** | >= 60 | Dropped only when its TTL expired or its tool is `codemap`/`vecgrep`; otherwise skipped for review |
+| **review** | 30-59 | Not dropped |
 | **keep** | < 30 | Not dropped |
 
 ## Smart mode (`--smart`)
@@ -65,7 +63,7 @@ Categorizes every stash into exactly one cleanup category based on why it might 
 | Category | Description |
 |----------|-------------|
 | `expired` | TTL has elapsed |
-| `orphaned` | Source path (or project directory) no longer exists |
+| `orphaned` | The recorded source path no longer exists |
 | `superseded` | A newer stash exists for the same tool + source path |
 | `duplicate` | Same content hash as a newer stash |
 | `branch-gone` | A `branch:` tag references a deleted git branch |
@@ -74,7 +72,16 @@ Categorizes every stash into exactly one cleanup category based on why it might 
 
 Priority order ensures each stash gets only its first matching category (expired beats orphaned beats superseded, etc.) — no double counting.
 
-With `--apply`, all non-keep stashes are dropped (respecting `--categories` filter and `--keep-tag`).
+`--categories` filters the analysis; it does not grant deletion permission. With
+`--apply`, smart cleanup drops only:
+
+- stashes whose TTL has expired, which reflects an explicit retention policy; or
+- stashes produced by `codemap` or `vecgrep`, which are documented regenerable caches.
+
+Other recommendations remain review-only. For example, a missing source,
+superseded checkpoint, duplicate payload, deleted branch, or old age does not by
+itself authorize deletion. The same rule protects evidence stashes such as
+`vidtrace` and `cairntrace`; an explicit expired TTL still applies.
 
 ### Keep-tag protection
 
@@ -91,10 +98,10 @@ This is a safety net for pinning important stashes that should survive any clean
 # Scoring mode: dry-run, see all stashes scored
 fcheap cleanup
 
-# Only show stashes that are safe to drop
+# Only show stashes scored as DROP (some may still require review)
 fcheap cleanup --drop-only
 
-# Actually drop high-confidence candidates
+# Apply the plan; only expired TTL or codemap/vecgrep candidates are deleted
 fcheap cleanup --apply
 
 # Analyze only codemap snapshots
@@ -106,7 +113,7 @@ fcheap cleanup --smart
 # Smart mode: only show expired and orphaned stashes
 fcheap cleanup --smart --categories expired,orphaned
 
-# Smart mode: drop expired and duplicate stashes
+# Apply expired TTLs; non-cache duplicates are reported as skipped
 fcheap cleanup --smart --apply --categories expired,duplicate
 
 # Smart mode: find stashes older than 30 days
@@ -115,15 +122,59 @@ fcheap cleanup --smart --stale-days 30
 
 ## Safety
 
-- Stashes with the `keep` tag (configurable via `--keep-tag`) are **never dropped** in either mode. In scoring mode, the keep tag is a hard floor that forces a `keep` verdict regardless of the computed score. In smart mode, stashes with the keep tag are skipped during `--apply` even if categorized as expired/orphaned/etc.
-- In scoring mode, only stashes with verdict **drop** are affected by `--apply`. **review** and **keep** stashes are never dropped.
-- In smart mode, `--apply` drops all non-keep stashes (excluding keep-tagged ones). Use `--categories` to limit which categories are dropped.
-- Both modes are dry-run by default — no stashes are dropped without `--apply`.
+- Both modes are dry-run by default.
+- `--apply` auto-deletes only expired TTLs or `codemap`/`vecgrep` caches. A high
+  score or smart category alone is not deletion consent.
+- Stashes with the keep tag are never dropped. In scoring mode it forces a
+  `keep` verdict; in smart mode a protected non-keep recommendation appears in
+  `skipped` during apply.
+- In smart mode, review `dropped`, `failed`, and `skipped` instead of assuming
+  every recommendation was removed. Scoring mode exposes the same stable
+  `dropped`, `failed`, `skipped`, and `reclaimed` result fields; either mode exits
+  nonzero after printing JSON when `failed` is non-empty.
+
+## JSON contract
+
+In smart mode, `--json` separates the plan from the mutation result:
+
+- `recommendations`, `by_category`, and `reclaimable` describe the analysis
+  computed before apply.
+- `applied` reports whether you passed `--apply`.
+- `dropped` and `reclaimed` report successful deletions only.
+- `failed` reports inspection or drop failures; the command exits nonzero after
+  printing the JSON when this array is non-empty.
+- `skipped` reports protected or review-only recommendations with a reason.
+
+```json
+{
+  "total": 1,
+  "recommendations": [
+    {
+      "id": "evidence-id",
+      "tool": "vidtrace",
+      "category": "orphaned",
+      "reason": "source path no longer exists (/path/to/source)",
+      "size": 4096
+    }
+  ],
+  "by_category": {"orphaned": 1},
+  "reclaimable": 4096,
+  "applied": true,
+  "dropped": [],
+  "reclaimed": 0,
+  "failed": [],
+  "skipped": [
+    {"id": "evidence-id", "reason": "requires review: only explicitly expired or regenerable cache stashes are auto-deletable"}
+  ]
+}
+```
 
 ## Integration with ecosystem tools
 
-- **codemap/vecgrep** stashes are the strongest cleanup candidates (scoring: +25 cache tool, often +35 source gone; smart: often orphaned or superseded). Tag them for targeted cleanup: `fcheap cleanup --apply --tool codemap`.
-- **vidtrace/cairntrace** stashes are protected (scoring: -30 evidence tool; smart: still categorized but should be reviewed carefully).
+- **codemap/vecgrep** stashes are regenerable caches and are eligible for
+  automatic deletion. Target them with `fcheap cleanup --apply --tool codemap`.
+- **vidtrace/cairntrace** stashes are evidence. Missing-source and other heuristic
+  recommendations remain review-only unless an explicit TTL expired.
 - **glyphrun/tinyvault** — not currently fcheap callers; no special handling needed.
 
 ## See also

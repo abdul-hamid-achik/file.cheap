@@ -1,6 +1,7 @@
 # docs
 
-Manage and serve the fcheap documentation site (VitePress).
+Read the documentation embedded in every fcheap binary. From a file.cheap source
+checkout, you can also serve and build the VitePress site.
 
 ## Usage
 
@@ -12,11 +13,11 @@ fcheap docs <subcommand> [flags]
 
 | Command | Description |
 |---------|-------------|
-| `serve` | Start a local VitePress dev server |
-| `build` | Build the docs site for production |
-| `preview` | Preview the built docs site locally |
-| `list` | List all available doc pages |
-| `show <page>` | Print a doc page to stdout |
+| `serve` | Start a local VitePress dev server (source checkout required) |
+| `build` | Build the docs site for production (source checkout required) |
+| `preview` | Preview the built docs site locally (source checkout required) |
+| `list` | List all embedded doc pages |
+| `show <page>` | Print an embedded doc page to stdout |
 | `open` | Open the online docs site in a browser |
 
 ## Examples
@@ -87,7 +88,7 @@ fcheap docs open
 
 ## MCP Tool
 
-The `fcheap_docs` MCP tool provides the same functionality for AI agents:
+The `fcheap_docs` MCP tool provides the read-only embedded subset for AI agents:
 
 | Action | Description |
 |--------|-------------|
@@ -103,4 +104,10 @@ The `fcheap_docs` MCP tool provides the same functionality for AI agents:
 
 ## Requirements
 
-The `serve`, `build`, and `preview` subcommands require Node.js and npm. If `node_modules` is not installed in the `docs/` directory, `fcheap docs serve` and `fcheap docs build` will automatically run `npm install` first.
+`list`, `show`, and `open` work from an installed release and do not require
+Node.js. The Markdown pages are embedded in the binary.
+
+`serve`, `build`, and `preview` require a file.cheap source checkout plus Node.js
+and npm because the VitePress project and its build dependencies are not bundled
+in release packages. When `node_modules` is absent, fcheap runs `npm ci` from the
+committed `docs/package-lock.json` before starting the command.

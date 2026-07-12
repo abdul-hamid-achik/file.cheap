@@ -45,28 +45,47 @@ fcheap save /tmp/evidence --tag bug-42 --tool cortex --index
 
 ## What Happens
 
-1. fcheap resolves the path to an absolute path
+1. fcheap resolves and validates the source path
 2. Creates a stash directory at `<stash-dir>/<stash-id>/`
 3. Copies the file tree into `content/`
 4. Generates a `manifest.json` with metadata, provenance, file count, size, and content hashes
 5. Auto-detects bundle type (vidtrace, generic)
-6. Scans content for likely secrets (unless `--no-scan`) and records findings in the manifest
-7. Prints the stash ID and summary
-8. With `--index`, indexes the stash into the search database (same as `fcheap analyze`) so it's searchable immediately; records `custom.indexed` on the manifest
+6. Scans content for likely secrets unless you pass `--no-scan`
+7. With `--index`, indexes the stash for search and records `custom.indexed`
+8. Prints the generated stash ID and summary
+
+## Path and ID safety
+
+The source must not overlap the stash vault. fcheap rejects the vault itself, a
+path inside the vault, and any parent directory that contains the vault. It also
+rejects a source-root symlink; pass the resolved path instead. These checks use
+canonical paths so symlinks cannot bypass them.
+
+Stash IDs are generated, bounded, and collision-resistant. Treat an ID as an
+opaque single path element and copy it from `save` or `list`; fcheap rejects path
+separators and traversal values in every ID-taking operation.
 
 ## Secret scanning
 
 On save, fcheap scans text files for likely credentials — AWS/GitHub/Slack/Google
-keys, private keys, JWTs, and generic `key = secret` assignments. It records only
-the **file, rule, and line** (never the secret value) in the manifest and prints a
-warning so you don't archive live credentials into a shareable stash. Use
-`--no-scan` to skip, or review with [`info`](/cli/info). A `⚠ secrets` chip also
-appears in [Studio](/studio/overview).
+keys, private keys, JWTs, and generic `key = secret` assignments. It records the
+finding count and rule names in the manifest and reports **file, rule, and line**
+without exposing the secret value. Use `--no-scan` to skip, or review with
+[`info`](/cli/info). A `⚠ secrets` chip also appears in
+[Studio](/studio/overview).
+
+If you configure OpenAI or a non-loopback Ollama endpoint, flagged stashes are
+blocked from remote indexing unless you explicitly set
+`allow_remote_secrets: true`. Loopback Ollama remains local and exempt. With
+`save --index`, a policy block leaves the stash safely saved, emits
+`status: "saved_with_failures"` with an `index` failure, and exits nonzero; you
+can review it before running `analyze` again. See
+[`config`](/cli/config#remote-embedding-safety).
 
 ## Output
 
 ```
-Saved stash: my_artifacts_20260622_115254
+Saved stash: <generated-stash-id>
   Source: /tmp/artifacts
   Tool: vidtrace
   Bundle: vidtrace
@@ -77,3 +96,10 @@ Saved stash: my_artifacts_20260622_115254
   └─ .env:1 [aws-access-key]
   └─ config.yaml:7 [generic-secret]
 ```
+
+With `--json`, manifest fields remain at the root for compatibility and the
+result adds `status`, `index_requested`, `indexed`,
+`auto_compression_requested`, `auto_compressed`, and a stable `failed` array.
+Indexing or automatic-compression failures produce
+`status: "saved_with_failures"` and a nonzero exit after the successfully saved
+manifest has been printed.

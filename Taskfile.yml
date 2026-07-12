@@ -41,6 +41,13 @@ tasks:
     cmds:
       - go test -race ./...
 
+  vuln:
+    desc: Scan reachable Go code for known vulnerabilities
+    vars:
+      GOVULNCHECK_VERSION: v1.6.0
+    cmds:
+      - go run golang.org/x/vuln/cmd/govulncheck@{{.GOVULNCHECK_VERSION}} ./...
+
   lint:
     desc: Run golangci-lint (pinned to the version CI uses)
     vars:
@@ -75,6 +82,7 @@ tasks:
       - task: fmt
       - task: tidy
       - task: vet
+      - task: vuln
       - task: lint
       - task: test
       - task: build

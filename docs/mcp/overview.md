@@ -63,7 +63,7 @@ In `~/.config/opencode/opencode.json`, under `mcp`:
 
 Register a server named `fcheap` that runs `fcheap mcp serve` over stdio. Clients
 that read a `.mcp.json` (`mcpServers` map) use the same shape as the Claude Code
-JSON above. On first connect the server advertises all three surfaces — 11 tools,
+JSON above. On first connect the server advertises all three surfaces — 14 tools,
 the `fcheap://stashes` resource plus the `fcheap://stash/{id}` resource template,
 and 2 prompts.
 
@@ -74,15 +74,23 @@ and 2 prompts.
 Save a file or directory to the stash vault.
 
 **Input:**
+
 - `path` (string, required) -- absolute path to save
 - `name` (string, optional) -- display name
 - `tags` (string[], optional) -- categorization tags
 - `tool` (string, optional) -- source tool (e.g., "vidtrace")
 - `source` (string, optional) -- original artifact this stash derives from (provenance)
+- `ttl` (string, optional) -- retention duration or date; empty means no expiry
+- `index` (bool, optional) -- index immediately after saving
 
 **Output:** `{ manifest, secrets_warning?, secrets? }` -- the stash manifest, plus a
 secrets warning and findings (file/rule/line) when the save-time scan flags likely
-credentials.
+credentials. With `index: true`, the result also contains `indexed` or
+`index_error`; an indexing policy block never rolls back a successful save.
+
+The path must be outside the stash vault and must not contain it. Canonical-path
+checks also reject symlink-based overlap. Stash IDs are opaque single path
+elements; all ID-taking tools reject separators and traversal values.
 
 ### fcheap_list
 
@@ -114,10 +122,19 @@ Get detailed information about a stash.
 Restore a stash to a target directory.
 
 **Input:**
+
 - `stash_id` (string, required) -- the stash ID
 - `target` (string, optional) -- target directory (default: a fresh, unique temp directory, reported in the result)
+- `allow_mismatch` (bool, optional) -- accept an unverified restore (default `false`)
 
-**Output:** Restoration confirmation
+**Output:** `{ stash_id, target, file_count, verified, mismatches, status }`, where
+`status` is `restored`, `restored_unverified`, or
+`restored_with_mismatches`. When `verified` is false, the tool result has
+`isError: true` unless `allow_mismatch` is true. The structured result remains
+available either way. Restore targets that are inside the stash vault or contain
+it, including through symlinks, are rejected. An existing target is modified in
+place: same-named files are replaced and unrelated files remain. Omit `target`
+for a fresh temp directory when replacement is not intended.
 
 ### fcheap_drop
 
@@ -127,7 +144,10 @@ Permanently delete a stash.
 - `stash_id` (string, required) -- the stash ID
 - `force` (bool, required) -- must be true to confirm
 
-**Output:** Deletion confirmation
+**Output:** `{ stash_id, status, failed }`. `status` is `dropped` or
+`dropped_with_failures`; a derived search-index cleanup failure remains in
+`failed` and marks the tool result as an error even though stash deletion
+succeeded.
 
 ### fcheap_search
 
@@ -140,15 +160,27 @@ Search across all indexed stashes.
 
 **Output:** Search results with scores and snippets, each naming the matching file
 
+Semantic/hybrid mode sends query text to the configured HTTP embedder. OpenAI is
+remote; Ollama defaults to localhost but may use a custom remote URL. Query text
+is not covered by the save-time secret guard. In a mixed vault, semantic mode
+also merges BM25 results from stashes that have no vectors.
+
 ### fcheap_analyze
 
 Index a stash for search and optionally search within it.
 
 **Input:**
+
 - `stash_id` (string, required) -- the stash ID
 - `query` (string, optional) -- search within the stash
 
 **Output:** Index status, bundle type, and optional search results
+
+With OpenAI or a non-loopback Ollama endpoint, indexing a stash flagged by the
+save-time secret scanner is blocked unless `allow_remote_secrets: true` is
+explicitly configured. Loopback Ollama remains local and exempt. An optional
+query is sent to the configured embedder and is not scanned by that guard. See
+[`config`](/cli/config#remote-embedding-safety).
 
 ### fcheap_diff
 
@@ -185,15 +217,60 @@ longer exists, then compact the database. See [`vacuum`](/cli/vacuum).
 
 **Output:** `{ on_disk, orphaned_rows, orphans }`
 
+### fcheap_ttl
+
+Set or clear a stash expiry.
+
+**Input:**
+
+- `stash_id` (string, required) -- the stash ID
+- `ttl` (string, required) -- duration/date, or an empty string to clear expiry
+
+**Output:** `{ stash_id, expires_at }`
+
+### fcheap_sweep
+
+Plan or apply deletion of expired stashes.
+
+**Input:**
+
+- `apply` (bool, optional) -- delete the filtered plan (default `false`)
+- `keep_tag` (string, optional) -- exempt this tag (default `keep`)
+- `include_tag` (string, optional) -- include only stashes with this tag
+
+`include_tag` is applied while building the plan, before mutation. The output
+separates `expired` (planned IDs), `dropped` (successful deletions), and `failed`
+(drop/index failures), along with `applied`, `skipped`, and `reclaimed`. A
+non-empty `failed` array marks the tool result as an error.
+
+### fcheap_cleanup
+
+Analyze cleanup candidates in scoring mode or category-based smart mode.
+
+**Input:**
+
+- `apply`, `keep_tag` -- control mutation and protection
+- `tool`, `tag`, `drop_only`, `expired` -- scoring-mode filters
+- `smart`, `categories`, `stale_days` -- smart-mode controls
+
+Both modes are dry-runs unless `apply` is true. Apply auto-deletes only expired
+TTLs or `codemap`/`vecgrep` caches; missing-source and evidence recommendations
+remain review-only. Smart output separates the pre-apply `analysis` from
+`dropped`, `reclaimed`, `skipped`, and `failed`. A non-empty `failed` array marks
+the tool result as an error. See [`cleanup`](/cli/cleanup).
+
 ### fcheap_docs
 
-Access fcheap documentation. Useful for agents that need to look up how a command works.
+Access the read-only fcheap documentation embedded in every installed server.
 
 **Input:**
 - `action` (string, required) -- `list`, `show`, or `site`
-- `page` (string, optional) -- doc page path (for `action=show`), e.g., `cli/save`, `guide/getting-started`
+- `page` (string, optional) -- canonical embedded page path for `action=show`,
+  e.g. `cli/save`; absolute and traversal paths are rejected
 
-**Output:** List of pages, page content, or site URL
+**Output:** List of pages, page content, or site URL. The `site` result notes that
+local VitePress serving requires a file.cheap source checkout plus Node.js and
+npm; embedded `list` and `show` do not.
 
 ## Resources
 
