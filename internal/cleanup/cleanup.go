@@ -50,11 +50,21 @@ type Candidate struct {
 	CreatedAt string   `json:"created_at"`
 }
 
+// Failure records a cleanup operation that could not be completed. Stage is
+// "cancel", "drop", or "index".
+type Failure struct {
+	ID    string `json:"id"`
+	Stage string `json:"stage"`
+	Error string `json:"error"`
+}
+
 // Result is the outcome of a cleanup run.
 type Result struct {
 	Candidates []Candidate `json:"candidates"`
-	Dropped    []string    `json:"dropped,omitempty"`
-	Reclaimed  int64       `json:"reclaimed,omitempty"`
+	Dropped    []string    `json:"dropped"`
+	Skipped    []string    `json:"skipped"`
+	Failed     []Failure   `json:"failed"`
+	Reclaimed  int64       `json:"reclaimed"`
 	Applied    bool        `json:"applied"`
 }
 
@@ -115,7 +125,14 @@ func Run(ctx context.Context, mgr *stash.Manager, dropIndex func(id string) erro
 		}
 	}
 
-	res := &Result{Applied: opts.Apply}
+	res := &Result{
+		Applied:    opts.Apply,
+		Candidates: []Candidate{},
+		Dropped:    []string{},
+		Skipped:    []string{},
+		Failed:     []Failure{},
+	}
+	stashesByID := make(map[string]*stash.Stash, len(stashes))
 
 	for _, st := range stashes {
 		c := analyze(st, hashIndex, opts.KeepTag)
@@ -136,27 +153,72 @@ func Run(ctx context.Context, mgr *stash.Manager, dropIndex func(id string) erro
 		}
 
 		res.Candidates = append(res.Candidates, c)
-
-		// Apply: only drop high-confidence candidates.
-		if opts.Apply && c.Verdict == "drop" {
-			if err := mgr.Drop(ctx, c.StashID); err != nil {
-				slog.Warn("cleanup: failed to drop stash", "id", c.StashID, "err", err)
-				continue
-			}
-			if dropIndex != nil {
-				_ = dropIndex(c.StashID)
-			}
-			res.Dropped = append(res.Dropped, c.StashID)
-			res.Reclaimed += c.Size
-		}
+		stashesByID[c.StashID] = st
 	}
 
-	// Sort by score descending (most droppable first).
+	// Sort before applying so both the plan and operation order are stable.
 	sort.Slice(res.Candidates, func(i, j int) bool {
+		if res.Candidates[i].Score == res.Candidates[j].Score {
+			return res.Candidates[i].StashID < res.Candidates[j].StashID
+		}
 		return res.Candidates[i].Score > res.Candidates[j].Score
 	})
 
+	// Apply only high-confidence candidates, after the complete plan has been
+	// built. A canceled context stops every remaining destructive operation but
+	// leaves an explicit machine-readable failure for each unattempted candidate.
+	if opts.Apply {
+		for _, c := range res.Candidates {
+			if c.Verdict != "drop" {
+				continue
+			}
+			st := stashesByID[c.StashID]
+			if !safeToAutoDrop(st) {
+				res.Skipped = append(res.Skipped, c.StashID)
+				continue
+			}
+			if err := ctx.Err(); err != nil {
+				res.Failed = append(res.Failed, Failure{ID: c.StashID, Stage: "cancel", Error: err.Error()})
+				continue
+			}
+			if err := mgr.Drop(ctx, c.StashID); err != nil {
+				slog.Warn("cleanup: failed to drop stash", "id", c.StashID, "err", err)
+				res.Failed = append(res.Failed, Failure{ID: c.StashID, Stage: "drop", Error: err.Error()})
+				continue
+			}
+
+			// The stash bytes are already gone at this point, so report the deletion
+			// even when derived search-index cleanup fails.
+			res.Dropped = append(res.Dropped, c.StashID)
+			res.Reclaimed += c.Size
+			if dropIndex != nil {
+				if err := dropIndex(c.StashID); err != nil {
+					res.Failed = append(res.Failed, Failure{ID: c.StashID, Stage: "index", Error: err.Error()})
+				}
+			}
+		}
+	}
+
+	sort.Strings(res.Dropped)
+	sort.Strings(res.Skipped)
+	sort.Slice(res.Failed, func(i, j int) bool {
+		if res.Failed[i].ID == res.Failed[j].ID {
+			return res.Failed[i].Stage < res.Failed[j].Stage
+		}
+		return res.Failed[i].ID < res.Failed[j].ID
+	})
+
 	return res, nil
+}
+
+// safeToAutoDrop requires explicit lifecycle intent (an expired TTL) or a
+// documented regenerable cache producer. A high heuristic score alone is not
+// sufficient consent to delete agent evidence.
+func safeToAutoDrop(st *stash.Stash) bool {
+	if st == nil || st.Manifest == nil {
+		return false
+	}
+	return stash.IsExpired(st.Manifest) || cacheTools[st.Manifest.Tool]
 }
 
 // analyze scores a single stash and returns its candidate.

@@ -10,6 +10,17 @@ import (
 
 var dropForce bool
 
+type dropFailure struct {
+	Stage string `json:"stage"`
+	Error string `json:"error"`
+}
+
+type dropOutput struct {
+	StashID string        `json:"stash_id"`
+	Status  string        `json:"status"`
+	Failed  []dropFailure `json:"failed"`
+}
+
 var dropCmd = &cobra.Command{
 	Use:   "drop <stash-id>",
 	Short: "Drop (delete) a stash permanently",
@@ -43,17 +54,33 @@ var dropCmd = &cobra.Command{
 		if err := mgr.Drop(GetContext(), args[0]); err != nil {
 			return err
 		}
-		// Best-effort: remove any indexed documents for this stash.
-		_ = analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath).DropIndex(args[0])
+		failures := []dropFailure{}
+		if err := analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath).DropIndex(args[0]); err != nil {
+			failures = append(failures, dropFailure{Stage: "index", Error: err.Error()})
+		}
+		status := "dropped"
+		if len(failures) > 0 {
+			status = "dropped_with_failures"
+		}
+		out := dropOutput{StashID: args[0], Status: status, Failed: failures}
 
 		if printer.IsJSON() {
-			return printer.JSON(map[string]string{
-				"stash_id": args[0],
-				"status":   "dropped",
-			})
+			if err := printer.JSON(out); err != nil {
+				return err
+			}
+			if len(failures) > 0 {
+				return fmt.Errorf("stash dropped but search-index cleanup failed")
+			}
+			return nil
 		}
 
 		printer.Success("Dropped stash: %s", args[0])
+		for _, failure := range failures {
+			printer.Warn("failed to clean %s: %s", failure.Stage, failure.Error)
+		}
+		if len(failures) > 0 {
+			return fmt.Errorf("stash dropped but search-index cleanup failed")
+		}
 		return nil
 	},
 }

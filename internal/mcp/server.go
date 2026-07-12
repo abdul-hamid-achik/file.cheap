@@ -2,6 +2,7 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,8 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
+	doccontent "github.com/abdul-hamid-achik/file.cheap/docs"
 	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
 	"github.com/abdul-hamid-achik/file.cheap/internal/cleanup"
 	"github.com/abdul-hamid-achik/file.cheap/internal/diff"
@@ -24,6 +25,20 @@ type Server struct {
 	vecgrepPath string
 	version     string
 	emb         analyze.EmbedderSettings
+}
+
+type cleanupSkip struct {
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
+}
+
+type smartCleanupResult struct {
+	Analysis  *stash.CleanupResult `json:"analysis"`
+	Applied   bool                 `json:"applied"`
+	Dropped   []string             `json:"dropped"`
+	Reclaimed int64                `json:"reclaimed"`
+	Skipped   []cleanupSkip        `json:"skipped"`
+	Failed    []stash.SweepFailure `json:"failed"`
 }
 
 // NewServer creates a new MCP server.
@@ -57,6 +72,7 @@ func (s *Server) Run(ctx context.Context, transport mcp.Transport) error {
 func (s *Server) registerTools(srv *mcp.Server) {
 	f := false
 	t := true
+	embeddingOpenWorld := s.emb.Enabled()
 
 	// fcheap_save
 	type saveInput struct {
@@ -189,14 +205,15 @@ func (s *Server) registerTools(srv *mcp.Server) {
 
 	// fcheap_restore
 	type restoreInput struct {
-		StashID string `json:"stash_id" jsonschema:"The stash ID to restore"`
-		Target  string `json:"target,omitempty" jsonschema:"Target directory (default: a fresh, unique temp directory, reported in the result)"`
+		StashID       string `json:"stash_id" jsonschema:"The stash ID to restore"`
+		Target        string `json:"target,omitempty" jsonschema:"Target directory (default: a fresh, unique temp directory, reported in the result)"`
+		AllowMismatch bool   `json:"allow_mismatch,omitempty" jsonschema:"Accept an unverified restore instead of returning a tool error (default: false)"`
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_restore",
 		Description: "Restore a stash to a target directory. Extracts all files from the stash.",
 		Annotations: &mcp.ToolAnnotations{
-			DestructiveHint: &f,
+			DestructiveHint: &t,
 			OpenWorldHint:   &t,
 			IdempotentHint:  false,
 		},
@@ -209,14 +226,25 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		if err != nil {
 			return toolError("restore failed: %v", err), nil, nil
 		}
-		return textResult(map[string]any{
+		status := "restored"
+		if !res.Verified {
+			status = "restored_unverified"
+			if len(res.Mismatches) > 0 {
+				status = "restored_with_mismatches"
+			}
+		}
+		result := textResult(map[string]any{
 			"stash_id":   in.StashID,
 			"target":     res.Target,
 			"file_count": res.FileCount,
 			"verified":   res.Verified,
 			"mismatches": res.Mismatches,
-			"status":     "restored",
-		}), nil, nil
+			"status":     status,
+		})
+		if !res.Verified && !in.AllowMismatch {
+			result.IsError = true
+		}
+		return result, nil, nil
 	})
 
 	// fcheap_drop
@@ -243,12 +271,23 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		if err := mgr.Drop(ctx, in.StashID); err != nil {
 			return toolError("drop failed: %v", err), nil, nil
 		}
-		// Best-effort: remove any indexed documents for this stash.
-		_ = analyze.NewAnalyzer(s.stashDir, s.vecgrepPath).DropIndex(in.StashID)
-		return textResult(map[string]string{
+		failed := []stash.SweepFailure{}
+		if err := analyze.NewAnalyzer(s.stashDir, s.vecgrepPath).DropIndex(in.StashID); err != nil {
+			failed = append(failed, stash.SweepFailure{ID: in.StashID, Stage: "index", Error: err.Error()})
+		}
+		status := "dropped"
+		if len(failed) > 0 {
+			status = "dropped_with_failures"
+		}
+		result := textResult(map[string]any{
 			"stash_id": in.StashID,
-			"status":   "dropped",
-		}), nil, nil
+			"status":   status,
+			"failed":   failed,
+		})
+		if len(failed) > 0 {
+			result.IsError = true
+		}
+		return result, nil, nil
 	})
 
 	// fcheap_search
@@ -262,7 +301,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		Description: "Search across all indexed stashes. Returns matching snippets with scores. Supports keyword (BM25), semantic (vector), and hybrid search when an embedder is configured.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &f,
-			OpenWorldHint:   &f,
+			OpenWorldHint:   &embeddingOpenWorld,
 			IdempotentHint:  true,
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in searchInput) (*mcp.CallToolResult, any, error) {
@@ -288,7 +327,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		Description: "Index a stash for search and optionally search within it. Detects bundle type (vidtrace, generic) and extracts searchable text.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &f,
-			OpenWorldHint:   &f,
+			OpenWorldHint:   &embeddingOpenWorld,
 			IdempotentHint:  true,
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in analyzeInput) (*mcp.CallToolResult, any, error) {
@@ -381,7 +420,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		an := analyze.NewAnalyzer(s.stashDir, s.vecgrepPath)
 		query := in.Query
 		if query == "" {
-			q, err := an.StashQuery(mgr.StashDir(in.StashID), 2000)
+			q, err := an.StashQueryContext(ctx, mgr.StashDir(in.StashID), 2000)
 			if err != nil {
 				return toolError("derive query from stash: %v", err), nil, nil
 			}
@@ -478,40 +517,28 @@ func (s *Server) registerTools(srv *mcp.Server) {
 			keepTag = "keep"
 		}
 		an := analyze.NewAnalyzer(s.stashDir, s.vecgrepPath)
-		res, err := mgr.SweepExpired(ctx, in.Apply, keepTag, an.DropIndex)
+		res, err := mgr.SweepExpiredFiltered(ctx, in.Apply, keepTag, in.IncludeTag, an.DropIndex)
 		if err != nil {
 			return toolError("sweep failed: %v", err), nil, nil
 		}
-		// Filter by include-tag if specified.
-		if in.IncludeTag != "" && len(res.Expired) > 0 {
-			filtered := res.Expired[:0]
-			for _, id := range res.Expired {
-				st, err := mgr.Info(ctx, id)
-				if err != nil {
-					continue
-				}
-				if st.Manifest.HasTag(in.IncludeTag) {
-					filtered = append(filtered, id)
-				}
-			}
-			res.Expired = filtered
+		out := textResult(res)
+		if len(res.Failed) > 0 {
+			out.IsError = true
 		}
-		return textResult(res), nil, nil
+		return out, nil, nil
 	})
 
 	// fcheap_cleanup
 	type cleanupInput struct {
-		Apply       bool     `json:"apply,omitempty" jsonschema:"Actually drop stashes (default: dry-run). In scoring mode, only 'drop' verdicts are dropped; in smart mode, all non-keep stashes are dropped"`
-		KeepTag     string   `json:"keep_tag,omitempty" jsonschema:"Tag that exempts a stash from cleanup (default: keep)"`
-		Tool        string   `json:"tool,omitempty" jsonschema:"Scoring mode: only analyze stashes from this tool"`
-		Tag         string   `json:"tag,omitempty" jsonschema:"Scoring mode: only analyze stashes with this tag"`
-		DropOnly    bool     `json:"drop_only,omitempty" jsonschema:"Scoring mode: only show stashes scored as drop (default: show all)"`
-		Expired     bool     `json:"expired,omitempty" jsonschema:"Scoring mode: include stashes with an expired TTL even if not yet swept"`
-		Smart       bool     `json:"smart,omitempty" jsonschema:"Use category-based smart analysis (expired/orphaned/superseded/duplicate/branch-gone/stale/keep) instead of scoring mode"`
-		Categories  []string `json:"categories,omitempty" jsonschema:"Smart mode: filter to specific categories (comma-separated: expired,orphaned,superseded,duplicate,branch-gone,stale,keep)"`
-		StaleDays   int      `json:"stale_days,omitempty" jsonschema:"Smart mode: days without access to be considered stale (0 = disabled)"`
-		ProjectsDir string   `json:"projects_dir,omitempty" jsonschema:"Smart mode: path to ~/projects for orphan detection (default: ~/projects)"`
-		NotesDir    string   `json:"notes_dir,omitempty" jsonschema:"Smart mode: path to ~/notes/projects for orphan detection (default: ~/notes/projects)"`
+		Apply      bool     `json:"apply,omitempty" jsonschema:"Actually drop stashes (default: dry-run). Smart mode auto-deletes only explicit TTL expirations and documented regenerable cache tools"`
+		KeepTag    string   `json:"keep_tag,omitempty" jsonschema:"Tag that exempts a stash from cleanup (default: keep)"`
+		Tool       string   `json:"tool,omitempty" jsonschema:"Scoring mode: only analyze stashes from this tool"`
+		Tag        string   `json:"tag,omitempty" jsonschema:"Scoring mode: only analyze stashes with this tag"`
+		DropOnly   bool     `json:"drop_only,omitempty" jsonschema:"Scoring mode: only show stashes scored as drop (default: show all)"`
+		Expired    bool     `json:"expired,omitempty" jsonschema:"Scoring mode: include stashes with an expired TTL even if not yet swept"`
+		Smart      bool     `json:"smart,omitempty" jsonschema:"Use category-based smart analysis (expired/orphaned/superseded/duplicate/branch-gone/stale/keep) instead of scoring mode"`
+		Categories []string `json:"categories,omitempty" jsonschema:"Smart mode: filter to specific categories (comma-separated: expired,orphaned,superseded,duplicate,branch-gone,stale,keep)"`
+		StaleDays  int      `json:"stale_days,omitempty" jsonschema:"Smart mode: days without access to be considered stale (0 = disabled)"`
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_cleanup",
@@ -529,26 +556,22 @@ func (s *Server) registerTools(srv *mcp.Server) {
 
 		if in.Smart {
 			// Smart mode: category-based analysis.
-			projectsDir := in.ProjectsDir
-			if projectsDir == "" {
-				home, _ := os.UserHomeDir()
-				projectsDir = filepath.Join(home, "projects")
-			}
-			notesDir := in.NotesDir
-			if notesDir == "" {
-				home, _ := os.UserHomeDir()
-				notesDir = filepath.Join(home, "notes", "projects")
-			}
 			result, err := mgr.AnalyzeCleanup(ctx, stash.CleanupOptions{
-				StaleDays:   in.StaleDays,
-				ProjectsDir: projectsDir,
-				NotesDir:    notesDir,
-				Categories:  in.Categories,
+				StaleDays:  in.StaleDays,
+				Categories: in.Categories,
 			})
 			if err != nil {
 				return toolError("cleanup failed: %v", err), nil, nil
 			}
-			// Apply: drop all non-keep stashes (respecting keep-tag).
+			out := &smartCleanupResult{
+				Analysis: result,
+				Applied:  in.Apply,
+				Dropped:  []string{},
+				Skipped:  []cleanupSkip{},
+				Failed:   []stash.SweepFailure{},
+			}
+			// Apply the reviewed plan conservatively. A missing source or older
+			// checkpoint is not deletion consent for evidence-bearing stashes.
 			if in.Apply {
 				an := analyze.NewAnalyzer(s.stashDir, s.vecgrepPath)
 				keepTag := in.KeepTag
@@ -559,17 +582,36 @@ func (s *Server) registerTools(srv *mcp.Server) {
 					if rec.Category == stash.CatKeep {
 						continue
 					}
-					// Respect keep-tag: skip stashes bearing it.
-					if st, err := mgr.Info(ctx, rec.ID); err == nil && st.Manifest.HasTag(keepTag) {
+					st, err := mgr.Info(ctx, rec.ID)
+					if err != nil {
+						out.Failed = append(out.Failed, stash.SweepFailure{ID: rec.ID, Stage: "inspect", Error: err.Error()})
+						continue
+					}
+					if st.Manifest.HasTag(keepTag) {
+						out.Skipped = append(out.Skipped, cleanupSkip{ID: rec.ID, Reason: "protected by keep tag"})
+						continue
+					}
+					if !mcpSmartCleanupAutoDeletable(rec) {
+						out.Skipped = append(out.Skipped, cleanupSkip{ID: rec.ID, Reason: "requires review; not expired or a regenerable cache"})
 						continue
 					}
 					if err := mgr.Drop(ctx, rec.ID); err != nil {
+						out.Failed = append(out.Failed, stash.SweepFailure{ID: rec.ID, Stage: "drop", Error: err.Error()})
 						continue
 					}
-					_ = an.DropIndex(rec.ID)
+					out.Dropped = append(out.Dropped, rec.ID)
+					out.Reclaimed += rec.Size
+					if err := an.DropIndex(rec.ID); err != nil {
+						out.Failed = append(out.Failed, stash.SweepFailure{ID: rec.ID, Stage: "index", Error: err.Error()})
+					}
 				}
 			}
-			return textResult(result), nil, nil
+			sort.Strings(out.Dropped)
+			toolResult := textResult(out)
+			if len(out.Failed) > 0 {
+				toolResult.IsError = true
+			}
+			return toolResult, nil, nil
 		}
 
 		// Scoring mode (default): heuristic analysis.
@@ -589,17 +631,17 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		if err != nil {
 			return toolError("cleanup failed: %v", err), nil, nil
 		}
-		return textResult(result), nil, nil
+		return scoringCleanupResult(result), nil, nil
 	})
 
 	// fcheap_docs
 	type docsInput struct {
 		Action string `json:"action" jsonschema:"Action: 'list' (list all doc pages), 'show' (show a specific page), or 'site' (get the docs site URL)"`
-		Page   string `json:"page,omitempty" jsonschema:"Doc page path (for action=show), e.g. 'guide/getting-started', 'cli/save', 'mcp/overview'"`
+		Page   string `json:"page,omitempty" jsonschema:"Canonical embedded doc page for action=show, e.g. 'guide/getting-started'; absolute and traversal paths are rejected"`
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_docs",
-		Description: "Access fcheap documentation. Use action='list' to list all doc pages, action='show' with a page path to read a specific page, or action='site' to get the online docs URL.",
+		Description: "Access the read-only fcheap documentation embedded in this server. Use action='list' to list pages, action='show' to read one canonical page, or action='site' to get the online docs URL.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &f,
 			OpenWorldHint:   &f,
@@ -627,13 +669,29 @@ func (s *Server) registerTools(srv *mcp.Server) {
 			}), nil, nil
 		case "site":
 			return textResult(map[string]string{
-				"url":   "https://file.cheap",
-				"local": "fcheap docs serve",
+				"url":               "https://file.cheap",
+				"local":             "fcheap docs serve",
+				"local_requirement": "file.cheap source checkout with Node.js and npm",
 			}), nil, nil
 		default:
 			return toolError("unknown action: %s (use 'list', 'show', or 'site')", in.Action), nil, nil
 		}
 	})
+}
+
+func mcpSmartCleanupAutoDeletable(rec stash.CleanupRecommendation) bool {
+	if rec.Category == stash.CatExpired {
+		return true
+	}
+	return rec.Tool == "codemap" || rec.Tool == "vecgrep"
+}
+
+func scoringCleanupResult(result *cleanup.Result) *mcp.CallToolResult {
+	out := textResult(result)
+	if result != nil && len(result.Failed) > 0 {
+		out.IsError = true
+	}
+	return out
 }
 
 // --- helpers ---
@@ -657,69 +715,30 @@ func textResult(v any) *mcp.CallToolResult {
 			IsError: true,
 		}
 	}
+	structured := v
+	if trimmed := bytes.TrimSpace(data); len(trimmed) == 0 || trimmed[0] != '{' {
+		// MCP structuredContent must be a JSON object. Preserve object-shaped
+		// DTOs directly and wrap arrays/scalars under a stable result key.
+		structured = map[string]any{"result": v}
+	}
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: string(data)},
 		},
+		StructuredContent: structured,
 	}
 }
 
-// listDocPages returns all .md doc pages relative to the docs/ directory.
+// listDocPages returns all Markdown pages embedded in the installed binary.
 func listDocPages() []string {
-	docsDir := findProjectDocsDir()
-	if docsDir == "" {
-		return nil
-	}
-	var pages []string
-	_ = filepath.WalkDir(docsDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(path, ".md") {
-			return nil
-		}
-		if strings.Contains(path, "node_modules") || strings.Contains(path, ".vitepress") {
-			return nil
-		}
-		rel, err := filepath.Rel(docsDir, path)
-		if err != nil {
-			return nil
-		}
-		pages = append(pages, rel)
-		return nil
-	})
-	sort.Strings(pages)
-	return pages
+	return doccontent.List()
 }
 
-// readDocPage reads a doc page by relative path (with or without .md extension).
+// readDocPage reads a canonical embedded page and rejects traversal.
 func readDocPage(page string) (string, error) {
-	docsDir := findProjectDocsDir()
-	if docsDir == "" {
-		return "", fmt.Errorf("docs directory not found")
-	}
-	page = strings.TrimPrefix(page, "/")
-	page = strings.TrimSuffix(page, ".md")
-	filePath := filepath.Join(docsDir, page+".md")
-	content, err := os.ReadFile(filePath)
+	embeddedPage, err := doccontent.Read(page)
 	if err != nil {
-		return "", fmt.Errorf("doc page not found: %s", page)
+		return "", err
 	}
-	return string(content), nil
-}
-
-// findProjectDocsDir locates the docs/ directory relative to the working directory.
-func findProjectDocsDir() string {
-	for _, c := range []string{"docs", "../docs", "../../docs"} {
-		abs, err := filepath.Abs(c)
-		if err != nil {
-			continue
-		}
-		if info, err := os.Stat(abs); err == nil && info.IsDir() {
-			if _, err := os.Stat(filepath.Join(abs, ".vitepress", "config.ts")); err == nil {
-				return abs
-			}
-		}
-	}
-	return ""
+	return embeddedPage.Content, nil
 }

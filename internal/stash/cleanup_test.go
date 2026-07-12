@@ -3,7 +3,6 @@ package stash
 import (
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -16,7 +15,7 @@ import (
 // categorized as "expired".
 func TestAnalyzeCleanupExpired(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := NewManager(tmp)
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	srcDir := filepath.Join(tmp, "src")
@@ -45,7 +44,7 @@ func TestAnalyzeCleanupExpired(t *testing.T) {
 // is categorized as "orphaned".
 func TestAnalyzeCleanupOrphaned(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := NewManager(tmp)
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	srcDir := filepath.Join(tmp, "src")
@@ -67,11 +66,27 @@ func TestAnalyzeCleanupOrphaned(t *testing.T) {
 	assert.Equal(t, CatOrphaned, res.Recommendations[0].Category)
 }
 
+func TestAnalyzeCleanupDoesNotTreatMissingProjectMirrorAsOrphaned(t *testing.T) {
+	tmp := t.TempDir()
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
+	assert.NoError(t, err)
+
+	source := filepath.Join(tmp, "standalone-artifact.txt")
+	assert.NoError(t, os.WriteFile(source, []byte("evidence"), 0600))
+	_, err = mgr.Save(context.Background(), &SaveOptions{SourcePath: source, Name: "standalone"})
+	assert.NoError(t, err)
+
+	res, err := mgr.AnalyzeCleanup(context.Background(), CleanupOptions{})
+	assert.NoError(t, err)
+	assert.Len(t, res.Recommendations, 1)
+	assert.Equal(t, CatKeep, res.Recommendations[0].Category)
+}
+
 // TestAnalyzeCleanupSuperseded verifies that when two stashes share the same
 // tool+source_path, the older one is categorized as "superseded".
 func TestAnalyzeCleanupSuperseded(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := NewManager(tmp)
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	srcDir := filepath.Join(tmp, "src")
@@ -88,7 +103,7 @@ func TestAnalyzeCleanupSuperseded(t *testing.T) {
 
 	// Manually set st1's CreatedAt to the past so it's clearly the older one.
 	st1.Manifest.CreatedAt = time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)
-	assert.NoError(t, st1.Manifest.Save(filepath.Join(tmp, st1.Manifest.ID)))
+	assert.NoError(t, st1.Manifest.Save(mgr.StashDir(st1.Manifest.ID)))
 
 	_, err = mgr.Save(context.Background(), &SaveOptions{
 		SourcePath: srcDir,
@@ -120,7 +135,7 @@ func TestAnalyzeCleanupSuperseded(t *testing.T) {
 // content hash, the older one is categorized as "duplicate".
 func TestAnalyzeCleanupDuplicate(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := NewManager(tmp)
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	srcDir := filepath.Join(tmp, "src")
@@ -135,7 +150,7 @@ func TestAnalyzeCleanupDuplicate(t *testing.T) {
 
 	// Make st1 clearly older.
 	st1.Manifest.CreatedAt = time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)
-	assert.NoError(t, st1.Manifest.Save(filepath.Join(tmp, st1.Manifest.ID)))
+	assert.NoError(t, st1.Manifest.Save(mgr.StashDir(st1.Manifest.ID)))
 
 	// Save second stash from a different path but with the same content.
 	// We copy the source to a different path so the supersededKey won't match
@@ -167,7 +182,7 @@ func TestAnalyzeCleanupDuplicate(t *testing.T) {
 // staleDays is set and the stash is older than the threshold.
 func TestAnalyzeCleanupStale(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := NewManager(tmp)
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	srcDir := filepath.Join(tmp, "src")
@@ -182,7 +197,7 @@ func TestAnalyzeCleanupStale(t *testing.T) {
 
 	// Set created_at to 100 days ago.
 	st.Manifest.CreatedAt = time.Now().Add(-100 * 24 * time.Hour).UTC().Format(time.RFC3339)
-	assert.NoError(t, st.Manifest.Save(filepath.Join(tmp, st.Manifest.ID)))
+	assert.NoError(t, st.Manifest.Save(mgr.StashDir(st.Manifest.ID)))
 
 	// Without staleDays: should be keep (source exists, no TTL).
 	res, err := mgr.AnalyzeCleanup(context.Background(), CleanupOptions{})
@@ -201,7 +216,7 @@ func TestAnalyzeCleanupStale(t *testing.T) {
 // is categorized as "keep".
 func TestAnalyzeCleanupKeep(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := NewManager(tmp)
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	srcDir := filepath.Join(tmp, "src")
@@ -226,7 +241,7 @@ func TestAnalyzeCleanupKeep(t *testing.T) {
 // correctly excludes non-matching categories.
 func TestAnalyzeCleanupCategoryFilter(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := NewManager(tmp)
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	srcDir := filepath.Join(tmp, "src")
@@ -292,7 +307,7 @@ func TestSupersededKey(t *testing.T) {
 // dropped even in smart mode apply.
 func TestAnalyzeCleanupKeepTag(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := NewManager(tmp)
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	srcDir := filepath.Join(tmp, "src")
@@ -328,7 +343,7 @@ func TestAnalyzeCleanupKeepTag(t *testing.T) {
 // returns zero results without error.
 func TestAnalyzeCleanupEmptyDir(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := NewManager(tmp)
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	res, err := mgr.AnalyzeCleanup(context.Background(), CleanupOptions{})
@@ -342,28 +357,17 @@ func TestAnalyzeCleanupEmptyDir(t *testing.T) {
 // referencing a deleted git branch is categorized as "branch-gone".
 func TestAnalyzeCleanupBranchGone(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := NewManager(tmp)
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
-	// Create a git repo with a branch, save a stash referencing it, then
-	// delete the branch.
+	// Create the loose-ref shape of a git repo with a branch, save a stash
+	// referencing it, then delete the branch.
 	gitDir := filepath.Join(tmp, "gitrepo")
 	assert.NoError(t, os.MkdirAll(gitDir, 0755))
 	assert.NoError(t, os.WriteFile(filepath.Join(gitDir, "f.txt"), []byte("x"), 0644))
-
-	// Init git repo.
-	if os.Getenv("SKIP_GIT_TESTS") != "" {
-		t.Skip("skipping git test")
-	}
-	gitInit := exec.Command("git", "init", gitDir)
-	if err := gitInit.Run(); err != nil {
-		t.Skipf("git not available: %v", err)
-	}
-	// Create a commit so the repo is usable.
-	exec.Command("git", "-C", gitDir, "add", ".").Run()             //nolint:errcheck
-	exec.Command("git", "-C", gitDir, "commit", "-m", "init").Run() //nolint:errcheck
-	// Create and checkout a branch.
-	exec.Command("git", "-C", gitDir, "branch", "feature-x").Run() //nolint:errcheck
+	branchRef := filepath.Join(gitDir, ".git", "refs", "heads", "feature-x")
+	assert.NoError(t, os.MkdirAll(filepath.Dir(branchRef), 0755))
+	assert.NoError(t, os.WriteFile(branchRef, []byte("0123456789012345678901234567890123456789\n"), 0644))
 
 	// Save a stash with a branch tag.
 	st, err := mgr.Save(context.Background(), &SaveOptions{
@@ -374,7 +378,7 @@ func TestAnalyzeCleanupBranchGone(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Delete the branch.
-	exec.Command("git", "-C", gitDir, "branch", "-D", "feature-x").Run() //nolint:errcheck
+	assert.NoError(t, os.Remove(branchRef))
 
 	res, err := mgr.AnalyzeCleanup(context.Background(), CleanupOptions{})
 	assert.NoError(t, err)
@@ -387,26 +391,4 @@ func TestAnalyzeCleanupBranchGone(t *testing.T) {
 	}
 	assert.NotNil(t, rec)
 	assert.Equal(t, CatBranchGone, rec.Category)
-}
-
-// TestExtractProjectName verifies project name extraction from source paths.
-func TestExtractProjectName(t *testing.T) {
-	cases := []struct {
-		path string
-		want string
-	}{
-		{"/Users/foo/projects/myapp/src", "myapp"},  // "projects" segment found
-		{"/Users/foo/projects/myapp", "myapp"},      // "projects" segment, myapp is next
-		{"/Users/foo/projects/myapp/cmd", "myapp"},  // "projects" segment found
-		{"/home/user/code/myapp", "myapp"},          // no "projects", base is myapp
-		{"/home/user/code/myapp/src", "myapp"},      // no "projects", base is common leaf "src" -> parent "myapp"
-		{"/home/user/code/myapp/internal", "myapp"}, // common leaf "internal" -> parent
-		{"/home/user/code/myapp/pkg", "myapp"},      // common leaf "pkg" -> parent
-		{"", ""},
-		{"/", ""},
-		{".", ""},
-	}
-	for _, c := range cases {
-		assert.Equal(t, c.want, extractProjectName(c.path), "path=%q", c.path)
-	}
 }

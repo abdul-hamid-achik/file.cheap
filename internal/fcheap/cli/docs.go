@@ -6,9 +6,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 
+	doccontent "github.com/abdul-hamid-achik/file.cheap/docs"
 	"github.com/spf13/cobra"
 )
 
@@ -21,13 +21,14 @@ var (
 var docsCmd = &cobra.Command{
 	Use:   "docs",
 	Short: "Documentation commands",
-	Long: `Manage and serve the fcheap documentation site (VitePress).
+	Long: `Read the embedded fcheap documentation or manage its VitePress source site.
 
 Subcommands:
-  serve   Start a local docs dev server
-  build   Build the docs site for production
-  list    List all available doc pages
-  show    Print a specific doc page to stdout
+  serve   Start a local docs dev server (source checkout required)
+  build   Build the docs site for production (source checkout required)
+  preview Preview a built docs site (source checkout required)
+  list    List all embedded doc pages
+  show    Print an embedded doc page to stdout
   open    Open the online docs site in a browser`,
 }
 
@@ -36,13 +37,13 @@ var docsServeCmd = &cobra.Command{
 	Short: "Start a local VitePress dev server",
 	Long: `Start a local VitePress development server for the docs site.
 
-Requires Node.js and npm installed in the docs/ directory.
-Run 'cd docs && npm install' first if node_modules is missing.`,
+Requires a file.cheap source checkout plus Node.js and npm. If node_modules is
+missing, fcheap installs the locked dependencies from docs/package-lock.json.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		docsDir := findDocsDir()
 		if docsDir == "" {
-			return fmt.Errorf("docs directory not found")
+			return docsSourceRequiredError()
 		}
 
 		if err := checkDocsDeps(docsDir); err != nil {
@@ -72,12 +73,12 @@ var docsBuildCmd = &cobra.Command{
 The output goes to docs/.vitepress/dist/ by default, or the directory
 specified by --output.
 
-Requires Node.js and npm installed in the docs/ directory.`,
+Requires a file.cheap source checkout plus Node.js and npm.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		docsDir := findDocsDir()
 		if docsDir == "" {
-			return fmt.Errorf("docs directory not found")
+			return docsSourceRequiredError()
 		}
 
 		if err := checkDocsDeps(docsDir); err != nil {
@@ -86,17 +87,16 @@ Requires Node.js and npm installed in the docs/ directory.`,
 
 		printer.Info("Building docs site...")
 
-		npmCmd := exec.CommandContext(GetContext(), "npm", "run", "docs:build")
+		npmArgs, distDir, err := docsBuildInvocation(docsDir, docsOutput)
+		if err != nil {
+			return err
+		}
+		npmCmd := exec.CommandContext(GetContext(), "npm", npmArgs...)
 		npmCmd.Dir = docsDir
 		npmCmd.Stdout = os.Stdout
 		npmCmd.Stderr = os.Stderr
 		if err := npmCmd.Run(); err != nil {
 			return fmt.Errorf("docs build failed: %w", err)
-		}
-
-		distDir := filepath.Join(docsDir, ".vitepress", "dist")
-		if docsOutput != "" {
-			distDir = docsOutput
 		}
 
 		printer.Success("Docs built to: %s", distDir)
@@ -106,15 +106,10 @@ Requires Node.js and npm installed in the docs/ directory.`,
 
 var docsListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List all available doc pages",
+	Short: "List all embedded doc pages",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		docsDir := findDocsDir()
-		if docsDir == "" {
-			return fmt.Errorf("docs directory not found")
-		}
-
-		pages := findAllDocPages(docsDir)
+		pages := doccontent.List()
 		if len(pages) == 0 {
 			printer.Warn("No doc pages found")
 			return nil
@@ -139,7 +134,8 @@ var docsShowCmd = &cobra.Command{
 	Short: "Print a doc page to stdout",
 	Long: `Print a documentation page to stdout.
 
-The page argument is the path relative to the docs/ directory (without .md extension).
+The page argument is a canonical embedded path (without the .md extension).
+Absolute and traversal paths are rejected.
 Use 'fcheap docs list' to see available pages.
 
 Examples:
@@ -148,30 +144,19 @@ Examples:
   fcheap docs show mcp/overview`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		docsDir := findDocsDir()
-		if docsDir == "" {
-			return fmt.Errorf("docs directory not found")
-		}
-
-		page := args[0]
-		// Strip leading slash and .md extension if provided
-		page = strings.TrimPrefix(page, "/")
-		page = strings.TrimSuffix(page, ".md")
-
-		filePath := filepath.Join(docsDir, page+".md")
-		content, err := os.ReadFile(filePath)
+		page, err := doccontent.Read(args[0])
 		if err != nil {
-			return fmt.Errorf("doc page not found: %s (try 'fcheap docs list' for available pages)", page)
+			return fmt.Errorf("%w (try 'fcheap docs list' for available pages)", err)
 		}
 
 		if jsonOutput {
 			return printer.PrintResult(map[string]string{
-				"page":    page,
-				"content": string(content),
+				"page":    page.Name,
+				"content": page.Content,
 			})
 		}
 
-		printer.Printf("%s", string(content))
+		printer.Printf("%s", page.Content)
 		return nil
 	},
 }
@@ -193,12 +178,13 @@ var docsPreviewCmd = &cobra.Command{
 	Short: "Preview the built docs site locally",
 	Long: `Preview the built docs site using VitePress preview server.
 
-Run 'fcheap docs build' first to generate the dist output.`,
+Requires a file.cheap source checkout plus Node.js and npm. Run
+'fcheap docs build' first to generate the dist output.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		docsDir := findDocsDir()
 		if docsDir == "" {
-			return fmt.Errorf("docs directory not found")
+			return docsSourceRequiredError()
 		}
 
 		if err := checkDocsDeps(docsDir); err != nil {
@@ -237,7 +223,8 @@ func init() {
 	docsCmd.AddCommand(docsPreviewCmd)
 }
 
-// findDocsDir locates the docs/ directory relative to the binary or cwd.
+// findDocsDir locates the VitePress source directory in a file.cheap checkout.
+// Read-only list/show commands use embedded Markdown and do not call this.
 func findDocsDir() string {
 	candidates := []string{
 		"docs",
@@ -249,10 +236,8 @@ func findDocsDir() string {
 		if err != nil {
 			continue
 		}
-		if info, err := os.Stat(abs); err == nil && info.IsDir() {
-			if _, err := os.Stat(filepath.Join(abs, ".vitepress", "config.ts")); err == nil {
-				return abs
-			}
+		if isFcheapDocsDir(abs) {
+			return abs
 		}
 	}
 	return ""
@@ -262,41 +247,50 @@ func findDocsDir() string {
 func checkDocsDeps(docsDir string) error {
 	nodeModules := filepath.Join(docsDir, "node_modules")
 	if _, err := os.Stat(nodeModules); err != nil {
-		printer.Warn("node_modules not found in docs/. Running npm install...")
-		installCmd := exec.CommandContext(GetContext(), "npm", "install")
+		installArgs := []string{"install"}
+		installName := "npm install"
+		if _, lockErr := os.Stat(filepath.Join(docsDir, "package-lock.json")); lockErr == nil {
+			installArgs = []string{"ci"}
+			installName = "npm ci"
+		}
+		printer.Warn("node_modules not found in docs/. Running %s...", installName)
+		installCmd := exec.CommandContext(GetContext(), "npm", installArgs...)
 		installCmd.Dir = docsDir
 		installCmd.Stdout = os.Stdout
 		installCmd.Stderr = os.Stderr
 		if err := installCmd.Run(); err != nil {
-			return fmt.Errorf("npm install failed: %w", err)
+			return fmt.Errorf("%s failed: %w", installName, err)
 		}
 	}
 	return nil
 }
 
-// findAllDocPages returns all .md files under docs/, relative to docs/.
-func findAllDocPages(docsDir string) []string {
-	var pages []string
-	_ = filepath.Walk(docsDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(path, ".md") {
-			return nil
-		}
-		// Skip node_modules and .vitepress internals
-		if strings.Contains(path, "node_modules") || strings.Contains(path, ".vitepress") {
-			return nil
-		}
-		rel, err := filepath.Rel(docsDir, path)
-		if err != nil {
-			return nil
-		}
-		pages = append(pages, rel)
-		return nil
-	})
-	sort.Strings(pages)
-	return pages
+func docsBuildInvocation(docsDir, outputDir string) ([]string, string, error) {
+	args := []string{"run", "docs:build"}
+	resolvedOutput := filepath.Join(docsDir, ".vitepress", "dist")
+	if outputDir == "" {
+		return args, resolvedOutput, nil
+	}
+	absOutput, err := filepath.Abs(outputDir)
+	if err != nil {
+		return nil, "", fmt.Errorf("resolve docs output directory: %w", err)
+	}
+	return append(args, "--", "--outDir", absOutput), absOutput, nil
+}
+
+func docsSourceRequiredError() error {
+	return fmt.Errorf("docs source directory not found: serve, build, and preview require a file.cheap source checkout")
+}
+
+func isFcheapDocsDir(dir string) bool {
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".vitepress", "config.ts")); err != nil {
+		return false
+	}
+	packageJSON, err := os.ReadFile(filepath.Join(dir, "package.json"))
+	return err == nil && strings.Contains(string(packageJSON), `"name": "fcheap-docs"`)
 }
 
 // openBrowser opens a URL in the default browser across platforms.

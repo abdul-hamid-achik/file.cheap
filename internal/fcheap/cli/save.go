@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
 	"github.com/abdul-hamid-achik/file.cheap/internal/fcheap/config"
+	"github.com/abdul-hamid-achik/file.cheap/internal/manifest"
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
 	"github.com/spf13/cobra"
 )
@@ -20,7 +22,33 @@ var (
 	saveNoScan     bool
 	saveNoCompress bool
 	saveIndex      bool
+
+	saveIndexOperation = func(ctx context.Context, mgr *stash.Manager, id string) (*analyze.IndexResult, error) {
+		an := analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath).WithEmbedder(embSettings())
+		return an.IndexStash(ctx, mgr.StashDir(id))
+	}
+	saveCompressOperation = func(ctx context.Context, mgr *stash.Manager, id, algorithm string) (*stash.CompressResult, error) {
+		return mgr.Compress(ctx, id, algorithm)
+	}
 )
+
+type saveFailure struct {
+	ID    string `json:"id"`
+	Stage string `json:"stage"`
+	Error string `json:"error"`
+}
+
+// saveOutput embeds the manifest so existing JSON consumers keep seeing all
+// manifest fields at the root while gaining an explicit post-save status.
+type saveOutput struct {
+	*manifest.Manifest
+	Status                   string        `json:"status"`
+	IndexRequested           bool          `json:"index_requested"`
+	Indexed                  bool          `json:"indexed"`
+	AutoCompressionRequested bool          `json:"auto_compression_requested"`
+	AutoCompressed           bool          `json:"auto_compressed"`
+	Failed                   []saveFailure `json:"failed"`
+}
 
 var saveCmd = &cobra.Command{
 	Use:   "save <path>",
@@ -64,32 +92,30 @@ var saveCmd = &cobra.Command{
 			opts.Custom = map[string]string{"source": saveSource}
 		}
 
-		st, err := mgr.Save(GetContext(), opts)
+		ctx := GetContext()
+		st, err := mgr.Save(ctx, opts)
 		if err != nil {
 			return err
 		}
 
-		// Auto-compress large stashes to reclaim disk space (configurable via
-		// compress_threshold; opt out with --no-compress).
-		autoCompressed := false
-		if !saveNoCompress && cfg.CompressThreshold > 0 && st.Manifest.TotalSize >= cfg.CompressThreshold {
-			if cres, cerr := mgr.Compress(GetContext(), st.Manifest.ID, cfg.Compression); cerr == nil {
-				st.Manifest.Compression = cres.Algorithm
-				st.Manifest.CompressedSize = cres.CompressedSize
-				autoCompressed = true
-			}
-		}
-
 		// Optionally index the stash for search right after saving, so callers
 		// (e.g. Cortex) that save evidence can search it without a separate
-		// `fcheap analyze` step. Best-effort: a save that succeeds is never failed
-		// by an indexing error.
+		// `fcheap analyze` step. The stash remains saved if indexing fails, while
+		// the command reports a structured partial failure.
 		var indexed *analyze.IndexResult
+		failures := []saveFailure{}
 		if saveIndex {
-			an := analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath).WithEmbedder(embSettings())
-			idx, ierr := an.IndexStash(GetContext(), mgr.StashDir(st.Manifest.ID))
+			var idx *analyze.IndexResult
+			var ierr error
+			if err := ctx.Err(); err != nil {
+				ierr = err
+			} else {
+				idx, ierr = saveIndexOperation(ctx, mgr, st.Manifest.ID)
+			}
 			if ierr != nil {
-				printer.Warn("index after save failed: %v (run 'fcheap analyze %s')", ierr, st.Manifest.ID)
+				failures = append(failures, saveFailure{ID: st.Manifest.ID, Stage: "index", Error: ierr.Error()})
+			} else if idx == nil {
+				failures = append(failures, saveFailure{ID: st.Manifest.ID, Stage: "index", Error: "index operation returned no result"})
 			} else {
 				indexed = idx
 				if st.Manifest.Custom == nil {
@@ -100,8 +126,51 @@ var saveCmd = &cobra.Command{
 			}
 		}
 
+		// Auto-compress after indexing. Indexing the freshly copied content avoids
+		// compressing it, deleting it, and immediately extracting the whole archive
+		// into a temporary directory for the same save operation.
+		autoCompressed := false
+		autoCompressionRequested := !saveNoCompress && cfg.CompressThreshold > 0 && st.Manifest.TotalSize >= cfg.CompressThreshold
+		if autoCompressionRequested {
+			var cres *stash.CompressResult
+			var cerr error
+			if err := ctx.Err(); err != nil {
+				cerr = err
+			} else {
+				cres, cerr = saveCompressOperation(ctx, mgr, st.Manifest.ID, cfg.Compression)
+			}
+			if cerr != nil {
+				failures = append(failures, saveFailure{ID: st.Manifest.ID, Stage: "compress", Error: cerr.Error()})
+			} else if cres == nil {
+				failures = append(failures, saveFailure{ID: st.Manifest.ID, Stage: "compress", Error: "compression operation returned no result"})
+			} else {
+				st.Manifest.Compression = cres.Algorithm
+				st.Manifest.CompressedSize = cres.CompressedSize
+				autoCompressed = true
+			}
+		}
+		status := "saved"
+		if len(failures) > 0 {
+			status = "saved_with_failures"
+		}
+		out := saveOutput{
+			Manifest:                 st.Manifest,
+			Status:                   status,
+			IndexRequested:           saveIndex,
+			Indexed:                  indexed != nil,
+			AutoCompressionRequested: autoCompressionRequested,
+			AutoCompressed:           autoCompressed,
+			Failed:                   failures,
+		}
+
 		if printer.IsJSON() {
-			return printer.JSON(st.Manifest)
+			if err := printer.JSON(out); err != nil {
+				return err
+			}
+			if len(failures) > 0 {
+				return fmt.Errorf("stash %s saved with %d failed post-save operation(s)", st.Manifest.ID, len(failures))
+			}
+			return nil
 		}
 
 		printer.Success("Saved stash: %s", st.Manifest.ID)
@@ -140,6 +209,12 @@ var saveCmd = &cobra.Command{
 				printer.Indent("%s:%d [%s]", f.File, f.Line, f.Rule)
 				shown++
 			}
+		}
+		for _, failure := range failures {
+			printer.Warn("%s after save failed: %s", failure.Stage, failure.Error)
+		}
+		if len(failures) > 0 {
+			return fmt.Errorf("stash %s saved with %d failed post-save operation(s)", st.Manifest.ID, len(failures))
 		}
 		return nil
 	},

@@ -70,8 +70,14 @@ func (m *Model) loadFilePreviewCmd() tea.Cmd {
 	st := m.selected
 	files := m.selectedFiles()
 	if st == nil || m.fileIdx < 0 || m.fileIdx >= len(files) {
+		m.previewSeq++
+		m.clearPreviewImage()
+		m.preview.SetContent("")
 		return nil
 	}
+	m.clearPreviewImage()
+	m.preview.SetContent(dimStyle.Render("Loading preview…"))
+	m.preview.GotoTop()
 	rel := files[m.fileIdx].Path
 	size := files[m.fileIdx].Size
 	stashID := ""
@@ -98,8 +104,14 @@ func (m *Model) loadFilePreviewCmd() tea.Cmd {
 // loadResultPreviewCmd renders the snippet/content for the selected search hit.
 func (m *Model) loadResultPreviewCmd() tea.Cmd {
 	if m.resultIdx < 0 || m.resultIdx >= len(m.searchResults) {
+		m.previewSeq++
+		m.clearPreviewImage()
+		m.preview.SetContent("")
 		return nil
 	}
+	m.clearPreviewImage()
+	m.preview.SetContent(dimStyle.Render("Loading preview…"))
+	m.preview.GotoTop()
 	res := m.searchResults[m.resultIdx]
 	// Find the owning stash to read full file content when available; keep its
 	// file list so image hits can show a size in the caption (as the detail pane does).

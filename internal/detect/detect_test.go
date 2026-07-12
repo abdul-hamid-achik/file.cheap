@@ -155,3 +155,64 @@ func TestDetectGeneric(t *testing.T) {
 		t.Error("expected at least one searchable file")
 	}
 }
+
+func TestDetectGenericIncludesTinyPrintableFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "tiny.txt"), []byte("tiny"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := Detect(dir).SearchableText; !strings.Contains(got, "tiny") {
+		t.Fatalf("SearchableText = %q, want tiny printable content", got)
+	}
+}
+
+func TestDetectDoesNotFollowExternalSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	external := writeBundle(t)
+	for _, name := range []string{"metadata.json", "timeline.json"} {
+		if err := os.Symlink(filepath.Join(external, name), filepath.Join(dir, name)); err != nil {
+			t.Skipf("symlink unavailable: %v", err)
+		}
+	}
+	externalNotes := filepath.Join(external, "leak.md")
+	if err := os.WriteFile(externalNotes, []byte("EXTERNAL_TEXT_MUST_NOT_BE_READ"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(externalNotes, filepath.Join(dir, "leak.md")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	if got := BundleTypeOf(dir); got != TypeGeneric {
+		t.Fatalf("BundleTypeOf(symlink bundle) = %q, want generic", got)
+	}
+	if meta, ok := VidtraceMetadata(dir); ok || meta != nil {
+		t.Fatalf("VidtraceMetadata followed symlink: meta=%v ok=%v", meta, ok)
+	}
+	if entries := ParseVidtraceTimeline(dir); entries != nil {
+		t.Fatalf("ParseVidtraceTimeline followed symlink: %+v", entries)
+	}
+
+	result := Detect(dir)
+	if result.Type != TypeGeneric {
+		t.Fatalf("Detect(symlink bundle) type = %q, want generic", result.Type)
+	}
+	if strings.Contains(result.SearchableText, "EXTERNAL_TEXT_MUST_NOT_BE_READ") {
+		t.Fatal("generic detection read external symlink content")
+	}
+	for _, file := range result.SearchableFiles {
+		if file == "leak.md" {
+			t.Fatal("generic detection collected a symlink as a searchable file")
+		}
+	}
+
+	rootLink := filepath.Join(t.TempDir(), "bundle-link")
+	if err := os.Symlink(external, rootLink); err != nil {
+		t.Skipf("root symlink unavailable: %v", err)
+	}
+	if got := BundleTypeOf(rootLink); got != TypeGeneric {
+		t.Fatalf("BundleTypeOf(root symlink) = %q, want generic", got)
+	}
+	if rootResult := Detect(rootLink); rootResult.Type != TypeGeneric || len(rootResult.SearchableFiles) != 0 || rootResult.SearchableText != "" {
+		t.Fatalf("Detect followed a symlink root: %+v", rootResult)
+	}
+}

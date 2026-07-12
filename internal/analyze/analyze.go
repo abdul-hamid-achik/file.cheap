@@ -14,15 +14,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/compress"
 	"github.com/abdul-hamid-achik/file.cheap/internal/detect"
+	"github.com/abdul-hamid-achik/file.cheap/internal/fslock"
 	"github.com/abdul-hamid-achik/file.cheap/internal/manifest"
 	"github.com/abdul-hamid-achik/veclite"
 )
@@ -73,9 +79,10 @@ type IndexResult struct {
 // EmbedderSettings configures an optional embedding model for semantic/hybrid
 // search. A zero/empty Provider means BM25-only (no embedder).
 type EmbedderSettings struct {
-	Provider string // "ollama" | "openai" | "" (none)
-	Model    string
-	URL      string // base URL (ollama)
+	Provider           string // "ollama" | "openai" | "" (none)
+	Model              string
+	URL                string // base URL (ollama)
+	AllowSecretContent bool   // explicit opt-in for remote embedding of flagged stashes
 }
 
 // Enabled reports whether an embedder is configured.
@@ -310,8 +317,40 @@ func (a *Analyzer) IndexStash(ctx context.Context, stashDir string) (*IndexResul
 // invoked after each document is indexed and once more at completion.
 func (a *Analyzer) IndexStashWithProgress(ctx context.Context, stashDir string, progress ProgressFunc) (*IndexResult, error) {
 	stashID := filepath.Base(stashDir)
+	stashInfo, err := os.Lstat(stashDir)
+	if err != nil {
+		return nil, fmt.Errorf("lstat stash: %w", err)
+	}
+	if stashInfo.Mode()&os.ModeSymlink != 0 || !stashInfo.IsDir() {
+		return nil, fmt.Errorf("stash path %q is not a real directory", stashDir)
+	}
+	man, err := manifest.Load(stashDir)
+	if err != nil {
+		return nil, fmt.Errorf("load stash manifest: %w", err)
+	}
+	if man.ID != stashID {
+		return nil, fmt.Errorf("stash manifest ID %q does not match directory %q", man.ID, stashID)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	operationLock, err := fslock.Acquire(ctx, filepath.Join(stashDir, ".fcheap.lock"))
+	if err != nil {
+		return nil, err
+	}
+	defer operationLock.Release() //nolint:errcheck
+	man, err = manifest.Load(stashDir)
+	if err != nil {
+		return nil, fmt.Errorf("reload stash manifest: %w", err)
+	}
+	if man.ID != stashID {
+		return nil, fmt.Errorf("stash manifest ID %q does not match directory %q", man.ID, stashID)
+	}
+	if err := a.checkOutboundPolicy(stashDir); err != nil {
+		return nil, err
+	}
 
-	contentDir, cleanup, err := readableContentDir(stashDir)
+	contentDir, cleanup, err := readableContentDir(ctx, stashDir)
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +365,12 @@ func (a *Analyzer) IndexStashWithProgress(ctx context.Context, stashDir string, 
 	if err != nil {
 		return nil, fmt.Errorf("open index: %w", err)
 	}
-	defer db.Close() //nolint:errcheck
+	closed := false
+	defer func() {
+		if !closed {
+			_ = db.Close()
+		}
+	}()
 
 	emb := a.embedder()
 	coll, err := a.collFor(db, emb)
@@ -380,6 +424,9 @@ func (a *Analyzer) IndexStashWithProgress(ctx context.Context, stashDir string, 
 	// are indexed individually so a hit names the exact frame, not a blob.
 	if len(result.Units) > 0 {
 		for _, u := range result.Units {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			payload := map[string]any{
 				"stash_id":  stashID,
 				"path":      u.Label,
@@ -406,15 +453,28 @@ func (a *Analyzer) IndexStashWithProgress(ctx context.Context, stashDir string, 
 	}
 
 	report(total) // snap to complete
+	if err := db.Close(); err != nil {
+		return nil, fmt.Errorf("persist index: %w", err)
+	}
+	closed = true
 
-	// Record indexing status on the manifest for visibility.
-	if man, err := manifest.Load(stashDir); err == nil {
-		if man.Custom == nil {
-			man.Custom = make(map[string]string)
-		}
-		man.Custom["indexed"] = "true"
-		man.Custom["indexed_files"] = fmt.Sprintf("%d", indexed)
-		_ = man.Save(stashDir)
+	// Only record indexing status after veclite has successfully persisted the
+	// new generation. A close/sync failure must never leave a manifest claiming
+	// that the stash is indexed when the durable index is incomplete.
+	man, err = manifest.Load(stashDir)
+	if err != nil {
+		return nil, fmt.Errorf("reload manifest after indexing: %w", err)
+	}
+	if man.ID != stashID {
+		return nil, fmt.Errorf("stash manifest ID %q does not match directory %q", man.ID, stashID)
+	}
+	if man.Custom == nil {
+		man.Custom = make(map[string]string)
+	}
+	man.Custom["indexed"] = "true"
+	man.Custom["indexed_files"] = fmt.Sprintf("%d", indexed)
+	if err := man.Save(stashDir); err != nil {
+		return nil, fmt.Errorf("save indexing status: %w", err)
 	}
 
 	slog.Debug("stash indexed", "id", stashID, "docs", indexed, "bundle", result.Type)
@@ -423,6 +483,53 @@ func (a *Analyzer) IndexStashWithProgress(ctx context.Context, stashDir string, 
 		BundleType: string(result.Type),
 		FilesIndex: indexed,
 	}, nil
+}
+
+// checkOutboundPolicy prevents a configured remote embedder from receiving the
+// contents of a stash that the save-time scanner flagged. Local loopback
+// Ollama indexing is unaffected. Users must make a deliberate config choice to
+// override this guard after reviewing the findings.
+func (a *Analyzer) checkOutboundPolicy(stashDir string) error {
+	if !embedderMayLeaveHost(a.emb) || a.emb.AllowSecretContent {
+		return nil
+	}
+	man, err := manifest.Load(stashDir)
+	if err != nil {
+		return fmt.Errorf("verify stash manifest before remote embedding: %w", err)
+	}
+	if man.Custom == nil {
+		return nil
+	}
+	count := man.Custom["secrets_found"]
+	if count == "" || count == "0" {
+		return nil
+	}
+	return fmt.Errorf("remote embedding blocked: stash %q contains %s potential secret(s); review them, use a loopback ollama_url, or explicitly enable allow_remote_secrets", man.ID, count)
+}
+
+func embedderMayLeaveHost(settings EmbedderSettings) bool {
+	switch settings.Provider {
+	case "", "none":
+		return false
+	case "openai":
+		return true
+	case "ollama":
+		if strings.TrimSpace(settings.URL) == "" {
+			return false // veclite's default Ollama endpoint is localhost
+		}
+		parsed, err := url.Parse(settings.URL)
+		if err != nil || parsed.Hostname() == "" {
+			return true // fail closed for malformed/non-URL endpoints
+		}
+		host := strings.ToLower(parsed.Hostname())
+		if host == "localhost" {
+			return false
+		}
+		ip := net.ParseIP(host)
+		return ip == nil || !ip.IsLoopback()
+	default:
+		return true // unknown providers are conservatively treated as remote
+	}
 }
 
 // Search runs a search across all indexed stashes. mode is "keyword",
@@ -474,29 +581,6 @@ func (a *Analyzer) search(ctx context.Context, query string, filter veclite.Filt
 		mode = "hybrid"
 	}
 
-	coll, err := a.collForReadOnly(db, emb)
-	if err != nil {
-		if !errors.Is(err, errEmbeddingDrift) {
-			return nil, err
-		}
-		// Stale/incompatible vector index: the BM25 text index is still valid
-		// regardless of the vector profile, so degrade to keyword search instead
-		// of failing every query. Re-running analyze rebuilds the vectors.
-		slog.Warn("embedding profile drift; using keyword search — re-run analyze to rebuild vectors", "err", err)
-		emb = nil
-		mode = "keyword"
-		coll = nil
-		for _, n := range []string{filesVecCollection, filesCollection} {
-			if c, gerr := db.GetCollection(n); gerr == nil && c != nil {
-				coll = c
-				break
-			}
-		}
-		if coll == nil {
-			return nil, ErrNotIndexed
-		}
-	}
-
 	opts := []veclite.SearchOption{veclite.TopK(limit)}
 	if filter != nil {
 		opts = append(opts, veclite.WithFilter(filter))
@@ -507,46 +591,76 @@ func (a *Analyzer) search(ctx context.Context, query string, filter veclite.Filt
 	}
 
 	var hits []veclite.Result
-	switch mode {
-	case "semantic", "hybrid":
-		qvec, eerr := emb.Embed(query)
-		if eerr != nil {
-			slog.Warn("query embed failed; falling back to keyword", "err", eerr)
+	if mode == "keyword" {
+		hits, err = textSearchCollections(db, query, limit, opts)
+	} else {
+		var coll *veclite.Collection
+		coll, err = a.collForReadOnly(db, emb)
+		if err != nil {
+			if !errors.Is(err, errEmbeddingDrift) {
+				return nil, err
+			}
+			// A missing or stale vector collection must not hide text-indexed
+			// stashes. Keyword search spans both collections, including vector
+			// collections left behind after embeddings are disabled.
+			slog.Warn("vector index unavailable; using keyword search — re-run analyze to rebuild vectors", "err", err)
 			mode = "keyword"
-			hits, err = coll.TextSearch(query, opts...)
-		} else if mode == "semantic" {
-			hits, err = coll.Search(qvec, opts...)
+			hits, err = textSearchCollections(db, query, limit, opts)
 		} else {
-			hits, err = coll.HybridSearch(qvec, query, append(opts, veclite.WithVectorWeight(0.6), veclite.WithTextWeight(0.4))...)
+			qvec, eerr := emb.Embed(query)
+			if eerr != nil {
+				slog.Warn("query embed failed; falling back to keyword", "err", eerr)
+				mode = "keyword"
+				hits, err = textSearchCollections(db, query, limit, opts)
+			} else {
+				var vectorHits []veclite.Result
+				if mode == "semantic" {
+					vectorHits, err = coll.Search(qvec, opts...)
+				} else {
+					vectorHits, err = coll.HybridSearch(qvec, query, append(opts, veclite.WithVectorWeight(0.6), veclite.WithTextWeight(0.4))...)
+				}
+				if err == nil {
+					// Stashes indexed without embeddings live in the plain collection.
+					// Merge them on every query, not only when the vector side happens
+					// to return zero hits, otherwise mixed vaults silently lose recall.
+					var plainHits []veclite.Result
+					if fc, ferr := db.GetCollection(filesCollection); ferr == nil && fc != nil {
+						plainHits, err = fc.TextSearch(query, opts...)
+					} else if ferr != nil && !errors.Is(ferr, veclite.ErrNotFound) {
+						err = ferr
+					}
+					if err == nil {
+						hits = fuseSearchResults(limit, vectorHits, plainHits)
+						if len(vectorHits) == 0 && len(plainHits) > 0 {
+							mode = "keyword"
+						}
+					}
+				}
+			}
 		}
-	default: // keyword
-		mode = "keyword"
-		hits, err = coll.TextSearch(query, opts...)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
 
-	// If an embedder is configured but its collection has no hits, fall back to
-	// the BM25 "files" collection — this covers the case where stashes were
-	// indexed before the embedder was enabled and haven't been re-analyzed yet,
-	// so search doesn't silently return nothing.
-	if len(hits) == 0 && emb != nil {
-		if fc, ferr := db.GetCollection(filesCollection); ferr == nil && fc != nil {
-			if fh, ferr := fc.TextSearch(query, opts...); ferr == nil && len(fh) > 0 {
-				hits = fh
-				mode = "keyword"
-			}
-		}
-	}
-
 	results := make([]SearchResult, 0, len(hits))
+	visibility := make(map[string]bool)
+	now := time.Now()
 	for _, h := range hits {
 		if h.Record == nil {
 			continue
 		}
+		stashID := payloadString(h.Record.Payload, "stash_id")
+		visible, checked := visibility[stashID]
+		if !checked {
+			visible = a.stashSearchable(stashID, now)
+			visibility[stashID] = visible
+		}
+		if !visible {
+			continue
+		}
 		results = append(results, SearchResult{
-			StashID: payloadString(h.Record.Payload, "stash_id"),
+			StashID: stashID,
 			File:    payloadString(h.Record.Payload, "path"),
 			Score:   float64(h.Score),
 			Text:    extractSnippet(h.Record.Content, query, 200),
@@ -555,6 +669,112 @@ func (a *Analyzer) search(ctx context.Context, query string, filter veclite.Filt
 	}
 	slog.Debug("search", "query", query, "mode", mode, "hits", len(results))
 	return results, nil
+}
+
+// textSearchCollections searches both BM25-capable collections. A stash lives
+// in exactly one collection after indexing, but a vault may contain a mix of
+// plain and vector-backed stashes as embedding configuration changes over time.
+func textSearchCollections(db *veclite.DB, query string, limit int, opts []veclite.SearchOption) ([]veclite.Result, error) {
+	foundCollection := false
+	sets := make([][]veclite.Result, 0, 2)
+	for _, name := range []string{filesCollection, filesVecCollection} {
+		coll, err := db.GetCollection(name)
+		if errors.Is(err, veclite.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		foundCollection = true
+		hits, err := coll.TextSearch(query, opts...)
+		if err != nil {
+			return nil, err
+		}
+		sets = append(sets, hits)
+	}
+	if !foundCollection {
+		return nil, ErrNotIndexed
+	}
+	return fuseSearchResults(limit, sets...), nil
+}
+
+func fuseSearchResults(limit int, sets ...[]veclite.Result) []veclite.Result {
+	nonEmpty := sets[:0]
+	for _, set := range sets {
+		if len(set) > 0 {
+			nonEmpty = append(nonEmpty, set)
+		}
+	}
+	switch len(nonEmpty) {
+	case 0:
+		return nil
+	case 1:
+		if len(nonEmpty[0]) > limit {
+			return nonEmpty[0][:limit]
+		}
+		return nonEmpty[0]
+	default:
+		// Record IDs are collection-local, so veclite's ID-based fusion can
+		// collapse unrelated documents whose IDs happen to match. Fuse by the
+		// stable stash/path identity instead.
+		type fusedResult struct {
+			result veclite.Result
+			score  float64
+		}
+		fused := make(map[string]*fusedResult)
+		for _, set := range nonEmpty {
+			for rank, result := range set {
+				if result.Record == nil {
+					continue
+				}
+				key := payloadString(result.Record.Payload, "stash_id") + "\x00" + payloadString(result.Record.Payload, "path")
+				entry, ok := fused[key]
+				if !ok {
+					entry = &fusedResult{result: result}
+					fused[key] = entry
+				}
+				entry.score += 1.0 / float64(60+rank+1)
+			}
+		}
+		ranked := make([]*fusedResult, 0, len(fused))
+		for _, entry := range fused {
+			entry.result.Score = float32(entry.score)
+			ranked = append(ranked, entry)
+		}
+		sort.SliceStable(ranked, func(i, j int) bool {
+			return ranked[i].score > ranked[j].score
+		})
+		if len(ranked) > limit {
+			ranked = ranked[:limit]
+		}
+		results := make([]veclite.Result, 0, len(ranked))
+		for _, entry := range ranked {
+			results = append(results, entry.result)
+		}
+		return results
+	}
+}
+
+// stashSearchable keeps the search view consistent with the manifest catalog:
+// deleted, corrupt, or expired stashes must not survive as ghost index hits.
+func (a *Analyzer) stashSearchable(stashID string, now time.Time) bool {
+	if stashID == "" || stashID == "." || stashID == ".." || filepath.Base(stashID) != stashID {
+		return false
+	}
+	stashDir := filepath.Join(a.stashRoot, stashID)
+	manifestPath := filepath.Join(stashDir, "manifest.json")
+	if _, err := os.Stat(manifestPath); err != nil {
+		return false
+	}
+	man, err := manifest.Load(stashDir)
+	if err != nil || man.ID != stashID {
+		return false
+	}
+	if man.ExpiresAt == "" {
+		return true
+	}
+	expiresAt, err := time.Parse(time.RFC3339, man.ExpiresAt)
+	return err == nil && now.Before(expiresAt)
 }
 
 // vecgrepBin resolves the vecgrep binary, preferring the configured path.
@@ -710,7 +930,34 @@ func (a *Analyzer) vecgrepIndexed(ctx context.Context, bin, codebaseDir string) 
 // semantic query against a codebase. It transparently handles compressed
 // stashes and truncates to maxLen runes.
 func (a *Analyzer) StashQuery(stashDir string, maxLen int) (string, error) {
-	contentDir, cleanup, err := readableContentDir(stashDir)
+	return a.StashQueryContext(context.Background(), stashDir, maxLen)
+}
+
+// StashQueryContext is StashQuery with cancellation and per-stash mutation
+// serialization.
+func (a *Analyzer) StashQueryContext(ctx context.Context, stashDir string, maxLen int) (string, error) {
+	stashID := filepath.Base(stashDir)
+	info, err := os.Lstat(stashDir)
+	if err != nil {
+		return "", fmt.Errorf("lstat stash: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return "", fmt.Errorf("stash path %q is not a real directory", stashDir)
+	}
+	man, err := manifest.Load(stashDir)
+	if err != nil {
+		return "", fmt.Errorf("load stash manifest: %w", err)
+	}
+	if man.ID != stashID {
+		return "", fmt.Errorf("stash manifest ID %q does not match directory %q", man.ID, stashID)
+	}
+	operationLock, err := fslock.Acquire(ctx, filepath.Join(stashDir, ".fcheap.lock"))
+	if err != nil {
+		return "", err
+	}
+	defer operationLock.Release() //nolint:errcheck
+
+	contentDir, cleanup, err := readableContentDir(ctx, stashDir)
 	if err != nil {
 		return "", err
 	}
@@ -758,19 +1005,19 @@ func (a *Analyzer) DropIndex(stashID string) error {
 // readableContentDir returns a directory containing the stash's extracted files.
 // For compressed stashes it extracts the archive to a temp directory and returns
 // a cleanup function to remove it.
-func readableContentDir(stashDir string) (dir string, cleanup func(), err error) {
+func readableContentDir(ctx context.Context, stashDir string) (dir string, cleanup func(), err error) {
 	contentDir := filepath.Join(stashDir, "content")
-	if info, statErr := os.Stat(contentDir); statErr == nil && info.IsDir() {
+	if info, statErr := os.Lstat(contentDir); statErr == nil && info.Mode()&os.ModeSymlink == 0 && info.IsDir() {
 		return contentDir, func() {}, nil
 	}
 	for _, name := range []string{"content.tar.zst", "content.tar.gz", "content.tar"} {
 		archive := filepath.Join(stashDir, name)
-		if _, statErr := os.Stat(archive); statErr == nil {
+		if info, statErr := os.Lstat(archive); statErr == nil && info.Mode().IsRegular() {
 			tmp, mkErr := os.MkdirTemp("", "fcheap-index-")
 			if mkErr != nil {
 				return "", func() {}, mkErr
 			}
-			if exErr := compress.Extract(archive, tmp); exErr != nil {
+			if exErr := compress.ExtractContext(ctx, archive, tmp); exErr != nil {
 				_ = os.RemoveAll(tmp)
 				return "", func() {}, fmt.Errorf("extract for indexing: %w", exErr)
 			}
@@ -783,8 +1030,8 @@ func readableContentDir(stashDir string) (dir string, cleanup func(), err error)
 // readTextFile reads a file's content for indexing, skipping binary files and
 // capping the amount read.
 func readTextFile(path string) (string, bool) {
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
 		return "", false
 	}
 	f, err := os.Open(path)
@@ -793,9 +1040,10 @@ func readTextFile(path string) (string, bool) {
 	}
 	defer f.Close() //nolint:errcheck
 
-	buf := make([]byte, maxIndexFileBytes)
-	n, _ := f.Read(buf)
-	data := buf[:n]
+	data, err := io.ReadAll(io.LimitReader(f, maxIndexFileBytes))
+	if err != nil {
+		return "", false
+	}
 	if !isPrintable(data) {
 		return "", false
 	}
@@ -816,7 +1064,7 @@ func isPrintable(data []byte) bool {
 			nonPrintable++
 		}
 	}
-	return nonPrintable < len(data)/10
+	return nonPrintable*10 <= len(data)
 }
 
 func payloadString(payload map[string]any, key string) string {

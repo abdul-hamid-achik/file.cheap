@@ -2,6 +2,8 @@ package stash
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,7 +49,7 @@ func TestParseTTL(t *testing.T) {
 // in the manifest, and that it shows up as expired after the TTL elapses.
 func TestSaveWithTTL(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := NewManager(tmp)
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +91,7 @@ func TestSaveWithTTL(t *testing.T) {
 // and never reports as expired.
 func TestSaveWithoutTTL(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := NewManager(tmp)
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +124,7 @@ func TestSaveWithoutTTL(t *testing.T) {
 // and --include-expired shows them.
 func TestListHidesExpired(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := NewManager(tmp)
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +169,7 @@ func TestListHidesExpired(t *testing.T) {
 // dry-run mode and actually drops them when applied.
 func TestSweepExpired(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := NewManager(tmp)
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +236,7 @@ func TestSweepExpired(t *testing.T) {
 // when expired.
 func TestSweepKeepTag(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := NewManager(tmp)
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,11 +286,133 @@ func TestSweepKeepTag(t *testing.T) {
 	}
 }
 
+func TestSweepExpiredFiltersBeforeApplying(t *testing.T) {
+	tmp := t.TempDir()
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(tmp, "source.txt")
+	if err := os.WriteFile(source, []byte("payload"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	included, err := mgr.Save(context.Background(), &SaveOptions{
+		SourcePath: source, Name: "included", Tags: []string{"cache"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	excluded, err := mgr.Save(context.Background(), &SaveOptions{
+		SourcePath: source, Name: "excluded", Tags: []string{"evidence"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{included.Manifest.ID, excluded.Manifest.ID} {
+		if err := mgr.SetExpiry(context.Background(), id, "-1h"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	res, err := mgr.SweepExpiredFiltered(context.Background(), true, "", "cache", func(string) error {
+		return fmt.Errorf("index unavailable")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Expired) != 1 || res.Expired[0] != included.Manifest.ID {
+		t.Fatalf("expired plan = %v, want only %s", res.Expired, included.Manifest.ID)
+	}
+	if len(res.Dropped) != 1 || res.Dropped[0] != included.Manifest.ID {
+		t.Fatalf("dropped = %v, want only %s", res.Dropped, included.Manifest.ID)
+	}
+	if len(res.Failed) != 1 || res.Failed[0].Stage != "index" {
+		t.Fatalf("failed = %+v, want reported index failure", res.Failed)
+	}
+	if mgr.Exists(included.Manifest.ID) {
+		t.Fatal("included expired stash still exists")
+	}
+	if !mgr.Exists(excluded.Manifest.ID) {
+		t.Fatal("non-matching expired stash was deleted before filtering")
+	}
+}
+
+func TestSweepSkipsManifestDirectoryIDMismatch(t *testing.T) {
+	tmp := t.TempDir()
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(tmp, "source.txt")
+	if err := os.WriteFile(source, []byte("payload"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	victim, err := mgr.Save(context.Background(), &SaveOptions{SourcePath: source, Name: "victim"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mismatched, err := mgr.Save(context.Background(), &SaveOptions{SourcePath: source, Name: "mismatched"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.SetExpiry(context.Background(), mismatched.Manifest.ID, "-1h"); err != nil {
+		t.Fatal(err)
+	}
+	mismatched.Manifest.ID = victim.Manifest.ID
+	if err := mismatched.Manifest.Save(mismatched.Dir); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := mgr.SweepExpired(context.Background(), true, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Dropped) != 0 || len(res.Expired) != 0 {
+		t.Fatalf("mismatched manifest became a destructive sweep plan: %+v", res)
+	}
+	if len(res.Skipped) != 1 || res.Skipped[0] != filepath.Base(mismatched.Dir) {
+		t.Fatalf("Skipped = %v, want mismatched directory", res.Skipped)
+	}
+	if !mgr.Exists(victim.Manifest.ID) {
+		t.Fatal("sweep followed a mismatched manifest ID and deleted another stash")
+	}
+	if _, err := os.Stat(mismatched.Dir); err != nil {
+		t.Fatalf("sweep deleted mismatched stash directory: %v", err)
+	}
+}
+
+func TestSweepHonorsPreCancelledContext(t *testing.T) {
+	tmp := t.TempDir()
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(tmp, "source.txt")
+	if err := os.WriteFile(source, []byte("payload"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := mgr.Save(context.Background(), &SaveOptions{SourcePath: source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.SetExpiry(context.Background(), st.Manifest.ID, "-1h"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := mgr.SweepExpired(ctx, true, "", nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("SweepExpired error = %v, want context.Canceled", err)
+	}
+	if !mgr.Exists(st.Manifest.ID) {
+		t.Fatal("pre-cancelled sweep deleted the stash")
+	}
+}
+
 // TestSetExpiry verifies that SetExpiry can set and clear the TTL on an
 // existing stash.
 func TestSetExpiry(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := NewManager(tmp)
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,6 +458,40 @@ func TestSetExpiry(t *testing.T) {
 	info, _ = mgr.Info(context.Background(), st.Manifest.ID)
 	if info.Manifest.ExpiresAt != "" {
 		t.Errorf("ExpiresAt should be empty after clearing, got %q", info.Manifest.ExpiresAt)
+	}
+}
+
+func TestSetExpiryCalendarDateIsAbsolute(t *testing.T) {
+	tmp := t.TempDir()
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(tmp, "source.txt")
+	if err := os.WriteFile(source, []byte("payload"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := mgr.Save(context.Background(), &SaveOptions{SourcePath: source, Name: "absolute-expiry"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make creation deliberately old. The requested date must still be stored
+	// exactly, not converted to a duration from now and then added to CreatedAt.
+	st.Manifest.CreatedAt = time.Now().Add(-30 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	if err := st.Manifest.Save(mgr.StashDir(st.Manifest.ID)); err != nil {
+		t.Fatal(err)
+	}
+	wantDate := time.Now().Add(72 * time.Hour).UTC().Format("2006-01-02")
+	if err := mgr.SetExpiry(context.Background(), st.Manifest.ID, wantDate); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := mgr.Info(context.Background(), st.Manifest.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := wantDate + "T00:00:00Z"; updated.Manifest.ExpiresAt != want {
+		t.Fatalf("ExpiresAt = %q, want absolute date %q", updated.Manifest.ExpiresAt, want)
 	}
 }
 

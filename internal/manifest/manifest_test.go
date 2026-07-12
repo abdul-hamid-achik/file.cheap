@@ -1,6 +1,8 @@
 package manifest
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,6 +73,18 @@ func TestScanFiles(t *testing.T) {
 	}
 }
 
+func TestScanFilesContextHonorsCancellation(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("payload"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := New("cancelled", dir).ScanFilesContext(ctx, dir); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ScanFilesContext error = %v, want context.Canceled", err)
+	}
+}
+
 func TestSaveAndLoad(t *testing.T) {
 	tmp := t.TempDir()
 
@@ -100,6 +114,112 @@ func TestSaveAndLoad(t *testing.T) {
 	}
 	if !loaded.HasTag("bug") {
 		t.Error("should have tag 'bug'")
+	}
+}
+
+func TestLoadRejectsUnsupportedSchema(t *testing.T) {
+	dir := t.TempDir()
+	data := []byte(`{"schema_version":"99.0","id":"future","created_at":"2026-01-01T00:00:00Z"}`)
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "unsupported manifest schema") {
+		t.Fatalf("Load error = %v, want unsupported schema", err)
+	}
+}
+
+func TestLoadAdoptsLegacyManifestWithoutSchemaVersion(t *testing.T) {
+	dir := t.TempDir()
+	data := []byte(`{"id":"legacy","created_at":"2026-01-01T00:00:00Z"}`)
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	man, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if man.SchemaVersion != SchemaVersion {
+		t.Fatalf("SchemaVersion = %q, want %q", man.SchemaVersion, SchemaVersion)
+	}
+}
+
+func TestLoadRejectsUnsafeMetadata(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "bad expiry",
+			body: `{"id":"stash","created_at":"2026-01-01T00:00:00Z","expires_at":"tomorrow"}`,
+			want: "invalid manifest expires_at",
+		},
+		{
+			name: "absolute file path",
+			body: `{"id":"stash","created_at":"2026-01-01T00:00:00Z","files":[{"path":"/etc/passwd","size":1}]}`,
+			want: "invalid manifest file path",
+		},
+		{
+			name: "traversal file path",
+			body: `{"id":"stash","created_at":"2026-01-01T00:00:00Z","files":[{"path":"../outside","size":1}]}`,
+			want: "invalid manifest file path",
+		},
+		{
+			name: "duplicate file path",
+			body: `{"id":"stash","created_at":"2026-01-01T00:00:00Z","files":[{"path":"a.txt","size":1},{"path":"a.txt","size":1}]}`,
+			want: "duplicate manifest file path",
+		},
+		{
+			name: "negative file size",
+			body: `{"id":"stash","created_at":"2026-01-01T00:00:00Z","files":[{"path":"a.txt","size":-1}]}`,
+			want: "invalid negative size",
+		},
+		{
+			name: "file count mismatch",
+			body: `{"id":"stash","created_at":"2026-01-01T00:00:00Z","file_count":0,"total_size":1,"files":[{"path":"a.txt","size":1}]}`,
+			want: "file_count",
+		},
+		{
+			name: "total size mismatch",
+			body: `{"id":"stash","created_at":"2026-01-01T00:00:00Z","file_count":1,"total_size":2,"files":[{"path":"a.txt","size":1}]}`,
+			want: "total_size",
+		},
+		{
+			name: "invalid file hash",
+			body: `{"id":"stash","created_at":"2026-01-01T00:00:00Z","file_count":1,"total_size":1,"files":[{"path":"a.txt","size":1,"hash":"nope"}]}`,
+			want: "invalid SHA-256",
+		},
+		{
+			name: "invalid content hash",
+			body: `{"id":"stash","created_at":"2026-01-01T00:00:00Z","content_hash":"nope"}`,
+			want: "invalid manifest content_hash",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(tt.body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Load error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsOversizedManifest(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "manifest.json")
+	if err := os.WriteFile(path, []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(path, maxManifestBytes+1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "size limit") {
+		t.Fatalf("Load error = %v, want size limit", err)
 	}
 }
 

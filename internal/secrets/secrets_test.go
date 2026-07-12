@@ -1,10 +1,20 @@
 package secrets
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestScanContextHonorsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := ScanContext(ctx, t.TempDir()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ScanContext error = %v, want context.Canceled", err)
+	}
+}
 
 func TestScanDetectsSecrets(t *testing.T) {
 	dir := t.TempDir()
@@ -46,6 +56,31 @@ func TestRulesDistinct(t *testing.T) {
 	got := Rules(findings)
 	if len(got) != 2 {
 		t.Errorf("Rules() = %v, want 2 distinct", got)
+	}
+}
+
+func TestScanDoesNotFollowExternalSecretSymlink(t *testing.T) {
+	dir := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "external.env")
+	if err := os.WriteFile(outside, []byte("token=abcdefghijklmnop123456"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "linked.env")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	findings := Scan(dir)
+	if len(findings) != 0 {
+		t.Fatalf("Scan followed external secret symlink: %+v", findings)
+	}
+
+	rootLink := filepath.Join(t.TempDir(), "linked-root")
+	if err := os.Symlink(filepath.Dir(outside), rootLink); err != nil {
+		t.Skipf("root symlink unavailable: %v", err)
+	}
+	if findings := Scan(rootLink); len(findings) != 0 {
+		t.Fatalf("Scan followed a symlink root: %+v", findings)
 	}
 }
 

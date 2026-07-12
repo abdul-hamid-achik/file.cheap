@@ -1,18 +1,22 @@
 package cleanup
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/abdul-hamid-achik/file.cheap/internal/manifest"
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestAnalyzeCacheToolSourceGone(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := stash.NewManager(tmp)
+	mgr, err := stash.NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	// Create a source dir, save, then delete it so source is "gone".
@@ -39,7 +43,7 @@ func TestAnalyzeEvidenceToolProtected(t *testing.T) {
 	srcDir := filepath.Join(tmp, "evidence-source")
 	assert.NoError(t, os.MkdirAll(srcDir, 0755))
 
-	mgr, err := stash.NewManager(tmp)
+	mgr, err := stash.NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	st, err := mgr.Save(t.Context(), &stash.SaveOptions{
@@ -56,12 +60,24 @@ func TestAnalyzeEvidenceToolProtected(t *testing.T) {
 	assert.Equal(t, "keep", c.Verdict)
 }
 
+func TestSafeToAutoDropRequiresTTLOrRegenerableTool(t *testing.T) {
+	generic := &stash.Stash{Manifest: &manifest.Manifest{Tool: "generic"}}
+	evidence := &stash.Stash{Manifest: &manifest.Manifest{Tool: "vidtrace"}}
+	cache := &stash.Stash{Manifest: &manifest.Manifest{Tool: "codemap"}}
+	expired := &stash.Stash{Manifest: &manifest.Manifest{ExpiresAt: time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)}}
+
+	assert.False(t, safeToAutoDrop(generic))
+	assert.False(t, safeToAutoDrop(evidence))
+	assert.True(t, safeToAutoDrop(cache))
+	assert.True(t, safeToAutoDrop(expired))
+}
+
 func TestAnalyzeKeepTagProtected(t *testing.T) {
 	tmp := t.TempDir()
 	srcDir := filepath.Join(tmp, "cache-src")
 	assert.NoError(t, os.MkdirAll(srcDir, 0755))
 
-	mgr, err := stash.NewManager(tmp)
+	mgr, err := stash.NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	st, err := mgr.Save(t.Context(), &stash.SaveOptions{
@@ -84,7 +100,7 @@ func TestAnalyzeExpiredTTL(t *testing.T) {
 	srcDir := filepath.Join(tmp, "src")
 	assert.NoError(t, os.MkdirAll(srcDir, 0755))
 
-	mgr, err := stash.NewManager(tmp)
+	mgr, err := stash.NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	st, err := mgr.Save(t.Context(), &stash.SaveOptions{
@@ -96,7 +112,7 @@ func TestAnalyzeExpiredTTL(t *testing.T) {
 
 	// Manually set expires_at to the past to simulate expiry.
 	st.Manifest.ExpiresAt = time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)
-	assert.NoError(t, st.Manifest.Save(filepath.Join(tmp, st.Manifest.ID)))
+	assert.NoError(t, st.Manifest.Save(mgr.StashDir(st.Manifest.ID)))
 
 	hashIndex := map[string][]*stash.Stash{}
 	c := analyze(st, hashIndex, "keep")
@@ -113,7 +129,7 @@ func TestAnalyzeContentDedup(t *testing.T) {
 	// Create a file so both stashes have the same content hash.
 	assert.NoError(t, os.WriteFile(filepath.Join(srcDir, "file.txt"), []byte("same content"), 0644))
 
-	mgr, err := stash.NewManager(tmp)
+	mgr, err := stash.NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	// Save two stashes with identical content but different names.
@@ -122,7 +138,7 @@ func TestAnalyzeContentDedup(t *testing.T) {
 	// Manually set st1's CreatedAt to 1 second earlier (RFC3339 is second-level
 	// precision, so a 10ms sleep wouldn't change it).
 	st1.Manifest.CreatedAt = time.Now().Add(-1 * time.Second).UTC().Format(time.RFC3339)
-	assert.NoError(t, st1.Manifest.Save(filepath.Join(tmp, st1.Manifest.ID)))
+	assert.NoError(t, st1.Manifest.Save(mgr.StashDir(st1.Manifest.ID)))
 	st2, err := mgr.Save(t.Context(), &stash.SaveOptions{SourcePath: srcDir, Name: "second", Tool: "codemap"})
 	assert.NoError(t, err)
 
@@ -151,7 +167,7 @@ func TestAnalyzeKeepTagHardFloor(t *testing.T) {
 	srcDir := filepath.Join(tmp, "cache-src")
 	assert.NoError(t, os.MkdirAll(srcDir, 0755))
 
-	mgr, err := stash.NewManager(tmp)
+	mgr, err := stash.NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	// Save a stash with keep tag, cache tool, and expired TTL — this would
@@ -168,7 +184,7 @@ func TestAnalyzeKeepTagHardFloor(t *testing.T) {
 
 	// Manually expire the TTL.
 	st.Manifest.ExpiresAt = time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)
-	assert.NoError(t, st.Manifest.Save(filepath.Join(tmp, st.Manifest.ID)))
+	assert.NoError(t, st.Manifest.Save(mgr.StashDir(st.Manifest.ID)))
 
 	hashIndex := map[string][]*stash.Stash{}
 	c := analyze(st, hashIndex, "keep")
@@ -180,7 +196,7 @@ func TestAnalyzeKeepTagHardFloor(t *testing.T) {
 
 func TestRunDryRunNoDrop(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := stash.NewManager(tmp)
+	mgr, err := stash.NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	// Save a stash with a source path that will be deleted.
@@ -207,7 +223,7 @@ func TestRunDryRunNoDrop(t *testing.T) {
 
 func TestRunApplyDropsHighConfidence(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := stash.NewManager(tmp)
+	mgr, err := stash.NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	// Save a stash with a source path that will be deleted.
@@ -233,7 +249,7 @@ func TestRunApplyDropsHighConfidence(t *testing.T) {
 
 func TestRunApplyRespectsKeepTag(t *testing.T) {
 	tmp := t.TempDir()
-	mgr, err := stash.NewManager(tmp)
+	mgr, err := stash.NewManager(filepath.Join(tmp, "vault"))
 	assert.NoError(t, err)
 
 	// Save a stash with the keep tag.
@@ -256,4 +272,93 @@ func TestRunApplyRespectsKeepTag(t *testing.T) {
 	// Stash should still exist.
 	stashes, _ := mgr.List(t.Context(), "")
 	assert.Len(t, stashes, 1)
+}
+
+func TestRunUsesStableEmptyResultArrays(t *testing.T) {
+	mgr, err := stash.NewManager(filepath.Join(t.TempDir(), "vault"))
+	assert.NoError(t, err)
+
+	result, err := Run(t.Context(), mgr, nil, Options{})
+	assert.NoError(t, err)
+	assert.NotNil(t, result.Candidates)
+	assert.NotNil(t, result.Dropped)
+	assert.NotNil(t, result.Skipped)
+	assert.NotNil(t, result.Failed)
+
+	data, err := json.Marshal(result)
+	assert.NoError(t, err)
+	assert.JSONEq(t, `{
+		"candidates": [],
+		"dropped": [],
+		"skipped": [],
+		"failed": [],
+		"reclaimed": 0,
+		"applied": false
+	}`, string(data))
+}
+
+func TestRunReportsIndexFailureAfterSuccessfulDrop(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "cache")
+	assert.NoError(t, os.MkdirAll(source, 0755))
+	assert.NoError(t, os.WriteFile(filepath.Join(source, "cache.txt"), []byte("cache"), 0644))
+	mgr, err := stash.NewManager(filepath.Join(root, "vault"))
+	assert.NoError(t, err)
+	st, err := mgr.Save(t.Context(), &stash.SaveOptions{SourcePath: source, Tool: "codemap"})
+	assert.NoError(t, err)
+	assert.NoError(t, os.RemoveAll(source))
+
+	result, err := Run(t.Context(), mgr, func(string) error {
+		return errors.New("index unavailable")
+	}, Options{Apply: true})
+	assert.NoError(t, err)
+	assert.Equal(t, []string{st.Manifest.ID}, result.Dropped)
+	assert.Equal(t, st.Manifest.TotalSize, result.Reclaimed)
+	if assert.Len(t, result.Failed, 1) {
+		assert.Equal(t, st.Manifest.ID, result.Failed[0].ID)
+		assert.Equal(t, "index", result.Failed[0].Stage)
+		assert.Contains(t, result.Failed[0].Error, "index unavailable")
+	}
+	assert.False(t, mgr.Exists(st.Manifest.ID))
+}
+
+func TestRunCancellationStopsRemainingDestructiveWork(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "cache")
+	assert.NoError(t, os.MkdirAll(source, 0755))
+	assert.NoError(t, os.WriteFile(filepath.Join(source, "cache.txt"), []byte("cache"), 0644))
+	mgr, err := stash.NewManager(filepath.Join(root, "vault"))
+	assert.NoError(t, err)
+
+	ids := make([]string, 0, 2)
+	for range 2 {
+		st, err := mgr.Save(t.Context(), &stash.SaveOptions{SourcePath: source, Tool: "codemap"})
+		assert.NoError(t, err)
+		ids = append(ids, st.Manifest.ID)
+	}
+	assert.NoError(t, os.RemoveAll(source))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	indexCalls := 0
+	result, err := Run(ctx, mgr, func(string) error {
+		indexCalls++
+		cancel()
+		return nil
+	}, Options{Apply: true})
+	assert.NoError(t, err)
+	assert.Len(t, result.Candidates, 2)
+	assert.Len(t, result.Dropped, 1)
+	assert.Equal(t, 1, indexCalls)
+	if assert.Len(t, result.Failed, 1) {
+		assert.Equal(t, "cancel", result.Failed[0].Stage)
+		assert.Equal(t, context.Canceled.Error(), result.Failed[0].Error)
+	}
+
+	existing := 0
+	for _, id := range ids {
+		if mgr.Exists(id) {
+			existing++
+		}
+	}
+	assert.Equal(t, 1, existing, "one candidate must remain after cancellation")
 }

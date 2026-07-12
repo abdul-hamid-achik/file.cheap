@@ -8,6 +8,7 @@ import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
 	"github.com/spf13/cobra"
 )
+
 var (
 	searchLimit int
 	searchStash string

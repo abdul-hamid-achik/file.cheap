@@ -1,6 +1,7 @@
 package studio
 
 import (
+	"context"
 	"fmt"
 	"image/color"
 	"os"
@@ -42,6 +43,40 @@ func TestPreviewSeqDropsStaleLoads(t *testing.T) {
 	fresh, _ := m.Update(previewLoadedMsg{seq: 5, img: img})
 	if fresh.(Model).previewImg == nil {
 		t.Error("the current preview load was dropped")
+	}
+}
+
+func TestZeroResultSearchClearsPreviousPreview(t *testing.T) {
+	m := NewModel(context.Background(), t.TempDir(), "", analyze.EmbedderSettings{})
+	m.activeView = viewSearch
+	m.preview.SetContent("stale result content")
+	m.previewImg = solidImage(2, 2, testColor)
+
+	updated, cmd := m.Update(searchDoneMsg{query: "nothing", results: []analyze.SearchResult{}})
+	got := updated.(Model)
+	if cmd != nil {
+		t.Fatal("zero-result search started a preview load")
+	}
+	if got.previewImg != nil {
+		t.Fatal("zero-result search retained the previous image")
+	}
+	if view := clean(got.preview.View()); strings.Contains(view, "stale result content") || !strings.Contains(view, "No matching") {
+		t.Fatalf("zero-result preview = %q", view)
+	}
+}
+
+func TestPreviewRequestClearsOldContentWhileLoading(t *testing.T) {
+	m := NewModel(context.Background(), t.TempDir(), "", analyze.EmbedderSettings{})
+	m.activeView = viewDetail
+	m.selected = manyFileStash(1)
+	m.preview.SetContent("old file content")
+	cmd := m.loadFilePreviewCmd()
+	if cmd == nil {
+		t.Fatal("loadFilePreviewCmd returned nil")
+	}
+	view := clean(m.preview.View())
+	if strings.Contains(view, "old file content") || !strings.Contains(view, "Loading preview") {
+		t.Fatalf("preview while loading = %q", view)
 	}
 }
 

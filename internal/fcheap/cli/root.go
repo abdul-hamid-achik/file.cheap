@@ -49,17 +49,14 @@ Get started:
   fcheap doctor`,
 	Version: version.Full(),
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		rootCtx, rootCancel = context.WithCancel(context.Background())
-
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-		go func() {
-			sig := <-sigCh
-			if printer != nil && !quietMode {
-				printer.Warn("\nReceived %s, cancelling...", sig)
-			}
-			rootCancel()
-		}()
+		rootCtx, rootCancel = signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		// Restore the process's default signal behavior as soon as the first
+		// interrupt cancels the operation. A second Ctrl+C can then terminate a
+		// command whose third-party work has not yet observed the context.
+		go func(ctx context.Context, stop context.CancelFunc) {
+			<-ctx.Done()
+			stop()
+		}(rootCtx, rootCancel)
 
 		if cmd.Name() == "help" || cmd.Name() == "version" || cmd.Name() == "completion" {
 			return nil
@@ -150,8 +147,9 @@ func embSettings() analyze.EmbedderSettings {
 		return analyze.EmbedderSettings{}
 	}
 	return analyze.EmbedderSettings{
-		Provider: cfg.Embedder,
-		Model:    cfg.EmbedModel,
-		URL:      cfg.OllamaURL,
+		Provider:           cfg.Embedder,
+		Model:              cfg.EmbedModel,
+		URL:                cfg.OllamaURL,
+		AllowSecretContent: cfg.AllowRemoteSecrets,
 	}
 }

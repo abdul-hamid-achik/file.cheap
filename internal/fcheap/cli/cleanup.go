@@ -1,9 +1,9 @@
 package cli
 
 import (
+	"context"
 	"fmt"
-	"os"
-	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
@@ -13,18 +13,59 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// smartCleanupFailure records an operation that could not be completed during
+// an applied smart cleanup. Stage is "cancel", "inspect", "drop", or "index".
+type smartCleanupFailure struct {
+	ID    string `json:"id"`
+	Stage string `json:"stage"`
+	Error string `json:"error"`
+}
+
+// smartCleanupSkip records a cleanup recommendation that was protected by the
+// configured keep tag or was not safe for unattended deletion. CatKeep
+// recommendations are not included: they were never deletion candidates.
+type smartCleanupSkip struct {
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
+}
+
+// smartCleanupOutput is the stable machine-readable contract for smart cleanup.
+// Recommendations and Reclaimable describe the pre-apply analysis; Dropped and
+// Reclaimed describe what actually happened. This distinction keeps dry-run
+// useful while ensuring --apply output never overstates successful deletion.
+type smartCleanupOutput struct {
+	Total           int                           `json:"total"`
+	Recommendations []stash.CleanupRecommendation `json:"recommendations"`
+	ByCategory      map[stash.CleanupCategory]int `json:"by_category"`
+	Reclaimable     int64                         `json:"reclaimable"`
+	Applied         bool                          `json:"applied"`
+	Dropped         []string                      `json:"dropped"`
+	Reclaimed       int64                         `json:"reclaimed"`
+	Failed          []smartCleanupFailure         `json:"failed"`
+	Skipped         []smartCleanupSkip            `json:"skipped"`
+}
+
+type smartCleanupApplyResult struct {
+	Dropped   []string
+	Reclaimed int64
+	Failed    []smartCleanupFailure
+	Skipped   []smartCleanupSkip
+}
+
 var (
-	cleanupApply       bool
-	cleanupKeepTag     string
-	cleanupTool        string
-	cleanupTag         string
-	cleanupDropOnly    bool
-	cleanupExpired     bool
-	cleanupSmart       bool
-	cleanupCategories  []string
-	cleanupStaleDays   int
-	cleanupProjectsDir string
-	cleanupNotesDir    string
+	cleanupApply      bool
+	cleanupKeepTag    string
+	cleanupTool       string
+	cleanupTag        string
+	cleanupDropOnly   bool
+	cleanupExpired    bool
+	cleanupSmart      bool
+	cleanupCategories []string
+	cleanupStaleDays  int
+
+	cleanupIndexDropper = func(id string) error {
+		return analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath).DropIndex(id)
+	}
 )
 
 var cleanupCmd = &cobra.Command{
@@ -46,7 +87,7 @@ SMART (category mode, --smart): categorizes every stash into exactly one
 cleanup category based on why it might be droppable:
 
   expired     — TTL has elapsed
-  orphaned    — source path (or project directory) no longer exists
+  orphaned    — recorded source path no longer exists
   superseded  — a newer stash exists for the same tool + source path
   duplicate   — same content hash as a newer stash
   branch-gone — a "branch:" tag references a deleted git branch
@@ -62,8 +103,9 @@ Priority order ensures each stash gets only its first matching category
   fcheap cleanup --smart --stale-days 30 --apply
 
 By default cleanup is a dry-run: it reports candidates without dropping them.
-Use --apply to actually drop stashes. In scoring mode, only "drop" verdicts are
-dropped. In smart mode, all non-keep stashes are dropped (respecting --categories).
+Use --apply to drop safe candidates. Both modes auto-delete only explicit TTL
+expirations or documented regenerable caches (codemap/vecgrep). Other DROP or
+non-keep recommendations remain review-only and are reported as skipped.
 
 Stashes with the --keep-tag tag (default: "keep") are never dropped in scoring
 mode — this is a safety net for pinning important stashes.`,
@@ -88,8 +130,7 @@ func runScoringCleanup(mgr *stash.Manager) error {
 		keepTag = "keep"
 	}
 
-	an := analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath)
-	result, err := cleanup.Run(GetContext(), mgr, an.DropIndex, cleanup.Options{
+	result, err := cleanup.Run(GetContext(), mgr, cleanupIndexDropper, cleanup.Options{
 		Apply:    cleanupApply,
 		KeepTag:  keepTag,
 		Tool:     cleanupTool,
@@ -102,7 +143,13 @@ func runScoringCleanup(mgr *stash.Manager) error {
 	}
 
 	if printer.IsJSON() {
-		return printer.JSON(result)
+		if err := printer.JSON(result); err != nil {
+			return err
+		}
+		if len(result.Failed) > 0 {
+			return fmt.Errorf("cleanup failed for %d operation(s)", len(result.Failed))
+		}
+		return nil
 	}
 
 	mode := "DRY RUN"
@@ -149,41 +196,74 @@ func runScoringCleanup(mgr *stash.Manager) error {
 		printer.Println()
 		printer.Success("Dropped %d stash(es), reclaimed %s", len(result.Dropped), formatSize(result.Reclaimed))
 	}
+	if cleanupApply && len(result.Skipped) > 0 {
+		printer.Warn("Skipped %d review-only stash(es); add an explicit TTL or target a documented cache tool", len(result.Skipped))
+	}
+	for _, failure := range result.Failed {
+		printer.Warn("failed to %s stash %s: %s", failure.Stage, failure.ID, failure.Error)
+	}
 
 	if !cleanupApply && len(drops) > 0 {
 		printer.Println()
 		printer.Warn("This was a dry-run. Use --apply to drop stashes scored as DROP.")
 	}
 
+	if len(result.Failed) > 0 {
+		return fmt.Errorf("cleanup failed for %d operation(s)", len(result.Failed))
+	}
 	return nil
 }
 
 // runSmartCleanup runs the category-based smart cleanup (--smart mode).
 func runSmartCleanup(mgr *stash.Manager) error {
-	// Resolve default directories.
-	projectsDir := cleanupProjectsDir
-	if projectsDir == "" {
-		home, _ := os.UserHomeDir()
-		projectsDir = filepath.Join(home, "projects")
-	}
-	notesDir := cleanupNotesDir
-	if notesDir == "" {
-		home, _ := os.UserHomeDir()
-		notesDir = filepath.Join(home, "notes", "projects")
-	}
-
 	result, err := mgr.AnalyzeCleanup(GetContext(), stash.CleanupOptions{
-		StaleDays:   cleanupStaleDays,
-		ProjectsDir: projectsDir,
-		NotesDir:    notesDir,
-		Categories:  cleanupCategories,
+		StaleDays:  cleanupStaleDays,
+		Categories: cleanupCategories,
 	})
 	if err != nil {
 		return err
 	}
 
+	keepTag := cleanupKeepTag
+	if keepTag == "" {
+		keepTag = "keep"
+	}
+
+	applyResult := smartCleanupApplyResult{
+		Dropped: []string{},
+		Failed:  []smartCleanupFailure{},
+		Skipped: []smartCleanupSkip{},
+	}
+	if cleanupApply {
+		applyResult = applySmartCleanup(GetContext(), mgr, result, keepTag, cleanupIndexDropper)
+	}
+
+	out := smartCleanupOutput{
+		Total:           result.Total,
+		Recommendations: result.Recommendations,
+		ByCategory:      result.ByCategory,
+		Reclaimable:     result.Reclaimable,
+		Applied:         cleanupApply,
+		Dropped:         applyResult.Dropped,
+		Reclaimed:       applyResult.Reclaimed,
+		Failed:          applyResult.Failed,
+		Skipped:         applyResult.Skipped,
+	}
+	if out.Recommendations == nil {
+		out.Recommendations = []stash.CleanupRecommendation{}
+	}
+	if out.ByCategory == nil {
+		out.ByCategory = map[stash.CleanupCategory]int{}
+	}
+
 	if printer.IsJSON() {
-		return printer.JSON(result)
+		if err := printer.JSON(out); err != nil {
+			return err
+		}
+		if len(out.Failed) > 0 {
+			return fmt.Errorf("smart cleanup failed for %d stash(es)", len(out.Failed))
+		}
+		return nil
 	}
 
 	if len(result.Recommendations) == 0 {
@@ -237,40 +317,116 @@ func runSmartCleanup(mgr *stash.Manager) error {
 	printer.Println()
 	printer.Info("%s", summary)
 
-	// Apply: drop all non-keep recommendations (respecting --categories filter
-	// and --keep-tag).
-	keepTag := cleanupKeepTag
-	if keepTag == "" {
-		keepTag = "keep"
-	}
 	if cleanupApply {
-		an := analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath)
-		var dropped []string
-		for _, rec := range result.Recommendations {
-			if rec.Category == stash.CatKeep {
-				continue
-			}
-			// Respect keep-tag: skip stashes bearing it.
-			if st, err := mgr.Info(GetContext(), rec.ID); err == nil && st.Manifest.HasTag(keepTag) {
-				continue
-			}
-			if err := mgr.Drop(GetContext(), rec.ID); err != nil {
-				printer.Warn("failed to drop stash %s: %v", rec.ID, err)
-				continue
-			}
-			_ = an.DropIndex(rec.ID)
-			dropped = append(dropped, rec.ID)
+		for _, skipped := range out.Skipped {
+			printer.Warn("skipped stash %s: %s", skipped.ID, skipped.Reason)
 		}
-		if len(dropped) > 0 {
+		for _, failed := range out.Failed {
+			printer.Warn("failed to %s stash %s: %s", failed.Stage, failed.ID, failed.Error)
+		}
+		if len(out.Dropped) > 0 {
 			printer.Println()
-			printer.Success("Dropped %d stash(es), reclaimed %s", len(dropped), formatSize(result.Reclaimable))
+			printer.Success("Dropped %d stash(es), reclaimed %s", len(out.Dropped), formatSize(out.Reclaimed))
 		}
 	} else {
 		printer.Println()
 		printer.Warn("This was a dry-run. Use --apply to drop non-keep stashes.")
 	}
 
+	if len(out.Failed) > 0 {
+		return fmt.Errorf("smart cleanup failed for %d stash(es)", len(out.Failed))
+	}
 	return nil
+}
+
+// applySmartCleanup executes a previously computed smart-cleanup plan. It is
+// deliberately independent of output mode: --json changes serialization only,
+// never whether deletion happens.
+func applySmartCleanup(
+	ctx context.Context,
+	mgr *stash.Manager,
+	result *stash.CleanupResult,
+	keepTag string,
+	dropIndex func(id string) error,
+) smartCleanupApplyResult {
+	out := smartCleanupApplyResult{
+		Dropped: []string{},
+		Failed:  []smartCleanupFailure{},
+		Skipped: []smartCleanupSkip{},
+	}
+	for _, rec := range result.Recommendations {
+		if rec.Category == stash.CatKeep {
+			continue
+		}
+
+		// Inspect before deleting so an unreadable manifest cannot bypass keep-tag
+		// protection. Treat an inspection failure as a failed operation, not consent
+		// to delete.
+		st, err := mgr.Info(ctx, rec.ID)
+		if err != nil {
+			out.Failed = append(out.Failed, smartCleanupFailure{
+				ID: rec.ID, Stage: "inspect", Error: err.Error(),
+			})
+			continue
+		}
+		if keepTag != "" && st.Manifest.HasTag(keepTag) {
+			out.Skipped = append(out.Skipped, smartCleanupSkip{
+				ID: rec.ID, Reason: fmt.Sprintf("protected by keep tag %q", keepTag),
+			})
+			continue
+		}
+		if !smartCleanupAutoDeletable(rec) {
+			out.Skipped = append(out.Skipped, smartCleanupSkip{
+				ID:     rec.ID,
+				Reason: "requires review: only explicitly expired or regenerable cache stashes are auto-deletable",
+			})
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			out.Failed = append(out.Failed, smartCleanupFailure{
+				ID: rec.ID, Stage: "cancel", Error: err.Error(),
+			})
+			continue
+		}
+
+		if err := mgr.Drop(ctx, rec.ID); err != nil {
+			out.Failed = append(out.Failed, smartCleanupFailure{
+				ID: rec.ID, Stage: "drop", Error: err.Error(),
+			})
+			continue
+		}
+		out.Dropped = append(out.Dropped, rec.ID)
+		out.Reclaimed += rec.Size
+		if dropIndex != nil {
+			if err := dropIndex(rec.ID); err != nil {
+				out.Failed = append(out.Failed, smartCleanupFailure{
+					ID: rec.ID, Stage: "index", Error: err.Error(),
+				})
+			}
+		}
+	}
+
+	// Deterministic machine output even if filesystem iteration order changes.
+	sort.Strings(out.Dropped)
+	sort.Slice(out.Failed, func(i, j int) bool { return out.Failed[i].ID < out.Failed[j].ID })
+	sort.Slice(out.Skipped, func(i, j int) bool { return out.Skipped[i].ID < out.Skipped[j].ID })
+	return out
+}
+
+// smartCleanupAutoDeletable is intentionally conservative. A missing source,
+// old branch, duplicate payload, or newer checkpoint may be a useful evidence
+// trail rather than disposable data. Expired TTLs are explicit retention
+// intent, while these tool types are documented regenerable caches.
+func smartCleanupAutoDeletable(rec stash.CleanupRecommendation) bool {
+	if rec.Category == stash.CatExpired {
+		return true
+	}
+	switch rec.Tool {
+	case "codemap", "vecgrep":
+		return true
+	default:
+		return false
+	}
 }
 
 func groupByVerdict(candidates []cleanup.Candidate) (drops, reviews, keeps []cleanup.Candidate) {
@@ -297,6 +453,4 @@ func init() {
 	cleanupCmd.Flags().BoolVar(&cleanupSmart, "smart", false, "Use category-based smart analysis (expired/orphaned/superseded/duplicate/branch-gone/stale/keep)")
 	cleanupCmd.Flags().StringSliceVar(&cleanupCategories, "categories", nil, "Smart mode: filter to specific categories (comma-separated: expired,orphaned,superseded,duplicate,branch-gone,stale,keep)")
 	cleanupCmd.Flags().IntVar(&cleanupStaleDays, "stale-days", 0, "Smart mode: days without access to be considered stale (0 = disabled)")
-	cleanupCmd.Flags().StringVar(&cleanupProjectsDir, "projects-dir", "", "Smart mode: path to ~/projects for orphan detection (default: ~/projects)")
-	cleanupCmd.Flags().StringVar(&cleanupNotesDir, "notes-dir", "", "Smart mode: path to ~/notes/projects for orphan detection (default: ~/notes/projects)")
 }

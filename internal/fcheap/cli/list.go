@@ -27,7 +27,7 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
-	opts := stash.ListOptions{Tags: listTags, Tool: listTool, IncludeExpired: listIncludeExpired}
+		opts := stash.ListOptions{Tags: listTags, Tool: listTool, IncludeExpired: listIncludeExpired}
 		if listSince != "" {
 			since, err := stash.ParseSince(listSince)
 			if err != nil {

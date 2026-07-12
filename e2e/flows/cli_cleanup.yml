@@ -44,7 +44,7 @@ target:
 
 terminal:
   cols: 120
-  rows: 40
+  rows: 80
   profile: xterm-256color
   alternateScreen: forbid
 

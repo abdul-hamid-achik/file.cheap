@@ -27,6 +27,7 @@ func TestSaveAndLoad(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldHome := os.Getenv("HOME")
 	_ = os.Setenv("HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", "")
 	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	cfg := &Config{
@@ -87,6 +88,7 @@ func TestEnvOverrides(t *testing.T) {
 func TestLoadFromDiskIgnoresEnvOverrides(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("XDG_DATA_HOME", "")
 	t.Setenv(EnvStashDir, "/tmp/env-override-stashdir")
 
@@ -121,5 +123,64 @@ func TestLoadFromDiskIgnoresEnvOverrides(t *testing.T) {
 	}
 	if reloaded.Compression != "gzip" {
 		t.Errorf("expected persisted compression=gzip, got %q", reloaded.Compression)
+	}
+}
+
+func TestDirHonorsXDGConfigHome(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", root)
+
+	dir, err := Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(root, "fcheap")
+	if dir != want {
+		t.Fatalf("Dir() = %q, want %q", dir, want)
+	}
+
+	cfg, err := LoadFromDisk()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(want, "config.yaml")); err != nil {
+		t.Fatalf("config was not written under XDG_CONFIG_HOME: %v", err)
+	}
+}
+
+func TestLoadExpandsAndAnchorsConfiguredPaths(t *testing.T) {
+	home := t.TempDir()
+	configHome := filepath.Join(home, "xdg-config")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	dir := filepath.Join(configHome, "fcheap")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	data := []byte("stash_dir: ~/.private-vault\nvecgrep_path: bin/vecgrep\n")
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadFromDisk()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(home, ".private-vault"); cfg.StashDir != want {
+		t.Errorf("StashDir = %q, want %q", cfg.StashDir, want)
+	}
+	if want := filepath.Join(dir, "bin", "vecgrep"); cfg.VecgrepPath != want {
+		t.Errorf("VecgrepPath = %q, want %q", cfg.VecgrepPath, want)
+	}
+}
+
+func TestDirRejectsRelativeXDGConfigHome(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "relative-config")
+	if _, err := Dir(); err == nil {
+		t.Fatal("Dir() accepted a relative XDG_CONFIG_HOME")
 	}
 }

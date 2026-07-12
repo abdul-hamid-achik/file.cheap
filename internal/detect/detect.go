@@ -4,6 +4,7 @@ package detect
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,16 +25,60 @@ const (
 	maxBundleJSONBytes = 32 << 20 // 32 MiB
 )
 
-// readCappedFile reads path but refuses files larger than max bytes.
-func readCappedFile(path string, max int64) ([]byte, error) {
-	fi, err := os.Stat(path)
+// readCappedFile reads a regular file below root without following symlinks
+// outside that root. The Lstat/open/SameFile sequence also ensures a path that
+// changes between discovery and open is rejected before any content is read.
+func readCappedFile(rootDir, name string, max int64) ([]byte, error) {
+	if max < 0 {
+		return nil, fmt.Errorf("invalid read cap %d", max)
+	}
+	clean := filepath.Clean(name)
+	if name == "" || filepath.IsAbs(name) || clean == "." || clean == ".." ||
+		strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean != name {
+		return nil, fmt.Errorf("unsafe file path %q", name)
+	}
+
+	root, err := openStableRoot(rootDir)
 	if err != nil {
 		return nil, err
 	}
-	if fi.Size() > max {
-		return nil, fmt.Errorf("%s too large (%d bytes > %d cap)", filepath.Base(path), fi.Size(), max)
+	defer root.Close() //nolint:errcheck
+
+	before, err := root.Lstat(name)
+	if err != nil {
+		return nil, err
 	}
-	return os.ReadFile(path)
+	if !before.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", filepath.Base(name))
+	}
+	if before.Size() > max {
+		return nil, fmt.Errorf("%s too large (%d bytes > %d cap)", filepath.Base(name), before.Size(), max)
+	}
+
+	f, err := root.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close() //nolint:errcheck
+	opened, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !opened.Mode().IsRegular() || !os.SameFile(before, opened) {
+		return nil, fmt.Errorf("%s changed while opening", filepath.Base(name))
+	}
+	if opened.Size() > max {
+		return nil, fmt.Errorf("%s too large (%d bytes > %d cap)", filepath.Base(name), opened.Size(), max)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(f, max+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > max {
+		return nil, fmt.Errorf("%s grew beyond %d-byte cap while reading", filepath.Base(name), max)
+	}
+	return data, nil
 }
 
 // Result holds detection metadata about a directory.
@@ -65,7 +110,7 @@ type TimelineEntry struct {
 // BundleTypeOf cheaply classifies a directory by structure alone (no content
 // read), suitable for the save path where a full Detect would be wasteful.
 func BundleTypeOf(dir string) BundleType {
-	if fileExists(filepath.Join(dir, "metadata.json")) && fileExists(filepath.Join(dir, "timeline.json")) {
+	if regularFileExists(dir, "metadata.json") && regularFileExists(dir, "timeline.json") {
 		return TypeVidtrace
 	}
 	return TypeGeneric
@@ -74,7 +119,7 @@ func BundleTypeOf(dir string) BundleType {
 // VidtraceMetadata reads and parses contentDir/metadata.json (a vidtrace bundle's
 // metadata object). Returns false if it is missing or malformed.
 func VidtraceMetadata(dir string) (map[string]any, bool) {
-	data, err := readCappedFile(filepath.Join(dir, "metadata.json"), maxBundleJSONBytes)
+	data, err := readCappedFile(dir, "metadata.json", maxBundleJSONBytes)
 	if err != nil {
 		return nil, false
 	}
@@ -88,7 +133,7 @@ func VidtraceMetadata(dir string) (map[string]any, bool) {
 // ParseVidtraceTimeline reads and flattens contentDir/timeline.json. It returns
 // nil if the file is missing or malformed.
 func ParseVidtraceTimeline(contentDir string) []TimelineEntry {
-	data, err := readCappedFile(filepath.Join(contentDir, "timeline.json"), maxBundleJSONBytes)
+	data, err := readCappedFile(contentDir, "timeline.json", maxBundleJSONBytes)
 	if err != nil {
 		return nil
 	}
@@ -150,9 +195,7 @@ func Detect(dir string) Result {
 type vidtraceDetector struct{}
 
 func (d *vidtraceDetector) Detect(dir string) (Result, bool) {
-	metaPath := filepath.Join(dir, "metadata.json")
-	timelinePath := filepath.Join(dir, "timeline.json")
-	if !fileExists(metaPath) || !fileExists(timelinePath) {
+	if !regularFileExists(dir, "metadata.json") || !regularFileExists(dir, "timeline.json") {
 		return Result{}, false
 	}
 
@@ -164,7 +207,7 @@ func (d *vidtraceDetector) Detect(dir string) (Result, bool) {
 	// Parse metadata.json for searchable text. SearchableText is built in a
 	// bounded Builder to avoid unbounded accumulation / O(n^2) churn.
 	var st strings.Builder
-	if data, err := readCappedFile(metaPath, maxBundleJSONBytes); err == nil {
+	if data, err := readCappedFile(dir, "metadata.json", maxBundleJSONBytes); err == nil {
 		var meta map[string]any
 		if json.Unmarshal(data, &meta) == nil {
 			r.Metadata["vidtrace_metadata"] = meta
@@ -238,12 +281,7 @@ func (d *genericDetector) Detect(dir string) (Result, bool) {
 		if sb.Len() >= maxSearchableTextBytes {
 			break
 		}
-		fullPath := filepath.Join(dir, f)
-		info, err := os.Stat(fullPath)
-		if err != nil || info.Size() > 100*1024 { // skip files > 100KB
-			continue
-		}
-		if data, err := os.ReadFile(fullPath); err == nil && isPrintable(data) {
+		if data, err := readCappedFile(dir, f, 100*1024); err == nil && isPrintable(data) {
 			sb.Write(data)
 			sb.WriteByte('\n')
 		}
@@ -256,7 +294,7 @@ func (d *genericDetector) Detect(dir string) (Result, bool) {
 func collectTextFiles(root string, subdirs []string) []string {
 	var files []string
 	walkFn := func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+		if err != nil || !info.Mode().IsRegular() {
 			return nil
 		}
 		ext := strings.ToLower(filepath.Ext(path))
@@ -264,8 +302,10 @@ func collectTextFiles(root string, subdirs []string) []string {
 		case ".txt", ".md", ".json", ".yaml", ".yml", ".csv", ".tsv",
 			".log", ".vtt", ".srt", ".go", ".js", ".ts", ".py", ".rs", ".rb",
 			".java", ".c", ".cpp", ".h", ".sh", ".sql", ".html", ".css", ".xml":
-			rel, _ := filepath.Rel(root, path)
-			files = append(files, rel)
+			rel, err := filepath.Rel(root, path)
+			if err == nil {
+				files = append(files, rel)
+			}
 		}
 		return nil
 	}
@@ -296,15 +336,46 @@ func isPrintable(data []byte) bool {
 			nonPrintable++
 		}
 	}
-	return nonPrintable < len(data)/10 // allow up to 10% non-printable
+	return nonPrintable*10 <= len(data) // allow up to 10% non-printable
 }
 
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
+func regularFileExists(rootDir, name string) bool {
+	root, err := openStableRoot(rootDir)
+	if err != nil {
+		return false
+	}
+	defer root.Close() //nolint:errcheck
+	info, err := root.Lstat(name)
+	return err == nil && info.Mode().IsRegular()
+}
+
+// openStableRoot rejects a symlink root and verifies the directory did not
+// change between Lstat and OpenRoot. Once opened, os.Root keeps subsequent
+// relative operations confined to this directory tree.
+func openStableRoot(rootDir string) (*os.Root, error) {
+	before, err := os.Lstat(rootDir)
+	if err != nil {
+		return nil, err
+	}
+	if !before.IsDir() {
+		return nil, fmt.Errorf("%s is not a regular directory", rootDir)
+	}
+	root, err := os.OpenRoot(rootDir)
+	if err != nil {
+		return nil, err
+	}
+	opened, err := root.Stat(".")
+	if err != nil || !opened.IsDir() || !os.SameFile(before, opened) {
+		_ = root.Close()
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%s changed while opening", rootDir)
+	}
+	return root, nil
 }
 
 func dirExists(path string) bool {
-	info, err := os.Stat(path)
+	info, err := os.Lstat(path)
 	return err == nil && info.IsDir()
 }

@@ -68,7 +68,7 @@ outcomes:
     description: sweep --apply reports it dropped the expired stash
     verify:
       screen:
-        contains: "dropped"
+        contains: "Swept"
   - id: keep_survives_sweep
     description: keep-tag stash survives sweep --apply
     verify:

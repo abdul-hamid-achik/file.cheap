@@ -4,6 +4,7 @@ package compress
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -35,6 +36,15 @@ var maxExtractedBytes int64 = 20 << 30 // 20 GiB
 // explicitly before success is reported: a failure on the final flush (e.g.
 // ENOSPC) surfaces as a non-nil error rather than a silently truncated archive.
 func Archive(srcDir, outputPath string, algo Algorithm) (totalSize int64, err error) {
+	return ArchiveContext(context.Background(), srcDir, outputPath, algo)
+}
+
+// ArchiveContext is Archive with cancellation support during traversal and
+// file copying.
+func ArchiveContext(ctx context.Context, srcDir, outputPath string, algo Algorithm) (totalSize int64, err error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	out, err := os.Create(outputPath)
 	if err != nil {
 		return 0, fmt.Errorf("create archive: %w", err)
@@ -100,15 +110,18 @@ func Archive(srcDir, outputPath string, algo Algorithm) (totalSize int64, err er
 	}()
 
 	walkErr := filepath.Walk(srcDir, func(path string, info os.FileInfo, werr error) error {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if werr != nil {
 			return werr
-		}
-		if info.IsDir() {
-			return nil
 		}
 		rel, rerr := filepath.Rel(srcDir, path)
 		if rerr != nil {
 			return rerr
+		}
+		if rel == "." {
+			return nil
 		}
 		// Symlinks: record the link itself (no body) rather than dereferencing,
 		// which would fail on dangling links and corrupt the entry otherwise.
@@ -125,18 +138,27 @@ func Archive(srcDir, outputPath string, algo Algorithm) (totalSize int64, err er
 			return herr
 		}
 		hdr.Name = rel
+		if info.IsDir() {
+			// Directory headers preserve empty directories and their permissions;
+			// omitting them made a compressed round-trip lose empty trees.
+			hdr.Name += "/"
+			return tw.WriteHeader(hdr)
+		}
 		if werr := tw.WriteHeader(hdr); werr != nil {
 			return fmt.Errorf("write header for %s: %w", rel, werr)
 		}
 		if isSymlink {
 			return nil // symlink tar entries have no body
 		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("unsupported file type at %q: %s", path, info.Mode().Type())
+		}
 		f, oerr := os.Open(path)
 		if oerr != nil {
 			return oerr
 		}
 		defer f.Close() //nolint:errcheck
-		n, cerr := io.Copy(tw, f)
+		n, cerr := io.Copy(tw, &contextReader{ctx: ctx, reader: f})
 		if cerr != nil {
 			return fmt.Errorf("write %s: %w", rel, cerr)
 		}
@@ -156,6 +178,15 @@ func Archive(srcDir, outputPath string, algo Algorithm) (totalSize int64, err er
 
 // Extract decompresses a tar archive to a target directory.
 func Extract(archivePath, targetDir string) error {
+	return ExtractContext(context.Background(), archivePath, targetDir)
+}
+
+// ExtractContext is Extract with cancellation support between entries and
+// during decompression writes.
+func ExtractContext(ctx context.Context, archivePath, targetDir string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	f, err := os.Open(archivePath)
 	if err != nil {
 		return fmt.Errorf("open archive: %w", err)
@@ -192,6 +223,9 @@ func Extract(archivePath, targetDir string) error {
 	tr := tar.NewReader(reader)
 	var extracted int64 // running total, bounded by maxExtractedBytes
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		hdr, err := tr.Next()
 		if err == io.EOF {
 			break
@@ -206,35 +240,53 @@ func Extract(archivePath, targetDir string) error {
 		}
 		switch hdr.Typeflag {
 		case tar.TypeDir:
+			if err := ensureNoSymlinkPath(targetDir, target); err != nil {
+				return err
+			}
 			if err := os.MkdirAll(target, hdr.FileInfo().Mode()); err != nil {
 				return err
 			}
 		case tar.TypeReg:
+			if err := ensureNoSymlinkPath(targetDir, filepath.Dir(target)); err != nil {
+				return err
+			}
 			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 				return err
 			}
-			// Refuse to write through a pre-existing symlink at the destination: a
-			// planted link could otherwise redirect the write outside targetDir.
-			if fi, lerr := os.Lstat(target); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
-				if rmErr := os.Remove(target); rmErr != nil {
-					return rmErr
-				}
-			}
-			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, hdr.FileInfo().Mode())
+			out, err := os.CreateTemp(filepath.Dir(target), ".fcheap-extract-*")
 			if err != nil {
 				return err
 			}
+			tmpPath := out.Name()
 			// Bound each entry by the remaining budget so a bomb can't write past
 			// the cap. CopyN(remaining+1) returns >remaining only when over budget.
 			remaining := maxExtractedBytes - extracted
-			n, cerr := io.CopyN(out, tr, remaining+1)
-			out.Close() //nolint:errcheck
+			n, cerr := io.CopyN(out, &contextReader{ctx: ctx, reader: tr}, remaining+1)
 			extracted += n
 			if n > remaining {
+				_ = out.Close()
+				_ = os.Remove(tmpPath)
 				return fmt.Errorf("archive exceeds %d-byte extraction cap (possible decompression bomb)", maxExtractedBytes)
 			}
 			if cerr != nil && cerr != io.EOF {
+				_ = out.Close()
+				_ = os.Remove(tmpPath)
 				return cerr
+			}
+			if err := out.Chmod(hdr.FileInfo().Mode()); err != nil {
+				_ = out.Close()
+				_ = os.Remove(tmpPath)
+				return err
+			}
+			if err := out.Close(); err != nil {
+				_ = os.Remove(tmpPath)
+				return err
+			}
+			// Rename replaces a planted leaf symlink without following it and
+			// ensures a failed extraction never exposes a partial file.
+			if err := os.Rename(tmpPath, target); err != nil {
+				_ = os.Remove(tmpPath)
+				return err
 			}
 		case tar.TypeSymlink:
 			// Recreate the link, but refuse any that would resolve outside the
@@ -242,6 +294,9 @@ func Extract(archivePath, targetDir string) error {
 			// are skipped rather than failing the whole extract.
 			if !isSafeSymlink(targetDir, target, hdr.Linkname) {
 				continue
+			}
+			if err := ensureNoSymlinkPath(targetDir, filepath.Dir(target)); err != nil {
+				return err
 			}
 			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 				return err
@@ -275,4 +330,44 @@ func isSafePath(base, target string) bool {
 		return false
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// ensureNoSymlinkPath rejects an existing symlink in any path component below
+// base. Lexical traversal checks alone are insufficient: target/sub/file is
+// lexically inside target even when target/sub is a planted link to elsewhere.
+func ensureNoSymlinkPath(base, target string) error {
+	rel, err := filepath.Rel(base, target)
+	if err != nil || filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("unsafe extraction path: %s", target)
+	}
+	if rel == "." {
+		return nil
+	}
+	current := base
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("inspect extraction path %q: %w", current, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing to extract through symlink path component %q", current)
+		}
+	}
+	return nil
+}
+
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r *contextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
 }

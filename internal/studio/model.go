@@ -359,6 +359,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case searchDoneMsg:
 		m.searching = false
 		if msg.err != nil {
+			m.previewSeq++
+			m.clearPreviewImage()
+			m.preview.SetContent("")
 			m.errMessage = msg.err.Error()
 			return m, nil
 		}
@@ -367,6 +370,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lastQuery = msg.query
 		m.errMessage = ""
 		m.statusMessage = fmt.Sprintf("%d match(es) for %q", len(msg.results), msg.query)
+		if len(msg.results) == 0 {
+			m.previewSeq++
+			m.clearPreviewImage()
+			m.preview.SetContent("No matching content to preview.")
+			m.preview.GotoTop()
+			return m, nil
+		}
 		return m, m.loadResultPreviewCmd()
 
 	case previewLoadedMsg:

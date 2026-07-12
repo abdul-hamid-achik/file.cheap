@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/abdul-hamid-achik/file.cheap/internal/manifest"
 )
 
 func makeContent(t *testing.T, root, id string, files map[string]string) string {
@@ -23,7 +26,46 @@ func makeContent(t *testing.T, root, id string, files map[string]string) string 
 			t.Fatal(err)
 		}
 	}
+	man := manifest.New(id, content)
+	if err := man.Save(stashDir); err != nil {
+		t.Fatal(err)
+	}
 	return stashDir
+}
+
+type testEmbedder struct{}
+
+func (testEmbedder) Embed(text string) ([]float32, error) {
+	if strings.Contains(text, "weather") {
+		return []float32{0, 1}, nil
+	}
+	return []float32{1, 0}, nil
+}
+
+func (e testEmbedder) EmbedBatch(texts []string) ([][]float32, error) {
+	result := make([][]float32, 0, len(texts))
+	for _, text := range texts {
+		vector, err := e.Embed(text)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, vector)
+	}
+	return result, nil
+}
+
+func (testEmbedder) Dimension() int { return 2 }
+
+func analyzerWithTestEmbedder(root string) *Analyzer {
+	return &Analyzer{
+		stashRoot: root,
+		emb: EmbedderSettings{
+			Provider: "test",
+			Model:    "deterministic",
+		},
+		embCache: testEmbedder{},
+		embTried: true,
+	}
 }
 
 func TestIndexAndSearchPerFile(t *testing.T) {
@@ -178,6 +220,142 @@ func TestSearchFallbackToBM25WhenEmbedderEnabledAfterIndexing(t *testing.T) {
 	}
 	if res[0].Source != "keyword" {
 		t.Errorf("fallback Source = %q, want keyword", res[0].Source)
+	}
+}
+
+func TestMixedCollectionsBothContributeResults(t *testing.T) {
+	root := t.TempDir()
+	plain := NewAnalyzer(root, "")
+	plainStash := makeContent(t, root, "plain", map[string]string{
+		"plain.txt": "shared-token from the plain index",
+	})
+	if _, err := plain.IndexStash(context.Background(), plainStash); err != nil {
+		t.Fatal(err)
+	}
+
+	withEmb := analyzerWithTestEmbedder(root)
+	vectorStash := makeContent(t, root, "vector", map[string]string{
+		"vector.txt": "shared-token from the vector index",
+	})
+	if _, err := withEmb.IndexStash(context.Background(), vectorStash); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := withEmb.Search(context.Background(), "shared-token", 10, "hybrid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := make(map[string]bool)
+	for _, result := range results {
+		seen[result.StashID] = true
+	}
+	if !seen["plain"] || !seen["vector"] {
+		t.Fatalf("mixed search omitted a collection: results=%+v", results)
+	}
+}
+
+func TestKeywordSearchFindsVectorOnlyStashWithoutEmbedder(t *testing.T) {
+	root := t.TempDir()
+	withEmb := analyzerWithTestEmbedder(root)
+	stashDir := makeContent(t, root, "vector", map[string]string{
+		"vector.txt": "vector-only-keyword",
+	})
+	if _, err := withEmb.IndexStash(context.Background(), stashDir); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := NewAnalyzer(root, "").Search(context.Background(), "vector-only-keyword", 5, "keyword")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].StashID != "vector" {
+		t.Fatalf("keyword search did not inspect vector collection: %+v", results)
+	}
+}
+
+func TestShortTextFileIsIndexed(t *testing.T) {
+	root := t.TempDir()
+	stashDir := makeContent(t, root, "tiny", map[string]string{"tiny.txt": "tiny"})
+	result, err := NewAnalyzer(root, "").IndexStash(context.Background(), stashDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.FilesIndex != 1 {
+		t.Fatalf("FilesIndex = %d, want 1 for a printable 4-byte file", result.FilesIndex)
+	}
+}
+
+func TestRemoteEmbeddingBlockedForSecretBearingStash(t *testing.T) {
+	root := t.TempDir()
+	stashDir := makeContent(t, root, "secret", map[string]string{
+		"config.txt": "api_key = example",
+	})
+	man, err := manifest.Load(stashDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if man.Custom == nil {
+		man.Custom = make(map[string]string)
+	}
+	man.Custom["secrets_found"] = "1"
+	if err := man.Save(stashDir); err != nil {
+		t.Fatal(err)
+	}
+
+	an := NewAnalyzer(root, "").WithEmbedder(EmbedderSettings{
+		Provider: "openai",
+		Model:    "text-embedding-3-small",
+	})
+	_, err = an.IndexStash(context.Background(), stashDir)
+	if err == nil || !strings.Contains(err.Error(), "remote embedding blocked") {
+		t.Fatalf("IndexStash error = %v, want remote embedding policy error", err)
+	}
+
+	an.emb.AllowSecretContent = true
+	if err := an.checkOutboundPolicy(stashDir); err != nil {
+		t.Fatalf("explicit override was rejected: %v", err)
+	}
+
+	an.emb = EmbedderSettings{Provider: "ollama", URL: "http://127.0.0.1:11434"}
+	if err := an.checkOutboundPolicy(stashDir); err != nil {
+		t.Fatalf("loopback Ollama was treated as remote: %v", err)
+	}
+	an.emb.URL = "http://ollama.example.test:11434"
+	if err := an.checkOutboundPolicy(stashDir); err == nil || !strings.Contains(err.Error(), "remote embedding blocked") {
+		t.Fatalf("remote Ollama policy error = %v, want block", err)
+	}
+}
+
+func TestSearchHidesExpiredAndCorruptStashes(t *testing.T) {
+	root := t.TempDir()
+	an := NewAnalyzer(root, "")
+	expired := makeContent(t, root, "expired", map[string]string{"a.txt": "ghost-token"})
+	corrupt := makeContent(t, root, "corrupt", map[string]string{"b.txt": "ghost-token"})
+	if _, err := an.IndexStash(context.Background(), expired); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := an.IndexStash(context.Background(), corrupt); err != nil {
+		t.Fatal(err)
+	}
+
+	man, err := manifest.Load(expired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	man.ExpiresAt = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+	if err := man.Save(expired); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(corrupt, "manifest.json"), []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := an.Search(context.Background(), "ghost-token", 10, "keyword")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("search returned expired/corrupt ghost hits: %+v", results)
 	}
 }
 

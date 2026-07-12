@@ -1,9 +1,9 @@
 package cli
 
 import (
+	"context"
 	"fmt"
-	"os"
-	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
@@ -18,7 +18,34 @@ var (
 	sweepIncludeTag   string
 	sweepAuto         bool
 	sweepIncludeStale bool
+
+	sweepIndexDropper = func(id string) error {
+		return analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath).DropIndex(id)
+	}
 )
+
+type sweepAutoSkip struct {
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
+}
+
+type sweepAutoResult struct {
+	Candidates []stash.CleanupRecommendation `json:"candidates"`
+	Dropped    []stash.CleanupRecommendation `json:"dropped"`
+	Skipped    []sweepAutoSkip               `json:"skipped"`
+	Failed     []stash.SweepFailure          `json:"failed"`
+	Reclaimed  int64                         `json:"reclaimed"`
+}
+
+type sweepOutput struct {
+	Expired        *stash.SweepResult            `json:"expired"`
+	Auto           *stash.CleanupResult          `json:"auto"`
+	AutoCandidates []stash.CleanupRecommendation `json:"auto_candidates"`
+	AutoDropped    []stash.CleanupRecommendation `json:"auto_dropped"`
+	AutoSkipped    []sweepAutoSkip               `json:"auto_skipped"`
+	AutoFailed     []stash.SweepFailure          `json:"auto_failed"`
+	AutoReclaimed  int64                         `json:"auto_reclaimed"`
+}
 
 var sweepCmd = &cobra.Command{
 	Use:   "sweep",
@@ -35,11 +62,12 @@ their TTL has expired — this is a safety net for pinning important stashes.
 Use --include-tag to only sweep stashes bearing a specific tag (e.g.
 --include-tag codemap-snapshot to only sweep regenerable snapshots).
 
---auto extends sweep beyond expired TTL: it runs the smart cleanup analysis
-(AnalyzeCleanup) and also sweeps stashes categorized as orphaned,
-superseded, duplicate, or branch-gone. The "stale" category is only swept
-when --include-stale is also passed. The "keep" category is never swept.
---auto implies --apply (no dry-run when auto).`,
+--auto extends the report beyond expired TTL by running smart cleanup analysis
+for orphaned, superseded, duplicate, and branch-gone categories. The "stale"
+category is included only with --include-stale. With --apply, these categories
+are auto-deleted only for documented regenerable cache tools (codemap/vecgrep);
+evidence and generic checkpoints remain review-only. Like the standard sweep,
+--auto is a dry-run unless --apply is also passed.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mgr, err := stash.NewManager(cfg.StashDir)
@@ -52,109 +80,61 @@ when --include-stale is also passed. The "keep" category is never swept.
 			keepTag = "keep" // default safety-net tag
 		}
 
-		// --auto implies --apply (no dry-run when auto).
-		if sweepAuto {
-			sweepApply = true
-		}
-
-		dropIndex := func(id string) error {
-			return analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath).DropIndex(id)
-		}
-
 		// 1. Standard expired-TTL sweep.
-		res, err := mgr.SweepExpired(GetContext(), sweepApply, keepTag, dropIndex)
+		res, err := mgr.SweepExpiredFiltered(GetContext(), sweepApply, keepTag, sweepIncludeTag, sweepIndexDropper)
 		if err != nil {
 			return err
 		}
 
-		// Filter expired by include-tag if specified.
-		if sweepIncludeTag != "" && len(res.Expired) > 0 {
-			filtered := res.Expired[:0]
-			for _, id := range res.Expired {
-				st, err := mgr.Info(GetContext(), id)
-				if err != nil {
-					continue
-				}
-				if st.Manifest.HasTag(sweepIncludeTag) {
-					filtered = append(filtered, id)
-				}
-			}
-			res.Expired = filtered
-		}
-
 		// 2. --auto: smart cleanup categories.
 		var autoRes *stash.CleanupResult
-		var autoDropped []stash.CleanupRecommendation
+		autoApply := sweepAutoResult{
+			Candidates: []stash.CleanupRecommendation{},
+			Dropped:    []stash.CleanupRecommendation{},
+			Skipped:    []sweepAutoSkip{},
+			Failed:     []stash.SweepFailure{},
+		}
 		if sweepAuto {
-			home, _ := os.UserHomeDir()
-			projectsDir := filepath.Join(home, "projects")
-			notesDir := filepath.Join(home, "notes", "projects")
-
 			autoRes, err = mgr.AnalyzeCleanup(GetContext(), stash.CleanupOptions{
-				StaleDays:   30,
-				ProjectsDir: projectsDir,
-				NotesDir:    notesDir,
+				StaleDays: 30,
 			})
 			if err != nil {
 				return err
 			}
-
-			// Build the set of categories to sweep in auto mode.
-			autoCats := map[stash.CleanupCategory]bool{
-				stash.CatOrphaned:   true,
-				stash.CatSuperseded: true,
-				stash.CatDuplicate:  true,
-				stash.CatBranchGone: true,
-			}
-			if sweepIncludeStale {
-				autoCats[stash.CatStale] = true
-			}
-
-			an := analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath)
-			for _, rec := range autoRes.Recommendations {
-				if rec.Category == stash.CatKeep {
-					continue
-				}
-				if !autoCats[rec.Category] {
-					continue
-				}
-				// Respect keep-tag: skip stashes bearing it.
-				if keepTag != "" {
-					if st, err := mgr.Info(GetContext(), rec.ID); err == nil && st.Manifest.HasTag(keepTag) {
-						continue
-					}
-				}
-				// Respect include-tag filter if set.
-				if sweepIncludeTag != "" {
-					st, err := mgr.Info(GetContext(), rec.ID)
-					if err != nil || !st.Manifest.HasTag(sweepIncludeTag) {
-						continue
-					}
-				}
-				// Drop it.
-				if err := mgr.Drop(GetContext(), rec.ID); err != nil {
-					continue
-				}
-				_ = an.DropIndex(rec.ID)
-				autoDropped = append(autoDropped, rec)
-			}
+			autoApply = runAutoSweep(
+				GetContext(), mgr, autoRes, sweepApply, keepTag, sweepIncludeTag,
+				sweepIncludeStale, sweepIndexDropper,
+			)
 		}
+		autoCandidates := autoApply.Candidates
+		autoDropped := autoApply.Dropped
+		failureCount := len(res.Failed) + len(autoApply.Failed)
 
 		if printer.IsJSON() {
-			return printer.JSON(map[string]any{
-				"expired":      res,
-				"auto":         autoRes,
-				"auto_dropped": autoDropped,
-			})
+			if err := printer.JSON(sweepOutput{
+				Expired:        res,
+				Auto:           autoRes,
+				AutoCandidates: autoCandidates,
+				AutoDropped:    autoDropped,
+				AutoSkipped:    autoApply.Skipped,
+				AutoFailed:     autoApply.Failed,
+				AutoReclaimed:  autoApply.Reclaimed,
+			}); err != nil {
+				return err
+			}
+			if failureCount > 0 {
+				return fmt.Errorf("sweep failed for %d operation(s)", failureCount)
+			}
+			return nil
 		}
 
 		mode := "DRY RUN"
 		if sweepApply {
 			mode = "APPLIED"
 		}
-		if len(res.Expired) == 0 && (!sweepAuto || len(autoDropped) == 0) {
+		if len(res.Expired) == 0 && (!sweepAuto || len(autoCandidates) == 0) && failureCount == 0 {
 			printer.Success("Sweep %s: no expired stashes found.", mode)
-			if sweepAuto && autoRes != nil && len(autoDropped) == 0 {
+			if sweepAuto && autoRes != nil && len(autoCandidates) == 0 {
 				printer.Info("Auto cleanup: nothing to sweep.")
 			}
 			return nil
@@ -162,21 +142,33 @@ when --include-stale is also passed. The "keep" category is never swept.
 
 		printer.Header(fmt.Sprintf("Sweep %s", mode))
 
-		// Expired stashes.
-		if len(res.Expired) > 0 {
-			printer.Section(fmt.Sprintf("Expired (%d)", len(res.Expired)))
+		// Expired stashes. Applied output shows actual drops; dry-run shows the
+		// plan. The result object retains both lists for automation.
+		expiredShown := res.Expired
+		if sweepApply {
+			expiredShown = res.Dropped
+		}
+		if len(expiredShown) > 0 {
+			printer.Section(fmt.Sprintf("Expired (%d)", len(expiredShown)))
 			tbl := output.NewTable([]string{"ID"}, printer.IsQuiet())
-			for _, id := range res.Expired {
+			for _, id := range expiredShown {
 				tbl.Append([]string{id})
 			}
 			tbl.Render()
 		}
 
-		// Auto-cleanup stashes.
-		if sweepAuto && len(autoDropped) > 0 {
-			printer.Section(fmt.Sprintf("Auto cleanup (%d)", len(autoDropped)))
+		// Auto-cleanup stashes. Dry-run shows the exact safe candidates; apply
+		// shows what was actually removed.
+		autoShown := autoCandidates
+		section := "Auto candidates"
+		if sweepApply {
+			autoShown = autoDropped
+			section = "Auto cleanup"
+		}
+		if sweepAuto && len(autoShown) > 0 {
+			printer.Section(fmt.Sprintf("%s (%d)", section, len(autoShown)))
 			tbl := output.NewTable([]string{"ID", "TOOL", "CATEGORY", "REASON", "SIZE"}, printer.IsQuiet())
-			for _, rec := range autoDropped {
+			for _, rec := range autoShown {
 				tool := rec.Tool
 				if tool == "" {
 					tool = "-"
@@ -194,12 +186,12 @@ when --include-stale is also passed. The "keep" category is never swept.
 
 		// Categorized summary line.
 		var parts []string
-		if len(res.Expired) > 0 {
-			parts = append(parts, fmt.Sprintf("%d expired", len(res.Expired)))
+		if len(expiredShown) > 0 {
+			parts = append(parts, fmt.Sprintf("%d expired", len(expiredShown)))
 		}
-		if sweepAuto && len(autoDropped) > 0 {
+		if sweepAuto && len(autoShown) > 0 {
 			byCat := make(map[stash.CleanupCategory]int)
-			for _, rec := range autoDropped {
+			for _, rec := range autoShown {
 				byCat[rec.Category]++
 			}
 			for _, cat := range []stash.CleanupCategory{
@@ -214,34 +206,149 @@ when --include-stale is also passed. The "keep" category is never swept.
 				}
 			}
 		}
-		totalSwept := len(res.Expired) + len(autoDropped)
+		totalSwept := len(expiredShown) + len(autoShown)
 		if len(parts) > 0 {
 			printer.Println()
-			printer.Info("Swept %d stashes: %s", totalSwept, strings.Join(parts, ", "))
+			verb := "Would sweep"
+			if sweepApply {
+				verb = "Swept"
+			}
+			printer.Info("%s %d stashes: %s", verb, totalSwept, strings.Join(parts, ", "))
 		}
 
 		if sweepApply && res.Reclaimed > 0 {
 			printer.KeyValue("Reclaimed (expired)", formatSize(res.Reclaimed))
 		}
-		if sweepAuto && len(autoDropped) > 0 {
-			var autoReclaim int64
-			for _, rec := range autoDropped {
-				autoReclaim += rec.Size
-			}
-			printer.KeyValue("Reclaimed (auto)", formatSize(autoReclaim))
+		if sweepAuto && autoApply.Reclaimed > 0 {
+			printer.KeyValue("Reclaimed (auto)", formatSize(autoApply.Reclaimed))
 		}
 		if !sweepApply {
 			printer.Println()
 			printer.Warn("This was a dry-run. Use --apply to actually drop these stashes.")
 		}
+		for _, failure := range res.Failed {
+			printer.Warn("failed to %s stash %s: %s", failure.Stage, failure.ID, failure.Error)
+		}
+		for _, skipped := range autoApply.Skipped {
+			printer.Warn("skipped auto-cleanup stash %s: %s", skipped.ID, skipped.Reason)
+		}
+		for _, failure := range autoApply.Failed {
+			printer.Warn("failed to %s auto-cleanup stash %s: %s", failure.Stage, failure.ID, failure.Error)
+		}
+		if failureCount > 0 {
+			return fmt.Errorf("sweep failed for %d operation(s)", failureCount)
+		}
 		return nil
 	},
+}
+
+// runAutoSweep builds the complete, filtered smart-cleanup plan before applying
+// it. This keeps the plan stable even when cancellation or a partial failure
+// stops mutation partway through.
+func runAutoSweep(
+	ctx context.Context,
+	mgr *stash.Manager,
+	analysis *stash.CleanupResult,
+	apply bool,
+	keepTag string,
+	includeTag string,
+	includeStale bool,
+	dropIndex func(id string) error,
+) sweepAutoResult {
+	out := sweepAutoResult{
+		Candidates: []stash.CleanupRecommendation{},
+		Dropped:    []stash.CleanupRecommendation{},
+		Skipped:    []sweepAutoSkip{},
+		Failed:     []stash.SweepFailure{},
+	}
+	if analysis == nil {
+		return out
+	}
+
+	autoCategories := map[stash.CleanupCategory]bool{
+		stash.CatOrphaned:   true,
+		stash.CatSuperseded: true,
+		stash.CatDuplicate:  true,
+		stash.CatBranchGone: true,
+	}
+	if includeStale {
+		autoCategories[stash.CatStale] = true
+	}
+
+	// Plan first. Filtering here, before any mutation, ensures the candidate list
+	// is exactly what --include-tag and keep-tag protections allowed.
+	for _, rec := range analysis.Recommendations {
+		if rec.Category == stash.CatKeep || !autoCategories[rec.Category] || !smartCleanupAutoDeletable(rec) {
+			continue
+		}
+		st, err := mgr.Info(ctx, rec.ID)
+		if err != nil {
+			out.Failed = append(out.Failed, stash.SweepFailure{ID: rec.ID, Stage: "inspect", Error: err.Error()})
+			continue
+		}
+		if keepTag != "" && st.Manifest.HasTag(keepTag) {
+			out.Skipped = append(out.Skipped, sweepAutoSkip{ID: rec.ID, Reason: fmt.Sprintf("protected by keep tag %q", keepTag)})
+			continue
+		}
+		if includeTag != "" && !st.Manifest.HasTag(includeTag) {
+			continue
+		}
+		out.Candidates = append(out.Candidates, rec)
+	}
+
+	sort.Slice(out.Candidates, func(i, j int) bool { return out.Candidates[i].ID < out.Candidates[j].ID })
+	if apply {
+		for _, rec := range out.Candidates {
+			if err := ctx.Err(); err != nil {
+				out.Failed = append(out.Failed, stash.SweepFailure{ID: rec.ID, Stage: "cancel", Error: err.Error()})
+				continue
+			}
+
+			// Re-inspect immediately before deletion so a concurrent keep-tag or
+			// include-tag change cannot bypass the plan's safety constraints.
+			st, err := mgr.Info(ctx, rec.ID)
+			if err != nil {
+				out.Failed = append(out.Failed, stash.SweepFailure{ID: rec.ID, Stage: "inspect", Error: err.Error()})
+				continue
+			}
+			if keepTag != "" && st.Manifest.HasTag(keepTag) {
+				out.Skipped = append(out.Skipped, sweepAutoSkip{ID: rec.ID, Reason: fmt.Sprintf("protected by keep tag %q", keepTag)})
+				continue
+			}
+			if includeTag != "" && !st.Manifest.HasTag(includeTag) {
+				out.Skipped = append(out.Skipped, sweepAutoSkip{ID: rec.ID, Reason: fmt.Sprintf("no longer has include tag %q", includeTag)})
+				continue
+			}
+			if err := mgr.Drop(ctx, rec.ID); err != nil {
+				out.Failed = append(out.Failed, stash.SweepFailure{ID: rec.ID, Stage: "drop", Error: err.Error()})
+				continue
+			}
+
+			out.Dropped = append(out.Dropped, rec)
+			out.Reclaimed += rec.Size
+			if dropIndex != nil {
+				if err := dropIndex(rec.ID); err != nil {
+					out.Failed = append(out.Failed, stash.SweepFailure{ID: rec.ID, Stage: "index", Error: err.Error()})
+				}
+			}
+		}
+	}
+
+	sort.Slice(out.Dropped, func(i, j int) bool { return out.Dropped[i].ID < out.Dropped[j].ID })
+	sort.Slice(out.Skipped, func(i, j int) bool { return out.Skipped[i].ID < out.Skipped[j].ID })
+	sort.Slice(out.Failed, func(i, j int) bool {
+		if out.Failed[i].ID == out.Failed[j].ID {
+			return out.Failed[i].Stage < out.Failed[j].Stage
+		}
+		return out.Failed[i].ID < out.Failed[j].ID
+	})
+	return out
 }
 
 func init() {
 	sweepCmd.Flags().BoolVar(&sweepApply, "apply", false, "Actually drop expired stashes (default: dry-run)")
 	sweepCmd.Flags().StringVar(&sweepKeepTag, "keep-tag", "", "Tag that exempts a stash from sweeping (default: keep)")
 	sweepCmd.Flags().StringVar(&sweepIncludeTag, "include-tag", "", "Only sweep stashes with this tag (e.g. codemap-snapshot)")
-	sweepCmd.Flags().BoolVar(&sweepAuto, "auto", false, "Also run smart cleanup analysis and sweep orphaned/superseded/duplicate/branch-gone stashes (implies --apply)")
+	sweepCmd.Flags().BoolVar(&sweepAuto, "auto", false, "Also analyze smart-cleanup categories; requires --apply to delete safe cache candidates")
 	sweepCmd.Flags().BoolVar(&sweepIncludeStale, "include-stale", false, "When --auto is set, also sweep stashes categorized as stale (default: exclude stale)")
 }

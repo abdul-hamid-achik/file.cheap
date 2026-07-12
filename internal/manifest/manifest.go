@@ -2,15 +2,18 @@
 package manifest
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -44,6 +47,8 @@ type FileEntry struct {
 
 const SchemaVersion = "1.0"
 
+const maxManifestBytes int64 = 64 << 20 // 64 MiB
+
 // New creates a Manifest from a directory tree.
 func New(id, sourcePath string) *Manifest {
 	return &Manifest{
@@ -59,11 +64,20 @@ func New(id, sourcePath string) *Manifest {
 
 // ScanFiles walks the directory and populates Files, FileCount, TotalSize, and ContentHash.
 func (m *Manifest) ScanFiles(dir string) error {
+	return m.ScanFilesContext(context.Background(), dir)
+}
+
+// ScanFilesContext is ScanFiles with cancellation support during directory
+// traversal and content hashing.
+func (m *Manifest) ScanFilesContext(ctx context.Context, dir string) error {
 	var entries []FileEntry
 	var totalSize int64
 	hasher := sha256.New()
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if err != nil {
 			return err
 		}
@@ -96,6 +110,9 @@ func (m *Manifest) ScanFiles(dir string) error {
 			totalSize += entry.Size
 			return nil
 		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("unsupported file type at %q: %s", path, info.Mode().Type())
+		}
 		// Hash file content for dedup and integrity
 		f, err := os.Open(path)
 		if err != nil {
@@ -103,7 +120,7 @@ func (m *Manifest) ScanFiles(dir string) error {
 		}
 		defer f.Close() //nolint:errcheck
 		fileHash := sha256.New()
-		if _, err := copyHash(fileHash, f); err != nil {
+		if _, err := copyHash(fileHash, &contextFileReader{ctx: ctx, reader: f}); err != nil {
 			return fmt.Errorf("hash %s: %w", path, err)
 		}
 		entry.Hash = hex.EncodeToString(fileHash.Sum(nil))
@@ -168,13 +185,92 @@ func (m *Manifest) Save(dir string) error {
 // Load reads a manifest from manifest.json in the given directory.
 func Load(dir string) (*Manifest, error) {
 	path := filepath.Join(dir, "manifest.json")
-	data, err := os.ReadFile(path)
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, fmt.Errorf("lstat manifest: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("manifest is not a regular file")
+	}
+	if info.Size() > maxManifestBytes {
+		return nil, fmt.Errorf("manifest exceeds %d-byte size limit", maxManifestBytes)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open manifest: %w", err)
+	}
+	defer f.Close() //nolint:errcheck
+	data, err := io.ReadAll(io.LimitReader(f, maxManifestBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read manifest: %w", err)
+	}
+	if int64(len(data)) > maxManifestBytes {
+		return nil, fmt.Errorf("manifest exceeds %d-byte size limit", maxManifestBytes)
 	}
 	var m Manifest
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("unmarshal manifest: %w", err)
+	}
+	// Early manifests did not always persist schema_version. They have the same
+	// shape as 1.0, so adopt them explicitly; reject unknown future schemas
+	// instead of silently interpreting fields with outdated semantics.
+	if m.SchemaVersion == "" {
+		m.SchemaVersion = SchemaVersion
+	}
+	if m.SchemaVersion != SchemaVersion {
+		return nil, fmt.Errorf("unsupported manifest schema %q (supported: %s)", m.SchemaVersion, SchemaVersion)
+	}
+	if m.ID == "" {
+		return nil, errors.New("manifest id is required")
+	}
+	if m.FileCount < 0 || m.TotalSize < 0 || m.CompressedSize < 0 {
+		return nil, errors.New("manifest counts and sizes must not be negative")
+	}
+	if _, err := time.Parse(time.RFC3339, m.CreatedAt); err != nil {
+		return nil, fmt.Errorf("invalid manifest created_at %q: %w", m.CreatedAt, err)
+	}
+	if m.ExpiresAt != "" {
+		if _, err := time.Parse(time.RFC3339, m.ExpiresAt); err != nil {
+			return nil, fmt.Errorf("invalid manifest expires_at %q: %w", m.ExpiresAt, err)
+		}
+	}
+	seenPaths := make(map[string]struct{}, len(m.Files))
+	var filesSize int64
+	for i, file := range m.Files {
+		clean := filepath.Clean(file.Path)
+		if file.Path == "" || filepath.IsAbs(file.Path) || clean == "." || clean == ".." ||
+			strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean != file.Path {
+			return nil, fmt.Errorf("invalid manifest file path at index %d: %q", i, file.Path)
+		}
+		if file.Size < 0 {
+			return nil, fmt.Errorf("invalid negative size for manifest file %q", file.Path)
+		}
+		if _, exists := seenPaths[file.Path]; exists {
+			return nil, fmt.Errorf("duplicate manifest file path %q", file.Path)
+		}
+		if file.Hash != "" {
+			if decoded, err := hex.DecodeString(file.Hash); err != nil || len(decoded) != sha256.Size {
+				return nil, fmt.Errorf("invalid SHA-256 hash for manifest file %q", file.Path)
+			}
+		}
+		seenPaths[file.Path] = struct{}{}
+		if file.Size > math.MaxInt64-filesSize {
+			return nil, errors.New("manifest file sizes overflow int64")
+		}
+		filesSize += file.Size
+	}
+	if m.Files != nil {
+		if m.FileCount != len(m.Files) {
+			return nil, fmt.Errorf("manifest file_count %d does not match %d file entries", m.FileCount, len(m.Files))
+		}
+		if m.TotalSize != filesSize {
+			return nil, fmt.Errorf("manifest total_size %d does not match file entries totaling %d", m.TotalSize, filesSize)
+		}
+	}
+	if m.ContentHash != "" {
+		if decoded, err := hex.DecodeString(m.ContentHash); err != nil || len(decoded) != sha256.Size {
+			return nil, fmt.Errorf("invalid manifest content_hash")
+		}
 	}
 	return &m, nil
 }
@@ -254,4 +350,16 @@ type hashWriter interface {
 
 type fileReader interface {
 	Read(p []byte) (n int, err error)
+}
+
+type contextFileReader struct {
+	ctx    context.Context
+	reader fileReader
+}
+
+func (r *contextFileReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
 }

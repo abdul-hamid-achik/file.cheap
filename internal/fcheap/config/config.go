@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -33,6 +35,10 @@ type Config struct {
 	Embedder   string `yaml:"embedder,omitempty" json:"embedder,omitempty"`
 	EmbedModel string `yaml:"embed_model,omitempty" json:"embed_model,omitempty"`
 	OllamaURL  string `yaml:"ollama_url,omitempty" json:"ollama_url,omitempty"`
+	// AllowRemoteSecrets permits an explicitly configured remote embedder to
+	// receive content from stashes flagged by the save-time secret scanner.
+	// It is false by default so local-first behavior remains the safe default.
+	AllowRemoteSecrets bool `yaml:"allow_remote_secrets,omitempty" json:"allow_remote_secrets,omitempty"`
 
 	// DefaultTTL is the default time-to-live applied to stashes when the
 	// saving tool doesn't have a specific TTL rule. Examples: "14d", "7d",
@@ -61,8 +67,14 @@ const (
 	EnvVecgrepPath = "FCHEAP_VECGREP_PATH"
 )
 
-// Dir returns the config directory path (~/.config/fcheap).
+// Dir returns the XDG config directory for fcheap.
 func Dir() (string, error) {
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		if !filepath.IsAbs(xdg) {
+			return "", fmt.Errorf("XDG_CONFIG_HOME must be an absolute path: %q", xdg)
+		}
+		return filepath.Join(filepath.Clean(xdg), "fcheap"), nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -109,13 +121,13 @@ func LoadFromDisk() (*Config, error) {
 
 	path, err := Path()
 	if err != nil {
-		return cfg, nil
+		return normalizePaths(cfg)
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return cfg, nil
+			return normalizePaths(cfg)
 		}
 		return nil, err
 	}
@@ -137,7 +149,7 @@ func LoadFromDisk() (*Config, error) {
 		cfg.LogLevel = DefaultLogLevel
 	}
 
-	return cfg, nil
+	return normalizePaths(cfg)
 }
 
 // Load reads the config from disk and applies env overrides. This is the runtime
@@ -148,7 +160,52 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	applyEnvOverrides(cfg)
+	return normalizePaths(cfg)
+}
+
+// normalizePaths expands a leading ~ and resolves relative configured paths
+// against the config directory, never the caller's current working directory.
+// This makes a config file behave identically from CLI, MCP, and Studio.
+func normalizePaths(cfg *Config) (*Config, error) {
+	var err error
+	cfg.StashDir, err = normalizePath(cfg.StashDir)
+	if err != nil {
+		return nil, fmt.Errorf("stash_dir: %w", err)
+	}
+	if cfg.VecgrepPath != "" {
+		cfg.VecgrepPath, err = normalizePath(cfg.VecgrepPath)
+		if err != nil {
+			return nil, fmt.Errorf("vecgrep_path: %w", err)
+		}
+	}
 	return cfg, nil
+}
+
+func normalizePath(value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	if value == "~" || strings.HasPrefix(value, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		if value == "~" {
+			value = home
+		} else {
+			value = filepath.Join(home, strings.TrimPrefix(value, "~/"))
+		}
+	} else if strings.HasPrefix(value, "~") {
+		return "", fmt.Errorf("unsupported home-directory form %q; use ~/path", value)
+	}
+	if !filepath.IsAbs(value) {
+		dir, err := Dir()
+		if err != nil {
+			return "", err
+		}
+		value = filepath.Join(dir, value)
+	}
+	return filepath.Clean(value), nil
 }
 
 func applyEnvOverrides(cfg *Config) {

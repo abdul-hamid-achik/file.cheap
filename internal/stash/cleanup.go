@@ -1,10 +1,10 @@
 package stash
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -46,10 +46,8 @@ type CleanupResult struct {
 
 // CleanupOptions controls the analysis.
 type CleanupOptions struct {
-	StaleDays   int      // days without access to be considered stale (0 = disable)
-	ProjectsDir string   // path to ~/projects for orphan detection (optional)
-	NotesDir    string   // path to ~/notes/projects for orphan detection (optional)
-	Categories  []string // filter to specific categories (empty = all)
+	StaleDays  int      // days without access to be considered stale (0 = disable)
+	Categories []string // filter to specific categories (empty = all)
 }
 
 // categoryPriority defines the order in which categories are checked.
@@ -78,6 +76,9 @@ func (m *Manager) AnalyzeCleanup(ctx context.Context, opts CleanupOptions) (*Cle
 	// All but the first in each group are superseded.
 	supersededIndex := make(map[string][]*Stash)
 	for _, st := range stashes {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		key := supersededKey(st.Manifest)
 		if key == "" {
 			continue
@@ -96,6 +97,9 @@ func (m *Manager) AnalyzeCleanup(ctx context.Context, opts CleanupOptions) (*Cle
 	// All but the first are duplicates.
 	duplicateIndex := make(map[string][]*Stash)
 	for _, st := range stashes {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if st.Manifest.ContentHash == "" {
 			continue
 		}
@@ -140,7 +144,10 @@ func (m *Manager) AnalyzeCleanup(ctx context.Context, opts CleanupOptions) (*Cle
 	}
 
 	for _, st := range stashes {
-		rec := m.classifyStash(st, opts, supersededIDs, duplicateIDs)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		rec := m.classifyStash(ctx, st, opts, supersededIDs, duplicateIDs)
 
 		// Apply category filter: skip categories the caller didn't ask for.
 		// "keep" is always included unless the caller explicitly filters it out.
@@ -173,7 +180,7 @@ func (m *Manager) AnalyzeCleanup(ctx context.Context, opts CleanupOptions) (*Cle
 
 // classifyStash determines the cleanup category for a single stash by checking
 // each category in priority order and returning the first match.
-func (m *Manager) classifyStash(st *Stash, opts CleanupOptions, supersededIDs, duplicateIDs map[string]bool) CleanupRecommendation {
+func (m *Manager) classifyStash(ctx context.Context, st *Stash, opts CleanupOptions, supersededIDs, duplicateIDs map[string]bool) CleanupRecommendation {
 	man := st.Manifest
 	rec := CleanupRecommendation{
 		ID:   man.ID,
@@ -184,7 +191,7 @@ func (m *Manager) classifyStash(st *Stash, opts CleanupOptions, supersededIDs, d
 
 	// Check categories in priority order.
 	for _, cat := range categoryPriority {
-		reason, match := m.checkCategory(st, man, cat, opts, supersededIDs, duplicateIDs)
+		reason, match := m.checkCategory(ctx, st, man, cat, opts, supersededIDs, duplicateIDs)
 		if match {
 			rec.Category = cat
 			rec.Reason = reason
@@ -200,7 +207,7 @@ func (m *Manager) classifyStash(st *Stash, opts CleanupOptions, supersededIDs, d
 
 // checkCategory tests whether a stash matches a single category. Returns the
 // human-readable reason and whether the category matched.
-func (m *Manager) checkCategory(st *Stash, man *manifest.Manifest, cat CleanupCategory, opts CleanupOptions, supersededIDs, duplicateIDs map[string]bool) (string, bool) {
+func (m *Manager) checkCategory(ctx context.Context, st *Stash, man *manifest.Manifest, cat CleanupCategory, opts CleanupOptions, supersededIDs, duplicateIDs map[string]bool) (string, bool) {
 	switch cat {
 	case CatExpired:
 		if IsExpired(man) {
@@ -208,7 +215,7 @@ func (m *Manager) checkCategory(st *Stash, man *manifest.Manifest, cat CleanupCa
 		}
 
 	case CatOrphaned:
-		if reason, ok := m.checkOrphaned(man, opts); ok {
+		if reason, ok := m.checkOrphaned(man); ok {
 			return reason, true
 		}
 
@@ -224,7 +231,7 @@ func (m *Manager) checkCategory(st *Stash, man *manifest.Manifest, cat CleanupCa
 		}
 
 	case CatBranchGone:
-		if reason, ok := checkBranchGone(man); ok {
+		if reason, ok := checkBranchGone(ctx, man); ok {
 			return reason, true
 		}
 
@@ -243,49 +250,28 @@ func (m *Manager) checkCategory(st *Stash, man *manifest.Manifest, cat CleanupCa
 	return "", false
 }
 
-// checkOrphaned checks if the stash's source path no longer exists. When
-// opts.ProjectsDir is set, it also checks if the project name extracted from
-// the source path exists under ProjectsDir.
-func (m *Manager) checkOrphaned(man *manifest.Manifest, opts CleanupOptions) (string, bool) {
+// checkOrphaned checks only whether the recorded source itself no longer
+// exists. A source outside ~/projects or without a mirrored Obsidian note is
+// not an orphan; treating those optional conventions as deletion evidence
+// caused valid, live snapshots to be classified as reclaimable.
+func (*Manager) checkOrphaned(man *manifest.Manifest) (string, bool) {
 	if man.SourcePath == "" {
 		return "", false
 	}
 
-	// Direct check: does the source path still exist?
-	if _, err := os.Stat(man.SourcePath); os.IsNotExist(err) {
+	if _, err := os.Stat(man.SourcePath); err == nil {
+		return "", false
+	} else if os.IsNotExist(err) {
 		return fmt.Sprintf("source path no longer exists (%s)", man.SourcePath), true
 	}
-
-	// If ProjectsDir is set, check if the project directory still exists
-	// under it. The project name is the base of the source path.
-	if opts.ProjectsDir != "" {
-		projectName := extractProjectName(man.SourcePath)
-		if projectName != "" {
-			projectPath := filepath.Join(opts.ProjectsDir, projectName)
-			if _, err := os.Stat(projectPath); os.IsNotExist(err) {
-				return fmt.Sprintf("project directory gone (%s)", projectPath), true
-			}
-		}
-	}
-
-	// If NotesDir is set, check if the project directory exists under it.
-	if opts.NotesDir != "" {
-		projectName := extractProjectName(man.SourcePath)
-		if projectName != "" {
-			notesPath := filepath.Join(opts.NotesDir, projectName)
-			if _, err := os.Stat(notesPath); os.IsNotExist(err) {
-				return fmt.Sprintf("project directory gone (%s)", notesPath), true
-			}
-		}
-	}
-
 	return "", false
 }
 
-// checkBranchGone checks if the stash has a "branch:" tag referencing a git
-// branch that no longer exists in the source path's repository. If git fails
-// or the source path doesn't exist, this check is skipped (returns false).
-func checkBranchGone(man *manifest.Manifest) (string, bool) {
+// checkBranchGone checks if the stash has a "branch:" tag referencing a local
+// Git branch that no longer exists. It reads refs directly instead of spawning
+// Git, keeping the core stash layer free of subprocess coupling. Repositories
+// using an unfamiliar ref backend are treated as unknown and kept.
+func checkBranchGone(ctx context.Context, man *manifest.Manifest) (string, bool) {
 	var branchTags []string
 	for _, tag := range man.Tags {
 		if strings.HasPrefix(tag, "branch:") {
@@ -300,31 +286,143 @@ func checkBranchGone(man *manifest.Manifest) (string, bool) {
 	if man.SourcePath == "" {
 		return "", false
 	}
-	if _, err := os.Stat(man.SourcePath); err != nil {
-		// Source path doesn't exist — can't run git. Skip this check.
+	gitDir, commonDir, ok := findGitDirs(man.SourcePath)
+	if !ok {
 		return "", false
 	}
 
 	for _, tag := range branchTags {
+		if ctx.Err() != nil {
+			return "", false
+		}
 		branch := strings.TrimPrefix(tag, "branch:")
 		branch = strings.TrimSpace(branch)
 		if branch == "" {
 			continue
 		}
-
-		// Run: git -C <source_path> branch --list <branch>
-		cmd := exec.Command("git", "-C", man.SourcePath, "branch", "--list", branch)
-		output, err := cmd.Output()
-		if err != nil {
-			// git failed (not a repo, git not installed, etc.) — skip.
-			continue
-		}
-		if len(strings.TrimSpace(string(output))) == 0 {
+		exists, known := localBranchExists(gitDir, commonDir, branch)
+		if known && !exists {
 			return fmt.Sprintf("branch no longer exists in git (%s)", branch), true
 		}
 	}
 
 	return "", false
+}
+
+func findGitDirs(sourcePath string) (gitDir, commonDir string, ok bool) {
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		return "", "", false
+	}
+	current := sourcePath
+	if !info.IsDir() {
+		current = filepath.Dir(current)
+	}
+	abs, err := filepath.Abs(current)
+	if err != nil {
+		return "", "", false
+	}
+	for current = abs; ; current = filepath.Dir(current) {
+		dotGit := filepath.Join(current, ".git")
+		gitInfo, statErr := os.Lstat(dotGit)
+		switch {
+		case statErr == nil && gitInfo.IsDir():
+			gitDir = dotGit
+		case statErr == nil && gitInfo.Mode().IsRegular():
+			data, readErr := readSmallFile(dotGit, 4096)
+			line := strings.TrimSpace(string(data))
+			if readErr != nil || !strings.HasPrefix(line, "gitdir:") {
+				return "", "", false
+			}
+			gitDir = strings.TrimSpace(strings.TrimPrefix(line, "gitdir:"))
+			if !filepath.IsAbs(gitDir) {
+				gitDir = filepath.Join(current, gitDir)
+			}
+			gitDir = filepath.Clean(gitDir)
+		default:
+			parent := filepath.Dir(current)
+			if parent == current {
+				return "", "", false
+			}
+			continue
+		}
+
+		commonDir = gitDir
+		if data, readErr := readSmallFile(filepath.Join(gitDir, "commondir"), 4096); readErr == nil {
+			candidate := strings.TrimSpace(string(data))
+			if candidate != "" {
+				if !filepath.IsAbs(candidate) {
+					candidate = filepath.Join(gitDir, candidate)
+				}
+				commonDir = filepath.Clean(candidate)
+			}
+		}
+		if info, err := os.Stat(commonDir); err != nil || !info.IsDir() {
+			return "", "", false
+		}
+		return gitDir, commonDir, true
+	}
+}
+
+func localBranchExists(gitDir, commonDir, branch string) (exists, known bool) {
+	branchPath := filepath.Clean(filepath.FromSlash(branch))
+	if filepath.IsAbs(branchPath) || branchPath == "." || branchPath == ".." ||
+		strings.HasPrefix(branchPath, ".."+string(filepath.Separator)) {
+		return false, false
+	}
+	for _, base := range []string{gitDir, commonDir} {
+		refPath := filepath.Join(base, "refs", "heads", branchPath)
+		if info, err := os.Lstat(refPath); err == nil && info.Mode().IsRegular() {
+			return true, true
+		} else if err != nil && !os.IsNotExist(err) {
+			return false, false
+		}
+		if info, err := os.Stat(filepath.Join(base, "reftable")); err == nil && info.IsDir() {
+			return false, false
+		}
+	}
+
+	packedPath := filepath.Join(commonDir, "packed-refs")
+	packedInfo, err := os.Lstat(packedPath)
+	if os.IsNotExist(err) {
+		return false, true
+	}
+	if err != nil || !packedInfo.Mode().IsRegular() || packedInfo.Size() > 64<<20 {
+		return false, false
+	}
+	packed, err := os.Open(packedPath)
+	if err != nil {
+		return false, false
+	}
+	defer packed.Close() //nolint:errcheck
+	openedInfo, err := packed.Stat()
+	if err != nil || !os.SameFile(packedInfo, openedInfo) {
+		return false, false
+	}
+	want := "refs/heads/" + strings.TrimPrefix(filepath.ToSlash(branchPath), "./")
+	scanner := bufio.NewScanner(packed)
+	scanner.Buffer(make([]byte, 4096), 1<<20)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) >= 2 && fields[1] == want {
+			return true, true
+		}
+	}
+	if scanner.Err() != nil {
+		return false, false
+	}
+	return false, true
+}
+
+func readSmallFile(path string, max int64) ([]byte, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > max {
+		return nil, fmt.Errorf("not a small regular file")
+	}
+	return os.ReadFile(path)
 }
 
 // checkStale checks if the stash's created_at is older than staleDays. Since
@@ -353,52 +451,6 @@ func supersededKey(man *manifest.Manifest) string {
 		return ""
 	}
 	return man.Tool + "|" + man.SourcePath
-}
-
-// extractProjectName extracts the project directory name from a source path.
-// For "/Users/foo/projects/myapp/src", it returns "myapp" (the segment after
-// "projects"). If no "projects" segment is found, it returns the parent of the
-// base if base is a common leaf (src, cmd, internal, pkg), otherwise the base
-// name itself. If the path doesn't contain a recognizable structure, it
-// returns the base directory name.
-func extractProjectName(sourcePath string) string {
-	if sourcePath == "" {
-		return ""
-	}
-	clean := filepath.Clean(sourcePath)
-	parts := strings.Split(clean, string(filepath.Separator))
-
-	// Look for a "projects" segment and return the next element.
-	for i, p := range parts {
-		if p == "projects" && i+1 < len(parts) && parts[i+1] != "" {
-			return parts[i+1]
-		}
-	}
-
-	// Fallback: if base is a common leaf dir (src, cmd, internal, pkg),
-	// return the parent directory name instead.
-	base := filepath.Base(clean)
-	commonLeafs := map[string]bool{
-		"src":      true,
-		"cmd":      true,
-		"internal": true,
-		"pkg":      true,
-		"dist":     true,
-		"build":    true,
-	}
-	if commonLeafs[base] {
-		parent := filepath.Dir(clean)
-		name := filepath.Base(parent)
-		if name != "." && name != string(filepath.Separator) {
-			return name
-		}
-		return ""
-	}
-
-	if base == "." || base == string(filepath.Separator) {
-		return ""
-	}
-	return base
 }
 
 // categoryOrder returns the numeric priority of a category (lower = higher
