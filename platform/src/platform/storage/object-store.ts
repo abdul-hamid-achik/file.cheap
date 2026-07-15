@@ -1,0 +1,59 @@
+export type ObjectMetadata = {
+  contentType: string;
+  etag: string;
+  key: string;
+  sizeBytes: number;
+  uploadedAt: string;
+};
+
+export type TransferGrant = {
+  expiresAt: string;
+  headers: Record<string, string>;
+  method: "GET" | "PUT";
+  url: string;
+};
+
+export type TextObject = {
+  body: string;
+  etag: string;
+};
+
+export interface ObjectStore {
+  readonly driver: "local" | "vercel-blob";
+
+  inspect(key: string): Promise<ObjectMetadata | null>;
+
+  issueUploadGrant(input: {
+    contentType: string;
+    key: string;
+    sha256: string;
+    sizeBytes: number;
+    validUntil: Date;
+  }): Promise<TransferGrant>;
+
+  issueDownloadGrant(input: {
+    key: string;
+    validUntil: Date;
+  }): Promise<TransferGrant>;
+
+  readText(key: string): Promise<TextObject | null>;
+
+  writeText(input: {
+    body: string;
+    expectedEtag?: string;
+    key: string;
+  }): Promise<{ etag: string }>;
+}
+
+const objectKeyPattern = /^[a-z0-9][a-z0-9._/-]*$/;
+
+export function assertSafeObjectKey(key: string): void {
+  if (
+    !objectKeyPattern.test(key) ||
+    key.includes("..") ||
+    key.startsWith("/") ||
+    key.endsWith("/")
+  ) {
+    throw new Error(`Unsafe object key: ${key}`);
+  }
+}

@@ -1,0 +1,9 @@
+.data/
+.next/
+.vercel/
+node_modules/
+.env.local
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/

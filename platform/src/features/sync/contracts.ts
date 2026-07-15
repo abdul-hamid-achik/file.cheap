@@ -1,0 +1,35 @@
+import { z } from "zod";
+
+export const stashIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, {
+    message: "must contain only letters, numbers, dots, underscores, and hyphens",
+  });
+
+export const sha256Schema = z
+  .string()
+  .regex(/^[a-f0-9]{64}$/, { message: "must be a lowercase SHA-256 hex digest" });
+
+export const createPlanSchema = z.object({
+  contentType: z
+    .string()
+    .min(1)
+    .default("application/vnd.filecheap.stash"),
+  sha256: sha256Schema,
+  sizeBytes: z.number().int().positive().max(5_000_000_000_000),
+  stashId: stashIdSchema,
+});
+
+export const commitPlanSchema = z.object({
+  receipt: z.string().min(1),
+});
+
+export const createDownloadSchema = z.object({
+  stashId: stashIdSchema,
+});
+
+export type CreatePlanInput = z.infer<typeof createPlanSchema>;
+export type CommitPlanInput = z.infer<typeof commitPlanSchema>;
+export type CreateDownloadInput = z.infer<typeof createDownloadSchema>;
