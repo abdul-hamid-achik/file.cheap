@@ -30,22 +30,28 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:   "fcheap",
-	Short: "file.cheap - local-first stash tool for saving, restoring, and analyzing files",
+	Short: "file.cheap - the local artifact vault for coding agents",
 	Long: `fcheap saves, restores, compresses, and analyzes files and folders for agent workflows.
 
-Get started:
-  fcheap save /tmp/artifacts --tag bug-123 --tool vidtrace
+Core workflow:
+  fcheap save /tmp/artifacts --tag bug-123 --tool vidtrace --index
   fcheap list --tag bug-123
-  fcheap info <stash-id>
-  fcheap restore <stash-id> --to /tmp/working/
-  fcheap drop <stash-id>
   fcheap search "error message"
-  fcheap diff <stash-id> ~/projects/graphite
-  fcheap connect <stash-id> ~/projects/graphite
-  fcheap analyze <stash-id> --query "keyword"
-  fcheap studio
+  fcheap info <stash-id>
+  fcheap restore <stash-id>
+  fcheap connect <stash-id> ~/projects/my-app
+
+Delete only when intended:
+  fcheap drop <stash-id> --force
+
+For agents and integrations:
+  fcheap agent
+  fcheap agent --json
   fcheap mcp serve
-  fcheap docs serve
+  fcheap docs show mcp/overview
+
+Explore interactively:
+  fcheap studio
   fcheap doctor`,
 	Version: version.Full(),
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -58,7 +64,18 @@ Get started:
 			stop()
 		}(rootCtx, rootCancel)
 
-		if cmd.Name() == "help" || cmd.Name() == "version" || cmd.Name() == "completion" {
+		printer = output.New(
+			output.WithJSON(jsonOutput),
+			output.WithQuiet(quietMode),
+			output.WithNoColor(noColor || os.Getenv("NO_COLOR") != ""),
+		)
+
+		if !commandNeedsConfig(cmd) {
+			lvl := config.DefaultLogLevel
+			if logLevel != "" {
+				lvl = logLevel
+			}
+			logger.Init(lvl)
 			return nil
 		}
 
@@ -78,12 +95,6 @@ Get started:
 			lvl = logLevel
 		}
 		logger.Init(lvl)
-
-		printer = output.New(
-			output.WithJSON(jsonOutput),
-			output.WithQuiet(quietMode),
-			output.WithNoColor(noColor || os.Getenv("NO_COLOR") != ""),
-		)
 
 		return nil
 	},
@@ -129,8 +140,28 @@ func init() {
 	rootCmd.AddCommand(studioCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(docsCmd)
+	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(completionCmd)
 	rootCmd.AddCommand(versionCmd)
+}
+
+// commandNeedsConfig reports whether a command operates on the configured
+// vault. Static help, agent guidance, and embedded documentation remain usable
+// even when the user's vault configuration is missing or invalid.
+func commandNeedsConfig(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return true
+	}
+	switch cmd.Name() {
+	case "help", "version", "completion", "agent":
+		return false
+	}
+	for current := cmd; current != nil; current = current.Parent() {
+		if current == docsCmd {
+			return false
+		}
+	}
+	return true
 }
 
 // GetContext returns the root context for the CLI command.

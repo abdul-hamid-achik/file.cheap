@@ -843,7 +843,7 @@ type VecgrepResult struct {
 
 // VecgrepSearchIn runs vecgrep search within a codebase directory, optionally
 // (re)building the index first. This is the engine behind `fcheap connect`:
-// point the stashed bug report's text at the code that likely owns the bug.
+// point the stashed bug report's text at a codebase and rank related candidates.
 //
 // When doIndex is false and the codebase has no vecgrep index, it returns a
 // VecgrepResult with IndexStatus "missing" and no matches (rather than an

@@ -2,13 +2,17 @@
   "name": "fcheap-docs",
   "private": true,
   "type": "module",
+  "packageManager": "bun@1.3.11",
   "scripts": {
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",
-    "docs:preview": "vitepress preview"
+    "docs:preview": "vitepress preview",
+    "docs:verify": "bun run docs:build && bun run seo:check",
+    "og": "bun .vitepress/tools/generate-og-images.mjs",
+    "seo:check": "bun .vitepress/tools/verify-seo.mjs"
   },
   "devDependencies": {
-    "vitepress": "^1.6.0",
-    "vitepress-sidebar": "^1.30.0"
+    "sharp": "^0.35.3",
+    "vitepress": "^1.6.0"
   }
 }

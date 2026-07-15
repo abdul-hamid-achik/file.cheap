@@ -19,7 +19,7 @@ var (
 
 var listCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List all stashes",
+	Short: "List active stashes, optionally including expired ones",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mgr, err := stash.NewManager(cfg.StashDir)

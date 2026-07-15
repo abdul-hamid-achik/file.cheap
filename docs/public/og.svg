@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="-5%" r="70%">
+      <stop offset="0%" stop-color="#ef7047" stop-opacity="0.18"/>
+      <stop offset="55%" stop-color="#ef7047" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ef7047"/>
+      <stop offset="100%" stop-color="#f1b08f"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="#181713"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="1" y="1" width="1198" height="628" fill="none" stroke="#39352d" stroke-width="2"/>
+
+  <!-- price-tag icon -->
+  <g transform="translate(96 150)">
+    <path d="M70 8 L150 8 L168 26 L168 106 L88 186 L8 106 Z" fill="none" stroke="url(#amber)" stroke-width="6" stroke-linejoin="round"/>
+    <circle cx="138" cy="38" r="8" fill="#ef7047"/>
+    <path d="M48 92 l22 16 l-22 16" fill="none" stroke="#8fc49b" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M84 120 h30" fill="none" stroke="#8fc49b" stroke-width="7" stroke-linecap="round"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="96" y="370" font-size="104" font-weight="700" fill="url(#amber)" letter-spacing="-4">file.cheap</text>
+
+  <!-- tagline -->
+  <text x="100" y="448" font-family="'Outfit', ui-sans-serif, system-ui, sans-serif" font-size="36" font-weight="400" fill="#f3ede1">The local artifact vault for coding agents.</text>
+
+  <!-- subtag -->
+  <text x="100" y="498" font-family="'Outfit', ui-sans-serif, system-ui, sans-serif" font-size="25" font-weight="300" fill="#aaa190">Save · Find · Restore — verified and local-first</text>
+
+  <!-- terminal card on the right -->
+  <g transform="translate(760 140)">
+    <rect width="360" height="320" rx="16" fill="#1c1b17" stroke="#39352d" stroke-width="2"/>
+    <rect width="360" height="44" rx="16" fill="#29261f"/>
+    <rect y="28" width="360" height="16" fill="#29261f"/>
+    <circle cx="26" cy="22" r="7" fill="#e06a5a"/>
+    <circle cx="50" cy="22" r="7" fill="#ef7047"/>
+    <circle cx="74" cy="22" r="7" fill="#8fc49b"/>
+
+    <text x="22" y="92" font-size="18" fill="#ef7047">~ $</text>
+    <text x="60" y="92" font-size="15" fill="#f3ede1">fcheap save ./artifacts --index</text>
+
+    <text x="22" y="128" font-size="16" fill="#8fc49b">38 files saved · 38 indexed</text>
+
+    <text x="22" y="172" font-size="18" fill="#ef7047">~ $</text>
+    <text x="60" y="172" font-size="18" fill="#f3ede1">fcheap search "columns"</text>
+
+    <text x="22" y="208" font-size="16" fill="#f1b08f">report.txt · score 0.81</text>
+
+    <text x="22" y="252" font-size="18" fill="#ef7047">~ $</text>
+    <text x="60" y="252" font-size="18" fill="#f3ede1">fcheap restore 8f3a91c2</text>
+
+    <text x="22" y="288" font-size="16" fill="#8fc49b">restored · hashes verified</text>
+  </g>
+
+  <!-- receipt perforation strip -->
+  <g transform="translate(0 600)">
+    <rect width="1200" height="2" fill="#39352d"/>
+    <g fill="#181713">
+      <circle cx="10" cy="6" r="5"/><circle cx="34" cy="6" r="5"/><circle cx="58" cy="6" r="5"/><circle cx="82" cy="6" r="5"/><circle cx="106" cy="6" r="5"/><circle cx="130" cy="6" r="5"/><circle cx="154" cy="6" r="5"/><circle cx="178" cy="6" r="5"/><circle cx="202" cy="6" r="5"/><circle cx="226" cy="6" r="5"/><circle cx="250" cy="6" r="5"/><circle cx="274" cy="6" r="5"/><circle cx="298" cy="6" r="5"/><circle cx="322" cy="6" r="5"/><circle cx="346" cy="6" r="5"/><circle cx="370" cy="6" r="5"/><circle cx="394" cy="6" r="5"/><circle cx="418" cy="6" r="5"/><circle cx="442" cy="6" r="5"/><circle cx="466" cy="6" r="5"/><circle cx="490" cy="6" r="5"/><circle cx="514" cy="6" r="5"/><circle cx="538" cy="6" r="5"/><circle cx="562" cy="6" r="5"/><circle cx="586" cy="6" r="5"/><circle cx="610" cy="6" r="5"/><circle cx="634" cy="6" r="5"/><circle cx="658" cy="6" r="5"/><circle cx="682" cy="6" r="5"/><circle cx="706" cy="6" r="5"/><circle cx="730" cy="6" r="5"/><circle cx="754" cy="6" r="5"/><circle cx="778" cy="6" r="5"/><circle cx="802" cy="6" r="5"/><circle cx="826" cy="6" r="5"/><circle cx="850" cy="6" r="5"/><circle cx="874" cy="6" r="5"/><circle cx="898" cy="6" r="5"/><circle cx="922" cy="6" r="5"/><circle cx="946" cy="6" r="5"/><circle cx="970" cy="6" r="5"/><circle cx="994" cy="6" r="5"/><circle cx="1018" cy="6" r="5"/><circle cx="1042" cy="6" r="5"/><circle cx="1066" cy="6" r="5"/><circle cx="1090" cy="6" r="5"/><circle cx="1114" cy="6" r="5"/><circle cx="1138" cy="6" r="5"/><circle cx="1162" cy="6" r="5"/><circle cx="1186" cy="6" r="5"/>
+    </g>
+  </g>
+</svg>

@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd docs && npm ci && npm run docs:build",
+  "buildCommand": "cd docs && bun install --frozen-lockfile && bun run docs:build",
   "outputDirectory": "docs/.vitepress/dist",
   "framework": "vitepress",
   "cleanUrls": true

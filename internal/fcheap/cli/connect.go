@@ -18,7 +18,7 @@ var (
 
 var connectCmd = &cobra.Command{
 	Use:   "connect <stash-id> <codebase-dir>",
-	Short: "Connect a stash to a codebase: find the code that likely owns the bug",
+	Short: "Connect a stash to a codebase and rank related code candidates",
 	Long: `connect runs semantic code search (vecgrep) over a codebase using the
 stashed artifact's text — e.g. a vidtrace bug report's OCR and transcript —
 surfacing the file:line candidates most likely related to the bug.
@@ -26,9 +26,9 @@ surfacing the file:line candidates most likely related to the bug.
 This is the connective tissue: stash a repro, then point it at the live repo.
 
 Examples:
-  fcheap connect OPG-15061 ~/projects/graphite
-  fcheap connect OPG-15061 ~/projects/graphite --index --limit 5
-  fcheap connect OPG-15061 ~/projects/graphite --query "login token refresh"`,
+  fcheap connect OPG-15061 ~/projects/my-app
+  fcheap connect OPG-15061 ~/projects/my-app --index --limit 5
+  fcheap connect OPG-15061 ~/projects/my-app --query "login token refresh"`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id, codebase := args[0], args[1]

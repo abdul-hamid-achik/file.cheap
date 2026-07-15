@@ -25,7 +25,10 @@ type Page struct {
 	Content string
 }
 
-//go:embed index.md cli/*.md guide/*.md mcp/*.md studio/*.md
+// Keep every first-level Markdown section available to installed CLI and MCP
+// clients. A new public section does not need a parallel hard-coded pattern.
+//
+//go:embed *.md */*.md
 var content embed.FS
 
 var pageNames = listPages()

@@ -1,218 +1,162 @@
 # file.cheap
 
-Local-first stash tool for saving, restoring, compressing, and analyzing files and
-folders for agent workflows. Vault storage and BM25 stay local. Ollama defaults
-to localhost; OpenAI and non-loopback Ollama endpoints send indexed text and
-semantic/hybrid search queries to the configured service.
+**The local artifact vault for coding agents.**
+
+file.cheap snapshots the screenshots, logs, reports, transcripts, repro bundles,
+and temporary folders that agent workflows create. Each stash gets provenance,
+per-file hashes, searchable content, and a deliberate lifecycle—without requiring
+an account or hosted service.
+
+[Documentation](https://file.cheap/) ·
+[Five-minute start](https://file.cheap/guide/getting-started) ·
+[Agent guide](https://file.cheap/guide/agent-guide) ·
+[MCP setup](https://file.cheap/integrations/mcp-clients)
+
+## Why it exists
+
+Agent work leaves useful evidence outside Git: a reproduction folder in `/tmp`,
+a generated report, a directory of frames, or logs from a debugging session.
+Those files are easy to create and surprisingly hard to find, verify, and reuse.
+
+file.cheap gives them:
+
+- a stable stash ID;
+- source, tool, tag, size, and retention metadata;
+- SHA-256 hashes and verified restores;
+- local BM25 search, with optional semantic and hybrid modes;
+- a CLI, terminal Studio, and local stdio MCP server;
+- explicit compression, TTL, sweep, cleanup, and deletion.
+
+It is not cloud sync, consumer backup, or a replacement for Git. The current
+product stores its vault on your machine.
 
 ## Install
 
-```bash
-# macOS (Homebrew) — use --no-quarantine to avoid Gatekeeper warnings
-brew install --no-quarantine abdul-hamid-achik/tap/fcheap
+### macOS
 
-# Linux (deb)
+```bash
+brew install --cask --no-quarantine abdul-hamid-achik/tap/fcheap
+```
+
+### Linux (Debian/Ubuntu, amd64)
+
+```bash
 tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/abdul-hamid-achik/file.cheap/releases/latest)"
 tag="${tag##*/}"
 version="${tag#v}"
 curl -fLO "https://github.com/abdul-hamid-achik/file.cheap/releases/download/${tag}/fcheap_${version}_linux_amd64.deb"
 sudo dpkg -i "fcheap_${version}_linux_amd64.deb"
+```
 
-# From source
+RPM and arm64 packages are available on
+[GitHub Releases](https://github.com/abdul-hamid-achik/file.cheap/releases/latest).
+
+### From source
+
+```bash
 go install github.com/abdul-hamid-achik/file.cheap/cmd/fcheap@latest
 ```
 
-## Usage
+## First stash
+
+Run a complete save → search → inspect → restore workflow:
 
 ```bash
-# Save files or folders to the stash vault
-# (content is scanned for likely secrets on save; pass --no-scan to skip)
-fcheap save /tmp/vidtrace-artifacts --tag OPG-15061 --tool vidtrace --source ~/Downloads/OPG-15061.mp4
+# Check the local paths and optional integrations.
+fcheap doctor
 
-# List saved stashes, optionally filtered by tag
-fcheap list
-fcheap list --tag OPG-15061
+# Save and index any file or directory.
+fcheap save ./agent-artifacts --tag bug-142 --tool my-agent --index
 
-# Get detailed info about a stash
+# Copy the returned stash ID, then find content across indexed stashes.
+fcheap search "columns disappeared after refresh"
 fcheap info <stash-id>
 
-# Restore and verify a stash (hash mismatches exit nonzero by default)
-fcheap restore <stash-id> --to /tmp/working/
-
-# Compress a stash to save space
-fcheap compress <stash-id>
-
-# Analyze (index) a stash for search
-fcheap analyze <stash-id>
-
-# Search across all stashes
-fcheap search "Internal Migrant"
-
-# Diff a stash against a live codebase
-fcheap diff <stash-id> ~/projects/graphite
-
-# Connect a stash to a codebase — find the code that likely owns the bug (via vecgrep)
-fcheap connect <stash-id> ~/projects/graphite --index
-
-# Drop a stash when done (requires --force)
-fcheap drop <stash-id> --force
-
-# Open the Studio TUI for browsing stashes
-fcheap studio
-
-# Reclaim space — remove orphaned index entries and compact the database
-fcheap vacuum
-
-# Check runtime health
-fcheap doctor
+# Restore to a fresh temporary directory and verify every hash.
+fcheap restore <stash-id>
 ```
 
-## MCP Server
+The manifest stays the portable source of truth. SQLite and veclite are derived
+local indexes that file.cheap can rebuild.
 
-Use `fcheap` as an MCP tool server for AI assistants like Claude:
+## Give an agent the vault
 
-```json
-{
-  "mcpServers": {
-    "file-cheap": {
-      "command": "fcheap",
-      "args": ["mcp", "serve"]
-    }
-  }
-}
-```
-
-This exposes 14 **tools**: `fcheap_save`, `fcheap_list`, `fcheap_info`,
-`fcheap_restore`, `fcheap_drop`, `fcheap_search`, `fcheap_analyze`,
-`fcheap_diff`, `fcheap_connect`, `fcheap_vacuum`, `fcheap_ttl`, `fcheap_sweep`,
-`fcheap_cleanup`, and `fcheap_docs` — plus **resources**
-(`fcheap://stashes`, `fcheap://stash/{id}`) and **prompts**
-(`investigate_stash`, `find_across_stashes`). See
-[docs/mcp/overview.md](docs/mcp/overview.md).
-
-## Configuration
+Ask the installed binary for its version-matched operating contract:
 
 ```bash
-fcheap config show              # print current config
-fcheap config path              # print the config file path
-fcheap config get <key>         # read one key
-fcheap config set <key> <value> # write one key
-fcheap config init [--force]    # write a fresh default config
+fcheap agent
+fcheap agent --json
 ```
 
-Config file (`${XDG_CONFIG_HOME:-$HOME/.config}/fcheap/config.yaml`):
-
-```yaml
-stash_dir: ~/.local/share/fcheap
-compression: zstd
-compress_threshold: 10485760  # 10MB — stashes larger than this auto-compress on save
-log_level: warn
-vecgrep_path: ""              # optional, for semantic code search via vecgrep
-embedder: ""                  # optional: "ollama" or "openai" — enables semantic/hybrid search
-embed_model: ""               # e.g. nomic-embed-text (ollama)
-ollama_url: ""                # default http://localhost:11434
-allow_remote_secrets: false  # block remote indexing for stashes flagged by the secret scanner
-default_ttl: ""              # empty or "never" means permanent
-ttl_rules: {}                # optional per-tool retention, e.g. {codemap: 7d}
-```
-
-With an `embedder` configured, `analyze` indexes a vector per document and
-`search --mode semantic|hybrid` finds related meaning even with no shared
-keywords (default `hybrid`). Embedders are HTTP-based, so the binary stays
-CGO-free. OpenAI and non-loopback Ollama endpoints receive document text during
-indexing and each semantic/hybrid query for embedding. fcheap blocks remote
-indexing of scanner-flagged stashes unless you explicitly set
-`allow_remote_secrets: true`; that setting does not inspect search queries.
-Loopback Ollama endpoints remain local and do not require that opt-in. See
-[search](https://file.cheap/cli/search).
-
-For `stash_dir` and `vecgrep_path`, fcheap expands `~` and resolves relative
-values against the config directory, not the current working directory.
-`XDG_CONFIG_HOME` must be absolute when set.
-
-Stashes larger than `compress_threshold` are compressed automatically on `save`
-(opt out with `fcheap save --no-compress`).
-
-Pass `--log-level debug` (or set `log_level`) to print operation traces to stderr
-for troubleshooting — stdout and `--json` output stay clean.
-
-Environment variables: `FCHEAP_STASH_DIR`, `FCHEAP_LOG_LEVEL`,
-`FCHEAP_VECGREP_PATH`. Standard `XDG_CONFIG_HOME` and `XDG_DATA_HOME` select the
-config and data roots.
-
-## Storage Layout
-
-```
-~/.local/share/fcheap/
-├── <stash-id>/
-│   ├── manifest.json       # metadata, provenance, tags (source of truth)
-│   └── content/            # file tree, OR content.tar.zst when compressed
-├── fcheap.db               # SQLite metadata index (sqlc, CGO-free)
-└── fcheap.veclite          # veclite per-file BM25 search index
-```
-
-The `manifest.json` in each stash directory is the portable source of truth;
-`fcheap.db` is a write-through index that self-heals from the manifests, and
-`fcheap.veclite` holds the per-file keyword search index.
-
-## Studio TUI
-
-The Studio is a terminal UI built with Bubbletea v2 for browsing, searching, and
-acting on stashes:
+Start the local MCP server with:
 
 ```bash
-fcheap studio
+fcheap mcp serve
 ```
 
-| Key | Action |
-|-----|--------|
-| `j` / `k` | Move cursor up/down |
-| `enter` / `l` | Open stash detail (provenance, file tree, live preview) |
-| `esc` / `h` | Back to list |
-| `/` | Search stash content (keyword) |
-| `tab` | Cycle pane focus (query ↔ results ↔ preview) |
-| `r` | Restore the stash to a temp dir (with hash verification) |
-| `c` | Compress the stash (zstd) |
-| `a` | Analyze / index the stash for search |
-| `x` | Diff the stash against a directory |
-| `t` | View the vidtrace evidence timeline (frame → OCR → transcript) |
-| `d` | Drop the stash (with `y/n` confirm) |
-| `s` | Status view · `?` Help · `q` Quit |
+For Claude Code:
 
-## Project Structure
-
-```
-file.cheap/
-├── cmd/fcheap/              # CLI entry point
-├── internal/
-│   ├── stash/               # Core domain: Save, Restore, Drop, List, Info
-│   ├── manifest/            # Stash metadata and provenance
-│   ├── compress/            # tar+zstd archiving
-│   ├── detect/              # Bundle type detection (vidtrace, generic)
-│   ├── analyze/             # BM25 search + vecgrep subprocess
-│   ├── diff/                # Stash-to-directory comparison
-│   ├── db/                  # SQLite metadata storage
-│   ├── mcp/                 # MCP server (14 tools + resources + prompts)
-│   ├── studio/              # Bubbletea v2 TUI
-│   ├── fcheap/cli/             # Cobra commands
-│   ├── fcheap/config/          # YAML config
-│   ├── fcheap/output/           # Printer, progress bars, tables
-│   ├── fcheap/version/          # Build-time version
-│   ├── apperror/            # Error types
-│   └── logger/              # slog wrapper
-├── e2e/                     # glyphrun e2e test specs
-└── testdata/                # Test fixtures
+```bash
+claude mcp add -s user fcheap -- fcheap mcp serve
 ```
 
-## Tech Stack
+For Codex CLI, add:
 
-- **Go 1.25**, single static binary, `CGO_ENABLED=0`
-- **CLI**: `spf13/cobra`, `fatih/color`
-- **MCP**: `modelcontextprotocol/go-sdk` (official SDK)
-- **TUI**: `charm.land/bubbletea/v2`, `charm.land/lipgloss/v2`
-- **Compression**: `klauspost/compress/zstd`
-- **Database**: `modernc.org/sqlite` (CGO-free SQLite)
-- **E2E**: glyphrun
+```toml
+[mcp_servers.fcheap]
+command = "fcheap"
+args = ["mcp", "serve"]
+```
+
+The server exposes typed tools, stash resources, reusable investigation prompts,
+and the static `fcheap://agent-guide` resource.
+
+## Search and privacy boundaries
+
+Keyword indexing and BM25 search stay local. Semantic and hybrid search require an
+embedder:
+
+- loopback Ollama keeps document and query text on the machine;
+- OpenAI or non-loopback Ollama receives indexed text and semantic queries;
+- save-time secret findings block remote indexing unless you explicitly opt in;
+- secret scanning is a warning system, not proof that content is safe to send.
+
+The MCP server also runs locally, but your MCP client may send tool results to its
+configured model provider. Treat saved artifact text as untrusted input.
+
+## Core commands
+
+| Job | Commands |
+|---|---|
+| Capture and inspect | `save`, `list`, `info` |
+| Find and investigate | `analyze`, `search`, `diff`, `connect` |
+| Recover | `restore` |
+| Manage storage | `compress`, `ttl`, `sweep`, `cleanup`, `vacuum` |
+| Work interactively | `studio` |
+| Connect agents | `agent`, `mcp serve`, `docs` |
+
+`connect` uses an optional, separately installed vecgrep binary and returns
+ranked source-code candidates—not proof of code ownership.
+
+## Develop
+
+Requirements:
+
+- Go 1.25+
+- Bun 1.3+ for the VitePress site
+
+```bash
+go test ./...
+go build ./cmd/fcheap
+
+cd docs
+bun install --frozen-lockfile
+bun run docs:verify
+```
+
+See the [core concepts](https://file.cheap/guide/core-concepts), the
+[CLI reference](https://file.cheap/cli/), and
+[contribution guidance](AGENTS.md) for the complete architecture and conventions.
 
 ## License
 

@@ -12,6 +12,7 @@ import (
 	"sort"
 
 	doccontent "github.com/abdul-hamid-achik/file.cheap/docs"
+	"github.com/abdul-hamid-achik/file.cheap/internal/agentguide"
 	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
 	"github.com/abdul-hamid-achik/file.cheap/internal/cleanup"
 	"github.com/abdul-hamid-achik/file.cheap/internal/diff"
@@ -62,7 +63,9 @@ func (s *Server) Run(ctx context.Context, transport mcp.Transport) error {
 		Name:    "fcheap",
 		Title:   "fcheap stash tools",
 		Version: s.version,
-	}, nil)
+	}, &mcp.ServerOptions{
+		Instructions: agentguide.MCPInstructions(),
+	})
 	s.registerTools(srv)
 	s.registerResources(srv)
 	s.registerPrompts(srv)
@@ -141,15 +144,16 @@ func (s *Server) registerTools(srv *mcp.Server) {
 
 	// fcheap_list
 	type listInput struct {
-		Tag   string   `json:"tag,omitempty" jsonschema:"Filter by tag (single; merged with tags)"`
-		Tags  []string `json:"tags,omitempty" jsonschema:"Filter by tags — AND across entries (stash must contain every tag)"`
-		Tool  string   `json:"tool,omitempty" jsonschema:"Filter by tool (e.g. vidtrace)"`
-		Since string   `json:"since,omitempty" jsonschema:"Only stashes newer than 24h, 7d, 2w, or 2026-06-01"`
-		Limit int      `json:"limit,omitempty" jsonschema:"Maximum number of stashes"`
+		Tag            string   `json:"tag,omitempty" jsonschema:"Filter by tag (single; merged with tags)"`
+		Tags           []string `json:"tags,omitempty" jsonschema:"Filter by tags — AND across entries (stash must contain every tag)"`
+		Tool           string   `json:"tool,omitempty" jsonschema:"Filter by tool (e.g. vidtrace)"`
+		Since          string   `json:"since,omitempty" jsonschema:"Only stashes newer than 24h, 7d, 2w, or 2026-06-01"`
+		Limit          int      `json:"limit,omitempty" jsonschema:"Maximum number of stashes"`
+		IncludeExpired bool     `json:"include_expired,omitempty" jsonschema:"Include expired stashes, which are hidden by default"`
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_list",
-		Description: "List stashes, optionally filtered by tag, tool, and age. Newest first.",
+		Description: "List active stashes, optionally filtered by tag, tool, and age. Newest first; include expired stashes only when requested.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &f,
 			OpenWorldHint:   &f,
@@ -160,7 +164,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		if err != nil {
 			return toolError("create stash manager: %v", err), nil, nil
 		}
-		opts := stash.ListOptions{Tag: in.Tag, Tags: in.Tags, Tool: in.Tool, Limit: in.Limit}
+		opts := stash.ListOptions{Tag: in.Tag, Tags: in.Tags, Tool: in.Tool, Limit: in.Limit, IncludeExpired: in.IncludeExpired}
 		if in.Since != "" {
 			since, perr := stash.ParseSince(in.Since)
 			if perr != nil {
@@ -211,7 +215,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_restore",
-		Description: "Restore a stash to a target directory. Extracts all files from the stash.",
+		Description: "Restore a stash, verify file hashes, and report the target. Defaults to a fresh temporary directory; hash mismatches are tool errors unless explicitly allowed.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &t,
 			OpenWorldHint:   &t,
@@ -403,7 +407,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_connect",
-		Description: "Connect a stash to a codebase: run semantic code search (vecgrep) over the codebase using the stashed artifact's text (e.g. a vidtrace bug report) to surface the file:line candidates most likely responsible for the bug.",
+		Description: "Connect a stash to a codebase: use optional vecgrep with the stashed artifact's text to rank related file:line candidates for investigation. Matches are leads, not proof.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &f,
 			OpenWorldHint:   &t,
@@ -425,6 +429,9 @@ func (s *Server) registerTools(srv *mcp.Server) {
 				return toolError("derive query from stash: %v", err), nil, nil
 			}
 			query = q
+		}
+		if query == "" {
+			return toolError("stash has no searchable text; pass query"), nil, nil
 		}
 		vres, err := an.VecgrepSearchIn(ctx, in.Codebase, query, in.Limit, in.Index, in.Mode)
 		if err != nil {
@@ -465,7 +472,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_ttl",
-		Description: "Set or update the time-to-live for a stash. The stash will auto-expire after the given duration from its creation time. Pass an empty TTL to clear the expiry (make the stash permanent). Use fcheap_sweep to actually drop expired stashes.",
+		Description: "Set or update stash expiry metadata. Reaching the expiry time only hides the stash from default listings; no automatic deletion occurs. Pass an empty TTL to clear expiry, or use fcheap_sweep to deliberately drop expired stashes.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &f,
 			OpenWorldHint:   &f,
@@ -636,12 +643,12 @@ func (s *Server) registerTools(srv *mcp.Server) {
 
 	// fcheap_docs
 	type docsInput struct {
-		Action string `json:"action" jsonschema:"Action: 'list' (list all doc pages), 'show' (show a specific page), or 'site' (get the docs site URL)"`
+		Action string `json:"action" jsonschema:"Action: 'guide' (agent operating guide), 'list' (list all doc pages), 'show' (show a specific page), or 'site' (get the docs site URL)"`
 		Page   string `json:"page,omitempty" jsonschema:"Canonical embedded doc page for action=show, e.g. 'guide/getting-started'; absolute and traversal paths are rejected"`
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_docs",
-		Description: "Access the read-only fcheap documentation embedded in this server. Use action='list' to list pages, action='show' to read one canonical page, or action='site' to get the online docs URL.",
+		Description: "Access read-only fcheap guidance and documentation embedded in this server. Use action='guide' for the versioned agent operating guide, 'list' to list pages, 'show' to read one canonical page, or 'site' for the online docs URL.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &f,
 			OpenWorldHint:   &f,
@@ -649,6 +656,8 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in docsInput) (*mcp.CallToolResult, any, error) {
 		switch in.Action {
+		case "guide":
+			return textResult(agentguide.New(s.version)), nil, nil
 		case "list":
 			pages := listDocPages()
 			return textResult(map[string]any{
@@ -659,22 +668,22 @@ func (s *Server) registerTools(srv *mcp.Server) {
 			if in.Page == "" {
 				return toolError("page is required for action=show"), nil, nil
 			}
-			content, err := readDocPage(in.Page)
+			embeddedPage, err := doccontent.Read(in.Page)
 			if err != nil {
 				return toolError("%v", err), nil, nil
 			}
 			return textResult(map[string]string{
-				"page":    in.Page,
-				"content": content,
+				"page":    embeddedPage.Name,
+				"content": embeddedPage.Content,
 			}), nil, nil
 		case "site":
 			return textResult(map[string]string{
 				"url":               "https://file.cheap",
 				"local":             "fcheap docs serve",
-				"local_requirement": "file.cheap source checkout with Node.js and npm",
+				"local_requirement": "file.cheap source checkout with Bun",
 			}), nil, nil
 		default:
-			return toolError("unknown action: %s (use 'list', 'show', or 'site')", in.Action), nil, nil
+			return toolError("unknown action: %s (use 'guide', 'list', 'show', or 'site')", in.Action), nil, nil
 		}
 	})
 }

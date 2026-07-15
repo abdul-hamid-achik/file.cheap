@@ -44,7 +44,7 @@ nfpms:
     vendor: Abdul Hamid Achik
     homepage: "https://github.com/abdul-hamid-achik/file.cheap"
     maintainer: "Abdul Hamid Achik <abdulachik@icloud.com>"
-    description: "Local-first stash tool for saving, restoring, compressing, and analyzing files for agent workflows"
+    description: "The local artifact vault for coding agents"
     license: MIT
     formats:
       - deb
@@ -89,7 +89,7 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Casks
     homepage: "https://github.com/abdul-hamid-achik/file.cheap"
-    description: "Local-first stash tool for saving, restoring, compressing, and analyzing files for agent workflows"
+    description: "The local artifact vault for coding agents"
     license: "MIT"
     skip_upload: "{{ if .Env.HOMEBREW_TAP_TOKEN }}false{{ else }}true{{ end }}"
     hooks:

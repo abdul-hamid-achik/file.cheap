@@ -10,9 +10,9 @@ import (
 var ttlCmd = &cobra.Command{
 	Use:   "ttl <stash-id> <duration>",
 	Short: "Set or update the time-to-live for a stash",
-	Long: `Set the TTL on an existing stash. The stash will auto-expire after the
-given duration from its creation time. Use "fcheap sweep --apply" to actually
-drop expired stashes.
+	Long: `Set the TTL on an existing stash. The stash will be marked expired after
+the given duration from its creation time; no automatic deletion occurs. Use
+"fcheap sweep --apply" to actually drop expired stashes.
 
 Duration examples: 7d (7 days), 24h (24 hours), 30d, 2w (2 weeks), 2026-12-31.
 Pass an empty string "" to clear the TTL (make the stash permanent).`,

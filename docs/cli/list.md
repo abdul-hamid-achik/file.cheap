@@ -21,7 +21,7 @@ fcheap list [flags]
 ## Examples
 
 ```bash
-# List all stashes (newest first)
+# List active stashes (newest first)
 fcheap list
 
 # Filter by tag or tool

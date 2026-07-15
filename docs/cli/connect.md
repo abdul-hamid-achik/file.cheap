@@ -2,8 +2,9 @@
 
 Connect a stash to a codebase: run semantic code search ([vecgrep](https://github.com/abdul-hamid-achik/vecgrep))
 over a repository using the stashed artifact's text — e.g. a vidtrace bug
-report's OCR and transcript — to surface the `file:line` candidates most likely
-responsible for the bug.
+report's OCR and transcript — to rank related `file:line` candidates for
+investigation. These matches are leads to verify, not proof of ownership or root
+cause.
 
 This is the connective tissue: stash a repro, then point it at the live repo.
 
@@ -20,6 +21,24 @@ fcheap connect <stash-id> <codebase-dir> [flags]
 | `stash-id` | The stash whose content drives the code search |
 | `codebase-dir` | Path to the codebase directory to search |
 
+## Requirements
+
+`connect` requires the separately installed
+[vecgrep](https://github.com/abdul-hamid-achik/vecgrep) executable. file.cheap
+looks on `PATH` unless `vecgrep_path` is set in its configuration.
+
+```bash
+fcheap doctor
+```
+
+The target must be a codebase directory that vecgrep can index and search. With
+`--index`, file.cheap asks vecgrep to create or refresh its derived repository
+index, so the command writes index data inside the target codebase.
+
+Keyword mode does not need an embedding model. Semantic and hybrid modes use
+the embedding setup configured by vecgrep; verify that setup independently when
+semantic results are empty or unexpectedly weak.
+
 ## Flags
 
 | Flag | Type | Default | Description |
@@ -33,10 +52,10 @@ fcheap connect <stash-id> <codebase-dir> [flags]
 
 ```bash
 # Connect a vidtrace bug bundle to the codebase where the bug lives
-fcheap connect OPG-15061 ~/projects/graphite --index
+fcheap connect OPG-15061 ~/projects/my-app --index
 
 # Narrow with an explicit query and fewer results
-fcheap connect OPG-15061 ~/projects/graphite --query "login token refresh" --limit 5
+fcheap connect OPG-15061 ~/projects/my-app --query "login token refresh" --limit 5
 ```
 
 ## How It Works
@@ -65,7 +84,7 @@ suffix) and a separate integer `line` field, so callers can build a
 ```json
 {
   "stash_id": "OPG-15061_20260622",
-  "codebase": "~/projects/graphite",
+  "codebase": "~/projects/my-app",
   "query": "login token refresh failed ...",
   "matches": [
     {"stash_id":"vecgrep","score":0.81,"text":"func refreshToken(t string) ...","file":"auth/login.go","line":3,"source":"vecgrep"}
@@ -76,9 +95,6 @@ suffix) and a separate integer `line` field, so callers can build a
 
 `line` is `0` (omitted) when the match has no known line; `index_status` is
 `"indexed"` or `"missing"`.
-
-Requires `vecgrep` on `PATH` (or `vecgrep_path` in config). Check with
-[`doctor`](/cli/doctor).
 
 ::: tip Semantic search needs an embedder
 vecgrep's `semantic`/`hybrid` modes embed code via its default embedder (ollama +
@@ -91,7 +107,7 @@ search).
 ## Output
 
 ```
-Connect OPG-15061 → ~/projects/graphite
+Connect OPG-15061 → ~/projects/my-app
 
   Query: login token refresh failed with 401 unauthorized it logs me out...
 

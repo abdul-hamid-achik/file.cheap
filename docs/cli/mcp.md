@@ -2,6 +2,9 @@
 
 Start the MCP (Model Context Protocol) server for AI assistant integration.
 
+Run `fcheap agent` before setup to print the same concise operating guide the
+server provides to clients during initialization.
+
 ## Usage
 
 ```bash
@@ -32,7 +35,7 @@ Add fcheap to your Claude Code MCP config:
 | Tool | Description |
 |------|-------------|
 | `fcheap_save` | Save a file or directory to the stash vault |
-| `fcheap_list` | List all stashes, optionally filtered by tag |
+| `fcheap_list` | List active stashes, optionally filtered by tag; expired stashes are opt-in |
 | `fcheap_info` | Get detailed info about a stash |
 | `fcheap_restore` | Restore a stash to a target directory |
 | `fcheap_drop` | Permanently delete a stash (requires force=true) |
@@ -44,11 +47,13 @@ Add fcheap to your Claude Code MCP config:
 | `fcheap_ttl` | Set or clear a stash expiry |
 | `fcheap_sweep` | Plan or apply deletion of expired stashes |
 | `fcheap_cleanup` | Analyze cleanup candidates; apply only explicit TTLs or regenerable caches |
-| `fcheap_docs` | Read embedded documentation (safe list/show) or get the docs site URL |
+| `fcheap_docs` | Read the agent guide, list/show embedded documentation, or get the docs site URL |
 
-The server also exposes **resources** (`fcheap://stashes`, `fcheap://stash/{id}`)
-and **prompts** (`investigate_stash`, `find_across_stashes`) — see the
-[MCP overview](/mcp/overview).
+The server also exposes **resources** (`fcheap://agent-guide`,
+`fcheap://stashes`, `fcheap://stash/{id}`) and **prompts**
+(`investigate_stash`, `find_across_stashes`)—see the
+[MCP overview](/mcp/overview). Stash resources contain summaries and manifests,
+not arbitrary saved file bodies.
 
 ## Tool Schemas
 

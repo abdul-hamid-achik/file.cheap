@@ -43,7 +43,7 @@ func TestDocsBuildInvocationUsesRequestedOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantOutput := filepath.Join(mustGetwd(t), "site-output")
-	wantArgs := []string{"run", "docs:build", "--", "--outDir", wantOutput}
+	wantArgs := []string{"run", "docs:build", "--outDir", wantOutput}
 	if !reflect.DeepEqual(args, wantArgs) || outputDir != wantOutput {
 		t.Fatalf("docsBuildInvocation = (%v, %q), want (%v, %q)", args, outputDir, wantArgs, wantOutput)
 	}

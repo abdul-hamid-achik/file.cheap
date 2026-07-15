@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="14" fill="#100e0a"/>
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="none" stroke="#2e281d" stroke-width="2"/>
+  <!-- price tag -->
+  <path d="M30 12 L48 12 L52 16 L52 34 L34 52 L12 30 Z" fill="none" stroke="#e8a33d" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="42" cy="22" r="3.4" fill="#e8a33d"/>
+  <!-- terminal prompt -->
+  <path d="M22 32 l5 4 l-5 4" fill="none" stroke="#6fbf73" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M30 40 h7" fill="none" stroke="#6fbf73" stroke-width="3" stroke-linecap="round"/>
+</svg>

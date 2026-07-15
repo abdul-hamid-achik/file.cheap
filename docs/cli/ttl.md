@@ -1,6 +1,8 @@
 # ttl
 
-Set or update the time-to-live (TTL) for a stash. A stash with a TTL will auto-expire after the given duration from its creation time. Expired stashes are hidden from `list` by default and can be dropped with `fcheap sweep`.
+Set or update the time-to-live (TTL) for a stash. After its TTL, a stash is
+marked expired and hidden from `list` by default; it is not deleted
+automatically. Review or drop expired stashes with `fcheap sweep`.
 
 ## Usage
 

@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="glow" cx="20%" cy="5%" r="80%">
+      <stop offset="0" stop-color="#ef7047" stop-opacity=".2"/>
+      <stop offset=".7" stop-color="#ef7047" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ef7047"/>
+      <stop offset="1" stop-color="#f1b08f"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-30%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000" flood-opacity=".38"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="630" fill="#181713"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="1" y="1" width="1198" height="628" fill="none" stroke="#39352d" stroke-width="2"/>
+
+  <g transform="translate(82 64)">
+    <path d="M20 0h88l20 20v88l-64 64L0 108V20Z" fill="none" stroke="url(#amber)" stroke-width="5" stroke-linejoin="round"/>
+    <circle cx="98" cy="29" r="7" fill="#ef7047"/>
+    <path d="m36 74 19 14-19 14M66 101h25" fill="none" stroke="#8fc49b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <text x="82" y="272" fill="url(#amber)" font-family="ui-monospace, monospace" font-size="68" font-weight="700" letter-spacing="-3">Install</text>
+  <text x="82" y="337" fill="url(#amber)" font-family="ui-monospace, monospace" font-size="68" font-weight="700" letter-spacing="-3">file.cheap</text>
+  <text x="86" y="385" fill="#f3ede1" font-family="system-ui, sans-serif" font-size="27" font-weight="400">One binary. One local artifact vault.</text>
+  <g font-family="ui-monospace, monospace" font-size="17">
+    <rect x="84" y="412" width="460" height="44" rx="12" fill="#1b1812" stroke="#2e281d"/>
+    <text x="105" y="440" fill="#ef7047">macOS</text>
+    <text x="196" y="440" fill="#f3ede1">brew install --cask …/fcheap</text>
+    <rect x="84" y="468" width="460" height="44" rx="12" fill="#1b1812" stroke="#2e281d"/>
+    <text x="105" y="496" fill="#ef7047">Linux</text>
+    <text x="196" y="496" fill="#f3ede1">install the release .deb</text>
+    <rect x="84" y="524" width="460" height="44" rx="12" fill="#1b1812" stroke="#2e281d"/>
+    <text x="105" y="552" fill="#ef7047">Source</text>
+    <text x="196" y="552" fill="#f3ede1">go install …/cmd/fcheap@latest</text>
+  </g>
+
+  <g transform="translate(650 116)" filter="url(#shadow)">
+    <rect width="470" height="390" rx="20" fill="#0c0a07" stroke="#524d40" stroke-width="2"/>
+    <rect width="470" height="52" rx="20" fill="#221e16"/>
+    <rect y="30" width="470" height="22" fill="#221e16"/>
+    <circle cx="27" cy="26" r="7" fill="#e06a5a"/>
+    <circle cx="52" cy="26" r="7" fill="#e8a33d"/>
+    <circle cx="77" cy="26" r="7" fill="#6fbf73"/>
+    <text x="235" y="33" text-anchor="middle" fill="#9a927f" font-family="ui-monospace, monospace" font-size="14">fcheap — local vault</text>
+    <g font-family="ui-monospace, monospace" font-size="19">
+      <text x="26" y="105" fill="#ef7047">~ $</text>
+      <text x="70" y="105" fill="#f3ede1">fcheap doctor</text>
+      <text x="26" y="146" fill="#9bd99e">vault      ready</text>
+      <text x="26" y="177" fill="#9bd99e">database   healthy</text>
+      <text x="26" y="208" fill="#9bd99e">search     ready</text>
+      <text x="26" y="266" fill="#ef7047">~ $</text>
+      <text x="70" y="266" fill="#f3ede1">fcheap save ./artifact --index</text>
+      <text x="26" y="311" fill="#9bd99e">scan: 0 secrets found</text>
+      <text x="26" y="345" fill="#f1b08f">38 files saved · 38 indexed</text>
+    </g>
+  </g>
+
+  <text x="1117" y="574" text-anchor="end" fill="#9a927f" font-family="ui-monospace, monospace" font-size="19">file.cheap/guide/getting-started</text>
+</svg>

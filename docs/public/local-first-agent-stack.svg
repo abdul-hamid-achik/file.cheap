@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Local-first agent stack with file.cheap</title>
+  <desc id="desc">An MCP client talks over stdio to file.cheap. file.cheap stores manifests, payloads, SQLite metadata, and a veclite search index locally, and can optionally call loopback Ollama and vecgrep.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#100e0a"/>
+      <stop offset="1" stop-color="#1b1812"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-30%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000" flood-opacity=".35"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10Z" fill="#e8a33d"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="630" rx="28" fill="url(#bg)"/>
+  <path d="M0 98H1200M0 532H1200" stroke="#2e281d" stroke-dasharray="8 12"/>
+  <text x="64" y="66" fill="#e8a33d" font-family="ui-monospace, monospace" font-size="24" font-weight="700">LOCAL-FIRST AGENT STACK</text>
+  <text x="1136" y="66" fill="#9bd99e" text-anchor="end" font-family="ui-monospace, monospace" font-size="16">no hosted application required</text>
+
+  <g filter="url(#shadow)">
+    <rect x="62" y="185" width="238" height="180" rx="18" fill="#221e16" stroke="#524d40"/>
+    <text x="181" y="230" text-anchor="middle" fill="#ece6d6" font-family="ui-monospace, monospace" font-size="23" font-weight="700">MCP client</text>
+    <text x="181" y="270" text-anchor="middle" fill="#b3ab97" font-family="system-ui, sans-serif" font-size="17">Claude Code · Codex</text>
+    <text x="181" y="298" text-anchor="middle" fill="#b3ab97" font-family="system-ui, sans-serif" font-size="17">OpenCode · stdio client</text>
+    <rect x="96" y="324" width="170" height="24" rx="12" fill="#17140f" stroke="#2e281d"/>
+    <text x="181" y="341" text-anchor="middle" fill="#e8a33d" font-family="ui-monospace, monospace" font-size="13">tools · resources · prompts</text>
+  </g>
+
+  <path d="M305 275H416" stroke="#e8a33d" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="360" y="260" text-anchor="middle" fill="#f2c878" font-family="ui-monospace, monospace" font-size="14">stdio</text>
+
+  <g filter="url(#shadow)">
+    <rect x="424" y="142" width="322" height="266" rx="22" fill="#221e16" stroke="#e8a33d" stroke-width="2"/>
+    <text x="585" y="194" text-anchor="middle" fill="#e8a33d" font-family="ui-monospace, monospace" font-size="31" font-weight="700">file.cheap</text>
+    <text x="585" y="226" text-anchor="middle" fill="#b3ab97" font-family="system-ui, sans-serif" font-size="17">one local CGO-free binary</text>
+    <g fill="#17140f" stroke="#2e281d">
+      <rect x="456" y="254" width="122" height="52" rx="11"/>
+      <rect x="592" y="254" width="122" height="52" rx="11"/>
+      <rect x="456" y="320" width="122" height="52" rx="11"/>
+      <rect x="592" y="320" width="122" height="52" rx="11"/>
+    </g>
+    <g fill="#ece6d6" font-family="ui-monospace, monospace" font-size="15" text-anchor="middle">
+      <text x="517" y="286">manifests</text>
+      <text x="653" y="286">payloads</text>
+      <text x="517" y="352">SQLite</text>
+      <text x="653" y="352">veclite</text>
+    </g>
+  </g>
+
+  <path d="M752 224H870" stroke="#6fbf73" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M752 350H870" stroke="#6fbf73" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="811" y="207" text-anchor="middle" fill="#9bd99e" font-family="ui-monospace, monospace" font-size="14">optional</text>
+  <text x="811" y="333" text-anchor="middle" fill="#9bd99e" font-family="ui-monospace, monospace" font-size="14">optional</text>
+
+  <g filter="url(#shadow)">
+    <rect x="878" y="150" width="260" height="126" rx="18" fill="#182019" stroke="#6fbf73"/>
+    <text x="1008" y="198" text-anchor="middle" fill="#9bd99e" font-family="ui-monospace, monospace" font-size="23" font-weight="700">Ollama</text>
+    <text x="1008" y="229" text-anchor="middle" fill="#b3ab97" font-family="system-ui, sans-serif" font-size="16">loopback embeddings</text>
+    <text x="1008" y="253" text-anchor="middle" fill="#b3ab97" font-family="system-ui, sans-serif" font-size="14">semantic + hybrid search</text>
+
+    <rect x="878" y="300" width="260" height="126" rx="18" fill="#182019" stroke="#6fbf73"/>
+    <text x="1008" y="348" text-anchor="middle" fill="#9bd99e" font-family="ui-monospace, monospace" font-size="23" font-weight="700">vecgrep</text>
+    <text x="1008" y="379" text-anchor="middle" fill="#b3ab97" font-family="system-ui, sans-serif" font-size="16">live codebase search</text>
+    <text x="1008" y="403" text-anchor="middle" fill="#b3ab97" font-family="system-ui, sans-serif" font-size="14">evidence → file:line leads</text>
+  </g>
+
+  <rect x="63" y="474" width="1074" height="88" rx="16" fill="#17140f" stroke="#2e281d"/>
+  <text x="92" y="512" fill="#f2c878" font-family="ui-monospace, monospace" font-size="16">DEFAULT TRUST BOUNDARY</text>
+  <text x="92" y="540" fill="#b3ab97" font-family="system-ui, sans-serif" font-size="17">Artifacts, manifests, BM25 search, and restores stay on this machine.</text>
+  <circle cx="1101" cy="518" r="10" fill="#6fbf73"/>
+</svg>

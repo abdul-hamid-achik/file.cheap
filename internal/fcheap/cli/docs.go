@@ -37,8 +37,8 @@ var docsServeCmd = &cobra.Command{
 	Short: "Start a local VitePress dev server",
 	Long: `Start a local VitePress development server for the docs site.
 
-Requires a file.cheap source checkout plus Node.js and npm. If node_modules is
-missing, fcheap installs the locked dependencies from docs/package-lock.json.`,
+Requires a file.cheap source checkout plus Bun. If node_modules is missing,
+fcheap installs the exact dependencies from docs/bun.lock.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		docsDir := findDocsDir()
@@ -57,11 +57,11 @@ missing, fcheap installs the locked dependencies from docs/package-lock.json.`,
 			go func() { _ = openBrowser(fmt.Sprintf("http://localhost:%s", port)) }()
 		}
 
-		npmCmd := exec.CommandContext(GetContext(), "npm", "run", "docs:dev", "--", "--port", port)
-		npmCmd.Dir = docsDir
-		npmCmd.Stdout = os.Stdout
-		npmCmd.Stderr = os.Stderr
-		return npmCmd.Run()
+		bunCmd := exec.CommandContext(GetContext(), "bun", "run", "docs:dev", "--port", port)
+		bunCmd.Dir = docsDir
+		bunCmd.Stdout = os.Stdout
+		bunCmd.Stderr = os.Stderr
+		return bunCmd.Run()
 	},
 }
 
@@ -73,7 +73,7 @@ var docsBuildCmd = &cobra.Command{
 The output goes to docs/.vitepress/dist/ by default, or the directory
 specified by --output.
 
-Requires a file.cheap source checkout plus Node.js and npm.`,
+Requires a file.cheap source checkout plus Bun.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		docsDir := findDocsDir()
@@ -87,15 +87,15 @@ Requires a file.cheap source checkout plus Node.js and npm.`,
 
 		printer.Info("Building docs site...")
 
-		npmArgs, distDir, err := docsBuildInvocation(docsDir, docsOutput)
+		bunArgs, distDir, err := docsBuildInvocation(docsDir, docsOutput)
 		if err != nil {
 			return err
 		}
-		npmCmd := exec.CommandContext(GetContext(), "npm", npmArgs...)
-		npmCmd.Dir = docsDir
-		npmCmd.Stdout = os.Stdout
-		npmCmd.Stderr = os.Stderr
-		if err := npmCmd.Run(); err != nil {
+		bunCmd := exec.CommandContext(GetContext(), "bun", bunArgs...)
+		bunCmd.Dir = docsDir
+		bunCmd.Stdout = os.Stdout
+		bunCmd.Stderr = os.Stderr
+		if err := bunCmd.Run(); err != nil {
 			return fmt.Errorf("docs build failed: %w", err)
 		}
 
@@ -178,7 +178,7 @@ var docsPreviewCmd = &cobra.Command{
 	Short: "Preview the built docs site locally",
 	Long: `Preview the built docs site using VitePress preview server.
 
-Requires a file.cheap source checkout plus Node.js and npm. Run
+Requires a file.cheap source checkout plus Bun. Run
 'fcheap docs build' first to generate the dist output.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -198,11 +198,11 @@ Requires a file.cheap source checkout plus Node.js and npm. Run
 			go func() { _ = openBrowser(fmt.Sprintf("http://localhost:%s", port)) }()
 		}
 
-		npmCmd := exec.CommandContext(GetContext(), "npm", "run", "docs:preview", "--", "--port", port)
-		npmCmd.Dir = docsDir
-		npmCmd.Stdout = os.Stdout
-		npmCmd.Stderr = os.Stderr
-		return npmCmd.Run()
+		bunCmd := exec.CommandContext(GetContext(), "bun", "run", "docs:preview", "--port", port)
+		bunCmd.Dir = docsDir
+		bunCmd.Stdout = os.Stdout
+		bunCmd.Stderr = os.Stderr
+		return bunCmd.Run()
 	},
 }
 
@@ -248,13 +248,13 @@ func checkDocsDeps(docsDir string) error {
 	nodeModules := filepath.Join(docsDir, "node_modules")
 	if _, err := os.Stat(nodeModules); err != nil {
 		installArgs := []string{"install"}
-		installName := "npm install"
-		if _, lockErr := os.Stat(filepath.Join(docsDir, "package-lock.json")); lockErr == nil {
-			installArgs = []string{"ci"}
-			installName = "npm ci"
+		installName := "bun install"
+		if _, lockErr := os.Stat(filepath.Join(docsDir, "bun.lock")); lockErr == nil {
+			installArgs = []string{"install", "--frozen-lockfile"}
+			installName = "bun install --frozen-lockfile"
 		}
 		printer.Warn("node_modules not found in docs/. Running %s...", installName)
-		installCmd := exec.CommandContext(GetContext(), "npm", installArgs...)
+		installCmd := exec.CommandContext(GetContext(), "bun", installArgs...)
 		installCmd.Dir = docsDir
 		installCmd.Stdout = os.Stdout
 		installCmd.Stderr = os.Stderr
@@ -275,7 +275,7 @@ func docsBuildInvocation(docsDir, outputDir string) ([]string, string, error) {
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve docs output directory: %w", err)
 	}
-	return append(args, "--", "--outDir", absOutput), absOutput, nil
+	return append(args, "--outDir", absOutput), absOutput, nil
 }
 
 func docsSourceRequiredError() error {

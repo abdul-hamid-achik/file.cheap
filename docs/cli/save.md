@@ -33,7 +33,7 @@ fcheap save ./report.pdf --tag evidence --tag pdf --tool manual
 # Save with source provenance
 fcheap save /tmp/vidtrace-output --tag OPG-15061 --tool vidtrace --source ~/Downloads/OPG-15061.mp4
 
-# Save with a 7-day TTL (auto-expires; use `fcheap sweep --apply` to clean up)
+# Mark the stash expired after 7 days; apply sweep separately to delete it
 fcheap save /tmp/codemap-snapshot --tag codemap-snapshot --tool codemap --ttl 7d
 
 # Save a single file

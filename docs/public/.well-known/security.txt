@@ -1,0 +1,5 @@
+Contact: https://github.com/abdul-hamid-achik/file.cheap/security/advisories/new
+Expires: 2027-07-15T23:59:59Z
+Preferred-Languages: en
+Canonical: https://file.cheap/.well-known/security.txt
+Policy: https://github.com/abdul-hamid-achik/file.cheap/security/policy

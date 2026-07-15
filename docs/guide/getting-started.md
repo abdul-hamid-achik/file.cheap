@@ -1,15 +1,24 @@
-# Getting Started
+# Getting started
 
-## Installation
+Install file.cheap, create a disposable snapshot, search it, and restore verified
+files. The workflow takes only local filesystem access and does not require an
+account.
 
-### macOS (Homebrew)
+## Install
+
+### macOS with Homebrew
 
 ```bash
-# Use --no-quarantine to avoid Gatekeeper warnings (binary is unsigned)
-brew install --no-quarantine abdul-hamid-achik/tap/fcheap
+brew install --cask --no-quarantine abdul-hamid-achik/tap/fcheap
 ```
 
-### Linux (deb)
+The release binary is not signed with an Apple Developer certificate.
+`--no-quarantine` avoids the common first-run Gatekeeper block.
+
+### Linux with a Debian package
+
+The package name contains the release version. This example resolves the latest
+tag and downloads the amd64 package:
 
 ```bash
 tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/abdul-hamid-achik/file.cheap/releases/latest)"
@@ -19,102 +28,142 @@ curl -fLO "https://github.com/abdul-hamid-achik/file.cheap/releases/download/${t
 sudo dpkg -i "fcheap_${version}_linux_amd64.deb"
 ```
 
-### From source
+Use the matching arm64 release artifact on an arm64 Linux system.
+
+### Build from source
 
 ```bash
 go install github.com/abdul-hamid-achik/file.cheap/cmd/fcheap@latest
 ```
 
-## Quick Start
+Source installation requires Go 1.25 or newer.
 
-Save files to the stash vault:
-
-```bash
-fcheap save /tmp/vidtrace-artifacts --tag OPG-15061 --tool vidtrace --source ~/Downloads/OPG-15061.mp4
-```
-
-List what you've stashed:
+## Check the installation
 
 ```bash
-fcheap list
+fcheap version
+fcheap doctor
 ```
 
-Get details about a specific stash:
+`doctor` reports the effective stash directory, metadata and search indexes,
+and optional tools such as vecgrep or an embedder. Keyword search does not need
+either optional dependency.
+
+## Create a small artifact
+
+Use a disposable directory so the first workflow does not depend on another
+tool:
+
+```bash
+mkdir -p /tmp/fcheap-getting-started
+printf 'checkout stopped after refresh\nerror code: CART-42\n' \
+  > /tmp/fcheap-getting-started/incident.txt
+```
+
+## Save and index it
+
+```bash
+fcheap save /tmp/fcheap-getting-started \
+  --name "Getting started incident" \
+  --tag getting-started \
+  --tool manual \
+  --index
+```
+
+`--index` matters: a normal save creates the snapshot, while indexing makes its
+readable files searchable. The result reports a generated stash ID, file count,
+size, and indexing status. Copy the ID for the next commands.
+
+The save also scans likely secrets by default. A warning identifies the file,
+rule, and line without printing the suspected secret value.
+
+## Find the stash again
+
+List the tag you assigned:
+
+```bash
+fcheap list --tag getting-started
+```
+
+Then search the indexed file:
+
+```bash
+fcheap search "CART-42" --mode keyword
+```
+
+The result should identify the stash and `incident.txt`, with a snippet around
+the matching error code. Keyword mode uses the local BM25 index and does not
+contact an embedding service.
+
+Inspect the full manifest:
 
 ```bash
 fcheap info <stash-id>
 ```
 
-Restore a stash to a working directory:
+The manifest shows provenance, tags, saved paths, hashes, compression, expiry,
+and secret-scan metadata.
+
+## Restore and verify it
 
 ```bash
-fcheap restore <stash-id> --to /tmp/working/
+fcheap restore <stash-id>
 ```
 
-Search across all indexed stashes:
+Without `--to`, restore creates a fresh unique temporary directory and prints
+its path. The result should report `verified: true` after hashing the restored
+file against `manifest.json`.
+
+To choose a destination instead:
 
 ```bash
-fcheap search "columns not showing up"
+fcheap restore <stash-id> --to /tmp/fcheap-restored-incident
 ```
 
-Diff a stash against a live codebase:
+An existing destination is modified in place: same-named files are replaced
+and unrelated files remain. Prefer the default fresh directory unless merging
+is intentional.
+
+## Clean up the exercise
+
+Removing the temporary source does not remove the stash:
 
 ```bash
-fcheap diff <stash-id> ~/projects/graphite
+rm -rf /tmp/fcheap-getting-started /tmp/fcheap-restored-incident
 ```
 
-Drop a stash when you're done:
+Keep the stash for later experiments, or explicitly delete it:
 
 ```bash
 fcheap drop <stash-id> --force
 ```
 
-Check runtime health:
+`drop` is permanent. It requires `--force` in non-interactive CLI use.
+
+## Where the data lives
+
+By default:
+
+- configuration: `${XDG_CONFIG_HOME:-$HOME/.config}/fcheap/config.yaml`;
+- vault: `${XDG_DATA_HOME:-$HOME/.local/share}/fcheap/`.
+
+Show the effective values with:
 
 ```bash
-fcheap doctor
+fcheap config path
+fcheap config show
 ```
 
-## Configuration
+Use `--stash-dir` or `FCHEAP_STASH_DIR` for an invocation-specific vault
+override. Relative configured paths resolve from the configuration directory,
+not the current working directory.
 
-fcheap uses XDG directories by default:
+## Next steps
 
-- Config: `${XDG_CONFIG_HOME:-$HOME/.config}/fcheap/config.yaml`
-- Data: `${XDG_DATA_HOME:-$HOME/.local/share}/fcheap/`
-
-You can override the stash directory with the `--stash-dir` flag or `FCHEAP_STASH_DIR` env var.
-`XDG_CONFIG_HOME` must be absolute when set. In `stash_dir` and `vecgrep_path`,
-fcheap expands `~` and anchors relative values to the config directory rather
-than the current working directory.
-
-### Config file
-
-```yaml
-stash_dir: ~/.local/share/fcheap
-compression: zstd
-compress_threshold: 10485760  # 10MB
-log_level: warn
-vecgrep_path: ""              # optional, for semantic search
-embedder: ""                  # optional: ollama (localhost default) or openai (remote)
-embed_model: ""
-ollama_url: ""                # default http://localhost:11434
-allow_remote_secrets: false  # block remote indexing of scanner-flagged stashes
-default_ttl: ""
-ttl_rules: {}
-```
-
-OpenAI and non-loopback Ollama endpoints receive document text during indexing
-and query text during semantic/hybrid search. Scanner-flagged stashes are
-blocked from remote indexing unless you explicitly set
-`allow_remote_secrets: true`; queries are not scanned by that guard. Ollama
-defaults to localhost, and loopback endpoints remain local without the opt-in.
-
-### Environment variables
-
-| Variable | Description |
-|----------|-------------|
-| `FCHEAP_STASH_DIR` | Override stash storage directory |
-| `FCHEAP_LOG_LEVEL` | Override log level (debug, info, warn, error) |
-| `FCHEAP_VECGREP_PATH` | Path to vecgrep binary for semantic search |
-| `XDG_CONFIG_HOME` | Absolute parent directory for `fcheap/config.yaml` |
-| `XDG_DATA_HOME` | Parent directory for the default stash vault |
+- Read [Core concepts](/guide/core-concepts) for the manifest and index model.
+- Follow [Workflow examples](/guide/workflows) for evidence, diff, connect, and
+  retention recipes.
+- Run `fcheap agent` or read the [Agent operating guide](/guide/agent-guide)
+  before delegating operations to an assistant.
+- Connect an MCP client with the [MCP setup guide](/integrations/mcp-clients).
+- Use [Troubleshooting](/guide/troubleshooting) if an expected result differs.

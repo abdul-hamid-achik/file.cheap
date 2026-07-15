@@ -1,16 +1,36 @@
 # MCP Server Overview
 
-fcheap includes a built-in MCP (Model Context Protocol) server that exposes stash operations to AI assistants like Claude across all three MCP surfaces: **tools** (actions), **resources** (readable stash data by URI), and **prompts** (one-shot agent workflows).
+fcheap includes a built-in MCP (Model Context Protocol) server that exposes
+local stash operations to AI assistants across all three MCP surfaces:
+**tools** (actions), **resources** (readable data by URI), and **prompts**
+(guided workflows). It also supplies a version-matched operating guide during
+initialization so a client learns the safety contract before choosing tools.
 
 ## How It Works
 
-The MCP server runs over stdio transport. When an AI assistant needs to save, restore, analyze, or diff files, it calls fcheap's MCP tools. The server creates a stash manager, performs the operation, and returns results as JSON. Agents can also read stash metadata as **resources** (without spending a tool call) and launch multi-step investigations from **prompts**.
+The MCP server runs over stdio transport. When an assistant needs to save,
+restore, analyze, or compare files, it calls a typed fcheap tool. Agents can
+also read stash metadata and the operating guide as resources, then launch
+multi-step investigations from prompts.
+
+The vault is local. OpenAI and non-loopback Ollama embedders are the exception:
+when explicitly configured, they receive text during semantic/hybrid indexing
+and search. file.cheap does not expose an HTTP server or shipped cloud sync.
+A local MCP process also does not imply a local language model: the client may
+send tool and resource results to its configured model provider.
 
 ## Setup
 
 fcheap is a standard **stdio** MCP server, so it works in any MCP-compatible
 client. The invocation is always the same — command `fcheap`, args `mcp serve` —
 only the config format differs. Below are the common clients.
+
+Before connecting a client, inspect the same guide that the server will provide:
+
+```bash
+fcheap agent
+fcheap agent --json
+```
 
 ### Claude Code
 
@@ -63,9 +83,10 @@ In `~/.config/opencode/opencode.json`, under `mcp`:
 
 Register a server named `fcheap` that runs `fcheap mcp serve` over stdio. Clients
 that read a `.mcp.json` (`mcpServers` map) use the same shape as the Claude Code
-JSON above. On first connect the server advertises all three surfaces — 14 tools,
-the `fcheap://stashes` resource plus the `fcheap://stash/{id}` resource template,
-and 2 prompts.
+JSON above. On first connect the server advertises 14 tools, the
+`fcheap://agent-guide` and `fcheap://stashes` resources, the
+`fcheap://stash/{id}` resource template, and two prompts. Its initialization
+instructions include the concise agent guide.
 
 ## Tools
 
@@ -94,7 +115,8 @@ elements; all ID-taking tools reject separators and traversal values.
 
 ### fcheap_list
 
-List stashes, optionally filtered by tag, tool, and age. Newest first.
+List active stashes, optionally filtered by tag, tool, and age. Newest first;
+expired stashes are hidden unless requested.
 
 **Input:**
 - `tag` (string, optional) -- filter by tag (single; merged with `tags`)
@@ -102,6 +124,7 @@ List stashes, optionally filtered by tag, tool, and age. Newest first.
 - `tool` (string, optional) -- filter by tool (e.g. vidtrace)
 - `since` (string, optional) -- only stashes newer than `24h`, `7d`, `2w`, or `2026-06-01`
 - `limit` (int, optional) -- maximum number of stashes
+- `include_expired` (bool, optional) -- include expired stashes (default `false`)
 
 **Output:** Array of stash summaries (id, name, tool, tags, sizes, created, bundle
 type, plus compression / secrets_found / video / `custom` where present). `custom`
@@ -195,8 +218,9 @@ Compare a stash against a target directory.
 ### fcheap_connect
 
 Connect a stash to a codebase: run semantic code search (vecgrep) over the
-codebase using the stashed artifact's text to surface the `file:line` candidates
-most likely responsible for the bug. See [`connect`](/cli/connect).
+codebase using the stashed artifact's text to rank related `file:line`
+candidates for investigation. Matches are leads, not proof. See
+[`connect`](/cli/connect).
 
 **Input:**
 - `stash_id` (string, required) -- the stash whose content drives the search
@@ -264,24 +288,32 @@ the tool result as an error. See [`cleanup`](/cli/cleanup).
 Access the read-only fcheap documentation embedded in every installed server.
 
 **Input:**
-- `action` (string, required) -- `list`, `show`, or `site`
+- `action` (string, required) -- `guide`, `list`, `show`, or `site`
 - `page` (string, optional) -- canonical embedded page path for `action=show`,
   e.g. `cli/save`; absolute and traversal paths are rejected
 
-**Output:** List of pages, page content, or site URL. The `site` result notes that
-local VitePress serving requires a file.cheap source checkout plus Node.js and
-npm; embedded `list` and `show` do not.
+**Output:** The versioned agent guide, list of pages, exact page content, or site
+URL. The `site` result notes that local VitePress serving requires a file.cheap
+source checkout plus Bun; embedded `guide`, `list`, and `show` do not.
 
 ## Resources
 
-Resources expose stash data as readable URIs, so an agent can pull stash metadata
-straight into context without spending a tool call. Both return `application/json`.
+Resources let an agent pull the operating contract or stash metadata directly
+into context without an action-oriented tool call.
+
+### `fcheap://agent-guide`
+
+The version-matched, read-only operating guide. It explains tool selection,
+state effects, remote embedding, restore verification, destructive-action
+policy, and partial-failure handling. The server also includes this guide in its
+initialization instructions.
 
 ### `fcheap://stashes`
 
-The full stash index — the same summaries as `fcheap_list` (id, name, tool, tags,
-file count, size, created_at, bundle type, plus compression / secrets_found / video /
-`custom` flags where present), newest first.
+The active stash index—the same default view as `fcheap_list`—with id, name,
+tool, tags, file count, size, creation time, bundle type, and optional
+compression, secret, video, and custom metadata. Expired stashes are hidden by
+this default view.
 
 ### `fcheap://stash/{id}`
 
@@ -291,22 +323,30 @@ metadata. Reading an unknown ID returns a resource-not-found error.
 
 ## Prompts
 
-Prompts are reusable, parameterized workflows a user can launch with one command;
-each expands into a guided message that drives the tools and resources above.
+Prompts are reusable, parameterized workflows. They guide tool selection but do
+not add capabilities beyond the tools and resources above.
 
 ### `investigate_stash`
 
-Plan an end-to-end investigation of a stash. **Arguments:** `stash_id` (required),
-`codebase_dir` (optional). Walks the agent through reading the manifest, indexing
-and searching the stash, optionally `fcheap_connect`-ing it to a codebase to surface
-`file:line` candidates, and summarizing findings — the flagship vidtrace-evidence →
-code workflow.
+Plan an end-to-end investigation of a stash. **Arguments:** `stash_id`
+(required), `codebase_dir` (optional). It guides the agent through reading the
+manifest, indexing and searching the stash, optionally connecting evidence to a
+codebase, and summarizing supported findings.
 
 ### `find_across_stashes`
 
-Search every indexed stash for a query and synthesize where the answer lives.
-**Arguments:** `query` (required), `mode` (optional: `keyword`/`semantic`/`hybrid`).
+Search every indexed stash for a query and synthesize which stash and file has
+the strongest evidence. **Arguments:** `query` (required), `mode` (optional:
+`keyword`/`semantic`/`hybrid`). Search supplies snippets; the manifest resource
+adds provenance and a file list, not surrounding file bodies. Restore to a fresh
+directory when complete content is required and that write is in scope.
 
 ## Architecture
 
-The MCP server is built with the official [modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk). Tools use typed input structs with `jsonschema` tags for automatic schema generation. The `DestructiveHint`, `OpenWorldHint`, and `IdempotentHint` annotations help AI assistants understand the safety properties of each tool. Resources and prompts are registered alongside the tools (see `internal/mcp/resources.go`), so a single `fcheap mcp serve` advertises all three capabilities.
+The MCP server is built with the official
+[modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk).
+Tools use typed input structs with `jsonschema` tags for schema generation. The
+`DestructiveHint`, `OpenWorldHint`, and `IdempotentHint` annotations describe
+tool behavior, while initialization instructions and `fcheap://agent-guide`
+provide the operating policy. Mechanical annotations do not replace explicit
+user intent for deletion or applied cleanup.

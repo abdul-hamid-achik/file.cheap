@@ -1,6 +1,8 @@
 # diff
 
-Compare a stash against a target directory. Shows files only in stash, only in target, and changed files.
+Compare a saved stash with a corresponding current directory. The comparison
+uses relative paths and content hashes to show what was added, removed, or
+changed after the snapshot.
 
 ## Usage
 
@@ -11,46 +13,78 @@ fcheap diff <stash-id> <target-dir> [flags]
 ## Arguments
 
 | Argument | Description |
-|----------|-------------|
-| `stash-id` | The stash ID to compare |
-| `target-dir` | Target directory to compare against |
+|---|---|
+| `stash-id` | Opaque ID of the saved baseline |
+| `target-dir` | Current directory tree to compare with that baseline |
 
-## Examples
+The target directory must exist. Global `--json` output is available for
+automation.
+
+## Choose a meaningful target
+
+`diff` compares file trees; it does not search by meaning. Use it when the stash
+and target represent versions of the same artifact, generated output, export,
+or working directory.
+
+Good examples include:
+
+- a generated report before and after changing its generator;
+- exported configuration before and after an upgrade;
+- a fixture directory before and after a test run;
+- a source tree snapshot compared with the same source tree later.
+
+Do not diff an OCR, screenshot, or vidtrace bundle against an application
+repository. Those trees contain unrelated paths. Use [`connect`](/cli/connect)
+to rank related code candidates from evidence text.
+
+## Example
+
+Create a baseline:
 
 ```bash
-# Compare a stash against a live codebase
-fcheap diff my_artifacts_20260622_115254 ~/projects/graphite
-
-# Compare against a specific subdirectory
-fcheap diff my_artifacts_20260622_115254 ~/projects/graphite/go/service/warehouse
+fcheap save ./generated-site --name "Generated site baseline"
 ```
 
-## How It Works
+After regenerating the same directory, compare it with the saved ID:
 
-1. Extracts the stash content (from tree or archive)
-2. Walks both directories and compares file paths
-3. For files in both, compares content hashes
-4. Reports: only-in-stash, only-in-target, changed, unchanged
+```bash
+fcheap diff <stash-id> ./generated-site
+```
+
+## How it works
+
+1. Reads the manifest and payload from the stash, extracting an archive when
+   necessary.
+2. Walks the saved and target directory trees.
+3. Compares normalized relative paths.
+4. Hashes files present in both trees and compares their content.
+5. Reports files only in the stash, only in the target, changed, and unchanged.
+
+The command does not modify the stash or target.
 
 ## Output
 
+```text
+Diff: generated-site_20260715_120000 vs /home/user/project/generated-site
+
+Only in stash (1 file):
+  removed-page.html
+
+Only in target (1 file):
+  new-page.html
+
+Changed (2 files):
+  index.html
+  assets/app.css
+
+Unchanged: 24 files
 ```
-Diff: my_artifacts_20260622_115254 vs ~/projects/graphite
 
-Only in stash (12 files):
-  frames/frame_0000.png
-  frames/frame_0001.png
-  ...
+The exact paths and counts depend on the compared trees. With `--json`, use the
+file arrays and unchanged count rather than parsing the human display.
 
-Only in target (45 files):
-  go/service/warehouse/main.go
-  go/service/warehouse/handler.go
-  ...
+## See also
 
-Changed (3 files):
-  go/service/warehouse/conditions.go
-  go/service/warehouse/types.go
-  go/service/warehouse/render.go
-
-Unchanged: 8 files
-```
+- [`save`](/cli/save) — create the baseline
+- [`restore`](/cli/restore) — materialize and verify the complete saved tree
+- [`connect`](/cli/connect) — relate evidence text to likely source code
