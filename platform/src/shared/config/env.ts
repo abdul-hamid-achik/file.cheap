@@ -1,14 +1,21 @@
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import { z } from "zod";
 
+const developmentApiToken = "local-development-token";
+const developmentSigningSecret = "local-development-signing-secret-change-me";
+
 const environmentSchema = z.object({
   PLATFORM_STORAGE_DRIVER: z.enum(["local", "vercel-blob"]).default("local"),
-  PLATFORM_API_TOKEN: z.string().min(16).default("local-development-token"),
+  PLATFORM_BLOB_INTEGRITY: z
+    .literal("presence-size-etag-experimental")
+    .optional(),
+  PLATFORM_API_TOKEN: z.string().min(16).default(developmentApiToken),
   PLATFORM_SIGNING_SECRET: z
     .string()
     .min(32)
-    .default("local-development-signing-secret-change-me"),
+    .default(developmentSigningSecret),
+  PLATFORM_DATA_DIR: z.string().min(1).optional(),
   PLATFORM_PUBLIC_URL: z.url().default("http://127.0.0.1:3100"),
   BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
 });
@@ -30,6 +37,9 @@ export function getConfig(): PlatformConfig {
   }
 
   const parsed = environmentSchema.parse(process.env);
+  if (parsed.PLATFORM_DATA_DIR && !isAbsolute(parsed.PLATFORM_DATA_DIR)) {
+    throw new Error("PLATFORM_DATA_DIR must be an absolute path when provided");
+  }
   if (process.env.VERCEL && parsed.PLATFORM_STORAGE_DRIVER === "local") {
     throw new Error(
       "PLATFORM_STORAGE_DRIVER=local is intentionally disabled on Vercel; configure a private Blob store",
@@ -37,14 +47,25 @@ export function getConfig(): PlatformConfig {
   }
   if (
     process.env.VERCEL &&
-    parsed.PLATFORM_API_TOKEN === "local-development-token"
+    parsed.PLATFORM_API_TOKEN === developmentApiToken
   ) {
     throw new Error("PLATFORM_API_TOKEN must be replaced before a Vercel build");
+  }
+  if (process.env.VERCEL && parsed.PLATFORM_SIGNING_SECRET === developmentSigningSecret) {
+    throw new Error("PLATFORM_SIGNING_SECRET must be replaced before a Vercel build");
+  }
+  if (
+    parsed.PLATFORM_STORAGE_DRIVER === "vercel-blob" &&
+    parsed.PLATFORM_BLOB_INTEGRITY !== "presence-size-etag-experimental"
+  ) {
+    throw new Error(
+      "Vercel Blob direct uploads are presence-only until staging and repair exist; set PLATFORM_BLOB_INTEGRITY=presence-size-etag-experimental only for a controlled spike",
+    );
   }
   cachedConfig = {
     apiToken: parsed.PLATFORM_API_TOKEN,
     blobReadWriteToken: parsed.BLOB_READ_WRITE_TOKEN,
-    dataDirectory: join(process.cwd(), ".data"),
+    dataDirectory: parsed.PLATFORM_DATA_DIR ?? join(process.cwd(), ".data"),
     publicUrl: parsed.PLATFORM_PUBLIC_URL.replace(/\/$/, ""),
     signingSecret: parsed.PLATFORM_SIGNING_SECRET,
     storageDriver: parsed.PLATFORM_STORAGE_DRIVER,

@@ -7,8 +7,9 @@
 ## Context
 
 file.cheap is local-first. The hosted hypothesis is not a generic cloud drive;
-it is a verified remote vault for immutable agent artifacts that can reclaim
-local disk and restore the exact bytes on another machine.
+it is a verified remote-vault hypothesis for immutable agent artifacts. This
+local experiment validates the protocol and recovery behavior before any claim
+about off-device durability or reclaiming local disk.
 
 The first technical question is whether file.cheap's archive format can move to
 private object storage, recover reliably, and preserve integrity without pulling
@@ -36,8 +37,8 @@ catalog is enough to test one-workspace plan/upload/commit/download behavior.
 3. Uploads and catalog commits are separate, idempotent steps.
 4. A failed network operation cannot mutate a local stash.
 5. `HEAD`, byte count, and ETag prove object presence, not complete recoverability.
-6. Eviction is allowed only after a complete hydrate-and-SHA-256 check and a
-   confirmed recovery-key export.
+6. This prototype never evicts. A future encrypted client may consider eviction
+   only after a complete hydrate-and-SHA-256 check and recovery-key export.
 7. Local `drop` never implies remote deletion.
 
 ## Why `platform/`
@@ -61,7 +62,13 @@ manifests, filenames, search indexes, and encryption keys do not belong there.
 ## Consequences
 
 - The first vertical slice stays small and works without external credentials.
+- A portable recovery card and local selected-file report make clean-session
+  drills reproducible without telemetry or browser persistence. The report is
+  deliberately marked non-tamper-evident and is not a server receipt.
 - The object-store port keeps the Vercel choice replaceable.
 - The catalog is explicitly unsuitable for production multi-tenancy.
 - Auth, payments, teams, public sharing, background sync, and remote search stay
   out of scope.
+- The Blob adapter is compile- and contract-tested but fails closed by default.
+  A founder-only spike needs an explicit presence-only acknowledgement. User
+  traffic remains blocked until staging and poisoned-path repair are designed.

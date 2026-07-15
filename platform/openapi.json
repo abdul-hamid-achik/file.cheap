@@ -1,0 +1,446 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "file.cheap recovery protocol",
+    "version": "1.0.0-prototype",
+    "description": "Provider-neutral control-plane API for the single-workspace file.cheap recovery lab. Archive bytes move through exact signed transfer grants rather than through these JSON endpoints."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Current origin"
+    }
+  ],
+  "tags": [
+    { "name": "System" },
+    { "name": "Stashes" },
+    { "name": "Sync" }
+  ],
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Inspect prototype liveness and active adapters",
+        "tags": ["System"],
+        "responses": {
+          "200": {
+            "description": "The control plane is alive.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Health" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/openapi.json": {
+      "get": {
+        "operationId": "getOpenApiDocument",
+        "summary": "Read this OpenAPI document",
+        "tags": ["System"],
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 document.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stashes": {
+      "get": {
+        "operationId": "listStashes",
+        "summary": "List committed stashes in the prototype workspace",
+        "tags": ["Stashes"],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Committed stashes, newest first.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StashList" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/v1/sync/plans": {
+      "post": {
+        "operationId": "createSyncPlan",
+        "summary": "Plan an immutable archive upload",
+        "description": "Returns a direct upload grant only when the SHA-256-addressed object is missing. The receipt authorizes a later catalog commit and expires with this prototype plan.",
+        "tags": ["Sync"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreatePlanInput" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Upload plan created.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SyncPlan" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/v1/sync/commits": {
+      "post": {
+        "operationId": "commitSyncPlan",
+        "summary": "Commit a completed upload to the catalog",
+        "tags": ["Sync"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CommitPlanInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The archive reference is committed. A full download remains required before local eviction.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CommitPlanResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/v1/sync/downloads": {
+      "post": {
+        "operationId": "createDownloadPlan",
+        "summary": "Issue an exact archive download grant",
+        "tags": ["Sync"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateDownloadInput" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Download grant created.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DownloadPlan" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Development-only static token in the current single-workspace lab."
+      }
+    },
+    "headers": {
+      "RequestId": {
+        "description": "Opaque identifier for correlating one HTTP request.",
+        "schema": { "type": "string" }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "The request body was not valid JSON or otherwise malformed.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/Problem" }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid bearer token.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/Problem" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "The requested resource does not exist.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/Problem" }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "The request conflicts with immutable or current catalog state.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/Problem" }
+          }
+        }
+      },
+      "ValidationError": {
+        "description": "The JSON parsed but failed semantic validation.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/Problem" }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Unexpected control-plane failure.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/Problem" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Sha256": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$",
+        "examples": ["d6b4eedf33431535c7214396a2bc571788c259e3d1a68d143ede79e81cc33fe4"]
+      },
+      "Health": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["database", "deployment", "status", "storage", "storageVerification", "version"],
+        "properties": {
+          "database": { "const": "none" },
+          "deployment": { "const": "local-prototype" },
+          "status": { "const": "ok" },
+          "storage": { "enum": ["local", "vercel-blob"] },
+          "storageVerification": { "enum": ["presence-size-etag", "server-sha256"] },
+          "version": { "const": "filecheap-sync/1" }
+        }
+      },
+      "StashSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["committedAt", "contentType", "sha256", "sizeBytes", "stashId", "storageVerification"],
+        "properties": {
+          "committedAt": { "type": "string", "format": "date-time" },
+          "contentType": { "type": "string" },
+          "sha256": { "$ref": "#/components/schemas/Sha256" },
+          "sizeBytes": { "type": "integer", "minimum": 0 },
+          "stashId": { "type": "string" },
+          "storageVerification": {
+            "enum": ["presence-size-etag", "server-sha256"],
+            "description": "Evidence available at catalog commit time. A full client download and SHA-256 check is still required for recovery proof."
+          }
+        }
+      },
+      "StashList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["stashes", "version"],
+        "properties": {
+          "stashes": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/StashSummary" }
+          },
+          "version": { "const": "filecheap-sync/1" }
+        }
+      },
+      "CreatePlanInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sha256", "sizeBytes", "stashId"],
+        "properties": {
+          "contentType": {
+            "type": "string",
+            "default": "application/vnd.filecheap.stash"
+          },
+          "sha256": { "$ref": "#/components/schemas/Sha256" },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5000000000000
+          },
+          "stashId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          }
+        }
+      },
+      "TransferGrant": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["expiresAt", "headers", "method", "url"],
+        "properties": {
+          "expiresAt": { "type": "string", "format": "date-time" },
+          "headers": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          },
+          "method": { "enum": ["GET", "PUT"] },
+          "url": { "type": "string", "format": "uri" }
+        }
+      },
+      "SyncPlan": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["object", "receipt", "state", "upload", "version"],
+        "properties": {
+          "object": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "sha256", "sizeBytes"],
+            "properties": {
+              "key": { "type": "string" },
+              "sha256": { "$ref": "#/components/schemas/Sha256" },
+              "sizeBytes": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "receipt": { "type": "string" },
+          "state": { "enum": ["already_committed", "object_present", "upload_required"] },
+          "upload": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TransferGrant" },
+              { "type": "null" }
+            ]
+          },
+          "version": { "const": "filecheap-sync/1" }
+        }
+      },
+      "CommitPlanInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["receipt"],
+        "properties": {
+          "receipt": { "type": "string", "minLength": 1 }
+        }
+      },
+      "CommitPlanResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requiresFullVerification", "stash", "version"],
+        "properties": {
+          "requiresFullVerification": { "const": true },
+          "stash": { "$ref": "#/components/schemas/StashSummary" },
+          "version": { "const": "filecheap-sync/1" }
+        }
+      },
+      "CreateDownloadInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["stashId"],
+        "properties": {
+          "stashId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          }
+        }
+      },
+      "DownloadPlan": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["expected", "grant", "mustVerifySha256", "stashId", "version"],
+        "properties": {
+          "expected": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sha256", "sizeBytes"],
+            "properties": {
+              "sha256": { "$ref": "#/components/schemas/Sha256" },
+              "sizeBytes": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "grant": { "$ref": "#/components/schemas/TransferGrant" },
+          "mustVerifySha256": { "const": true },
+          "stashId": { "type": "string" },
+          "version": { "const": "filecheap-sync/1" }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "detail", "requestId", "status", "title", "type"],
+        "properties": {
+          "code": { "type": "string" },
+          "detail": { "type": "string" },
+          "instance": { "type": "string" },
+          "requestId": { "type": "string" },
+          "status": { "type": "integer", "minimum": 400, "maximum": 599 },
+          "title": { "type": "string" },
+          "type": { "type": "string", "format": "uri" }
+        }
+      }
+    }
+  }
+}

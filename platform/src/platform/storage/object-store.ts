@@ -4,6 +4,8 @@ export type ObjectMetadata = {
   key: string;
   sizeBytes: number;
   uploadedAt: string;
+  /** Present only when the adapter has hashed the complete stored object. */
+  verifiedSha256?: string;
 };
 
 export type TransferGrant = {
@@ -20,6 +22,8 @@ export type TextObject = {
 
 export interface ObjectStore {
   readonly driver: "local" | "vercel-blob";
+  /** What the adapter can prove before a catalog commit. */
+  readonly verification: "presence-size-etag" | "server-sha256";
 
   inspect(key: string): Promise<ObjectMetadata | null>;
 

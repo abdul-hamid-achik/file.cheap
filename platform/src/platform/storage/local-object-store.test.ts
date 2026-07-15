@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import { LocalObjectStore } from "@/platform/storage/local-object-store";
 import type { PlatformConfig } from "@/shared/config/env";
+import { CatalogPreconditionError } from "@/shared/errors/platform-error";
 
 const temporaryDirectories: string[] = [];
 
@@ -87,9 +88,91 @@ describe("LocalObjectStore", () => {
 
     await expect(store.inspect("../outside")).rejects.toThrow("Unsafe object key");
   });
+
+  test("enforces compare-and-swap across store instances", async () => {
+    const { config, store: firstStore } = await createStoreWithConfig();
+    const secondStore = new LocalObjectStore(config);
+    const key = "v1/workspaces/default/catalog/concurrency.json";
+    const initial = await firstStore.writeText({ body: "initial", key });
+
+    const results = await Promise.allSettled([
+      firstStore.writeText({ body: "first", expectedEtag: initial.etag, key }),
+      secondStore.writeText({ body: "second", expectedEtag: initial.etag, key }),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(rejected).toBeDefined();
+    if (rejected?.status === "rejected") {
+      expect(rejected.reason).toBeInstanceOf(CatalogPreconditionError);
+    }
+  });
+
+  test("recovers a catalog lock left by a terminated process", async () => {
+    const { config, store } = await createStoreWithConfig();
+    const key = "v1/workspaces/default/catalog/stale-lock.json";
+    const path = join(config.dataDirectory, "objects", ...key.split("/"));
+    const lockPath = `${path}.lock`;
+    await filesystem.mkdir(join(path, ".."), { recursive: true });
+    await writeDeadLock(lockPath);
+
+    await expect(store.writeText({ body: "recovered", key })).resolves.toBeDefined();
+    await expect(filesystem.stat(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("serializes two processes recovering the same abandoned lock", async () => {
+    const { config, store: firstStore } = await createStoreWithConfig();
+    const secondStore = new LocalObjectStore(config);
+    const key = "v1/workspaces/default/catalog/stale-race.json";
+    const initial = await firstStore.writeText({ body: "initial", key });
+    const path = join(config.dataDirectory, "objects", ...key.split("/"));
+    const lockPath = `${path}.lock`;
+    await writeDeadLock(lockPath);
+
+    const results = await Promise.allSettled([
+      firstStore.writeText({ body: "first", expectedEtag: initial.etag, key }),
+      secondStore.writeText({ body: "second", expectedEtag: initial.etag, key }),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(await firstStore.readText(key)).not.toBeNull();
+  });
+
+  test("ignores an abandoned recovery claim from a terminated recoverer", async () => {
+    const { config, store } = await createStoreWithConfig();
+    const key = "v1/workspaces/default/catalog/stale-recovery.json";
+    const path = join(config.dataDirectory, "objects", ...key.split("/"));
+    const lockPath = `${path}.lock`;
+    const recoveryPath = `${lockPath}.recovery.0000000000000000-2147483647-dead`;
+    await filesystem.mkdir(join(path, ".."), { recursive: true });
+    await writeDeadLock(lockPath);
+    await filesystem.writeFile(recoveryPath, "");
+
+    await expect(store.writeText({ body: "recovered", key })).resolves.toBeDefined();
+    await expect(filesystem.stat(recoveryPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
 });
 
+async function writeDeadLock(path: string): Promise<void> {
+  await filesystem.writeFile(
+    path,
+    `${JSON.stringify({
+      pid: 2_147_483_647,
+      token: "terminated-test-process",
+      version: 1,
+    })}\n`,
+  );
+}
+
 async function createStore(): Promise<LocalObjectStore> {
+  return (await createStoreWithConfig()).store;
+}
+
+async function createStoreWithConfig(): Promise<{
+  config: PlatformConfig;
+  store: LocalObjectStore;
+}> {
   const directory = await filesystem.mkdtemp(join(tmpdir(), "filecheap-platform-"));
   temporaryDirectories.push(directory);
   const config: PlatformConfig = {
@@ -99,5 +182,5 @@ async function createStore(): Promise<LocalObjectStore> {
     signingSecret: "test-signing-secret-that-is-long-enough",
     storageDriver: "local",
   };
-  return new LocalObjectStore(config);
+  return { config, store: new LocalObjectStore(config) };
 }

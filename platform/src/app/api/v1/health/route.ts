@@ -1,14 +1,17 @@
-import { getConfig } from "@/shared/config/env";
+import { getObjectStore } from "@/platform/storage/factory";
+import { jsonResponse } from "@/shared/http/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export function GET(): Response {
-  return Response.json({
+export function GET(request: Request): Response {
+  const store = getObjectStore();
+  return jsonResponse(request, {
     database: "none",
     deployment: "local-prototype",
     status: "ok",
-    storage: getConfig().storageDriver,
+    storage: store.driver,
+    storageVerification: store.verification,
     version: "filecheap-sync/1",
   });
 }

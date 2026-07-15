@@ -20,6 +20,7 @@ describe("VercelBlobStore signed grants", () => {
     const calls: Array<Record<string, unknown>> = [];
     const blob = grantOnlyBlobSdk(calls);
     const store = new VercelBlobStore(config, blob);
+    expect(store.verification).toBe("presence-size-etag");
     const key = `v1/vaults/test/objects/${"a".repeat(64)}.age`;
 
     const grant = await store.issueUploadGrant({

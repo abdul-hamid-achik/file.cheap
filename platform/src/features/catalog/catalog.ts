@@ -12,6 +12,9 @@ export const cloudStashSchema = z.object({
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
   sizeBytes: z.number().int().nonnegative(),
   stashId: z.string().min(1),
+  storageVerification: z
+    .enum(["presence-size-etag", "server-sha256"])
+    .default("presence-size-etag"),
 });
 
 const catalogSchema = z.object({

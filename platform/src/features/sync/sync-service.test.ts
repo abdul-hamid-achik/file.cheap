@@ -8,7 +8,10 @@ import type {
   TextObject,
   TransferGrant,
 } from "@/platform/storage/object-store";
-import { PlatformError } from "@/shared/errors/platform-error";
+import {
+  CatalogPreconditionError,
+  PlatformError,
+} from "@/shared/errors/platform-error";
 
 const secret = "test-signing-secret-that-is-long-enough";
 
@@ -33,6 +36,9 @@ describe("SyncService", () => {
     const committed = await service.commitPlan({ receipt: plan.receipt });
     expect(committed.requiresFullVerification).toBe(true);
     expect(committed.stash.sha256).toBe(sha256);
+    expect(committed.stash.storageVerification).toBe("server-sha256");
+    expect("etag" in committed.stash).toBe(false);
+    expect("objectKey" in committed.stash).toBe(false);
     expect(await service.listStashes()).toHaveLength(1);
 
     const repeatedPlan = await service.createPlan(input);
@@ -86,22 +92,68 @@ describe("SyncService", () => {
       code: "integrity_mismatch",
     });
   });
+
+  test("will not trust same-size bytes with the wrong verified SHA-256", async () => {
+    const store = new MemoryObjectStore();
+    const service = new SyncService(store, new CatalogRepository(store), secret);
+    const sha256 = "f".repeat(64);
+    const input = {
+      contentType: "application/vnd.filecheap.stash",
+      sha256,
+      sizeBytes: 4,
+      stashId: "poisoned",
+    };
+    const plan = await service.createPlan(input);
+    store.seedObject(plan.object.key, 4, "0".repeat(64));
+
+    await expect(service.commitPlan({ receipt: plan.receipt })).rejects.toMatchObject({
+      code: "integrity_mismatch",
+    });
+    await expect(service.createPlan(input)).rejects.toMatchObject({
+      code: "integrity_mismatch",
+    });
+  });
+
+  test("repairs a committed catalog entry whose object is missing", async () => {
+    const store = new MemoryObjectStore();
+    const service = new SyncService(store, new CatalogRepository(store), secret);
+    const input = {
+      contentType: "application/vnd.filecheap.stash",
+      sha256: "9".repeat(64),
+      sizeBytes: 16,
+      stashId: "repair-me",
+    };
+    const first = await service.createPlan(input);
+    store.seedObject(first.object.key, input.sizeBytes);
+    await service.commitPlan({ receipt: first.receipt });
+    store.removeObject(first.object.key);
+
+    const repair = await service.createPlan(input);
+    expect(repair.state).toBe("upload_required");
+    expect(repair.upload?.method).toBe("PUT");
+  });
 });
 
 class MemoryObjectStore implements ObjectStore {
   readonly driver = "local" as const;
+  readonly verification = "server-sha256" as const;
   private readonly objects = new Map<string, ObjectMetadata>();
   private readonly texts = new Map<string, TextObject>();
   private etag = 0;
 
-  seedObject(key: string, sizeBytes: number): void {
+  seedObject(key: string, sizeBytes: number, verifiedSha256 = hashFromKey(key)): void {
     this.objects.set(key, {
       contentType: "application/vnd.filecheap.stash",
       etag: `object-${this.etag += 1}`,
       key,
       sizeBytes,
       uploadedAt: new Date().toISOString(),
+      verifiedSha256,
     });
+  }
+
+  removeObject(key: string): void {
+    this.objects.delete(key);
   }
 
   async inspect(key: string): Promise<ObjectMetadata | null> {
@@ -135,8 +187,21 @@ class MemoryObjectStore implements ObjectStore {
     expectedEtag?: string;
     key: string;
   }): Promise<{ etag: string }> {
+    const current = this.texts.get(input.key);
+    if (
+      (input.expectedEtag && current?.etag !== input.expectedEtag) ||
+      (!input.expectedEtag && current)
+    ) {
+      throw new CatalogPreconditionError();
+    }
     const nextEtag = `catalog-${this.etag += 1}`;
     this.texts.set(input.key, { body: input.body, etag: nextEtag });
     return { etag: nextEtag };
   }
+}
+
+function hashFromKey(key: string): string {
+  const matched = key.match(/([a-f0-9]{64})\.fcheap$/);
+  if (!matched) throw new Error(`Object key does not contain a SHA-256: ${key}`);
+  return matched[1];
 }

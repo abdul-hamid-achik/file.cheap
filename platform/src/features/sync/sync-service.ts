@@ -26,6 +26,16 @@ export type SyncPlan = {
   version: "filecheap-sync/1";
 };
 
+export type StashSummary = Pick<
+  CloudStash,
+  | "committedAt"
+  | "contentType"
+  | "sha256"
+  | "sizeBytes"
+  | "stashId"
+  | "storageVerification"
+>;
+
 export class SyncService {
   constructor(
     private readonly store: ObjectStore,
@@ -46,13 +56,12 @@ export class SyncService {
 
     const key = objectKey(input.sha256);
     const object = await this.store.inspect(key);
-    if (object && object.sizeBytes !== input.sizeBytes) {
-      throw new PlatformError({
-        code: "object_conflict",
-        detail: "The content-addressed object exists with a different byte size.",
-        status: 409,
-        title: "Object conflict",
-      });
+    if (object) {
+      assertStoredObjectMatches(
+        object,
+        { sha256: input.sha256, sizeBytes: input.sizeBytes },
+        this.store.verification,
+      );
     }
 
     const validUntil = new Date(this.now().getTime() + grantLifetimeMilliseconds);
@@ -69,7 +78,7 @@ export class SyncService {
       this.signingSecret,
     );
 
-    if (existingStash) {
+    if (existingStash && object) {
       return {
         object: { key, sha256: input.sha256, sizeBytes: input.sizeBytes },
         receipt,
@@ -98,7 +107,7 @@ export class SyncService {
 
   async commitPlan(input: CommitPlanInput): Promise<{
     requiresFullVerification: true;
-    stash: CloudStash;
+    stash: StashSummary;
     version: "filecheap-sync/1";
   }> {
     const payload = verifyPayload(input.receipt, this.signingSecret);
@@ -125,14 +134,11 @@ export class SyncService {
         title: "Upload incomplete",
       });
     }
-    if (object.sizeBytes !== payload.sizeBytes) {
-      throw new PlatformError({
-        code: "integrity_mismatch",
-        detail: "The stored object size differs from the upload plan.",
-        status: 422,
-        title: "Integrity mismatch",
-      });
-    }
+    assertStoredObjectMatches(
+      object,
+      { sha256: payload.sha256, sizeBytes: payload.sizeBytes },
+      this.store.verification,
+    );
 
     const stash = await this.catalog.commit({
       committedAt: this.now().toISOString(),
@@ -142,11 +148,12 @@ export class SyncService {
       sha256: payload.sha256,
       sizeBytes: payload.sizeBytes,
       stashId: payload.stashId,
+      storageVerification: this.store.verification,
     });
 
     return {
       requiresFullVerification: true,
-      stash,
+      stash: stashSummary(stash),
       version: "filecheap-sync/1",
     };
   }
@@ -181,8 +188,8 @@ export class SyncService {
     };
   }
 
-  listStashes(): Promise<CloudStash[]> {
-    return this.catalog.list();
+  async listStashes(): Promise<StashSummary[]> {
+    return (await this.catalog.list()).map(stashSummary);
   }
 }
 
@@ -197,4 +204,41 @@ function stashConflict(stashId: string): PlatformError {
     status: 409,
     title: "Stash conflict",
   });
+}
+
+function stashSummary(stash: CloudStash): StashSummary {
+  return {
+    committedAt: stash.committedAt,
+    contentType: stash.contentType,
+    sha256: stash.sha256,
+    sizeBytes: stash.sizeBytes,
+    stashId: stash.stashId,
+    storageVerification: stash.storageVerification,
+  };
+}
+
+function assertStoredObjectMatches(
+  object: { sizeBytes: number; verifiedSha256?: string },
+  expected: { sha256: string; sizeBytes: number },
+  verification: ObjectStore["verification"],
+): void {
+  if (object.sizeBytes !== expected.sizeBytes) {
+    throw new PlatformError({
+      code: "integrity_mismatch",
+      detail: "The stored object size differs from the upload plan.",
+      status: 422,
+      title: "Integrity mismatch",
+    });
+  }
+  if (
+    verification === "server-sha256" &&
+    object.verifiedSha256 !== expected.sha256
+  ) {
+    throw new PlatformError({
+      code: "integrity_mismatch",
+      detail: "The stored object SHA-256 differs from the upload plan.",
+      status: 422,
+      title: "Integrity mismatch",
+    });
+  }
 }

@@ -2,6 +2,10 @@ import { getObjectStore } from "@/platform/storage/factory";
 import { LocalObjectStore } from "@/platform/storage/local-object-store";
 import { PlatformError } from "@/shared/errors/platform-error";
 import { problemResponse } from "@/shared/http/problem";
+import {
+  attachResponseMetadata,
+  jsonResponse,
+} from "@/shared/http/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +14,9 @@ export async function PUT(request: Request): Promise<Response> {
   try {
     const { key, token } = parameters(request);
     const store = localStore();
-    return Response.json(await store.acceptUpload(request, key, token), { status: 201 });
+    return jsonResponse(request, await store.acceptUpload(request, key, token), {
+      status: 201,
+    });
   } catch (error) {
     return problemResponse(error, request);
   }
@@ -19,7 +25,10 @@ export async function PUT(request: Request): Promise<Response> {
 export async function GET(request: Request): Promise<Response> {
   try {
     const { key, token } = parameters(request);
-    return await localStore().serveDownload(key, token);
+    return attachResponseMetadata(
+      request,
+      await localStore().serveDownload(key, token),
+    );
   } catch (error) {
     return problemResponse(error, request);
   }

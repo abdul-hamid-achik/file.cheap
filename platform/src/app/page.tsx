@@ -1,11 +1,9 @@
 import { RecoveryLab } from "@/features/sync/recovery-lab";
-import { getSyncService } from "@/features/sync/factory";
 import { getConfig } from "@/shared/config/env";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
-  const stashes = await getSyncService().listStashes();
+export default function HomePage() {
   const config = getConfig();
 
   return (
@@ -25,13 +23,13 @@ export default async function HomePage() {
         <div className="eyebrow">Recovery lab / sync protocol v1</div>
         <h1>Your agent artifacts,<br /><em>recoverable byte for byte.</em></h1>
         <p className="heroLead">
-          A working control-plane experiment for moving immutable file.cheap stashes
-          off-device, restoring them elsewhere, and verifying the exact SHA-256 before
-          a local copy could ever be removed.
+          A local control-plane experiment for moving immutable file.cheap stashes
+          through a provider-neutral protocol, reopening a recovered file, and proving
+          its exact SHA-256. It does not delete or evict local data.
         </p>
         <div className="heroFacts" aria-label="Prototype facts">
           <div><strong>{config.storageDriver}</strong><span>active adapter</span></div>
-          <div><strong>{stashes.length}</strong><span>committed stashes</span></div>
+          <div><strong>locked</strong><span>vault requires bearer token</span></div>
           <div><strong>none</strong><span>database required here</span></div>
         </div>
       </section>
@@ -46,7 +44,7 @@ export default async function HomePage() {
             and transfer with streaming and multipart support.
           </p>
         </div>
-        <RecoveryLab initialStashes={stashes} />
+        <RecoveryLab />
       </section>
 
       <section className="shell architecture" aria-labelledby="architecture-title">
@@ -72,8 +70,8 @@ export default async function HomePage() {
           </article>
           <article>
             <span className="step">04</span>
-            <h3>Recovery proves safety</h3>
-            <p>An ETag is presence, not proof. A full hydrate and hash gates future eviction.</p>
+            <h3>Recovery verifies bytes</h3>
+            <p>An ETag is presence, not integrity. A full hydrate and local hash gate any future eviction design.</p>
           </article>
         </div>
       </section>

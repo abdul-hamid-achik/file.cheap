@@ -129,7 +129,7 @@ a { color: inherit; }
 .sectionIntro.compact { max-width: 520px; }
 
 .labPanel { overflow: hidden; border: 1px solid var(--line-strong); background: var(--surface); box-shadow: 0 28px 80px rgb(0 0 0 / 20%); }
-.labToolbar { padding: 18px 20px; border-bottom: 1px solid var(--line); background: var(--surface-raised); }
+.labToolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; padding: 18px 20px; border-bottom: 1px solid var(--line); background: var(--surface-raised); }
 .labToolbar label { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 16px; align-items: center; }
 .labToolbar span, .filePicker > span, .stashField > span, .vaultHeader span { color: var(--ink-muted); font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
 .labToolbar input, .stashField input { width: 100%; border: 1px solid var(--line-strong); background: var(--page); color: var(--ink); padding: 10px 12px; font-family: var(--mono); font-size: 12px; outline: none; }
@@ -140,9 +140,9 @@ a { color: inherit; }
 .filePicker input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
 .filePicker strong { overflow: hidden; padding: 10px 12px; border: 1px dashed var(--line-strong); color: var(--ink-soft); font-family: var(--mono); font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .filePicker:hover strong { border-color: var(--accent); color: var(--ink); }
-.uploadRow > button, .stashList button { border: 1px solid var(--accent); background: var(--accent); color: #21140e; font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .025em; }
-.uploadRow > button { min-height: 38px; padding: 0 16px; }
-.uploadRow button:hover:not(:disabled), .stashList button:hover:not(:disabled) { background: var(--accent-hover); }
+.uploadRow > button, .labToolbar > button, .recoveryActions button, .compactPicker { border: 1px solid var(--accent); background: var(--accent); color: #21140e; font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .025em; }
+.uploadRow > button, .labToolbar > button { min-height: 38px; padding: 0 16px; }
+.uploadRow button:hover:not(:disabled), .labToolbar > button:hover:not(:disabled), .recoveryActions button:hover:not(:disabled), .compactPicker:hover:not(.disabled) { background: var(--accent-hover); }
 button:disabled { cursor: not-allowed; opacity: .42; }
 
 .labStatus { display: flex; gap: 10px; align-items: flex-start; min-height: 48px; padding: 14px 20px; border-block: 1px solid var(--line); background: #1c1b17; color: var(--ink-soft); font-family: var(--mono); font-size: 11px; line-height: 1.6; }
@@ -156,6 +156,17 @@ button:disabled { cursor: not-allowed; opacity: .42; }
 .vaultHeader div { display: grid; gap: 6px; }
 .vaultHeader strong { font-size: 13px; font-weight: 620; }
 .tableHint { color: var(--green) !important; }
+.recoveryDrill { border-bottom: 1px solid var(--line); background: rgb(233 216 170 / 3%); }
+.recoveryCard { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center; margin: 0 20px 20px; padding: 16px; border: 1px solid var(--line-strong); background: var(--page); }
+.recoveryCard > div:first-child { display: grid; gap: 5px; min-width: 0; }
+.recoveryCard strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.recoveryCard span, .emptyRecovery { color: var(--ink-muted); font-family: var(--mono); font-size: 10px; line-height: 1.5; }
+.recoveryActions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.recoveryActions button, .compactPicker { min-height: 34px; padding: 8px 10px; }
+.recoveryActions button:disabled, .compactPicker.disabled { cursor: not-allowed; opacity: .42; }
+.compactPicker { display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
+.compactPicker input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
+.emptyRecovery { margin: 0 20px 20px; padding: 28px 16px; border: 1px dashed var(--line); text-align: center; }
 .emptyVault { display: grid; place-items: center; min-height: 150px; margin: 0 20px 20px; border: 1px dashed var(--line); color: var(--ink-muted); }
 .emptyVault span { font-size: 24px; }
 .emptyVault p { margin: 4px 0 0; font-size: 13px; }
@@ -197,7 +208,8 @@ button:disabled { cursor: not-allowed; opacity: .42; }
   .heroFacts { grid-template-columns: 1fr; }
   .heroFacts div + div { padding-left: 0; border-left: 0; border-top: 1px solid var(--line); }
   .workingGrid, .architecture, .neonGate { padding-block: 76px; }
-  .labToolbar label, .uploadRow { grid-template-columns: 1fr; }
+  .labToolbar, .labToolbar label, .uploadRow, .recoveryCard { grid-template-columns: 1fr; }
+  .recoveryActions { justify-content: flex-start; }
   .architectureRail { grid-template-columns: 1fr; }
   .architectureRail article + article { padding-left: 0; border-left: 0; border-top: 1px solid var(--line); }
   .architectureRail article { min-height: 190px; }

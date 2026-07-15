@@ -7,13 +7,18 @@ The application separates a small control plane from the archive data plane:
 
 - `POST /api/v1/sync/plans` authenticates and creates a constrained upload plan.
 - The client uploads an immutable archive through the returned signed URL.
-- `POST /api/v1/sync/commits` verifies the object and binds it to a stash ID.
+- `POST /api/v1/sync/commits` records the adapter's available object evidence
+  and binds the object to a stash ID.
 - `POST /api/v1/sync/downloads` issues a constrained download grant.
 - `GET /api/v1/stashes` reads the current single-workspace catalog.
 
 Local development uses a filesystem object-store adapter under `.data/`. The
 production-shaped adapter uses Private Vercel Blob signed URLs, so large archive
 bytes do not pass through a Vercel Function.
+
+`GET /api/v1/openapi.json` exposes the OpenAPI 3.1 contract intended for a
+future streaming Go client. Every API response carries an `X-Request-Id`, and
+errors use RFC 9457-style problem details.
 
 ## Run locally
 
@@ -40,7 +45,27 @@ for scope and the safety model.
 - explicit conflict handling;
 - direct-transfer grants compatible with a future Go client;
 - a catalog that can use ETag compare-and-swap without requiring Neon locally;
-- full download-and-hash verification before a local copy could be evicted.
+- a portable recovery card;
+- full download, SHA-256 verification, and a selected-file equivalence report.
+
+The browser laboratory is capped at 64 MiB because it hashes whole files in
+memory. This is an explicit prototype limit, not the future Go client's limit.
+The prototype never deletes or evicts a local stash.
+
+The exported drill report is a local client observation, explicitly marked
+`tamperEvident: false`. It records what this browser checked; it is not a signed
+server receipt and cannot prove which file a person selected.
+
+The local adapter verifies SHA-256 while accepting an upload. Vercel Blob's
+direct signed upload can prove presence, byte size, and an opaque ETag at commit
+time, but not the client-declared SHA-256. The catalog records this distinction;
+recovery is proven only by a complete client download and hash check.
+
+The Blob adapter therefore fails closed unless a controlled spike explicitly
+sets `PLATFORM_BLOB_INTEGRITY=presence-size-etag-experimental`. Before any user
+traffic, replace deterministic final-path uploads with staging plus
+verification/quarantine/repair; otherwise same-size incorrect bytes can occupy
+an immutable pathname that `allowOverwrite: false` cannot repair.
 
 It does not prove multi-tenant isolation, transactional quotas, billing,
 continuous synchronization, client-side encryption, or disaster recovery.

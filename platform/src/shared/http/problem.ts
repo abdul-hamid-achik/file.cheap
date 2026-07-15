@@ -1,31 +1,42 @@
 import { ZodError } from "zod";
 
 import { PlatformError } from "@/shared/errors/platform-error";
+import { jsonResponse, requestIdFor } from "@/shared/http/response";
 
 type ProblemDetails = {
   code: string;
   detail: string;
   instance?: string;
+  requestId: string;
   status: number;
   title: string;
   type: string;
 };
 
 export function problemResponse(error: unknown, request: Request): Response {
-  const problem = toProblem(error, new URL(request.url).pathname);
+  const problem = toProblem(
+    error,
+    new URL(request.url).pathname,
+    requestIdFor(request),
+  );
 
-  return Response.json(problem, {
+  return jsonResponse(request, problem, {
     headers: { "content-type": "application/problem+json" },
     status: problem.status,
   });
 }
 
-function toProblem(error: unknown, instance: string): ProblemDetails {
+function toProblem(
+  error: unknown,
+  instance: string,
+  requestId: string,
+): ProblemDetails {
   if (error instanceof PlatformError) {
     return {
       code: error.code,
       detail: error.message,
       instance,
+      requestId,
       status: error.status,
       title: error.title,
       type: error.type,
@@ -41,7 +52,8 @@ function toProblem(error: unknown, instance: string): ProblemDetails {
       code: "invalid_request",
       detail,
       instance,
-      status: 400,
+      requestId,
+      status: 422,
       title: "Invalid request",
       type: "https://file.cheap/problems/invalid-request",
     };
@@ -52,6 +64,7 @@ function toProblem(error: unknown, instance: string): ProblemDetails {
     code: "internal_error",
     detail: "The platform could not complete the request.",
     instance,
+    requestId,
     status: 500,
     title: "Internal server error",
     type: "https://file.cheap/problems/internal-error",

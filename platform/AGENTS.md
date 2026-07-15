@@ -38,8 +38,9 @@ local-first core.
   sharing, background deletion, or telemetry.
 - Blob is not a production multi-tenant catalog. Add a transactional database
   before an external multi-customer beta.
-- Never claim remote safety from `HEAD` or ETag alone. Local eviction requires a
-  complete hydrate-and-hash verification plus a recovery-key export.
+- Never claim remote safety from `HEAD` or ETag alone. This prototype never
+  evicts; a future encrypted client needs a complete hydrate-and-hash check plus
+  recovery-key export before eviction can even be considered.
 
 ## Verification
 
@@ -49,5 +50,5 @@ Run from `platform/`:
 bun run check
 ```
 
-When the UI or Route Handlers change, also run the local server and exercise the
-plan, upload, commit, list, download, and hash-verification path end to end.
+`check` starts its own isolated local server, exercises plan, upload, commit,
+restart, list, download, and hash verification, then removes its temporary data.

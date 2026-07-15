@@ -36,6 +36,9 @@ const defaultBlobSdk: BlobSdk = {
 
 export class VercelBlobStore implements ObjectStore {
   readonly driver = "vercel-blob" as const;
+  // Blob HEAD proves presence, size, and an opaque ETag. It does not prove the
+  // caller-declared SHA-256, so clients must perform a full recovery check.
+  readonly verification = "presence-size-etag" as const;
 
   constructor(
     private readonly config: PlatformConfig = getConfig(),

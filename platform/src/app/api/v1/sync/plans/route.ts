@@ -1,4 +1,4 @@
-import { commitPlanSchema } from "@/features/sync/contracts";
+import { createPlanSchema } from "@/features/sync/contracts";
 import { getSyncService } from "@/features/sync/factory";
 import { requireApiToken } from "@/shared/auth/bearer";
 import { parseJson, problemResponse } from "@/shared/http/problem";
@@ -10,8 +10,10 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request): Promise<Response> {
   try {
     requireApiToken(request);
-    const input = commitPlanSchema.parse(await parseJson(request));
-    return jsonResponse(request, await getSyncService().commitPlan(input));
+    const input = createPlanSchema.parse(await parseJson(request));
+    return jsonResponse(request, await getSyncService().createPlan(input), {
+      status: 201,
+    });
   } catch (error) {
     return problemResponse(error, request);
   }
