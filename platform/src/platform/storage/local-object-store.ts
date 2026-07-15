@@ -200,7 +200,14 @@ export class LocalObjectStore implements ObjectStore {
       receivedBytes += chunk.length;
       hash.update(chunk);
       if (receivedBytes > payload.sizeBytes) {
-        source.destroy(new Error("Upload exceeded its signed size"));
+        source.destroy(
+          new PlatformError({
+            code: "upload_too_large",
+            detail: "The upload exceeded its signed byte size.",
+            status: 413,
+            title: "Upload too large",
+          }),
+        );
       }
     });
 
@@ -211,12 +218,7 @@ export class LocalObjectStore implements ObjectStore {
       );
       const receivedHash = hash.digest("hex");
       if (receivedBytes !== payload.sizeBytes || receivedHash !== payload.sha256) {
-        throw new PlatformError({
-          code: "integrity_mismatch",
-          detail: "Uploaded bytes do not match the signed size and SHA-256.",
-          status: 422,
-          title: "Integrity mismatch",
-        });
+        throw uploadIntegrityMismatch();
       }
 
       await syncFile(temporaryPath);
@@ -238,6 +240,12 @@ export class LocalObjectStore implements ObjectStore {
     const metadata = await this.inspect(key);
     if (!metadata) {
       throw new Error("Upload completed without creating the object");
+    }
+    if (
+      metadata.sizeBytes !== payload.sizeBytes ||
+      metadata.verifiedSha256 !== payload.sha256
+    ) {
+      throw uploadIntegrityMismatch();
     }
     return { ...metadata, contentType: payload.contentType };
   }
@@ -270,7 +278,7 @@ export class LocalObjectStore implements ObjectStore {
       headers: {
         "content-length": String(metadata.sizeBytes),
         "content-type": metadata.contentType,
-        etag: metadata.etag,
+        etag: `"${metadata.etag}"`,
       },
     });
   }
@@ -603,5 +611,14 @@ function catalogLockLost(): PlatformError {
     detail: "The local catalog lock was replaced. Retry the operation.",
     status: 503,
     title: "Catalog lock lost",
+  });
+}
+
+function uploadIntegrityMismatch(): PlatformError {
+  return new PlatformError({
+    code: "integrity_mismatch",
+    detail: "Uploaded bytes do not match the signed size and SHA-256.",
+    status: 422,
+    title: "Integrity mismatch",
   });
 }

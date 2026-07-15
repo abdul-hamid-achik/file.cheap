@@ -1,9 +1,10 @@
 import type { CloudStash } from "@/features/catalog/catalog";
 import { CatalogRepository } from "@/features/catalog/catalog";
-import type {
-  CommitPlanInput,
-  CreateDownloadInput,
-  CreatePlanInput,
+import {
+  stashContentType,
+  type CommitPlanInput,
+  type CreateDownloadInput,
+  type CreatePlanInput,
 } from "@/features/sync/contracts";
 import type { ObjectStore, TransferGrant } from "@/platform/storage/object-store";
 import { PlatformError } from "@/shared/errors/platform-error";
@@ -142,7 +143,7 @@ export class SyncService {
 
     const stash = await this.catalog.commit({
       committedAt: this.now().toISOString(),
-      contentType: payload.contentType,
+      contentType: stashContentType,
       etag: object.etag,
       objectKey: payload.key,
       sha256: payload.sha256,
@@ -174,6 +175,21 @@ export class SyncService {
         title: "Stash not found",
       });
     }
+
+    const object = await this.store.inspect(stash.objectKey);
+    if (!object) {
+      throw new PlatformError({
+        code: "object_not_found",
+        detail: `The committed archive object for ${stash.stashId} is missing.`,
+        status: 404,
+        title: "Object not found",
+      });
+    }
+    assertStoredObjectMatches(
+      object,
+      { sha256: stash.sha256, sizeBytes: stash.sizeBytes },
+      this.store.verification,
+    );
 
     const validUntil = new Date(this.now().getTime() + grantLifetimeMilliseconds);
     return {

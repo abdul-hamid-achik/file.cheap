@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import {
+  BlobNotFoundError,
+  BlobPreconditionFailedError,
+} from "@vercel/blob";
 
 import {
   type BlobSdk,
   VercelBlobStore,
 } from "@/platform/storage/vercel-blob-store";
 import type { PlatformConfig } from "@/shared/config/env";
+import { CatalogPreconditionError } from "@/shared/errors/platform-error";
 
 const config: PlatformConfig = {
   apiToken: "local-development-token",
@@ -66,6 +71,115 @@ describe("VercelBlobStore signed grants", () => {
     expect(calls[0]).toMatchObject({ operations: ["get"], pathname: key });
     expect(calls[1]).toMatchObject({ operation: "get", pathname: key });
     expect(calls.flatMap(Object.values)).not.toContain("*");
+  });
+
+  test("inspects exact object metadata and maps a missing blob to null", async () => {
+    const key = `v1/vaults/test/objects/${"c".repeat(64)}.age`;
+    const presentBlob = {
+      ...grantOnlyBlobSdk([]),
+      head: async () => ({
+        cacheControl: "public, max-age=0",
+        contentDisposition: "attachment",
+        contentType: "application/octet-stream",
+        downloadUrl: "https://example.private.blob.vercel-storage.com/download",
+        etag: "blob-etag",
+        pathname: key,
+        size: 42,
+        uploadedAt: new Date("2026-07-15T23:00:00.000Z"),
+        url: "https://example.private.blob.vercel-storage.com/object",
+      }),
+    } as unknown as BlobSdk;
+
+    await expect(
+      new VercelBlobStore(config, presentBlob).inspect(key),
+    ).resolves.toMatchObject({
+      contentType: "application/octet-stream",
+      etag: "blob-etag",
+      key,
+      sizeBytes: 42,
+      uploadedAt: "2026-07-15T23:00:00.000Z",
+    });
+
+    const missingBlob = {
+      ...grantOnlyBlobSdk([]),
+      head: async () => {
+        throw new BlobNotFoundError();
+      },
+    } as unknown as BlobSdk;
+    await expect(
+      new VercelBlobStore(config, missingBlob).inspect(key),
+    ).resolves.toBeNull();
+  });
+
+  test("reads catalog text without cache and preserves the Blob ETag", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const key = "v1/workspaces/default/catalog/v1.json";
+    const blob = {
+      ...grantOnlyBlobSdk([]),
+      get: async (_key: string, options: Record<string, unknown>) => {
+        calls.push(options);
+        return {
+          blob: { etag: "catalog-etag" },
+          statusCode: 200,
+          stream: new Blob(["{\"revision\":1}"]).stream(),
+        };
+      },
+    } as unknown as BlobSdk;
+
+    await expect(
+      new VercelBlobStore(config, blob).readText(key),
+    ).resolves.toEqual({
+      body: '{"revision":1}',
+      etag: "catalog-etag",
+    });
+    expect(calls[0]).toMatchObject({ access: "private", useCache: false });
+  });
+
+  test("uses ETag compare-and-swap and maps stale preconditions", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const key = "v1/workspaces/default/catalog/v1.json";
+    const blob = {
+      ...grantOnlyBlobSdk([]),
+      put: async (
+        _key: string,
+        _body: string,
+        options: Record<string, unknown>,
+      ) => {
+        calls.push(options);
+        return { etag: `etag-${calls.length}` };
+      },
+    } as unknown as BlobSdk;
+    const store = new VercelBlobStore(config, blob);
+
+    await expect(store.writeText({ body: "first", key })).resolves.toEqual({
+      etag: "etag-1",
+    });
+    await expect(
+      store.writeText({ body: "second", expectedEtag: "etag-1", key }),
+    ).resolves.toEqual({ etag: "etag-2" });
+    expect(calls[0]).toMatchObject({
+      access: "private",
+      allowOverwrite: false,
+      contentType: "application/json",
+    });
+    expect(calls[1]).toMatchObject({
+      allowOverwrite: true,
+      ifMatch: "etag-1",
+    });
+
+    const staleBlob = {
+      ...grantOnlyBlobSdk([]),
+      put: async () => {
+        throw new BlobPreconditionFailedError();
+      },
+    } as unknown as BlobSdk;
+    await expect(
+      new VercelBlobStore(config, staleBlob).writeText({
+        body: "stale",
+        expectedEtag: "old-etag",
+        key,
+      }),
+    ).rejects.toBeInstanceOf(CatalogPreconditionError);
   });
 });
 

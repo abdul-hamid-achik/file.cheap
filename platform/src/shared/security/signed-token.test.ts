@@ -31,6 +31,10 @@ describe("signed transfer tokens", () => {
     const tampered = `${token.slice(0, -1)}${token.endsWith("a") ? "b" : "a"}`;
 
     expect(() => verifyPayload(tampered, secret)).toThrow(PlatformError);
+    expect(captureError(() => verifyPayload(tampered, secret))).toMatchObject({
+      code: "invalid_grant",
+      status: 403,
+    });
   });
 
   test("rejects expired grants", () => {
@@ -44,5 +48,18 @@ describe("signed transfer tokens", () => {
     );
 
     expect(() => verifyPayload(token, secret)).toThrow("expired");
+    expect(captureError(() => verifyPayload(token, secret))).toMatchObject({
+      code: "expired_grant",
+      status: 410,
+    });
   });
 });
+
+function captureError(operation: () => unknown): unknown {
+  try {
+    operation();
+  } catch (error) {
+    return error;
+  }
+  throw new Error("Expected operation to throw");
+}

@@ -7,12 +7,12 @@ const recoveryDrillReportSchemaName =
   "filecheap.recovery-drill-report.v1" as const;
 const syncProtocolVersion = "filecheap-sync/1" as const;
 const fallbackRecoveryFileName = "recovered.fcheap";
-const maximumFileNameLength = 255;
+const maximumFileNameBytes = 255;
 
 const safeRecoveryFileNameSchema = z
   .string()
   .min(1)
-  .max(maximumFileNameLength)
+  .max(maximumFileNameBytes)
   .refine((name) => sanitizeRecoveryFileName(name) === name, {
     message: "must be a safe basename",
   });
@@ -69,6 +69,23 @@ export const recoveryDrillReportSchema = z
       context.addIssue({
         code: "custom",
         message: "report identity must match its recovery card",
+      });
+    }
+
+    const expectedDuration =
+      Date.parse(report.completedAt) - Date.parse(report.startedAt);
+    if (expectedDuration < 0) {
+      context.addIssue({
+        code: "custom",
+        message: "completedAt must not be earlier than startedAt",
+        path: ["completedAt"],
+      });
+    }
+    if (report.durationMilliseconds !== expectedDuration) {
+      context.addIssue({
+        code: "custom",
+        message: "durationMilliseconds must match the report timestamps",
+        path: ["durationMilliseconds"],
       });
     }
   });
@@ -141,7 +158,8 @@ export function serializeRecoveryDrillReport(
 }
 
 export function sanitizeRecoveryFileName(name: string): string {
-  const pathParts = name.replaceAll("\\", "/").split("/");
+  const normalizedName = replaceLoneSurrogates(name).normalize("NFC");
+  const pathParts = normalizedName.replaceAll("\\", "/").split("/");
   let basename = "";
   for (let index = pathParts.length - 1; index >= 0; index -= 1) {
     if (pathParts[index]) {
@@ -151,10 +169,13 @@ export function sanitizeRecoveryFileName(name: string): string {
   }
 
   basename = basename
-    .replace(/[\u0000-\u001f\u007f<>:"|?*]/g, "-")
+    .replace(
+      /[\u0000-\u001f\u007f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069<>:"|?*]/g,
+      "-",
+    )
     .trim()
-    .replace(/[. ]+$/g, "")
-    .slice(0, maximumFileNameLength);
+    .replace(/[. ]+$/g, "");
+  basename = truncateUtf8(basename, maximumFileNameBytes).replace(/[. ]+$/g, "");
 
   if (
     !basename ||
@@ -163,7 +184,7 @@ export function sanitizeRecoveryFileName(name: string): string {
     isWindowsReservedName(basename)
   ) {
     return basename && isWindowsReservedName(basename)
-      ? `_${basename}`.slice(0, maximumFileNameLength)
+      ? truncateUtf8(`_${basename}`, maximumFileNameBytes)
       : fallbackRecoveryFileName;
   }
 
@@ -180,4 +201,38 @@ function serializeArtifact(value: unknown): string {
 
 function isWindowsReservedName(name: string): boolean {
   return /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(name);
+}
+
+function replaceLoneSurrogates(value: string): string {
+  let result = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        result += value[index] + value[index + 1];
+        index += 1;
+      } else {
+        result += "-";
+      }
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      result += "-";
+    } else {
+      result += value[index];
+    }
+  }
+  return result;
+}
+
+function truncateUtf8(value: string, maximumBytes: number): string {
+  const encoder = new TextEncoder();
+  let bytes = 0;
+  let result = "";
+  for (const character of value) {
+    const characterBytes = encoder.encode(character).byteLength;
+    if (bytes + characterBytes > maximumBytes) break;
+    bytes += characterBytes;
+    result += character;
+  }
+  return result;
 }

@@ -60,7 +60,7 @@ export function verifyPayload(token: string, secret: string): SignedPayload {
       throw new PlatformError({
         code: "expired_grant",
         detail: "The transfer grant has expired. Request a new plan.",
-        status: 401,
+        status: 410,
         title: "Expired grant",
       });
     }
@@ -81,7 +81,7 @@ function invalidToken(): PlatformError {
   return new PlatformError({
     code: "invalid_grant",
     detail: "The transfer grant is invalid.",
-    status: 401,
+    status: 403,
     title: "Invalid grant",
   });
 }

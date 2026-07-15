@@ -3,11 +3,16 @@ import { timingSafeEqual } from "node:crypto";
 import { getConfig } from "@/shared/config/env";
 import { PlatformError } from "@/shared/errors/platform-error";
 
-export function requireApiToken(request: Request): void {
+export function requireApiToken(
+  request: Request,
+  expectedToken = getConfig().apiToken,
+): void {
   const authorization = request.headers.get("authorization");
-  const expected = `Bearer ${getConfig().apiToken}`;
+  const credential = authorization
+    ? /^[\t ]*Bearer[\t ]+([^\t ]+)[\t ]*$/i.exec(authorization)?.[1]
+    : undefined;
 
-  if (!authorization || !constantTimeEqual(authorization, expected)) {
+  if (!credential || !constantTimeEqual(credential, expectedToken)) {
     throw new PlatformError({
       code: "unauthorized",
       detail: "A valid bearer token is required.",

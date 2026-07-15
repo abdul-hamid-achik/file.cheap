@@ -55,6 +55,7 @@ describe("LocalObjectStore", () => {
       downloadUrl.searchParams.get("key")!,
       downloadUrl.searchParams.get("token")!,
     );
+    expect(response.headers.get("etag")).toBe(`"${sha256}"`);
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
   });
 
@@ -86,7 +87,46 @@ describe("LocalObjectStore", () => {
   test("rejects traversal object keys", async () => {
     const store = await createStore();
 
-    await expect(store.inspect("../outside")).rejects.toThrow("Unsafe object key");
+    for (const key of ["../outside", "v1/../outside", "v1/./outside", "v1//outside"]) {
+      await expect(store.inspect(key)).rejects.toThrow("Unsafe object key");
+    }
+  });
+
+  test("rejects an oversized body with a typed error and removes temporary bytes", async () => {
+    const { config, store } = await createStoreWithConfig();
+    const signedBytes = new TextEncoder().encode("a");
+    const uploadedBytes = new TextEncoder().encode("ab");
+    const sha256 = createHash("sha256").update(signedBytes).digest("hex");
+    const key = `v1/objects/${sha256}.fcheap`;
+    const grant = await store.issueUploadGrant({
+      contentType: "application/vnd.filecheap.stash",
+      key,
+      sha256,
+      sizeBytes: signedBytes.byteLength,
+      validUntil: new Date(Date.now() + 60_000),
+    });
+    const uploadUrl = new URL(grant.url);
+
+    await expect(
+      store.acceptUpload(
+        new Request(grant.url, {
+          body: uploadedBytes,
+          headers: grant.headers,
+          method: "PUT",
+        }),
+        uploadUrl.searchParams.get("key")!,
+        uploadUrl.searchParams.get("token")!,
+      ),
+    ).rejects.toMatchObject({ code: "upload_too_large", status: 413 });
+
+    expect(await store.inspect(key)).toBeNull();
+    const remainingFiles = await filesystem.readdir(
+      join(config.dataDirectory, "objects"),
+      { recursive: true },
+    );
+    expect(remainingFiles.map(String).some((entry) => entry.endsWith(".tmp"))).toBe(
+      false,
+    );
   });
 
   test("enforces compare-and-swap across store instances", async () => {

@@ -5,24 +5,24 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
 const platformRoot = resolve(import.meta.dir, "..");
-const port = await reservePort();
 const dataDirectory = await mkdtemp(
   join(tmpdir(), "filecheap-platform-e2e-"),
 );
-const baseUrl = `http://127.0.0.1:${port}`;
+let port = 0;
+let baseUrl = "";
 const apiToken = `e2e_${randomBytes(24).toString("hex")}`;
 const signingSecret = randomBytes(48).toString("base64url");
 const serverEnvironment: Record<string, string | undefined> = {
   ...process.env,
   BLOB_READ_WRITE_TOKEN: undefined,
   NEXT_TELEMETRY_DISABLED: "1",
+  NODE_ENV: "production",
   PLATFORM_API_TOKEN: apiToken,
   PLATFORM_DATA_DIR: dataDirectory,
-  PLATFORM_PUBLIC_URL: baseUrl,
+  PLATFORM_PUBLIC_URL: "http://127.0.0.1:3100",
   PLATFORM_SIGNING_SECRET: signingSecret,
   PLATFORM_STORAGE_DRIVER: "local",
 };
-delete serverEnvironment.NODE_ENV;
 delete serverEnvironment.VERCEL;
 delete serverEnvironment.VERCEL_ENV;
 
@@ -33,10 +33,19 @@ const bytes = new TextEncoder().encode(
 const sha256 = hash(bytes);
 const stashId = `local-e2e-${uniqueValue}`;
 const contentType = "application/vnd.filecheap.stash";
+const retryBytes = new TextEncoder().encode(
+  `file.cheap retry-safe upload ${uniqueValue}\n`,
+);
+const retrySha256 = hash(retryBytes);
+const retryStashId = `retry-e2e-${uniqueValue}`;
 
 let server: RunningServer | undefined;
 
 try {
+  await buildApplication();
+  port = await reservePort();
+  baseUrl = `http://127.0.0.1:${port}`;
+  serverEnvironment.PLATFORM_PUBLIC_URL = baseUrl;
   server = await startServer();
   const firstPid = server.process.pid;
 
@@ -55,7 +64,7 @@ try {
   assert(health.database === "none", "prototype unexpectedly required a database");
 
   const unauthorizedRequestId = requestId("auth-denied");
-  const unauthorized = await fetch(`${baseUrl}/api/v1/stashes`, {
+  const unauthorized = await timedFetch(`${baseUrl}/api/v1/stashes`, {
     headers: { "x-request-id": unauthorizedRequestId },
   });
   assertResponseMetadata(unauthorized, unauthorizedRequestId);
@@ -64,12 +73,161 @@ try {
     unauthorized.headers.get("content-type")?.includes("application/problem+json"),
     "auth failure was not returned as problem details",
   );
+  assert(
+    unauthorized.headers.get("www-authenticate") === 'Bearer realm="filecheap-platform"',
+    "auth failure did not advertise the bearer challenge",
+  );
   const authProblem = (await unauthorized.json()) as ProblemDetails;
   assert(authProblem.code === "unauthorized", "auth failure used the wrong problem code");
   assert(
     authProblem.requestId === unauthorizedRequestId,
     "problem body did not preserve the request ID",
   );
+
+  const wrongAuthRequestId = requestId("auth-wrong");
+  const wrongAuth = await timedFetch(`${baseUrl}/api/v1/stashes`, {
+    headers: {
+      authorization: "Bearer definitely-not-the-token",
+      "x-request-id": wrongAuthRequestId,
+    },
+  });
+  assertResponseMetadata(wrongAuth, wrongAuthRequestId);
+  assert(wrongAuth.status === 401, "stashes endpoint accepted the wrong token");
+  await wrongAuth.arrayBuffer();
+
+  const mixedCaseAuthRequestId = requestId("auth-case-insensitive");
+  const mixedCaseAuth = await timedFetch(`${baseUrl}/api/v1/stashes`, {
+    headers: {
+      authorization: `bEaReR ${apiToken}`,
+      "x-request-id": mixedCaseAuthRequestId,
+    },
+  });
+  assertResponseMetadata(mixedCaseAuth, mixedCaseAuthRequestId);
+  assert(mixedCaseAuth.status === 200, "bearer scheme was not case-insensitive");
+  await mixedCaseAuth.arrayBuffer();
+
+  const malformedRequestId = requestId("malformed-json");
+  const malformed = await timedFetch(`${baseUrl}/api/v1/sync/plans`, {
+    body: "{",
+    headers: {
+      authorization: `Bearer ${apiToken}`,
+      "content-type": "application/json",
+      "x-request-id": malformedRequestId,
+    },
+    method: "POST",
+  });
+  assertResponseMetadata(malformed, malformedRequestId);
+  assert(malformed.status === 400, "malformed JSON did not return 400");
+  assert(
+    ((await malformed.json()) as ProblemDetails).code === "invalid_json",
+    "malformed JSON used the wrong problem code",
+  );
+
+  const strictRequestId = requestId("strict-contract");
+  const strictProblem = await api<ProblemDetails>(
+    "/api/v1/sync/plans",
+    {
+      contentType,
+      sha256,
+      sizeBytes: bytes.byteLength,
+      stashId,
+      unexpected: "field",
+    },
+    strictRequestId,
+    422,
+  );
+  assert(strictProblem.code === "invalid_request", "unknown plan fields were accepted");
+
+  const missingDownloadRequestId = requestId("missing-download");
+  const missingDownload = await api<ProblemDetails>(
+    "/api/v1/sync/downloads",
+    { stashId: `missing-${uniqueValue}` },
+    missingDownloadRequestId,
+    404,
+  );
+  assert(missingDownload.code === "stash_not_found", "missing stash used wrong problem");
+
+  const incompleteBytes = new TextEncoder().encode(`not-uploaded ${uniqueValue}\n`);
+  const incompleteRequestId = requestId("plan-incomplete");
+  const incompletePlan = await api<PlanResponse>(
+    "/api/v1/sync/plans",
+    {
+      contentType,
+      sha256: hash(incompleteBytes),
+      sizeBytes: incompleteBytes.byteLength,
+      stashId: `incomplete-${uniqueValue}`,
+    },
+    incompleteRequestId,
+    201,
+  );
+  const prematureCommitRequestId = requestId("commit-before-upload");
+  const prematureCommit = await api<ProblemDetails>(
+    "/api/v1/sync/commits",
+    { receipt: incompletePlan.receipt },
+    prematureCommitRequestId,
+    409,
+  );
+  assert(
+    prematureCommit.code === "upload_incomplete",
+    "commit-before-upload used the wrong problem code",
+  );
+
+  const retryPlanRequestId = requestId("plan-retry-upload");
+  const retryPlan = await api<PlanResponse>(
+    "/api/v1/sync/plans",
+    {
+      contentType,
+      sha256: retrySha256,
+      sizeBytes: retryBytes.byteLength,
+      stashId: retryStashId,
+    },
+    retryPlanRequestId,
+    201,
+  );
+  assert(retryPlan.upload, "retry-safety plan did not issue an upload grant");
+
+  const oversizedRequestId = requestId("upload-too-large");
+  const oversizedUpload = await uploadGrant(
+    retryPlan.upload,
+    concatBytes(retryBytes, new Uint8Array([0])),
+    oversizedRequestId,
+  );
+  assert(oversizedUpload.status === 413, "oversized upload did not return 413");
+  assert(
+    ((await oversizedUpload.json()) as ProblemDetails).code === "upload_too_large",
+    "oversized upload used the wrong problem code",
+  );
+
+  const wrongHashBytes = retryBytes.slice();
+  wrongHashBytes[0] = wrongHashBytes[0] === 120 ? 121 : 120;
+  const wrongHashRequestId = requestId("upload-wrong-hash");
+  const wrongHashUpload = await uploadGrant(
+    retryPlan.upload,
+    wrongHashBytes,
+    wrongHashRequestId,
+  );
+  assert(wrongHashUpload.status === 422, "wrong-hash upload did not return 422");
+  assert(
+    ((await wrongHashUpload.json()) as ProblemDetails).code === "integrity_mismatch",
+    "wrong-hash upload used the wrong problem code",
+  );
+
+  const recoveredUploadRequestId = requestId("upload-after-failure");
+  const recoveredUpload = await uploadGrant(
+    retryPlan.upload,
+    retryBytes,
+    recoveredUploadRequestId,
+  );
+  assert(recoveredUpload.status === 201, "valid retry after failed uploads was rejected");
+  await recoveredUpload.arrayBuffer();
+
+  const retryCommitRequestId = requestId("commit-retry-upload");
+  const retryCommit = await api<CommitResponse>(
+    "/api/v1/sync/commits",
+    { receipt: retryPlan.receipt },
+    retryCommitRequestId,
+  );
+  assert(retryCommit.stash.stashId === retryStashId, "retry upload committed wrong stash");
 
   const planRequestId = requestId("plan");
   const plan = await api<PlanResponse>(
@@ -82,7 +240,7 @@ try {
   assert(plan.upload, "new object did not receive an upload grant");
 
   const uploadRequestId = requestId("upload");
-  const upload = await fetch(plan.upload.url, {
+  const upload = await timedFetch(plan.upload.url, {
     body: bytes,
     headers: {
       ...plan.upload.headers,
@@ -110,9 +268,24 @@ try {
     "commit did not report the adapter verification level",
   );
 
+  const repeatedCommitRequestId = requestId("commit-repeated");
+  const repeatedCommit = await api<CommitResponse>(
+    "/api/v1/sync/commits",
+    { receipt: plan.receipt },
+    repeatedCommitRequestId,
+  );
+  assert(
+    repeatedCommit.stash.stashId === commit.stash.stashId &&
+      repeatedCommit.stash.sha256 === commit.stash.sha256,
+    "repeated commit did not return the original logical result",
+  );
+
   const stopped = await stopServer(server);
   server = undefined;
-  assert(stopped.exitCode === 0, formatServerFailure("first server shutdown", stopped));
+  assert(
+    stopped.exitCode === 0 || stopped.exitCode === 143,
+    formatServerFailure("first server shutdown", stopped),
+  );
 
   server = await startServer();
   assert(server.process.pid !== firstPid, "restart reused the original server process");
@@ -154,7 +327,7 @@ try {
   assert(download.mustVerifySha256, "download plan did not require SHA-256 verification");
 
   const objectDownloadRequestId = requestId("download-object");
-  const recoveredResponse = await fetch(download.grant.url, {
+  const recoveredResponse = await timedFetch(download.grant.url, {
     headers: {
       ...download.grant.headers,
       "x-request-id": objectDownloadRequestId,
@@ -167,6 +340,10 @@ try {
       `download failed: ${recoveredResponse.status} ${await recoveredResponse.text()}`,
     );
   }
+  assert(
+    /^"[^"]+"$/.test(recoveredResponse.headers.get("etag") ?? ""),
+    "download ETag was not a quoted entity tag",
+  );
   const recovered = new Uint8Array(await recoveredResponse.arrayBuffer());
   assert(recovered.byteLength === download.expected.sizeBytes, "recovered size differs");
   assert(hash(recovered) === download.expected.sha256, "recovered SHA-256 differs");
@@ -288,7 +465,7 @@ async function requestJson<T>(
   requestId: string,
   expectedStatus = 200,
 ): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, init);
+  const response = await timedFetch(`${baseUrl}${path}`, init);
   assertResponseMetadata(response, requestId);
   if (response.status !== expectedStatus) {
     throw new Error(
@@ -296,6 +473,36 @@ async function requestJson<T>(
     );
   }
   return response.json() as Promise<T>;
+}
+
+async function uploadGrant(
+  grant: TransferGrant,
+  body: Uint8Array,
+  requestId: string,
+): Promise<Response> {
+  const requestBody = body.buffer instanceof ArrayBuffer
+    ? body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength)
+    : Uint8Array.from(body).buffer;
+  const response = await timedFetch(grant.url, {
+    body: requestBody,
+    headers: {
+      ...grant.headers,
+      "x-request-id": requestId,
+    },
+    method: grant.method,
+  });
+  assertResponseMetadata(response, requestId);
+  return response;
+}
+
+async function timedFetch(
+  input: string | URL | Request,
+  init: RequestInit = {},
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: init.signal ?? AbortSignal.timeout(10_000),
+  });
 }
 
 function assertResponseMetadata(response: Response, requestId: string): void {
@@ -319,7 +526,7 @@ async function startServer(): Promise<RunningServer> {
     [
       globalThis.process.execPath,
       nextCli,
-      "dev",
+      "start",
       "--hostname",
       "127.0.0.1",
       "--port",
@@ -346,6 +553,55 @@ async function startServer(): Promise<RunningServer> {
     const stopped = await stopServer(running);
     throw new Error(
       `${error instanceof Error ? error.message : String(error)}\n${formatServerFailure("server startup", stopped)}`,
+    );
+  }
+}
+
+async function buildApplication(): Promise<void> {
+  const nextCli = join(platformRoot, "node_modules", "next", "dist", "bin", "next");
+  const build = Bun.spawn(
+    [globalThis.process.execPath, nextCli, "build"],
+    {
+      cwd: platformRoot,
+      env: serverEnvironment,
+      stderr: "pipe",
+      stdin: "ignore",
+      stdout: "pipe",
+    },
+  );
+  const stdoutPromise = new Response(build.stdout).text();
+  const stderrPromise = new Response(build.stderr).text();
+  let buildTimeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<true>((resolveTimeout) => {
+    buildTimeout = setTimeout(() => resolveTimeout(true), 180_000);
+  });
+  const timedOut = await Promise.race([
+    build.exited.then(() => false),
+    timeoutPromise,
+  ]);
+  if (buildTimeout) clearTimeout(buildTimeout);
+  if (timedOut && build.exitCode === null) {
+    build.kill("SIGKILL");
+  }
+  const [exitCode, stdout, stderr] = await Promise.all([
+    build.exited,
+    stdoutPromise,
+    stderrPromise,
+  ]);
+  if (timedOut) {
+    throw new Error(
+      `production build exceeded 180 seconds\n${stdout.trim()}\n${stderr.trim()}`,
+    );
+  }
+  if (exitCode !== 0) {
+    throw new Error(
+      [
+        `production build failed with exit ${exitCode}`,
+        stdout.trim() ? `stdout:\n${stdout.trim()}` : "",
+        stderr.trim() ? `stderr:\n${stderr.trim()}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
     );
   }
 }
@@ -428,6 +684,13 @@ function requestId(stage: string): string {
 
 function hash(value: Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function concatBytes(first: Uint8Array, second: Uint8Array): Uint8Array {
+  const combined = new Uint8Array(first.byteLength + second.byteLength);
+  combined.set(first);
+  combined.set(second, first.byteLength);
+  return combined;
 }
 
 function assert(condition: unknown, message: string): asserts condition {

@@ -60,6 +60,30 @@ describe("OpenAPI contract", () => {
     }
   });
 
+  test("documents strict media type, auth challenge, and retryable contention", () => {
+    expect(
+      openApiDocument.components.schemas.CreatePlanInput.properties.contentType
+        .const,
+    ).toBe("application/vnd.filecheap.stash");
+    expect(
+      openApiDocument.components.responses.Unauthorized.headers[
+        "WWW-Authenticate"
+      ].$ref,
+    ).toBe("#/components/headers/WwwAuthenticate");
+    expect(
+      openApiDocument.paths["/api/v1/sync/commits"].post.responses["503"]
+        .$ref,
+    ).toBe("#/components/responses/ServiceUnavailable");
+    expect(
+      openApiDocument.paths["/api/v1/sync/commits"].post.responses["403"]
+        .$ref,
+    ).toBe("#/components/responses/InvalidCapability");
+    expect(
+      openApiDocument.paths["/api/v1/sync/commits"].post.responses["410"]
+        .$ref,
+    ).toBe("#/components/responses/ExpiredCapability");
+  });
+
   test("serves the same document through the GET Route Handler", async () => {
     const { GET } = await import("@/app/api/v1/openapi.json/route");
     const request = new Request(

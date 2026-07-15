@@ -84,7 +84,7 @@
       "post": {
         "operationId": "createSyncPlan",
         "summary": "Plan an immutable archive upload",
-        "description": "Returns a direct upload grant only when the SHA-256-addressed object is missing. The receipt authorizes a later catalog commit and expires with this prototype plan.",
+        "description": "Returns a direct upload grant only when the SHA-256-addressed object is missing. Protocol v1 accepts only application/vnd.filecheap.stash archives. The receipt authorizes a later catalog commit and expires with this prototype plan.",
         "tags": ["Sync"],
         "security": [{ "bearerAuth": [] }],
         "requestBody": {
@@ -142,9 +142,12 @@
             }
           },
           "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/InvalidCapability" },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "409": { "$ref": "#/components/responses/Conflict" },
+          "410": { "$ref": "#/components/responses/ExpiredCapability" },
           "422": { "$ref": "#/components/responses/ValidationError" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
@@ -196,6 +199,14 @@
       "RequestId": {
         "description": "Opaque identifier for correlating one HTTP request.",
         "schema": { "type": "string" }
+      },
+      "RetryAfter": {
+        "description": "Seconds to wait before retrying a transient operation.",
+        "schema": { "type": "string", "pattern": "^[0-9]+$" }
+      },
+      "WwwAuthenticate": {
+        "description": "Bearer authentication challenge.",
+        "schema": { "type": "string" }
       }
     },
     "responses": {
@@ -212,6 +223,29 @@
       },
       "Unauthorized": {
         "description": "Missing or invalid bearer token.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/RequestId" },
+          "WWW-Authenticate": { "$ref": "#/components/headers/WwwAuthenticate" }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/Problem" }
+          }
+        }
+      },
+      "InvalidCapability": {
+        "description": "The signed commit capability is invalid or outside its scope.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/Problem" }
+          }
+        }
+      },
+      "ExpiredCapability": {
+        "description": "The signed commit capability expired; create a fresh plan.",
         "headers": {
           "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
         },
@@ -264,6 +298,18 @@
             "schema": { "$ref": "#/components/schemas/Problem" }
           }
         }
+      },
+      "ServiceUnavailable": {
+        "description": "A transient catalog contention or dependency failure. Retry after the advertised delay.",
+        "headers": {
+          "Retry-After": { "$ref": "#/components/headers/RetryAfter" },
+          "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/Problem" }
+          }
+        }
       }
     },
     "schemas": {
@@ -291,7 +337,7 @@
         "required": ["committedAt", "contentType", "sha256", "sizeBytes", "stashId", "storageVerification"],
         "properties": {
           "committedAt": { "type": "string", "format": "date-time" },
-          "contentType": { "type": "string" },
+          "contentType": { "const": "application/vnd.filecheap.stash" },
           "sha256": { "$ref": "#/components/schemas/Sha256" },
           "sizeBytes": { "type": "integer", "minimum": 0 },
           "stashId": { "type": "string" },
@@ -319,7 +365,7 @@
         "required": ["sha256", "sizeBytes", "stashId"],
         "properties": {
           "contentType": {
-            "type": "string",
+            "const": "application/vnd.filecheap.stash",
             "default": "application/vnd.filecheap.stash"
           },
           "sha256": { "$ref": "#/components/schemas/Sha256" },

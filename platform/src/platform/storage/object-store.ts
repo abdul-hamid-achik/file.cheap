@@ -52,11 +52,13 @@ export interface ObjectStore {
 const objectKeyPattern = /^[a-z0-9][a-z0-9._/-]*$/;
 
 export function assertSafeObjectKey(key: string): void {
+  const segments = key.split("/");
   if (
     !objectKeyPattern.test(key) ||
     key.includes("..") ||
     key.startsWith("/") ||
-    key.endsWith("/")
+    key.endsWith("/") ||
+    segments.some((segment) => !segment || segment === "." || segment === "..")
   ) {
     throw new Error(`Unsafe object key: ${key}`);
   }

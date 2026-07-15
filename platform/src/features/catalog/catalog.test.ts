@@ -6,7 +6,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import { CatalogRepository, type CloudStash } from "@/features/catalog/catalog";
 import { LocalObjectStore } from "@/platform/storage/local-object-store";
+import type { ObjectStore } from "@/platform/storage/object-store";
 import type { PlatformConfig } from "@/shared/config/env";
+import { CatalogPreconditionError } from "@/shared/errors/platform-error";
 
 const temporaryDirectories: string[] = [];
 
@@ -37,7 +39,81 @@ describe("CatalogRepository concurrency", () => {
       "second",
     ]);
   });
+
+  test(
+    "preserves one hundred simultaneous commits without exhausting CAS retries",
+    async () => {
+      const config = await createConfig();
+      const count = 100;
+      const repositories = Array.from(
+        { length: count },
+        () => new CatalogRepository(new LocalObjectStore(config)),
+      );
+
+      await Promise.all(
+        repositories.map((repository, index) =>
+          repository.commit(
+            stash(`stash-${index}`, index.toString(16).padStart(64, "0")),
+          ),
+        ),
+      );
+
+      const stored = await new CatalogRepository(
+        new LocalObjectStore(config),
+      ).list();
+      expect(stored).toHaveLength(count);
+      expect(new Set(stored.map((entry) => entry.stashId)).size).toBe(count);
+    },
+    30_000,
+  );
+
+  test("returns a typed retryable error when the CAS deadline is exhausted", async () => {
+    let now = 0;
+    const repository = new CatalogRepository(
+      new AlwaysConflictingObjectStore(),
+      "v1/test/catalog.json",
+      {
+        deadlineMilliseconds: 2,
+        delay: async () => {
+          now += 1;
+        },
+        now: () => now,
+      },
+    );
+
+    await expect(
+      repository.commit(stash("busy", "f".repeat(64))),
+    ).rejects.toMatchObject({
+      code: "catalog_busy",
+      status: 503,
+    });
+  });
 });
+
+class AlwaysConflictingObjectStore implements ObjectStore {
+  readonly driver = "local" as const;
+  readonly verification = "server-sha256" as const;
+
+  async inspect(): Promise<null> {
+    return null;
+  }
+
+  async issueUploadGrant(): Promise<never> {
+    throw new Error("not used");
+  }
+
+  async issueDownloadGrant(): Promise<never> {
+    throw new Error("not used");
+  }
+
+  async readText(): Promise<null> {
+    return null;
+  }
+
+  async writeText(): Promise<never> {
+    throw new CatalogPreconditionError();
+  }
+}
 
 async function createConfig(): Promise<PlatformConfig> {
   const directory = await filesystem.mkdtemp(

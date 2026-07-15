@@ -53,6 +53,22 @@ describe("RecoveryCard", () => {
     expect(sanitizeRecoveryFileName("CON.txt")).toBe("_CON.txt");
   });
 
+  test("produces normalized portable UTF-8 basenames without bidi controls", () => {
+    const normalized = sanitizeRecoveryFileName(
+      `${"e\u0301".repeat(200)}\u202ereport.fcheap`,
+    );
+    const boundary = sanitizeRecoveryFileName(`${"a".repeat(254)}😀`);
+    const invalidUnicode = sanitizeRecoveryFileName("safe\ud83d.fcheap");
+
+    expect(normalized).toBe(normalized.normalize("NFC"));
+    expect(normalized).not.toContain("\u202e");
+    expect(new TextEncoder().encode(normalized).byteLength).toBeLessThanOrEqual(
+      255,
+    );
+    expect(boundary).toBe("a".repeat(254));
+    expect(invalidUnicode).toBe("safe-.fcheap");
+  });
+
   test("rejects incompatible or structurally manipulated cards", () => {
     const card = createRecoveryCard({
       committedAt: "2026-07-15T22:15:00.000Z",
@@ -153,5 +169,18 @@ describe("RecoveryDrillReport", () => {
         checks: { download: "passed", selectedFileByteEquivalent: "failed" },
       }),
     ).toThrow();
+    expect(() =>
+      parseRecoveryDrillReport({
+        ...createRecoveryDrillReport(base),
+        durationMilliseconds: 1,
+      }),
+    ).toThrow("durationMilliseconds");
+    expect(() =>
+      parseRecoveryDrillReport({
+        ...createRecoveryDrillReport(base),
+        completedAt: "2026-07-15T22:14:00.000Z",
+        durationMilliseconds: 0,
+      }),
+    ).toThrow("completedAt");
   });
 });

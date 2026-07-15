@@ -4,13 +4,13 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   description:
-    "Local recovery lab for the optional file.cheap verified remote vault.",
+    "Recovery-first lab for the optional file.cheap verified remote vault protocol.",
   robots: {
     follow: false,
     index: false,
   },
   title: {
-    default: "Recovery lab — file.cheap",
+    default: "Verified remote vault lab — file.cheap",
     template: "%s — file.cheap",
   },
 };

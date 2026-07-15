@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { CatalogRepository } from "@/features/catalog/catalog";
+import { stashContentType } from "@/features/sync/contracts";
 import { objectKey, SyncService } from "@/features/sync/sync-service";
 import type {
   ObjectMetadata,
@@ -21,7 +22,7 @@ describe("SyncService", () => {
     const service = new SyncService(store, new CatalogRepository(store), secret);
     const sha256 = "b".repeat(64);
     const input = {
-      contentType: "application/vnd.filecheap.stash",
+      contentType: stashContentType,
       sha256,
       sizeBytes: 128,
       stashId: "trace-01",
@@ -55,7 +56,7 @@ describe("SyncService", () => {
     const store = new MemoryObjectStore();
     const service = new SyncService(store, new CatalogRepository(store), secret);
     const first = await service.createPlan({
-      contentType: "application/vnd.filecheap.stash",
+      contentType: stashContentType,
       sha256: "c".repeat(64),
       sizeBytes: 10,
       stashId: "same-id",
@@ -65,7 +66,7 @@ describe("SyncService", () => {
 
     await expect(
       service.createPlan({
-        contentType: "application/vnd.filecheap.stash",
+        contentType: stashContentType,
         sha256: "d".repeat(64),
         sizeBytes: 10,
         stashId: "same-id",
@@ -77,7 +78,7 @@ describe("SyncService", () => {
     const store = new MemoryObjectStore();
     const service = new SyncService(store, new CatalogRepository(store), secret);
     const plan = await service.createPlan({
-      contentType: "application/vnd.filecheap.stash",
+      contentType: stashContentType,
       sha256: "e".repeat(64),
       sizeBytes: 25,
       stashId: "incomplete",
@@ -98,7 +99,7 @@ describe("SyncService", () => {
     const service = new SyncService(store, new CatalogRepository(store), secret);
     const sha256 = "f".repeat(64);
     const input = {
-      contentType: "application/vnd.filecheap.stash",
+      contentType: stashContentType,
       sha256,
       sizeBytes: 4,
       stashId: "poisoned",
@@ -118,7 +119,7 @@ describe("SyncService", () => {
     const store = new MemoryObjectStore();
     const service = new SyncService(store, new CatalogRepository(store), secret);
     const input = {
-      contentType: "application/vnd.filecheap.stash",
+      contentType: stashContentType,
       sha256: "9".repeat(64),
       sizeBytes: 16,
       stashId: "repair-me",
@@ -132,6 +133,30 @@ describe("SyncService", () => {
     expect(repair.state).toBe("upload_required");
     expect(repair.upload?.method).toBe("PUT");
   });
+
+  test("does not issue a download grant for missing or corrupted object bytes", async () => {
+    const store = new MemoryObjectStore();
+    const service = new SyncService(store, new CatalogRepository(store), secret);
+    const input = {
+      contentType: stashContentType,
+      sha256: "8".repeat(64),
+      sizeBytes: 16,
+      stashId: "unavailable-download",
+    };
+    const plan = await service.createPlan(input);
+    store.seedObject(plan.object.key, input.sizeBytes);
+    await service.commitPlan({ receipt: plan.receipt });
+
+    store.removeObject(plan.object.key);
+    await expect(
+      service.createDownload({ stashId: input.stashId }),
+    ).rejects.toMatchObject({ code: "object_not_found", status: 404 });
+
+    store.seedObject(plan.object.key, input.sizeBytes, "7".repeat(64));
+    await expect(
+      service.createDownload({ stashId: input.stashId }),
+    ).rejects.toMatchObject({ code: "integrity_mismatch", status: 422 });
+  });
 });
 
 class MemoryObjectStore implements ObjectStore {
@@ -143,7 +168,7 @@ class MemoryObjectStore implements ObjectStore {
 
   seedObject(key: string, sizeBytes: number, verifiedSha256 = hashFromKey(key)): void {
     this.objects.set(key, {
-      contentType: "application/vnd.filecheap.stash",
+      contentType: stashContentType,
       etag: `object-${this.etag += 1}`,
       key,
       sizeBytes,

@@ -12,14 +12,20 @@ import {
   type RecoveryCard,
   type RecoveryDrillReport,
 } from "@/features/sync/recovery-artifacts";
+import { stashContentType, stashIdSchema } from "@/features/sync/contracts";
 import type { StashSummary } from "@/features/sync/sync-service";
 
 const labFileLimitBytes = 64 * 1024 * 1024;
+const recoveryCardFileLimitBytes = 64 * 1024;
+const objectUrlLifetimeMilliseconds = 60_000;
 
 type LabStatus = {
   kind: "error" | "idle" | "success" | "working";
   message: string;
+  requestId?: string;
 };
+
+type RecoveryStepStatus = "active" | "complete" | "pending";
 
 type PlanResponse = {
   receipt: string;
@@ -52,19 +58,23 @@ export function RecoveryLab() {
   const [connected, setConnected] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [stashId, setStashId] = useState("");
+  const [stashIdTouched, setStashIdTouched] = useState(false);
   const [stashes, setStashes] = useState<StashSummary[]>([]);
   const [recoveryCard, setRecoveryCard] = useState<RecoveryCard | null>(null);
   const [cardOrigin, setCardOrigin] = useState<"generated" | "imported" | null>(null);
+  const [cardDownloadRequested, setCardDownloadRequested] = useState(false);
   const [hydrationEvidence, setHydrationEvidence] = useState<HydrationEvidence | null>(null);
   const [recoveryReport, setRecoveryReport] = useState<RecoveryDrillReport | null>(null);
+  const [reportDownloadRequested, setReportDownloadRequested] = useState(false);
   const [status, setStatus] = useState<LabStatus>({
     kind: "idle",
     message: "Enter the local bearer token to unlock this simulated vault.",
   });
 
-  const canPush = Boolean(
-    connected && file && stashId.trim() && status.kind !== "working",
-  );
+  const isWorking = status.kind === "working";
+  const parsedStashId = stashIdSchema.safeParse(stashId.trim());
+  const showStashIdError = stashIdTouched && !parsedStashId.success;
+  const canPush = Boolean(connected && file && parsedStashId.success && !isWorking);
   const currentCardIdentity = recoveryCard
     ? recoveryCardIdentity(recoveryCard)
     : null;
@@ -74,10 +84,37 @@ export function RecoveryLab() {
       hydrationEvidence.cardIdentity === currentCardIdentity &&
       hydrationEvidence.downloadedSha256 === recoveryCard.sha256,
   );
-  const totalBytes = useMemo(
+  const totalLogicalBytes = useMemo(
     () => stashes.reduce((total, stash) => total + stash.sizeBytes, 0),
     [stashes],
   );
+  const cardStepStatus: RecoveryStepStatus =
+    cardOrigin === "imported" || cardDownloadRequested
+      ? "complete"
+      : recoveryCard
+        ? "active"
+        : "pending";
+  const importStepStatus: RecoveryStepStatus =
+    cardOrigin === "imported"
+      ? "complete"
+      : !recoveryCard || cardDownloadRequested
+        ? "active"
+        : "pending";
+  const hydrateStepStatus: RecoveryStepStatus = canVerifyReopenedFile
+    ? "complete"
+    : cardOrigin === "imported" && connected
+      ? "active"
+      : "pending";
+  const compareStepStatus: RecoveryStepStatus = recoveryReport
+    ? "complete"
+    : canVerifyReopenedFile
+      ? "active"
+      : "pending";
+  const reportStepStatus: RecoveryStepStatus = reportDownloadRequested
+    ? "complete"
+    : recoveryReport
+      ? "active"
+      : "pending";
 
   async function connectVault() {
     if (!apiToken.trim()) {
@@ -85,11 +122,9 @@ export function RecoveryLab() {
       return;
     }
     if (!beginOperation()) return;
-    setHydrationEvidence(null);
-    setRecoveryReport(null);
     try {
       setStatus({ kind: "working", message: "Authenticating and reading the vault…" });
-      setStashes(await listStashes(apiToken));
+      setStashes(await listStashes(apiToken.trim()));
       setConnected(true);
       setStatus({
         kind: "success",
@@ -98,7 +133,7 @@ export function RecoveryLab() {
     } catch (error) {
       setConnected(false);
       setStashes([]);
-      setStatus({ kind: "error", message: messageFor(error) });
+      setStatus(errorStatus(error));
     } finally {
       endOperation();
     }
@@ -106,12 +141,11 @@ export function RecoveryLab() {
 
   function chooseArchive(nextFile: File | null) {
     if (operationInFlight.current) return;
-    setRecoveryCard(null);
-    setCardOrigin(null);
-    setRecoveryReport(null);
-    setHydrationEvidence(null);
-    setFile(null);
     if (!nextFile) return;
+    if (nextFile.size === 0) {
+      setStatus({ kind: "error", message: "Choose a non-empty archive." });
+      return;
+    }
     if (nextFile.size > labFileLimitBytes) {
       setStatus({
         kind: "error",
@@ -119,33 +153,47 @@ export function RecoveryLab() {
       });
       return;
     }
-    setFile(nextFile);
-    if (!stashId) {
-      setStashId(nextFile.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 128));
+
+    const derivedStashId = deriveStashId(nextFile.name);
+    const validatedStashId = stashIdSchema.safeParse(derivedStashId);
+    if (!validatedStashId.success) {
+      setStatus({
+        kind: "error",
+        message: "Could not derive a valid stash ID from this filename. Enter one manually.",
+      });
+      return;
     }
+    setStashId(validatedStashId.data);
+    setStashIdTouched(false);
+
+    setFile(nextFile);
     setStatus({ kind: "idle", message: "Archive selected. No local file will be deleted." });
   }
 
   async function pushArchive() {
-    if (!file || !stashId.trim()) return;
+    if (!file) return;
+    const validatedStashId = stashIdSchema.safeParse(stashId.trim());
+    if (!validatedStashId.success) {
+      setStatus({
+        kind: "error",
+        message: "Enter a valid stash ID using letters, numbers, dots, underscores, or hyphens.",
+      });
+      return;
+    }
     if (!beginOperation()) return;
 
     try {
-      setRecoveryCard(null);
-      setCardOrigin(null);
-      setRecoveryReport(null);
-      setHydrationEvidence(null);
       setStatus({ kind: "working", message: "Hashing the exact archive bytes…" });
       const bytes = await file.arrayBuffer();
       const sha256 = await sha256Hex(bytes);
-      const contentType = "application/vnd.filecheap.stash";
+      const contentType = stashContentType;
 
       setStatus({ kind: "working", message: "Requesting an immutable upload plan…" });
-      const plan = await apiRequest<PlanResponse>("/api/v1/sync/plans", apiToken, {
+      const plan = await apiRequest<PlanResponse>("/api/v1/sync/plans", apiToken.trim(), {
         contentType,
         sha256,
         sizeBytes: file.size,
-        stashId: stashId.trim(),
+        stashId: validatedStashId.data,
       });
 
       if (plan.upload) {
@@ -161,26 +209,35 @@ export function RecoveryLab() {
       setStatus({ kind: "working", message: "Committing the catalog reference…" });
       const committed = await apiRequest<CommitResponse>(
         "/api/v1/sync/commits",
-        apiToken,
+        apiToken.trim(),
         { receipt: plan.receipt },
       );
-      setStashes(await listStashes(apiToken));
-      setRecoveryCard(
-        createRecoveryCard({
-          committedAt: committed.stash.committedAt,
-          originalFileName: file.name,
-          sha256,
-          sizeBytes: file.size,
-          stashId: committed.stash.stashId,
-        }),
-      );
+      const nextRecoveryCard = createRecoveryCard({
+        committedAt: committed.stash.committedAt,
+        originalFileName: file.name,
+        sha256,
+        sizeBytes: file.size,
+        stashId: committed.stash.stashId,
+      });
+      setRecoveryCard(nextRecoveryCard);
       setCardOrigin("generated");
+      setCardDownloadRequested(false);
+      setHydrationEvidence(null);
+      setRecoveryReport(null);
+      setReportDownloadRequested(false);
+      setStashes(await listStashes(apiToken.trim()));
       setStatus({
         kind: "success",
         message: `${committed.stash.stashId} committed. Export and re-import its card; use a clean profile for the strongest disaster drill.`,
       });
     } catch (error) {
-      setStatus({ kind: "error", message: messageFor(error) });
+      setStatus(
+        errorStatus(
+          error,
+          undefined,
+          Boolean(recoveryCard || hydrationEvidence || recoveryReport),
+        ),
+      );
     } finally {
       endOperation();
     }
@@ -188,26 +245,39 @@ export function RecoveryLab() {
 
   async function importCard(cardFile: File | null) {
     if (!cardFile) return;
+    if (cardFile.size === 0) {
+      setStatus({ kind: "error", message: "Choose a non-empty recovery card." });
+      return;
+    }
+    if (cardFile.size > recoveryCardFileLimitBytes) {
+      setStatus({
+        kind: "error",
+        message: `Recovery cards must be ${formatBytes(recoveryCardFileLimitBytes)} or smaller.`,
+      });
+      return;
+    }
     if (!beginOperation()) return;
     try {
-      setHydrationEvidence(null);
-      setRecoveryReport(null);
       setStatus({ kind: "working", message: "Validating the portable recovery card…" });
       const card = parseRecoveryCard(await cardFile.text());
       setRecoveryCard(card);
       setCardOrigin("imported");
+      setCardDownloadRequested(true);
       setRecoveryReport(null);
       setHydrationEvidence(null);
+      setReportDownloadRequested(false);
       setFile(null);
       setStashId("");
+      setStashIdTouched(false);
       setStatus({
         kind: "success",
         message: `Recovery card loaded for ${card.stashId}. Hydrate to verify every byte.`,
       });
-    } catch (error) {
-      setRecoveryCard(null);
-      setCardOrigin(null);
-      setStatus({ kind: "error", message: `Invalid recovery card: ${messageFor(error)}` });
+    } catch {
+      setStatus({
+        kind: "error",
+        message: `This file is not a valid file.cheap recovery card. Choose an exported filecheap.recovery-card.v1 JSON file.${recoveryCard ? " Previous valid recovery artifacts were retained." : ""}`,
+      });
     } finally {
       endOperation();
     }
@@ -235,12 +305,10 @@ export function RecoveryLab() {
     const startedAt = new Date().toISOString();
     const attemptId = crypto.randomUUID();
     try {
-      setHydrationEvidence(null);
-      setRecoveryReport(null);
       setStatus({ kind: "working", message: `Downloading every byte of ${card.stashId}…` });
       const plan = await apiRequest<DownloadResponse>(
         "/api/v1/sync/downloads",
-        apiToken,
+        apiToken.trim(),
         { stashId: card.stashId },
       );
       if (
@@ -269,13 +337,20 @@ export function RecoveryLab() {
         downloadedSha256: sha256,
         startedAt,
       });
+      setRecoveryReport(null);
+      setReportDownloadRequested(false);
       setStatus({
         kind: "success",
         message: "Downloaded bytes verified and offered for saving. Select the saved download below for a local content-equivalence check.",
       });
     } catch (error) {
-      setHydrationEvidence(null);
-      setStatus({ kind: "error", message: messageFor(error) });
+      setStatus(
+        errorStatus(
+          error,
+          undefined,
+          Boolean(hydrationEvidence || recoveryReport),
+        ),
+      );
     } finally {
       endOperation();
     }
@@ -289,13 +364,21 @@ export function RecoveryLab() {
       hydrationEvidence.cardIdentity !== recoveryCardIdentity(recoveryCard) ||
       hydrationEvidence.downloadedSha256 !== recoveryCard.sha256
     ) return;
+    if (selectedFile.size === 0) {
+      setStatus({ kind: "error", message: "Choose a non-empty downloaded file." });
+      return;
+    }
+    if (selectedFile.size > labFileLimitBytes) {
+      setStatus({
+        kind: "error",
+        message: `The selected file exceeds the ${formatBytes(labFileLimitBytes)} lab limit.`,
+      });
+      return;
+    }
     if (!beginOperation()) return;
     const card = recoveryCard;
     const evidence = hydrationEvidence;
     try {
-      if (selectedFile.size > labFileLimitBytes) {
-        throw new Error(`The selected file exceeds the ${formatBytes(labFileLimitBytes)} lab limit.`);
-      }
       setStatus({ kind: "working", message: "Hashing the file selected from disk…" });
       const bytes = await selectedFile.arrayBuffer();
       const sha256 = await sha256Hex(bytes);
@@ -314,13 +397,13 @@ export function RecoveryLab() {
           stashId: card.stashId,
         }),
       );
+      setReportDownloadRequested(false);
       setStatus({
         kind: "success",
         message: `${card.stashId}: the selected local file is byte-equivalent to the verified download.`,
       });
     } catch (error) {
-      setRecoveryReport(null);
-      setStatus({ kind: "error", message: messageFor(error) });
+      setStatus(errorStatus(error, undefined, Boolean(recoveryReport)));
     } finally {
       endOperation();
     }
@@ -337,19 +420,24 @@ export function RecoveryLab() {
   }
 
   return (
-    <div className="labPanel">
-      <div className="labToolbar">
+    <div className="labPanel" aria-busy={isWorking}>
+      <form
+        className="labToolbar"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void connectVault();
+        }}
+      >
         <label>
           <span>Development bearer token</span>
           <input
+            aria-describedby="lab-status"
             autoComplete="off"
-            disabled={status.kind === "working"}
+            disabled={isWorking}
             onChange={(event) => {
               setApiToken(event.target.value);
               setConnected(false);
               setStashes([]);
-              setHydrationEvidence(null);
-              setRecoveryReport(null);
               setStatus({
                 kind: "idle",
                 message: "Token changed. Unlock the vault again; it is not persisted.",
@@ -361,16 +449,17 @@ export function RecoveryLab() {
             value={apiToken}
           />
         </label>
-        <button disabled={status.kind === "working"} onClick={connectVault} type="button">
+        <button disabled={isWorking} type="submit">
           {connected ? "Reconnect" : "Unlock vault"}
         </button>
-      </div>
+      </form>
 
       <div className="uploadRow">
         <label className="filePicker">
           <span>Archive · max {formatBytes(labFileLimitBytes)}</span>
           <input
-            disabled={status.kind === "working"}
+            aria-describedby="lab-status"
+            disabled={isWorking}
             onChange={(event) => {
               const selected = event.currentTarget.files?.[0] ?? null;
               event.currentTarget.value = "";
@@ -383,67 +472,169 @@ export function RecoveryLab() {
         <label className="stashField">
           <span>Stash ID</span>
           <input
-            disabled={status.kind === "working"}
+            aria-describedby={showStashIdError ? "stash-id-error lab-status" : "lab-status"}
+            aria-invalid={showStashIdError}
+            disabled={isWorking}
             maxLength={128}
-            onChange={(event) => setStashId(event.target.value)}
+            onChange={(event) => {
+              setStashId(event.target.value);
+              setStashIdTouched(true);
+            }}
             placeholder="investigation-01"
             spellCheck={false}
             value={stashId}
           />
+          {showStashIdError ? (
+            <span className="fieldError" id="stash-id-error">
+              Start with a letter or number; then use letters, numbers, dots, underscores, or hyphens.
+            </span>
+          ) : null}
         </label>
-        <button disabled={!canPush} onClick={pushArchive} type="button">Push archive</button>
+        <button className="primaryAction" disabled={!canPush} onClick={pushArchive} type="button">
+          Push archive
+        </button>
       </div>
 
-      <div className={`labStatus ${status.kind}`} role="status" aria-live="polite">
+      <div
+        aria-atomic="true"
+        aria-live={status.kind === "error" ? "assertive" : "polite"}
+        className={`labStatus ${status.kind}`}
+        id="lab-status"
+        role={status.kind === "error" ? "alert" : "status"}
+      >
         <span aria-hidden="true" />
-        {status.message}
+        <div className="labStatusContent">
+          <div className="labStatusMessage">{status.message}</div>
+          {status.requestId ? (
+            <details className="labStatusDetail">
+              <summary>Technical details</summary>
+              <code>Request ID: {status.requestId}</code>
+            </details>
+          ) : null}
+        </div>
       </div>
 
       <section className="recoveryDrill" aria-labelledby="recovery-drill-title">
         <div className="vaultHeader">
           <div>
             <span>Portable recovery drill</span>
-            <strong id="recovery-drill-title">Card → hydrate → download → compare</strong>
+            <strong id="recovery-drill-title">Save → import → hydrate → compare → keep evidence</strong>
           </div>
-          <label className={status.kind === "working" ? "compactPicker disabled" : "compactPicker"}>
-            Import card
-            <input
-              accept="application/json,.json"
-              disabled={status.kind === "working"}
-              onChange={(event) => {
-                const selected = event.currentTarget.files?.[0] ?? null;
-                event.currentTarget.value = "";
-                void importCard(selected);
-              }}
-              type="file"
-            />
-          </label>
         </div>
-        {recoveryCard ? (
-          <div className="recoveryCard">
-            <div>
+        <div className="recoveryCard">
+          {recoveryCard ? (
+            <div className="recoveryCardSummary">
               <strong>{recoveryCard.stashId}</strong>
               <span>{recoveryCard.originalFileName} · {formatBytes(recoveryCard.sizeBytes)}</span>
               <span>{shortHash(recoveryCard.sha256)}</span>
-              <span>{cardOrigin === "imported" ? "imported card · drill ready" : "generated card · export/import required"}</span>
+              <span>
+                {cardOrigin === "imported"
+                  ? "Imported card · ready for recovery"
+                  : cardDownloadRequested
+                    ? "Card download offered · import it to continue"
+                    : "Generated card · request a download outside this session"}
+              </span>
             </div>
-            <div className="recoveryActions">
+          ) : (
+            <div className="recoveryCardSummary emptyRecovery">
+              <strong>No recovery card loaded</strong>
+              <span>Push an archive to create one, or import an existing card to recover.</span>
+            </div>
+          )}
+
+          <ol className="recoveryActions recoveryStepper" aria-label="Recovery drill steps">
+            <li
+              aria-current={cardStepStatus === "active" ? "step" : undefined}
+              className={recoveryStepClass(cardStepStatus)}
+            >
+              <span className="recoveryStepIndex" aria-hidden="true">01</span>
+              <div className="recoveryStepBody">
+                <strong>Request the card download</strong>
+                <span className="recoveryStepState">
+                  {!recoveryCard
+                    ? "Push an archive first"
+                    : cardOrigin === "imported"
+                      ? "Card re-imported"
+                      : cardDownloadRequested
+                        ? "Download offered"
+                        : "Ready now"}
+                </span>
+              </div>
               <button
-                onClick={() => downloadJson(
-                  serializeRecoveryCard(recoveryCard),
-                  `${recoveryCard.stashId}.recovery-card.json`,
-                )}
+                className={recoveryActionClass(cardStepStatus)}
+                disabled={!recoveryCard || isWorking}
+                onClick={() => {
+                  if (!recoveryCard) return;
+                  downloadJson(
+                    serializeRecoveryCard(recoveryCard),
+                    `${recoveryCard.stashId}.recovery-card.json`,
+                  );
+                  setCardDownloadRequested(true);
+                }}
                 type="button"
               >Export card</button>
+            </li>
+
+            <li
+              aria-current={importStepStatus === "active" ? "step" : undefined}
+              className={recoveryStepClass(importStepStatus)}
+            >
+              <span className="recoveryStepIndex" aria-hidden="true">02</span>
+              <div className="recoveryStepBody">
+                <strong>Import the saved card</strong>
+                <span className="recoveryStepState">{recoveryStepLabel(importStepStatus)}</span>
+              </div>
+              <label className={`${recoveryActionClass(importStepStatus)} compactPicker${isWorking ? " disabled" : ""}`}>
+                Import card
+                <input
+                  accept="application/json,.json"
+                  aria-describedby="lab-status"
+                  disabled={isWorking}
+                  onChange={(event) => {
+                    const selected = event.currentTarget.files?.[0] ?? null;
+                    event.currentTarget.value = "";
+                    void importCard(selected);
+                  }}
+                  type="file"
+                />
+              </label>
+            </li>
+
+            <li
+              aria-current={hydrateStepStatus === "active" ? "step" : undefined}
+              className={recoveryStepClass(hydrateStepStatus)}
+            >
+              <span className="recoveryStepIndex" aria-hidden="true">03</span>
+              <div className="recoveryStepBody">
+                <strong>Hydrate and verify every byte</strong>
+                <span className="recoveryStepState">
+                  {cardOrigin === "imported" && !connected
+                    ? "Unlock the vault first"
+                    : recoveryStepLabel(hydrateStepStatus)}
+                </span>
+              </div>
               <button
-                disabled={!connected || status.kind === "working" || cardOrigin !== "imported"}
+                className={recoveryActionClass(hydrateStepStatus)}
+                disabled={!connected || isWorking || cardOrigin !== "imported"}
                 onClick={hydrateFromCard}
                 type="button"
               >Hydrate + download</button>
-              <label className={canVerifyReopenedFile && status.kind !== "working" ? "compactPicker" : "compactPicker disabled"}>
+            </li>
+
+            <li
+              aria-current={compareStepStatus === "active" ? "step" : undefined}
+              className={recoveryStepClass(compareStepStatus)}
+            >
+              <span className="recoveryStepIndex" aria-hidden="true">04</span>
+              <div className="recoveryStepBody">
+                <strong>Compare the saved download</strong>
+                <span className="recoveryStepState">{recoveryStepLabel(compareStepStatus)}</span>
+              </div>
+              <label className={`${recoveryActionClass(compareStepStatus)} compactPicker${canVerifyReopenedFile && !isWorking ? "" : " disabled"}`}>
                 Select saved download
                 <input
-                  disabled={!canVerifyReopenedFile || status.kind === "working"}
+                  aria-describedby="lab-status"
+                  disabled={!canVerifyReopenedFile || isWorking}
                   onChange={(event) => {
                     const selected = event.currentTarget.files?.[0] ?? null;
                     event.currentTarget.value = "";
@@ -452,27 +643,49 @@ export function RecoveryLab() {
                   type="file"
                 />
               </label>
+            </li>
+
+            <li
+              aria-current={reportStepStatus === "active" ? "step" : undefined}
+              className={recoveryStepClass(reportStepStatus)}
+            >
+              <span className="recoveryStepIndex" aria-hidden="true">05</span>
+              <div className="recoveryStepBody">
+                <strong>Download the local observation</strong>
+                <span className="recoveryStepState">
+                  {reportDownloadRequested
+                    ? "Download offered"
+                    : recoveryStepLabel(reportStepStatus)}
+                </span>
+              </div>
               <button
-                disabled={!recoveryReport}
-                onClick={() => recoveryReport && downloadJson(
-                  serializeRecoveryDrillReport(recoveryReport),
-                  `${recoveryReport.stashId}.recovery-drill-report.json`,
-                )}
+                className={recoveryActionClass(reportStepStatus)}
+                disabled={!recoveryReport || isWorking}
+                onClick={() => {
+                  if (!recoveryReport) return;
+                  downloadJson(
+                    serializeRecoveryDrillReport(recoveryReport),
+                    `${recoveryReport.stashId}.recovery-drill-report.json`,
+                  );
+                  setReportDownloadRequested(true);
+                }}
                 type="button"
               >Export report</button>
-            </div>
-          </div>
-        ) : (
-          <div className="emptyRecovery">Push an archive or import a recovery card. Use a clean profile for a disaster-recovery drill.</div>
-        )}
+            </li>
+          </ol>
+        </div>
       </section>
 
       <div className="vaultHeader">
         <div>
           <span>Authenticated catalog</span>
-          <strong>{connected ? `${stashes.length} objects · ${formatBytes(totalBytes)}` : "Locked"}</strong>
+          <strong>
+            {connected
+              ? `${stashes.length} ${stashes.length === 1 ? "stash" : "stashes"} · ${formatBytes(totalLogicalBytes)} logical bytes`
+              : "Locked"}
+          </strong>
         </div>
-        <span className="tableHint">client full GET + SHA-256 required</span>
+        <span className="tableHint">Full download + client SHA-256 proves recovery</span>
       </div>
 
       {!connected ? (
@@ -486,7 +699,9 @@ export function RecoveryLab() {
               <div>
                 <strong>{stash.stashId}</strong>
                 <span>{formatBytes(stash.sizeBytes)} · {shortHash(stash.sha256)}</span>
-                <span>commit evidence: {stash.storageVerification}</span>
+                <span className={`verificationBadge ${stash.storageVerification}`}>
+                  Storage check: {verificationLabel(stash.storageVerification)}
+                </span>
               </div>
             </article>
           ))}
@@ -514,17 +729,30 @@ async function listStashes(token: string): Promise<StashSummary[]> {
   return ((await response.json()) as { stashes: StashSummary[] }).stashes;
 }
 
-async function responseError(response: Response): Promise<Error> {
+class ApiResponseError extends Error {
+  constructor(
+    message: string,
+    readonly requestId?: string,
+  ) {
+    super(message);
+    this.name = "ApiResponseError";
+  }
+}
+
+async function responseError(response: Response): Promise<ApiResponseError> {
+  const headerRequestId = response.headers.get("x-request-id") ?? undefined;
   try {
     const problem = (await response.json()) as {
       detail?: string;
       requestId?: string;
       title?: string;
     };
-    const requestId = problem.requestId ? ` [${problem.requestId}]` : "";
-    return new Error(`${problem.detail ?? problem.title ?? `Request failed (${response.status})`}${requestId}`);
+    return new ApiResponseError(
+      problem.detail ?? problem.title ?? `Request failed (${response.status})`,
+      problem.requestId ?? headerRequestId,
+    );
   } catch {
-    return new Error(`Request failed (${response.status})`);
+    return new ApiResponseError(`Request failed (${response.status})`, headerRequestId);
   }
 }
 
@@ -536,13 +764,13 @@ async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
 function downloadBytes(bytes: ArrayBuffer, fileName: string): void {
   const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
   clickDownload(url, fileName);
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  setTimeout(() => URL.revokeObjectURL(url), objectUrlLifetimeMilliseconds);
 }
 
 function downloadJson(contents: string, fileName: string): void {
   const url = URL.createObjectURL(new Blob([contents], { type: "application/json" }));
   clickDownload(url, fileName);
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  setTimeout(() => URL.revokeObjectURL(url), objectUrlLifetimeMilliseconds);
 }
 
 function clickDownload(url: string, fileName: string): void {
@@ -556,6 +784,61 @@ function clickDownload(url: string, fileName: string): void {
 
 function messageFor(error: unknown): string {
   return error instanceof Error ? error.message : "The recovery lab failed unexpectedly.";
+}
+
+function errorStatus(
+  error: unknown,
+  prefix?: string,
+  retainedEvidence = false,
+): LabStatus {
+  const message = `${messageFor(error)}${retainedEvidence ? " Previous verified artifacts were retained." : ""}`;
+  return {
+    kind: "error",
+    message: prefix ? `${prefix}: ${message}` : message,
+    ...(error instanceof ApiResponseError && error.requestId
+      ? { requestId: error.requestId }
+      : {}),
+  };
+}
+
+function deriveStashId(fileName: string): string {
+  const candidate = fileName
+    .replace(/[^A-Za-z0-9._-]/g, "-")
+    .replace(/^[^A-Za-z0-9]+/, "")
+    .slice(0, 128);
+  return candidate || "stash";
+}
+
+function recoveryStepClass(status: RecoveryStepStatus): string {
+  return `recoveryStep ${status}`;
+}
+
+function recoveryActionClass(status: RecoveryStepStatus): string {
+  return `recoveryStepAction ${
+    status === "active" ? "recoveryStepActionPrimary" : "recoveryStepActionSecondary"
+  }`;
+}
+
+function recoveryStepLabel(status: RecoveryStepStatus): string {
+  switch (status) {
+    case "active":
+      return "Ready now";
+    case "complete":
+      return "Complete";
+    case "pending":
+      return "Waiting for the previous step";
+  }
+}
+
+function verificationLabel(
+  verification: StashSummary["storageVerification"],
+): string {
+  switch (verification) {
+    case "server-sha256":
+      return "Full SHA-256 verified before commit";
+    case "presence-size-etag":
+      return "Presence and size only; recovery hash required";
+  }
 }
 
 function formatBytes(bytes: number): string {

@@ -1,4 +1,4 @@
-import { ZodError } from "zod";
+import type { ZodError, ZodType } from "zod";
 
 import { PlatformError } from "@/shared/errors/platform-error";
 import { jsonResponse, requestIdFor } from "@/shared/http/response";
@@ -13,6 +13,13 @@ type ProblemDetails = {
   type: string;
 };
 
+class RequestValidationError extends Error {
+  constructor(readonly validationError: ZodError) {
+    super("The request did not match its schema");
+    this.name = "RequestValidationError";
+  }
+}
+
 export function problemResponse(error: unknown, request: Request): Response {
   const problem = toProblem(
     error,
@@ -20,8 +27,18 @@ export function problemResponse(error: unknown, request: Request): Response {
     requestIdFor(request),
   );
 
+  const headers = new Headers({
+    "content-type": "application/problem+json",
+  });
+  if (problem.code === "unauthorized") {
+    headers.set("www-authenticate", 'Bearer realm="filecheap-platform"');
+  }
+  if (problem.status === 503) {
+    headers.set("retry-after", "1");
+  }
+
   return jsonResponse(request, problem, {
-    headers: { "content-type": "application/problem+json" },
+    headers,
     status: problem.status,
   });
 }
@@ -43,8 +60,8 @@ function toProblem(
     };
   }
 
-  if (error instanceof ZodError) {
-    const detail = error.issues
+  if (error instanceof RequestValidationError) {
+    const detail = error.validationError.issues
       .map((issue) => `${issue.path.join(".") || "request"}: ${issue.message}`)
       .join("; ");
 
@@ -69,6 +86,14 @@ function toProblem(
     title: "Internal server error",
     type: "https://file.cheap/problems/internal-error",
   };
+}
+
+export function parseRequest<T>(schema: ZodType<T>, input: unknown): T {
+  const result = schema.safeParse(input);
+  if (!result.success) {
+    throw new RequestValidationError(result.error);
+  }
+  return result.data;
 }
 
 export async function parseJson(request: Request): Promise<unknown> {

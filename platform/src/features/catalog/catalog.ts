@@ -1,12 +1,31 @@
 import { z } from "zod";
 
+import { stashContentType } from "@/features/sync/contracts";
 import { CatalogPreconditionError } from "@/shared/errors/platform-error";
 import { PlatformError } from "@/shared/errors/platform-error";
 import type { ObjectStore } from "@/platform/storage/object-store";
 
+const catalogRetryDeadlineMilliseconds = 15_000;
+
+export type CatalogRetryPolicy = {
+  deadlineMilliseconds: number;
+  delay: (attempt: number) => Promise<void>;
+  now: () => number;
+};
+
+const defaultRetryPolicy: CatalogRetryPolicy = {
+  deadlineMilliseconds: catalogRetryDeadlineMilliseconds,
+  delay: async (attempt) => {
+    const jitterCeiling = Math.min(100, 2 ** Math.min(attempt, 7));
+    const delayMilliseconds = 1 + Math.floor(Math.random() * jitterCeiling);
+    await new Promise((resolve) => setTimeout(resolve, delayMilliseconds));
+  },
+  now: () => Date.now(),
+};
+
 export const cloudStashSchema = z.object({
   committedAt: z.iso.datetime(),
-  contentType: z.string().min(1),
+  contentType: z.literal(stashContentType),
   etag: z.string().min(1),
   objectKey: z.string().min(1),
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
@@ -38,6 +57,7 @@ export class CatalogRepository {
   constructor(
     private readonly store: ObjectStore,
     private readonly key = "v1/workspaces/default/catalog/v1.json",
+    private readonly retryPolicy: CatalogRetryPolicy = defaultRetryPolicy,
   ) {}
 
   async list(): Promise<CloudStash[]> {
@@ -54,7 +74,11 @@ export class CatalogRepository {
 
   async commit(stash: CloudStash): Promise<CloudStash> {
     return this.serialized(async () => {
-      for (let attempt = 0; attempt < 4; attempt += 1) {
+      const deadline =
+        this.retryPolicy.now() + this.retryPolicy.deadlineMilliseconds;
+      let attempt = 0;
+
+      while (true) {
         const loaded = await this.load();
         const existing = loaded.catalog.stashes[stash.stashId];
         if (existing) {
@@ -90,13 +114,16 @@ export class CatalogRepository {
           });
           return stash;
         } catch (error) {
-          if (!(error instanceof CatalogPreconditionError) || attempt === 3) {
+          if (!(error instanceof CatalogPreconditionError)) {
             throw error;
           }
+          if (this.retryPolicy.now() >= deadline) {
+            throw catalogContention();
+          }
+          await this.retryPolicy.delay(attempt);
+          attempt += 1;
         }
       }
-
-      throw new Error("Catalog update retry loop exited unexpectedly");
     });
   }
 
@@ -133,4 +160,13 @@ export class CatalogRepository {
       release();
     }
   }
+}
+
+function catalogContention(): PlatformError {
+  return new PlatformError({
+    code: "catalog_busy",
+    detail: "The catalog remained busy. Retry the operation.",
+    status: 503,
+    title: "Catalog busy",
+  });
 }
