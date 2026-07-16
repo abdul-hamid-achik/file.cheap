@@ -93,6 +93,12 @@ describe("OpenAPI contract", () => {
       expect(openApiDocument.paths[path].post.responses["413"].$ref).toBe(
         "#/components/responses/PayloadTooLarge",
       );
+      expect(openApiDocument.paths[path].post.responses["408"].$ref).toBe(
+        "#/components/responses/RequestAborted",
+      );
+      expect(openApiDocument.paths[path].post.responses["503"].$ref).toBe(
+        "#/components/responses/ServiceUnavailable",
+      );
     }
     expect(openApiDocument.paths["/api/v1/health"].get.responses["500"].$ref).toBe(
       "#/components/responses/InternalError",
@@ -105,6 +111,37 @@ describe("OpenAPI contract", () => {
       openApiDocument.components.schemas.CreatePlanInput.properties.sizeBytes
         .maximum,
     ).toBe(64 * 1024 * 1024);
+    expect(
+      openApiDocument.paths["/api/v1/sync/downloads"].post.responses["409"]
+        .$ref,
+    ).toBe("#/components/responses/Conflict");
+    expect(
+      openApiDocument.components.schemas.StashList.properties.stashes.maxItems,
+    ).toBe(1_000);
+    expect(
+      openApiDocument.components.schemas.StashSummary.properties.stashId.$ref,
+    ).toBe("#/components/schemas/StashId");
+    expect(
+      openApiDocument.components.schemas.DownloadPlan.properties.stashId.$ref,
+    ).toBe("#/components/schemas/StashId");
+    expect(
+      openApiDocument.components.schemas.DownloadPlan.properties.grant.$ref,
+    ).toBe("#/components/schemas/DownloadTransferGrant");
+    expect(
+      openApiDocument.components.schemas.DownloadTransferGrant.allOf[1],
+    ).toMatchObject({ properties: { method: { const: "GET" } } });
+    expect(
+      openApiDocument.components.schemas.SyncPlan.properties.receipt.maxLength,
+    ).toBe(4_096);
+    expect(
+      openApiDocument.components.schemas.SyncPlan.properties.object.properties
+        .key.minLength,
+    ).toBe(1);
+    expect(
+      openApiDocument.components.schemas.SyncPlan.properties.upload.anyOf[0]
+        .$ref,
+    ).toBe("#/components/schemas/UploadTransferGrant");
+    expect(openApiDocument.components.schemas.SyncPlan.allOf).toHaveLength(2);
   });
 
   test("serves the same document through the GET Route Handler", async () => {

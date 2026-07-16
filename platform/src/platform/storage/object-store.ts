@@ -1,3 +1,5 @@
+import { PlatformError } from "@/shared/errors/platform-error";
+
 export type ObjectMetadata = {
   contentType: string;
   etag: string;
@@ -25,28 +27,37 @@ export interface ObjectStore {
   /** What the adapter can prove before a catalog commit. */
   readonly verification: "presence-size-etag" | "server-sha256";
 
-  inspect(key: string): Promise<ObjectMetadata | null>;
+  inspect(key: string, signal?: AbortSignal): Promise<ObjectMetadata | null>;
 
-  issueUploadGrant(input: {
-    contentType: string;
-    key: string;
-    sha256: string;
-    sizeBytes: number;
-    validUntil: Date;
-  }): Promise<TransferGrant>;
+  issueUploadGrant(
+    input: {
+      contentType: string;
+      key: string;
+      sha256: string;
+      sizeBytes: number;
+      validUntil: Date;
+    },
+    signal?: AbortSignal,
+  ): Promise<TransferGrant>;
 
-  issueDownloadGrant(input: {
-    key: string;
-    validUntil: Date;
-  }): Promise<TransferGrant>;
+  issueDownloadGrant(
+    input: {
+      key: string;
+      validUntil: Date;
+    },
+    signal?: AbortSignal,
+  ): Promise<TransferGrant>;
 
-  readText(key: string): Promise<TextObject | null>;
+  readText(key: string, signal?: AbortSignal): Promise<TextObject | null>;
 
-  writeText(input: {
-    body: string;
-    expectedEtag?: string;
-    key: string;
-  }): Promise<{ etag: string }>;
+  writeText(
+    input: {
+      body: string;
+      expectedEtag?: string;
+      key: string;
+    },
+    signal?: AbortSignal,
+  ): Promise<{ etag: string }>;
 }
 
 const objectKeyPattern = /^[a-z0-9][a-z0-9._/-]*$/;
@@ -62,4 +73,14 @@ export function assertSafeObjectKey(key: string): void {
   ) {
     throw new Error(`Unsafe object key: ${key}`);
   }
+}
+
+export function throwIfStorageOperationAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  throw new PlatformError({
+    code: "request_aborted",
+    detail: "The request was canceled before the storage operation completed.",
+    status: 408,
+    title: "Request canceled",
+  });
 }

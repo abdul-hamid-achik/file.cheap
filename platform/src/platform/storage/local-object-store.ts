@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
-  createReadStream,
   createWriteStream,
+  constants as filesystemConstants,
   promises as filesystem,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -19,6 +19,7 @@ import {
 } from "@/shared/security/signed-token";
 import {
   assertSafeObjectKey,
+  throwIfStorageOperationAborted,
   type ObjectMetadata,
   type ObjectStore,
   type TextObject,
@@ -27,20 +28,60 @@ import {
 
 const localCatalogLockDeadlineMilliseconds = 15_000;
 const localUploadDeadlineMilliseconds = 5 * 60_000;
+const maximumLockRecordBytes = 4 * 1024;
 const maximumProcessId = 2_147_483_647;
 export const localTransferTokenHeader = "x-filecheap-transfer-token";
 
+export type LocalObjectStoreOptions = {
+  testHooks?: {
+    afterOpen?: (input: {
+      key: string;
+      operation: "download" | "readText";
+      path: string;
+    }) => Promise<void> | void;
+  };
+  uploadDeadlineMilliseconds?: number;
+};
+
+/**
+ * Local prototype adapter. Its crash-lock ownership checks require one host,
+ * one PID namespace, and a local filesystem; never share dataDirectory across
+ * machines or containers.
+ */
 export class LocalObjectStore implements ObjectStore {
   readonly driver = "local" as const;
   readonly verification = "server-sha256" as const;
 
-  constructor(private readonly config: PlatformConfig = getConfig()) {}
+  private readonly uploadDeadlineMilliseconds: number;
+  private readonly testHooks: LocalObjectStoreOptions["testHooks"];
 
-  async inspect(key: string): Promise<ObjectMetadata | null> {
+  constructor(
+    private readonly config: PlatformConfig = getConfig(),
+    options: LocalObjectStoreOptions = {},
+  ) {
+    this.uploadDeadlineMilliseconds =
+      options.uploadDeadlineMilliseconds ?? localUploadDeadlineMilliseconds;
+    this.testHooks = options.testHooks;
+    if (
+      !Number.isFinite(this.uploadDeadlineMilliseconds) ||
+      this.uploadDeadlineMilliseconds <= 0
+    ) {
+      throw new Error("Local upload deadline must be a positive duration");
+    }
+  }
+
+  async inspect(
+    key: string,
+    signal?: AbortSignal,
+  ): Promise<ObjectMetadata | null> {
+    throwIfStorageOperationAborted(signal);
     const path = this.pathFor(key);
+    const handle = await openExistingFile(path);
+    if (!handle) return null;
     try {
-      const stat = await filesystem.stat(path);
-      const sha256 = await hashFile(path);
+      const stat = await handle.stat();
+      const sha256 = await hashFileHandle(handle, signal);
+      throwIfStorageOperationAborted(signal);
       return {
         contentType: contentTypeFor(key),
         etag: sha256,
@@ -49,21 +90,22 @@ export class LocalObjectStore implements ObjectStore {
         uploadedAt: stat.mtime.toISOString(),
         verifiedSha256: sha256,
       };
-    } catch (error) {
-      if (isNodeError(error, "ENOENT")) {
-        return null;
-      }
-      throw error;
+    } finally {
+      await handle.close();
     }
   }
 
-  async issueUploadGrant(input: {
-    contentType: string;
-    key: string;
-    sha256: string;
-    sizeBytes: number;
-    validUntil: Date;
-  }): Promise<TransferGrant> {
+  async issueUploadGrant(
+    input: {
+      contentType: string;
+      key: string;
+      sha256: string;
+      sizeBytes: number;
+      validUntil: Date;
+    },
+    signal?: AbortSignal,
+  ): Promise<TransferGrant> {
+    throwIfStorageOperationAborted(signal);
     assertSafeObjectKey(input.key);
     const token = signPayload(
       {
@@ -89,10 +131,14 @@ export class LocalObjectStore implements ObjectStore {
     };
   }
 
-  async issueDownloadGrant(input: {
-    key: string;
-    validUntil: Date;
-  }): Promise<TransferGrant> {
+  async issueDownloadGrant(
+    input: {
+      key: string;
+      validUntil: Date;
+    },
+    signal?: AbortSignal,
+  ): Promise<TransferGrant> {
+    throwIfStorageOperationAborted(signal);
     assertSafeObjectKey(input.key);
     const token = signPayload(
       {
@@ -112,49 +158,69 @@ export class LocalObjectStore implements ObjectStore {
     };
   }
 
-  async readText(key: string): Promise<TextObject | null> {
-    const metadata = await this.inspect(key);
-    if (!metadata) {
-      return null;
+  async readText(
+    key: string,
+    signal?: AbortSignal,
+  ): Promise<TextObject | null> {
+    throwIfStorageOperationAborted(signal);
+    const path = this.pathFor(key);
+    const handle = await openExistingFile(path);
+    if (!handle) return null;
+    try {
+      await this.testHooks?.afterOpen?.({ key, operation: "readText", path });
+      const body = await handle.readFile();
+      throwIfStorageOperationAborted(signal);
+      return {
+        body: body.toString("utf8"),
+        etag: hashBytes(body),
+      };
+    } finally {
+      await handle.close();
     }
-
-    return {
-      body: await filesystem.readFile(this.pathFor(key), "utf8"),
-      etag: metadata.etag,
-    };
   }
 
-  async writeText(input: {
-    body: string;
-    expectedEtag?: string;
-    key: string;
-  }): Promise<{ etag: string }> {
+  async writeText(
+    input: {
+      body: string;
+      expectedEtag?: string;
+      key: string;
+    },
+    signal?: AbortSignal,
+  ): Promise<{ etag: string }> {
+    throwIfStorageOperationAborted(signal);
     const path = this.pathFor(input.key);
     await filesystem.mkdir(dirname(path), { mode: 0o700, recursive: true });
-    return withFileLock(`${path}.lock`, async (assertOwned) => {
-      const current = await this.inspect(input.key);
-      if (
-        (input.expectedEtag && current?.etag !== input.expectedEtag) ||
-        (!input.expectedEtag && current)
-      ) {
-        throw new CatalogPreconditionError();
-      }
+    return withFileLock(
+      `${path}.lock`,
+      async (assertOwned) => {
+        throwIfStorageOperationAborted(signal);
+        const current = await this.inspect(input.key, signal);
+        if (
+          (input.expectedEtag && current?.etag !== input.expectedEtag) ||
+          (!input.expectedEtag && current)
+        ) {
+          throw new CatalogPreconditionError();
+        }
 
-      const temporaryPath = `${path}.${randomUUID()}.tmp`;
-      try {
-        await filesystem.writeFile(temporaryPath, input.body, {
-          flag: "wx",
-          mode: 0o600,
-        });
-        await syncFile(temporaryPath);
-        await assertOwned();
-        await filesystem.rename(temporaryPath, path);
-        await syncDirectory(dirname(path));
-      } finally {
-        await filesystem.rm(temporaryPath, { force: true });
-      }
-      return { etag: hashBytes(Buffer.from(input.body)) };
-    });
+        const temporaryPath = `${path}.${randomUUID()}.tmp`;
+        try {
+          await filesystem.writeFile(temporaryPath, input.body, {
+            flag: "wx",
+            mode: 0o600,
+          });
+          await syncFile(temporaryPath);
+          throwIfStorageOperationAborted(signal);
+          await assertOwned();
+          await filesystem.rename(temporaryPath, path);
+          await syncDirectory(dirname(path));
+          throwIfStorageOperationAborted(signal);
+        } finally {
+          await filesystem.rm(temporaryPath, { force: true });
+        }
+        return { etag: hashBytes(Buffer.from(input.body)) };
+      },
+      signal,
+    );
   }
 
   async acceptUpload(request: Request, key: string, token: string): Promise<ObjectMetadata> {
@@ -193,7 +259,7 @@ export class LocalObjectStore implements ObjectStore {
       throw uploadTooLarge();
     }
 
-    const existing = await this.inspect(key);
+    const existing = await this.inspect(key, request.signal);
     if (existing) {
       if (existing.sizeBytes === payload.sizeBytes && existing.etag === payload.sha256) {
         return existing;
@@ -217,7 +283,7 @@ export class LocalObjectStore implements ObjectStore {
     const source = Readable.fromWeb(request.body as never);
     const uploadDeadline = Math.min(
       payload.exp,
-      Date.now() + localUploadDeadlineMilliseconds,
+      Date.now() + this.uploadDeadlineMilliseconds,
     );
     const deadlineError =
       uploadDeadline === payload.exp ? expiredUploadGrant : uploadTimedOut;
@@ -232,6 +298,10 @@ export class LocalObjectStore implements ObjectStore {
     if (request.signal.aborted) {
       abortUpload();
     }
+    const assertTransferActive = (): void => {
+      if (request.signal.aborted) throw uploadCanceled();
+      if (Date.now() >= uploadDeadline) throw deadlineError();
+    };
     source.on("data", (chunk: Buffer) => {
       receivedBytes += chunk.length;
       hash.update(chunk);
@@ -242,6 +312,7 @@ export class LocalObjectStore implements ObjectStore {
 
     try {
       try {
+        assertTransferActive();
         await pipeline(
           source,
           createWriteStream(temporaryPath, { flags: "wx", mode: 0o600 }),
@@ -252,12 +323,14 @@ export class LocalObjectStore implements ObjectStore {
         }
         throw error;
       }
+      assertTransferActive();
       const receivedHash = hash.digest("hex");
       if (receivedBytes !== payload.sizeBytes || receivedHash !== payload.sha256) {
         throw uploadIntegrityMismatch();
       }
 
       await syncFile(temporaryPath);
+      assertTransferActive();
 
       let created = false;
       try {
@@ -275,7 +348,7 @@ export class LocalObjectStore implements ObjectStore {
       await filesystem.rm(temporaryPath, { force: true });
     }
 
-    const metadata = await this.inspect(key);
+    const metadata = await this.inspect(key, request.signal);
     if (!metadata) {
       throw new Error("Upload completed without creating the object");
     }
@@ -288,7 +361,12 @@ export class LocalObjectStore implements ObjectStore {
     return { ...metadata, contentType: payload.contentType };
   }
 
-  async serveDownload(key: string, token: string): Promise<Response> {
+  async serveDownload(
+    key: string,
+    token: string,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    throwIfStorageOperationAborted(signal);
     const payload = verifyPayload(token, this.config.signingSecret);
     if (payload.kind !== "download" || payload.key !== key) {
       throw new PlatformError({
@@ -299,8 +377,9 @@ export class LocalObjectStore implements ObjectStore {
       });
     }
 
-    const metadata = await this.inspect(key);
-    if (!metadata) {
+    const path = this.pathFor(key);
+    const handle = await openExistingFile(path);
+    if (!handle) {
       throw new PlatformError({
         code: "object_not_found",
         detail: "The requested archive object does not exist.",
@@ -309,16 +388,24 @@ export class LocalObjectStore implements ObjectStore {
       });
     }
 
-    const stream = Readable.toWeb(
-      createReadStream(this.pathFor(key)),
-    ) as unknown as ReadableStream;
-    return new Response(stream, {
-      headers: {
-        "content-length": String(metadata.sizeBytes),
-        "content-type": metadata.contentType,
-        etag: `"${metadata.etag}"`,
-      },
-    });
+    let handedOff = false;
+    try {
+      await this.testHooks?.afterOpen?.({ key, operation: "download", path });
+      const stat = await handle.stat();
+      const etag = await hashFileHandle(handle, signal);
+      throwIfStorageOperationAborted(signal);
+      const response = new Response(fileHandleStream(handle, signal), {
+        headers: {
+          "content-length": String(stat.size),
+          "content-type": contentTypeFor(key),
+          etag: `"${etag}"`,
+        },
+      });
+      handedOff = true;
+      return response;
+    } finally {
+      if (!handedOff) await handle.close();
+    }
   }
 
   private pathFor(key: string): string {
@@ -327,12 +414,96 @@ export class LocalObjectStore implements ObjectStore {
   }
 }
 
-async function hashFile(path: string): Promise<string> {
+type FileHandle = Awaited<ReturnType<typeof filesystem.open>>;
+
+async function openExistingFile(path: string): Promise<FileHandle | null> {
+  try {
+    return await filesystem.open(path, "r");
+  } catch (error) {
+    if (isNodeError(error, "ENOENT")) return null;
+    throw error;
+  }
+}
+
+async function hashFileHandle(
+  handle: FileHandle,
+  signal?: AbortSignal,
+): Promise<string> {
   const hash = createHash("sha256");
-  for await (const chunk of createReadStream(path)) {
-    hash.update(chunk);
+  const buffer = Buffer.allocUnsafe(64 * 1024);
+  let position = 0;
+  while (true) {
+    throwIfStorageOperationAborted(signal);
+    const { bytesRead } = await handle.read(
+      buffer,
+      0,
+      buffer.byteLength,
+      position,
+    );
+    if (bytesRead === 0) break;
+    hash.update(buffer.subarray(0, bytesRead));
+    position += bytesRead;
   }
   return hash.digest("hex");
+}
+
+function fileHandleStream(
+  handle: FileHandle,
+  signal?: AbortSignal,
+): ReadableStream<Uint8Array> {
+  let closed = false;
+  let position = 0;
+  const close = async (): Promise<void> => {
+    if (closed) return;
+    closed = true;
+    await handle.close();
+  };
+  let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const abort = (): void => {
+    controller?.error(
+      new PlatformError({
+        code: "request_aborted",
+        detail: "The download request was canceled.",
+        status: 408,
+        title: "Request canceled",
+      }),
+    );
+    void close().catch(() => undefined);
+  };
+  return new ReadableStream<Uint8Array>({
+    async cancel() {
+      signal?.removeEventListener("abort", abort);
+      await close();
+    },
+    async pull(controller) {
+      try {
+        const buffer = Buffer.allocUnsafe(64 * 1024);
+        const { bytesRead } = await handle.read(
+          buffer,
+          0,
+          buffer.byteLength,
+          position,
+        );
+        if (bytesRead === 0) {
+          controller.close();
+          signal?.removeEventListener("abort", abort);
+          await close();
+          return;
+        }
+        position += bytesRead;
+        controller.enqueue(buffer.subarray(0, bytesRead));
+      } catch (error) {
+        controller.error(error);
+        signal?.removeEventListener("abort", abort);
+        await close().catch(() => undefined);
+      }
+    },
+    start(nextController) {
+      controller = nextController;
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) abort();
+    },
+  });
 }
 
 function hashBytes(bytes: Buffer): string {
@@ -367,36 +538,67 @@ async function syncDirectory(path: string): Promise<void> {
   }
 }
 
+async function abortableDelay(
+  milliseconds: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  throwIfStorageOperationAborted(signal);
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = (): void => {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+    };
+    const abort = (): void => {
+      cleanup();
+      try {
+        throwIfStorageOperationAborted(signal);
+      } catch (error) {
+        reject(error);
+      }
+    };
+    const timeout = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, milliseconds);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+  });
+}
+
 async function withFileLock<T>(
   lockPath: string,
   operation: (assertOwned: () => Promise<void>) => Promise<T>,
+  signal?: AbortSignal,
 ): Promise<T> {
   const deadline = Date.now() + localCatalogLockDeadlineMilliseconds;
   let lock: OwnedFileLock | null = null;
 
   while (!lock) {
+    throwIfStorageOperationAborted(signal);
+    if (Date.now() >= deadline) throw catalogBusy();
     lock = await tryAcquireFileLock(lockPath);
     if (lock) break;
 
-    if (await recoverAbandonedLock(lockPath, deadline)) {
+    if (await recoverAbandonedLock(lockPath, deadline, signal)) {
       continue;
     }
 
     if (Date.now() >= deadline) {
       throw catalogBusy();
     }
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await abortableDelay(10, signal);
   }
 
   const assertOwned = async (): Promise<void> => {
-    let current: Awaited<ReturnType<typeof filesystem.stat>>;
+    let current: Awaited<ReturnType<typeof filesystem.lstat>>;
     try {
-      current = await filesystem.stat(lockPath);
+      current = await filesystem.lstat(lockPath);
     } catch (error) {
       if (isNodeError(error, "ENOENT")) throw catalogLockLost();
       throw error;
     }
     if (
+      !current.isFile() ||
       current.dev !== lock.identity.dev ||
       current.ino !== lock.identity.ino
     ) {
@@ -448,7 +650,7 @@ async function tryAcquireFileLock(lockPath: string): Promise<OwnedFileLock | nul
   // lock is visibly present. The hard-link publication below remains the
   // correctness boundary if the lock disappears or appears after this hint.
   try {
-    await filesystem.stat(lockPath);
+    await filesystem.lstat(lockPath);
     return null;
   } catch (error) {
     if (!isNodeError(error, "ENOENT")) throw error;
@@ -492,32 +694,65 @@ async function tryAcquireFileLock(lockPath: string): Promise<OwnedFileLock | nul
 }
 
 async function observeLock(lockPath: string): Promise<LockObservation | null> {
-  let handle: Awaited<ReturnType<typeof filesystem.open>>;
-  try {
-    handle = await filesystem.open(lockPath, "r");
-  } catch (error) {
-    if (isNodeError(error, "ENOENT")) return null;
-    throw error;
-  }
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    let directoryEntry: Awaited<ReturnType<typeof filesystem.lstat>>;
+    try {
+      directoryEntry = await filesystem.lstat(lockPath);
+    } catch (error) {
+      if (isNodeError(error, "ENOENT")) return null;
+      throw error;
+    }
+    if (!directoryEntry.isFile() || directoryEntry.size > maximumLockRecordBytes) {
+      throw catalogLockInvalid();
+    }
 
-  try {
-    const [body, stat] = await Promise.all([
-      handle.readFile("utf8"),
-      handle.stat(),
-    ]);
-    return {
-      identity: { dev: stat.dev, ino: stat.ino },
-      owner: parseLockOwner(body),
-    };
-  } finally {
-    await handle.close();
+    let handle: Awaited<ReturnType<typeof filesystem.open>>;
+    try {
+      handle = await filesystem.open(
+        lockPath,
+        filesystemConstants.O_RDONLY |
+          filesystemConstants.O_NOFOLLOW |
+          filesystemConstants.O_NONBLOCK,
+      );
+    } catch (error) {
+      if (isNodeError(error, "ENOENT")) return null;
+      if (isNodeError(error, "ELOOP")) throw catalogLockInvalid();
+      throw error;
+    }
+
+    try {
+      const stat = await handle.stat();
+      if (!stat.isFile() || stat.size > maximumLockRecordBytes) {
+        throw catalogLockInvalid();
+      }
+      if (!sameIdentity(stat, directoryEntry)) continue;
+      const body = await readBoundedLockRecord(handle);
+      let latestEntry: Awaited<ReturnType<typeof filesystem.lstat>>;
+      try {
+        latestEntry = await filesystem.lstat(lockPath);
+      } catch (error) {
+        if (isNodeError(error, "ENOENT")) return null;
+        throw error;
+      }
+      if (!latestEntry.isFile()) throw catalogLockInvalid();
+      if (!sameIdentity(stat, latestEntry)) continue;
+      return {
+        identity: { dev: stat.dev, ino: stat.ino },
+        owner: parseLockOwner(body),
+      };
+    } finally {
+      await handle.close();
+    }
   }
+  return null;
 }
 
 async function recoverAbandonedLock(
   lockPath: string,
   deadline: number,
+  signal?: AbortSignal,
 ): Promise<boolean> {
+  throwIfStorageOperationAborted(signal);
   const observed = await observeLock(lockPath);
   if (!observed) return true;
   if (!observed.owner) throw catalogLockInvalid();
@@ -529,6 +764,7 @@ async function recoverAbandonedLock(
 
   try {
     while (Date.now() < deadline) {
+      throwIfStorageOperationAborted(signal);
       const current = await observeLock(lockPath);
       if (!current) return true;
       if (!sameIdentity(current.identity, observed.identity)) return true;
@@ -537,10 +773,11 @@ async function recoverAbandonedLock(
 
       const claims = await listActiveRecoveryClaims(lockPath);
       if (claims[0]?.path !== claim.path) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        await abortableDelay(10, signal);
         continue;
       }
 
+      throwIfStorageOperationAborted(signal);
       const finalObservation = await observeLock(lockPath);
       if (!finalObservation) return true;
       if (!sameIdentity(finalObservation.identity, observed.identity)) return true;
@@ -549,6 +786,11 @@ async function recoverAbandonedLock(
 
       const quarantinePath = `${lockPath}.abandoned.${claim.rank}.${randomUUID()}`;
       await filesystem.rename(lockPath, quarantinePath);
+      await removeCandidateIfOwned(
+        lockPath,
+        finalObservation.owner,
+        observed.identity,
+      );
       await filesystem.rm(quarantinePath, { force: true });
       await syncDirectory(dirname(lockPath));
       return true;
@@ -577,12 +819,16 @@ async function listActiveRecoveryClaims(
 
   for (const entry of await filesystem.readdir(directory, { withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.startsWith(prefix)) continue;
-    const match = /^([0-9a-f]+)-(\d+)-/.exec(entry.name.slice(prefix.length));
+    const match = /^([0-9a-f]{16,32})-(\d+)-([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/.exec(
+      entry.name.slice(prefix.length),
+    );
     if (!match) continue;
 
+    const pid = Number(match[2]);
+    if (!Number.isInteger(pid) || pid <= 0 || pid > maximumProcessId) continue;
     const claim = {
       path: join(directory, entry.name),
-      pid: Number(match[2]),
+      pid,
       rank: match[1],
     };
     if (isProcessAlive(claim.pid)) {
@@ -607,7 +853,9 @@ function parseLockOwner(body: string): LockOwner | null {
       Number(owner.pid) <= 0 ||
       Number(owner.pid) > maximumProcessId ||
       typeof owner.token !== "string" ||
-      owner.token.length === 0
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+        owner.token,
+      )
     ) {
       return null;
     }
@@ -636,15 +884,54 @@ async function removeLockIfOwned(
   lockPath: string,
   identity: { dev: number; ino: number },
 ): Promise<void> {
-  let current: Awaited<ReturnType<typeof filesystem.stat>>;
+  let current: Awaited<ReturnType<typeof filesystem.lstat>>;
   try {
-    current = await filesystem.stat(lockPath);
+    current = await filesystem.lstat(lockPath);
   } catch (error) {
     if (isNodeError(error, "ENOENT")) return;
     throw error;
   }
-  if (current.dev === identity.dev && current.ino === identity.ino) {
+  if (
+    current.isFile() &&
+    current.dev === identity.dev &&
+    current.ino === identity.ino
+  ) {
     await filesystem.rm(lockPath, { force: true });
+  }
+}
+
+async function readBoundedLockRecord(handle: FileHandle): Promise<string> {
+  const buffer = Buffer.allocUnsafe(maximumLockRecordBytes + 1);
+  let receivedBytes = 0;
+  while (receivedBytes < buffer.byteLength) {
+    const { bytesRead } = await handle.read(
+      buffer,
+      receivedBytes,
+      buffer.byteLength - receivedBytes,
+      receivedBytes,
+    );
+    if (bytesRead === 0) break;
+    receivedBytes += bytesRead;
+  }
+  if (receivedBytes > maximumLockRecordBytes) throw catalogLockInvalid();
+  return buffer.subarray(0, receivedBytes).toString("utf8");
+}
+
+async function removeCandidateIfOwned(
+  lockPath: string,
+  owner: LockOwner,
+  identity: LockIdentity,
+): Promise<void> {
+  const candidatePath = `${lockPath}.candidate.${owner.token}`;
+  let candidate: Awaited<ReturnType<typeof filesystem.lstat>>;
+  try {
+    candidate = await filesystem.lstat(candidatePath);
+  } catch (error) {
+    if (isNodeError(error, "ENOENT")) return;
+    throw error;
+  }
+  if (candidate.isFile() && sameIdentity(candidate, identity)) {
+    await filesystem.rm(candidatePath, { force: true });
   }
 }
 

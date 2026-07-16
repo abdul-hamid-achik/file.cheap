@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { z, type ZodType } from "zod";
 
 import {
   createRecoveryCard,
@@ -12,10 +13,16 @@ import {
   type RecoveryCard,
   type RecoveryDrillReport,
 } from "@/features/sync/recovery-artifacts";
+import { readExactResponseBytes } from "@/features/sync/bounded-response";
 import {
+  commitPlanResponseSchema,
+  downloadPlanSchema,
   protocolV1MaxObjectBytes,
+  stashListSchema,
   stashContentType,
   stashIdSchema,
+  syncPlanSchema,
+  type StashSummary,
 } from "@/features/sync/contracts";
 import {
   OperationCanceledError,
@@ -23,16 +30,34 @@ import {
   withRequestDeadline,
 } from "@/features/sync/request-lifecycle";
 import {
+  MutationOutcomeUnknownError,
+  parseSuccessResponse,
+  readBoundedJsonResponse,
+  ResponseContractError,
+} from "@/features/sync/response-contract";
+import {
   deriveRecoveryAttemptState,
+  reconcileCommitFromCatalog,
+  resolvePendingCommitAfterReconnect,
+  sameStashContent,
   shouldLockAfterConnectionFailure,
+  type ExpectedStashContent,
 } from "@/features/sync/recovery-lab-state";
-import type { StashSummary } from "@/features/sync/sync-service";
 
 const labFileLimitBytes = protocolV1MaxObjectBytes;
 const recoveryCardFileLimitBytes = 64 * 1024;
 const objectUrlLifetimeMilliseconds = 60_000;
 const controlPlaneTimeoutMilliseconds = 30_000;
 const transferTimeoutMilliseconds = 5 * 60_000;
+
+const problemDetailsSchema = z
+  .object({
+    code: z.string().max(256).optional(),
+    detail: z.string().max(8_192).optional(),
+    requestId: z.string().max(256).optional(),
+    title: z.string().max(512).optional(),
+  })
+  .passthrough();
 
 type LabStatus = {
   kind: "error" | "idle" | "success" | "working";
@@ -42,29 +67,18 @@ type LabStatus = {
 
 type RecoveryStepStatus = "active" | "complete" | "pending";
 
-type PlanResponse = {
-  receipt: string;
-  state: "already_committed" | "object_present" | "upload_required";
-  upload: {
-    headers: Record<string, string>;
-    method: "PUT";
-    url: string;
-  } | null;
-};
-
-type CommitResponse = { stash: StashSummary };
-
-type DownloadResponse = {
-  expected: { sha256: string; sizeBytes: number };
-  grant: { headers: Record<string, string>; method: "GET"; url: string };
-  stashId: string;
-};
-
 type HydrationEvidence = {
   attemptId: string;
   cardIdentity: string;
   downloadedSha256: string;
   startedAt: string;
+};
+
+type PendingCommit = {
+  expected: ExpectedStashContent;
+  file: File;
+  requestId?: string;
+  retryAllowed: boolean;
 };
 
 type RecoveryLabProps = {
@@ -74,6 +88,9 @@ type RecoveryLabProps = {
 export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
   const operationInFlight = useRef(false);
   const operationController = useRef<AbortController | null>(null);
+  const operationReturnFocus = useRef<HTMLElement | null>(null);
+  const restoreFocusAfterCancel = useRef(false);
+  const tokenInput = useRef<HTMLInputElement | null>(null);
   const [apiToken, setApiToken] = useState("");
   const [cancelRequested, setCancelRequested] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -90,6 +107,7 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
   const [reportDownloadRequested, setReportDownloadRequested] = useState(false);
   const [currentRecoveryAttemptId, setCurrentRecoveryAttemptId] = useState<string | null>(null);
   const [currentComparisonSucceeded, setCurrentComparisonSucceeded] = useState(false);
+  const [pendingCommit, setPendingCommit] = useState<PendingCommit | null>(null);
   const [status, setStatus] = useState<LabStatus>({
     kind: "idle",
     message: "Enter the local bearer token to unlock this simulated vault.",
@@ -106,7 +124,16 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
       : "Presence + size + ETag; recovery hash still required";
   const parsedStashId = stashIdSchema.safeParse(stashId.trim());
   const showStashIdError = stashIdTouched && !parsedStashId.success;
-  const canPush = Boolean(connected && file && parsedStashId.success && !isWorking);
+  const canPush = Boolean(
+    connected &&
+      file &&
+      parsedStashId.success &&
+      !isWorking &&
+      (!pendingCommit ||
+        (pendingCommit.retryAllowed &&
+          file === pendingCommit.file &&
+          parsedStashId.data === pendingCommit.expected.stashId)),
+  );
   const currentCardIdentity = recoveryCard
     ? recoveryCardIdentity(recoveryCard)
     : null;
@@ -173,6 +200,19 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
     };
   }, []);
 
+  function applyAuthenticationFailure(error: unknown): void {
+    if (
+      shouldLockAfterConnectionFailure(
+        error instanceof ApiResponseError && error.origin === "control"
+          ? error.status
+          : undefined,
+      )
+    ) {
+      setConnected(false);
+      setStashes([]);
+    }
+  }
+
   async function connectVault() {
     if (!apiToken.trim()) {
       setStatus({ kind: "error", message: "Enter the development bearer token." });
@@ -182,29 +222,93 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
     if (!signal) return;
     try {
       setStatus({ kind: "working", message: "Authenticating and reading the vault…" });
-      setStashes(await listStashes(apiToken.trim(), signal));
+      const catalog = await listStashes(apiToken.trim(), signal);
+      setStashes(catalog);
       setConnected(true);
+      if (pendingCommit) {
+        const resolution = resolvePendingCommitAfterReconnect(
+          pendingCommit,
+          catalog,
+        );
+        if (resolution.kind === "recovered") {
+          installCommittedRecovery(
+            resolution.stash,
+            pendingCommit.file,
+            pendingCommit.expected,
+          );
+          setPendingCommit(null);
+          setStatus({
+            kind: "success",
+            message: `${resolution.stash.stashId} was found after reconnecting. Its recovery card is ready; no second upload was attempted.`,
+            ...(pendingCommit.requestId
+              ? { requestId: pendingCommit.requestId }
+              : {}),
+          });
+          return;
+        }
+        if (resolution.kind === "conflict") {
+          setPendingCommit(null);
+          setStatus({
+            kind: "error",
+            message:
+              "Reconnect found this stash ID bound to different content. Do not retry the commit.",
+            ...(pendingCommit.requestId
+              ? { requestId: pendingCommit.requestId }
+              : {}),
+          });
+          return;
+        }
+        setStatus({
+          kind: "error",
+          message:
+            "Vault unlocked, but the dispatched commit is not in the catalog. Rerun Upload + commit with the unchanged file and stash ID; the immutable plan will reuse any bytes already present.",
+          ...(pendingCommit.requestId
+            ? { requestId: pendingCommit.requestId }
+            : {}),
+        });
+        setFile(pendingCommit.file);
+        setStashId(pendingCommit.expected.stashId);
+        setStashIdTouched(false);
+        setPendingCommit({ ...pendingCommit, retryAllowed: true });
+        return;
+      }
       setStatus({
         kind: "success",
         message: "Vault unlocked for this tab. The token is not persisted.",
       });
     } catch (error) {
-      if (
-        shouldLockAfterConnectionFailure(
-          error instanceof ApiResponseError ? error.status : undefined,
-        )
-      ) {
-        setConnected(false);
-        setStashes([]);
-      }
+      applyAuthenticationFailure(error);
       setStatus(errorStatus(error));
     } finally {
       endOperation();
     }
   }
 
+  function installCommittedRecovery(
+    committedStash: StashSummary,
+    sourceFile: File,
+    expected: ExpectedStashContent,
+  ): void {
+    const nextRecoveryCard = createRecoveryCard({
+      committedAt: committedStash.committedAt,
+      originalFileName: sourceFile.name,
+      sha256: expected.sha256,
+      sizeBytes: expected.sizeBytes,
+      stashId: committedStash.stashId,
+    });
+    setRecoveryCard(nextRecoveryCard);
+    setCardSourceFile(sourceFile);
+    setCardOrigin("generated");
+    setCardDownloadRequested(false);
+    setHydrationEvidence(null);
+    setRecoveryReport(null);
+    setReportDownloadRequested(false);
+    setCurrentRecoveryAttemptId(null);
+    setCurrentComparisonSucceeded(false);
+  }
+
   function chooseArchive(nextFile: File | null) {
-    if (operationInFlight.current) return;
+    if (operationInFlight.current || pendingCommit) return;
     if (!nextFile) return;
     if (nextFile.size === 0) {
       rejectArchiveSelection("Choose a non-empty archive.");
@@ -273,14 +377,38 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
       const sha256 = await sha256Hex(bytes);
       throwIfOperationCanceled(signal);
       const contentType = stashContentType;
-
-      setStatus({ kind: "working", message: "Requesting an immutable upload plan…" });
-      const plan = await apiRequest<PlanResponse>("/api/v1/sync/plans", apiToken.trim(), {
+      const expectedContent: ExpectedStashContent = {
         contentType,
         sha256,
         sizeBytes: selectedFile.size,
         stashId: validatedStashId.data,
-      }, signal);
+      };
+
+      setStatus({ kind: "working", message: "Requesting an immutable upload plan…" });
+      const plan = await apiRequest(
+        "/api/v1/sync/plans",
+        apiToken.trim(),
+        {
+          contentType,
+          sha256,
+          sizeBytes: selectedFile.size,
+          stashId: validatedStashId.data,
+        },
+        signal,
+        syncPlanSchema.superRefine((candidate, context) => {
+          if (
+            candidate.object.sha256 !== sha256 ||
+            candidate.object.sizeBytes !== selectedFile.size
+          ) {
+            context.addIssue({
+              code: "custom",
+              message: "plan object must match the selected archive",
+              path: ["object"],
+            });
+          }
+        }),
+        { operation: "Upload plan" },
+      );
 
       if (plan.upload) {
         setStatus({ kind: "working", message: "Transferring through the signed data path…" });
@@ -293,7 +421,9 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
               method: plan.upload!.method,
               signal: requestSignal,
             });
-            if (!uploadResponse.ok) throw await responseError(uploadResponse);
+            if (!uploadResponse.ok) {
+              throw await responseError(uploadResponse, "transfer");
+            }
           },
           signal,
           timeoutMilliseconds: transferTimeoutMilliseconds,
@@ -301,50 +431,99 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
       }
 
       setStatus({ kind: "working", message: "Committing the catalog reference…" });
-      const committed = await apiRequest<CommitResponse>(
-        "/api/v1/sync/commits",
-        apiToken.trim(),
-        { receipt: plan.receipt },
-        signal,
-      );
-      const nextRecoveryCard = createRecoveryCard({
-        committedAt: committed.stash.committedAt,
-        originalFileName: selectedFile.name,
-        sha256,
-        sizeBytes: selectedFile.size,
-        stashId: committed.stash.stashId,
-      });
-      setRecoveryCard(nextRecoveryCard);
-      setCardSourceFile(selectedFile);
-      setCardOrigin("generated");
-      setCardDownloadRequested(false);
-      setHydrationEvidence(null);
-      setRecoveryReport(null);
-      setReportDownloadRequested(false);
-      setCurrentRecoveryAttemptId(null);
-      setCurrentComparisonSucceeded(false);
+      throwIfOperationCanceled(signal);
+      let committedStash: StashSummary;
+      let reconciledCatalog: StashSummary[] | undefined;
+      let reconciledCommitRequestId: string | undefined;
+      try {
+        const committed = await apiRequest(
+          "/api/v1/sync/commits",
+          apiToken.trim(),
+          { receipt: plan.receipt },
+          signal,
+          commitPlanResponseSchema.superRefine((candidate, context) => {
+            if (
+              !sameStashContent(candidate.stash, expectedContent)
+            ) {
+              context.addIssue({
+                code: "custom",
+                message: "committed stash must match the selected archive",
+                path: ["stash"],
+              });
+            }
+          }),
+          { acknowledgedMutation: true, operation: "Commit" },
+        );
+        committedStash = committed.stash;
+      } catch (error) {
+        if (isDefinitiveCommitRejection(error)) throw error;
+        const pending: PendingCommit = {
+          expected: expectedContent,
+          file: selectedFile,
+          retryAllowed: false,
+          ...(requestIdForClientError(error)
+            ? { requestId: requestIdForClientError(error) }
+            : {}),
+        };
+        if (signal.aborted) {
+          setPendingCommit(pending);
+          throw new MutationOutcomeUnknownError(requestIdForClientError(error));
+        }
+
+        try {
+          reconciledCatalog = await listStashes(apiToken.trim(), signal);
+        } catch (reconciliationError) {
+          applyAuthenticationFailure(reconciliationError);
+          setPendingCommit(pending);
+          throw new MutationOutcomeUnknownError(requestIdForClientError(error));
+        }
+        const reconciliation = reconcileCommitFromCatalog(
+          reconciledCatalog,
+          expectedContent,
+        );
+        if (reconciliation.kind === "conflict") {
+          setPendingCommit(null);
+          throw new Error(
+            "Catalog reconciliation found this stash ID bound to different content. Do not retry the commit.",
+          );
+        }
+        if (reconciliation.kind === "not_found") {
+          setPendingCommit(pending);
+          throw new MutationOutcomeUnknownError(requestIdForClientError(error));
+        }
+        committedStash = reconciliation.stash;
+        reconciledCommitRequestId = requestIdForClientError(error);
+      }
+      setPendingCommit(null);
+      installCommittedRecovery(committedStash, selectedFile, expectedContent);
 
       let refreshError: unknown;
-      try {
-        setStashes(await listStashes(apiToken.trim(), signal));
-      } catch (error) {
-        refreshError = error;
-        if (error instanceof ApiResponseError && error.status === 401) {
-          setConnected(false);
-          setStashes([]);
+      if (reconciledCatalog) {
+        setStashes(reconciledCatalog);
+      } else {
+        try {
+          setStashes(await listStashes(apiToken.trim(), signal));
+        } catch (error) {
+          refreshError = error;
+          applyAuthenticationFailure(error);
         }
       }
 
       setStatus({
         kind: "success",
-        message: refreshError
-          ? `${committed.stash.stashId} committed and its recovery card is ready. The catalog refresh failed; reconnect to refresh the list.`
-          : `${committed.stash.stashId} committed. Export and re-import its card; use a clean profile for the strongest disaster drill.`,
-        ...(refreshError instanceof ApiResponseError && refreshError.requestId
-          ? { requestId: refreshError.requestId }
-          : {}),
+        message: reconciledCatalog
+          ? `${committedStash.stashId} was found in the catalog after an interrupted or invalid commit response. Its recovery card is ready; no second upload was attempted.`
+          : refreshError
+            ? `${committedStash.stashId} committed and its recovery card is ready. The catalog refresh failed; reconnect to refresh the list.`
+            : `${committedStash.stashId} committed. Export and re-import its card; use a clean profile for the strongest disaster drill.`,
+        ...(reconciledCommitRequestId
+          ? { requestId: reconciledCommitRequestId }
+          : refreshError instanceof ApiResponseError && refreshError.requestId
+            ? { requestId: refreshError.requestId }
+            : {}),
       });
     } catch (error) {
+      applyAuthenticationFailure(error);
       setStatus(
         errorStatus(
           error,
@@ -434,19 +613,25 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
     setReportDownloadRequested(false);
     try {
       setStatus({ kind: "working", message: `Downloading every byte of ${card.stashId}…` });
-      const plan = await apiRequest<DownloadResponse>(
+      const plan = await apiRequest(
         "/api/v1/sync/downloads",
         apiToken.trim(),
         { stashId: card.stashId },
         signal,
+        downloadPlanSchema.superRefine((candidate, context) => {
+          if (
+            candidate.stashId !== card.stashId ||
+            candidate.expected.sizeBytes !== card.sizeBytes ||
+            candidate.expected.sha256 !== card.sha256
+          ) {
+            context.addIssue({
+              code: "custom",
+              message: "download plan must match the recovery card",
+            });
+          }
+        }),
+        { operation: "Download plan" },
       );
-      if (
-        plan.stashId !== card.stashId ||
-        plan.expected.sizeBytes !== card.sizeBytes ||
-        plan.expected.sha256 !== card.sha256
-      ) {
-        throw new Error("The server download plan does not match this recovery card.");
-      }
 
       const bytes = await withRequestDeadline({
         label: "Recovery download",
@@ -456,8 +641,8 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
             method: plan.grant.method,
             signal: requestSignal,
           });
-          if (!response.ok) throw await responseError(response);
-          return response.arrayBuffer();
+          if (!response.ok) throw await responseError(response, "transfer");
+          return readExactResponseBytes(response, card.sizeBytes);
         },
         signal,
         timeoutMilliseconds: transferTimeoutMilliseconds,
@@ -483,6 +668,7 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
         message: "Downloaded bytes verified and offered for saving. Select the saved download below for a local content-equivalence check.",
       });
     } catch (error) {
+      applyAuthenticationFailure(error);
       setStatus(
         errorStatus(
           error,
@@ -559,6 +745,11 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
     if (operationInFlight.current) return null;
     operationInFlight.current = true;
     operationController.current = new AbortController();
+    operationReturnFocus.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    restoreFocusAfterCancel.current = false;
     setCancelRequested(false);
     return operationController.current.signal;
   }
@@ -567,12 +758,21 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
     operationInFlight.current = false;
     operationController.current = null;
     setCancelRequested(false);
+    const returnFocus = operationReturnFocus.current;
+    operationReturnFocus.current = null;
+    if (restoreFocusAfterCancel.current && returnFocus) {
+      requestAnimationFrame(() => {
+        if (document.activeElement === document.body) returnFocus.focus();
+      });
+    }
+    restoreFocusAfterCancel.current = false;
   }
 
   function cancelOperation(): void {
     const controller = operationController.current;
     if (!controller || controller.signal.aborted) return;
     controller.abort(new OperationCanceledError());
+    restoreFocusAfterCancel.current = true;
     setCancelRequested(true);
     setStatus({ kind: "working", message: "Canceling the current operation…" });
   }
@@ -586,10 +786,11 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
       kind: "idle",
       message: "Vault locked. The bearer token was cleared from this tab.",
     });
+    requestAnimationFrame(() => tokenInput.current?.focus());
   }
 
   return (
-    <div className="labPanel">
+    <div aria-busy={isWorking} className="labPanel">
       <form
         className="labToolbar"
         onSubmit={(event) => {
@@ -618,6 +819,7 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
               });
             }}
             placeholder="local-development-token"
+            ref={tokenInput}
             spellCheck={false}
             type="password"
             value={apiToken}
@@ -673,7 +875,7 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
           <span>Archive · max {formatBytes(labFileLimitBytes)}</span>
           <input
             aria-describedby="lab-status"
-            disabled={isWorking}
+            disabled={isWorking || Boolean(pendingCommit)}
             onChange={(event) => {
               const selected = event.currentTarget.files?.[0] ?? null;
               event.currentTarget.value = "";
@@ -688,7 +890,7 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
           <input
             aria-describedby={showStashIdError ? "stash-id-error lab-status" : "lab-status"}
             aria-invalid={showStashIdError}
-            disabled={isWorking}
+            disabled={isWorking || Boolean(pendingCommit)}
             maxLength={128}
             onChange={(event) => {
               setStashId(event.target.value);
@@ -703,21 +905,31 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
               Start with a letter or number; then use letters, numbers, dots, underscores, or hyphens.
             </span>
           ) : null}
+          <small className="fieldHint" id="stash-immutability-note">
+            Protocol v1 permanently binds this ID to these exact bytes; it cannot
+            be rebound or deleted from this lab.
+          </small>
         </label>
-        <button className="primaryAction" disabled={!canPush} onClick={pushArchive} type="button">
-          Push archive
+        <button
+          aria-describedby="stash-immutability-note"
+          className="primaryAction"
+          disabled={!canPush}
+          onClick={pushArchive}
+          type="button"
+        >
+          Upload + commit
         </button>
       </div>
 
-      <div
-        aria-atomic="true"
-        aria-live={status.kind === "error" ? "assertive" : "polite"}
-        className={`labStatus ${status.kind}`}
-        id="lab-status"
-        role={status.kind === "error" ? "alert" : "status"}
-      >
+      <div className={`labStatus ${status.kind}`}>
         <span aria-hidden="true" />
-        <div className="labStatusContent">
+        <div
+          aria-atomic="true"
+          aria-live={status.kind === "error" ? "assertive" : "polite"}
+          className="labStatusContent"
+          id="lab-status"
+          role={status.kind === "error" ? "alert" : "status"}
+        >
           <div className="labStatusMessage">{status.message}</div>
           {status.requestId ? (
             <details className="labStatusDetail">
@@ -746,9 +958,9 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
         <div className="vaultHeader">
           <div>
             <span>Portable recovery drill</span>
-            <strong id="recovery-drill-title">
+            <h3 id="recovery-drill-title">
               Export → re-import → recover → compare → export evidence
-            </strong>
+            </h3>
           </div>
         </div>
         <div className="recoveryCard">
@@ -956,7 +1168,7 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
                 <strong>{stash.stashId}</strong>
                 <span>{formatBytes(stash.sizeBytes)} · {shortHash(stash.sha256)}</span>
                 <span className={`verificationBadge ${stash.storageVerification}`}>
-                  Storage check: {verificationLabel(stash.storageVerification)}
+                  Commit-time evidence: {verificationLabel(stash.storageVerification)}
                 </span>
               </div>
             </article>
@@ -972,6 +1184,11 @@ async function apiRequest<T>(
   token: string,
   body: unknown,
   signal: AbortSignal,
+  schema: ZodType<T>,
+  options: {
+    acknowledgedMutation?: boolean;
+    operation: string;
+  },
 ): Promise<T> {
   return withRequestDeadline({
     label: "Control-plane request",
@@ -985,8 +1202,8 @@ async function apiRequest<T>(
         method: "POST",
         signal: requestSignal,
       });
-      if (!response.ok) throw await responseError(response);
-      return response.json() as Promise<T>;
+      if (!response.ok) throw await responseError(response, "control");
+      return parseSuccessResponse(response, schema, options);
     },
     signal,
     timeoutMilliseconds: controlPlaneTimeoutMilliseconds,
@@ -1004,8 +1221,12 @@ async function listStashes(
         headers: { authorization: `Bearer ${token}` },
         signal: requestSignal,
       });
-      if (!response.ok) throw await responseError(response);
-      return ((await response.json()) as { stashes: StashSummary[] }).stashes;
+      if (!response.ok) throw await responseError(response, "control");
+      return (
+        await parseSuccessResponse(response, stashListSchema, {
+          operation: "Catalog request",
+        })
+      ).stashes;
     },
     signal,
     timeoutMilliseconds: controlPlaneTimeoutMilliseconds,
@@ -1016,6 +1237,7 @@ class ApiResponseError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly origin: "control" | "transfer",
     readonly code?: string,
     readonly requestId?: string,
   ) {
@@ -1024,18 +1246,21 @@ class ApiResponseError extends Error {
   }
 }
 
-async function responseError(response: Response): Promise<ApiResponseError> {
+export async function responseError(
+  response: Response,
+  origin: "control" | "transfer",
+): Promise<ApiResponseError> {
   const headerRequestId = response.headers.get("x-request-id") ?? undefined;
   try {
-    const problem = (await response.json()) as {
-      code?: string;
-      detail?: string;
-      requestId?: string;
-      title?: string;
-    };
+    const parsed = problemDetailsSchema.safeParse(
+      await readBoundedJsonResponse(response, 64 * 1024),
+    );
+    if (!parsed.success) throw new Error("Invalid problem response");
+    const problem = parsed.data;
     return new ApiResponseError(
       problem.detail ?? problem.title ?? `Request failed (${response.status})`,
       response.status,
+      origin,
       problem.code,
       problem.requestId ?? headerRequestId,
     );
@@ -1043,6 +1268,7 @@ async function responseError(response: Response): Promise<ApiResponseError> {
     return new ApiResponseError(
       `Request failed (${response.status})`,
       response.status,
+      origin,
       undefined,
       headerRequestId,
     );
@@ -1088,10 +1314,28 @@ function errorStatus(
   return {
     kind: "error",
     message: prefix ? `${prefix}: ${message}` : message,
-    ...(error instanceof ApiResponseError && error.requestId
-      ? { requestId: error.requestId }
+    ...(requestIdForClientError(error)
+      ? { requestId: requestIdForClientError(error) }
       : {}),
   };
+}
+
+function requestIdForClientError(error: unknown): string | undefined {
+  if (
+    error instanceof ApiResponseError ||
+    error instanceof ResponseContractError ||
+    error instanceof MutationOutcomeUnknownError
+  ) {
+    return error.requestId;
+  }
+  return undefined;
+}
+
+function isDefinitiveCommitRejection(error: unknown): boolean {
+  return (
+    error instanceof ApiResponseError &&
+    [400, 401, 403, 409, 410, 413, 415, 422].includes(error.status)
+  );
 }
 
 function deriveStashId(fileName: string): string {

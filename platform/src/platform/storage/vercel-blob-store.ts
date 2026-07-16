@@ -1,6 +1,9 @@
 import {
   BlobNotFoundError,
   BlobPreconditionFailedError,
+  BlobRequestAbortedError,
+  BlobServiceNotAvailable,
+  BlobServiceRateLimited,
   get,
   head,
   issueSignedToken,
@@ -9,9 +12,13 @@ import {
 } from "@vercel/blob";
 
 import { getConfig, type PlatformConfig } from "@/shared/config/env";
-import { CatalogPreconditionError } from "@/shared/errors/platform-error";
+import {
+  CatalogPreconditionError,
+  PlatformError,
+} from "@/shared/errors/platform-error";
 import {
   assertSafeObjectKey,
+  throwIfStorageOperationAborted,
   type ObjectMetadata,
   type ObjectStore,
   type TextObject,
@@ -45,10 +52,13 @@ export class VercelBlobStore implements ObjectStore {
     private readonly blob: BlobSdk = defaultBlobSdk,
   ) {}
 
-  async inspect(key: string): Promise<ObjectMetadata | null> {
+  async inspect(
+    key: string,
+    signal?: AbortSignal,
+  ): Promise<ObjectMetadata | null> {
     assertSafeObjectKey(key);
     try {
-      const blob = await this.blob.head(key, this.commandOptions());
+      const blob = await this.blob.head(key, this.commandOptions(signal));
       return {
         contentType: blob.contentType,
         etag: blob.etag,
@@ -60,27 +70,36 @@ export class VercelBlobStore implements ObjectStore {
       if (error instanceof BlobNotFoundError) {
         return null;
       }
-      throw error;
+      throw normalizeBlobError(error, signal);
     }
   }
 
-  async issueUploadGrant(input: {
-    contentType: string;
-    key: string;
-    sha256: string;
-    sizeBytes: number;
-    validUntil: Date;
-  }): Promise<TransferGrant> {
+  async issueUploadGrant(
+    input: {
+      contentType: string;
+      key: string;
+      sha256: string;
+      sizeBytes: number;
+      validUntil: Date;
+    },
+    signal?: AbortSignal,
+  ): Promise<TransferGrant> {
     assertSafeObjectKey(input.key);
     const validUntil = input.validUntil.getTime();
-    const signedToken = await this.blob.issueSignedToken({
-      ...this.commandOptions(),
-      allowedContentTypes: [input.contentType],
-      maximumSizeInBytes: input.sizeBytes,
-      operations: ["put"],
-      pathname: input.key,
-      validUntil,
-    });
+    let signedToken: Awaited<ReturnType<BlobSdk["issueSignedToken"]>>;
+    try {
+      signedToken = await this.blob.issueSignedToken({
+        ...this.commandOptions(signal),
+        allowedContentTypes: [input.contentType],
+        maximumSizeInBytes: input.sizeBytes,
+        operations: ["put"],
+        pathname: input.key,
+        validUntil,
+      });
+    } catch (error) {
+      throw normalizeBlobError(error, signal);
+    }
+    throwIfStorageOperationAborted(signal);
     const { presignedUrl } = await this.blob.presignUrl(signedToken, {
       access: "private",
       addRandomSuffix: false,
@@ -91,6 +110,7 @@ export class VercelBlobStore implements ObjectStore {
       pathname: input.key,
       validUntil,
     });
+    throwIfStorageOperationAborted(signal);
 
     return {
       expiresAt: input.validUntil.toISOString(),
@@ -100,18 +120,27 @@ export class VercelBlobStore implements ObjectStore {
     };
   }
 
-  async issueDownloadGrant(input: {
-    key: string;
-    validUntil: Date;
-  }): Promise<TransferGrant> {
+  async issueDownloadGrant(
+    input: {
+      key: string;
+      validUntil: Date;
+    },
+    signal?: AbortSignal,
+  ): Promise<TransferGrant> {
     assertSafeObjectKey(input.key);
     const validUntil = input.validUntil.getTime();
-    const signedToken = await this.blob.issueSignedToken({
-      ...this.commandOptions(),
-      operations: ["get"],
-      pathname: input.key,
-      validUntil,
-    });
+    let signedToken: Awaited<ReturnType<BlobSdk["issueSignedToken"]>>;
+    try {
+      signedToken = await this.blob.issueSignedToken({
+        ...this.commandOptions(signal),
+        operations: ["get"],
+        pathname: input.key,
+        validUntil,
+      });
+    } catch (error) {
+      throw normalizeBlobError(error, signal);
+    }
+    throwIfStorageOperationAborted(signal);
     const { presignedUrl } = await this.blob.presignUrl(signedToken, {
       access: "private",
       operation: "get",
@@ -119,6 +148,7 @@ export class VercelBlobStore implements ObjectStore {
       useCache: false,
       validUntil,
     });
+    throwIfStorageOperationAborted(signal);
 
     return {
       expiresAt: input.validUntil.toISOString(),
@@ -128,13 +158,21 @@ export class VercelBlobStore implements ObjectStore {
     };
   }
 
-  async readText(key: string): Promise<TextObject | null> {
+  async readText(
+    key: string,
+    signal?: AbortSignal,
+  ): Promise<TextObject | null> {
     assertSafeObjectKey(key);
-    const result = await this.blob.get(key, {
-      access: "private",
-      ...this.commandOptions(),
-      useCache: false,
-    });
+    let result: Awaited<ReturnType<BlobSdk["get"]>>;
+    try {
+      result = await this.blob.get(key, {
+        access: "private",
+        ...this.commandOptions(signal),
+        useCache: false,
+      });
+    } catch (error) {
+      throw normalizeBlobError(error, signal);
+    }
     if (!result) {
       return null;
     }
@@ -142,17 +180,24 @@ export class VercelBlobStore implements ObjectStore {
       throw new Error(`Unexpected Blob response: ${result.statusCode}`);
     }
 
-    return {
-      body: await new Response(result.stream).text(),
-      etag: result.blob.etag,
-    };
+    try {
+      return {
+        body: await new Response(result.stream).text(),
+        etag: result.blob.etag,
+      };
+    } catch (error) {
+      throw normalizeBlobError(error, signal);
+    }
   }
 
-  async writeText(input: {
-    body: string;
-    expectedEtag?: string;
-    key: string;
-  }): Promise<{ etag: string }> {
+  async writeText(
+    input: {
+      body: string;
+      expectedEtag?: string;
+      key: string;
+    },
+    signal?: AbortSignal,
+  ): Promise<{ etag: string }> {
     assertSafeObjectKey(input.key);
     try {
       const result = await this.blob.put(input.key, input.body, {
@@ -161,20 +206,60 @@ export class VercelBlobStore implements ObjectStore {
         allowOverwrite: Boolean(input.expectedEtag),
         contentType: "application/json",
         ifMatch: input.expectedEtag,
-        ...this.commandOptions(),
+        ...this.commandOptions(signal),
       });
       return { etag: result.etag };
     } catch (error) {
       if (error instanceof BlobPreconditionFailedError) {
         throw new CatalogPreconditionError();
       }
-      throw error;
+      throw normalizeBlobError(error, signal);
     }
   }
 
-  private commandOptions(): { token?: string } {
-    return this.config.blobReadWriteToken
-      ? { token: this.config.blobReadWriteToken }
-      : {};
+  private commandOptions(signal?: AbortSignal): {
+    abortSignal?: AbortSignal;
+    token?: string;
+  } {
+    return {
+      ...(signal ? { abortSignal: signal } : {}),
+      ...(this.config.blobReadWriteToken
+        ? { token: this.config.blobReadWriteToken }
+        : {}),
+    };
   }
+}
+
+function normalizeBlobError(error: unknown, signal?: AbortSignal): unknown {
+  if (
+    error instanceof BlobRequestAbortedError ||
+    (error instanceof Error && error.name === "AbortError") ||
+    signal?.aborted
+  ) {
+    return new PlatformError({
+      code: "request_aborted",
+      detail: "The Blob request was canceled before it completed.",
+      status: 408,
+      title: "Storage request canceled",
+    });
+  }
+  if (error instanceof BlobServiceRateLimited) {
+    return new PlatformError({
+      code: "storage_rate_limited",
+      detail: "Vercel Blob is rate limiting this operation. Retry after the advertised delay.",
+      retryAfterSeconds: error.retryAfter || 1,
+      status: 503,
+      title: "Storage rate limited",
+    });
+  }
+  if (error instanceof BlobServiceNotAvailable) {
+    return new PlatformError({
+      code: "storage_unavailable",
+      detail: "Vercel Blob is temporarily unavailable. Retry this operation.",
+      retryAfterSeconds: 1,
+      status: 503,
+      title: "Storage unavailable",
+    });
+  }
+  return error;
 }

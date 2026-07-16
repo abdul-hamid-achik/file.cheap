@@ -33,7 +33,7 @@ export async function GET(request: Request): Promise<Response> {
     const { key, token } = parameters(request);
     return attachResponseMetadata(
       request,
-      await localStore().serveDownload(key, token),
+      await localStore().serveDownload(key, token, request.signal),
     );
   } catch (error) {
     return problemResponse(error, request);

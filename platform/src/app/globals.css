@@ -740,6 +740,12 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   text-transform: none !important;
 }
 
+.fieldHint {
+  color: var(--ink-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
 @keyframes pulse { 50% { opacity: .25; } }
 
 .vaultHeader {
@@ -750,7 +756,8 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 }
 
 .vaultHeader div { display: grid; gap: 6px; }
-.vaultHeader strong { font-size: 14px; font-weight: 650; }
+.vaultHeader strong,
+.vaultHeader h3 { margin: 0; font-size: 14px; font-weight: 650; }
 .tableHint { color: var(--green) !important; }
 
 .recoveryDrill {

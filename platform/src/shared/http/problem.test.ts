@@ -248,6 +248,21 @@ describe("RFC 9457 problem responses", () => {
     expect(response.headers.get("retry-after")).toBe("1");
   });
 
+  test("preserves a dependency-specific retry delay", () => {
+    const response = problemResponse(
+      new PlatformError({
+        code: "storage_rate_limited",
+        detail: "Retry later.",
+        retryAfterSeconds: 7,
+        status: 503,
+        title: "Storage rate limited",
+      }),
+      new Request("http://127.0.0.1:3100/api/v1/stashes"),
+    );
+
+    expect(response.headers.get("retry-after")).toBe("7");
+  });
+
   test("returns correlated problem details for unsupported API methods", async () => {
     const request = new Request(
       "http://127.0.0.1:3100/api/v1/sync/plans",

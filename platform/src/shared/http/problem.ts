@@ -36,7 +36,14 @@ export function problemResponse(error: unknown, request: Request): Response {
     headers.set("www-authenticate", 'Bearer realm="filecheap-platform"');
   }
   if (problem.status === 503) {
-    headers.set("retry-after", "1");
+    headers.set(
+      "retry-after",
+      String(
+        error instanceof PlatformError && error.retryAfterSeconds
+          ? Math.max(1, Math.ceil(error.retryAfterSeconds))
+          : 1,
+      ),
+    );
   }
 
   return jsonResponse(request, problem, {

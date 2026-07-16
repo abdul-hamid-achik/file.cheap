@@ -1,15 +1,21 @@
-import type { CloudStash } from "@/features/catalog/catalog";
-import { CatalogRepository } from "@/features/catalog/catalog";
+import {
+  CatalogRepository,
+  type CloudStash,
+} from "@/features/catalog/catalog";
 import {
   stashContentType,
+  type CommitPlanResponse,
   type CommitPlanInput,
   type CreateDownloadInput,
   type CreatePlanInput,
+  type DownloadPlan,
+  type StashSummary,
+  type SyncPlan,
 } from "@/features/sync/contracts";
-import type {
-  ObjectMetadata,
-  ObjectStore,
-  TransferGrant,
+import {
+  throwIfStorageOperationAborted,
+  type ObjectMetadata,
+  type ObjectStore,
 } from "@/platform/storage/object-store";
 import { PlatformError } from "@/shared/errors/platform-error";
 import {
@@ -19,28 +25,6 @@ import {
 
 const grantLifetimeMilliseconds = 15 * 60 * 1000;
 
-export type SyncPlan = {
-  object: {
-    key: string;
-    sha256: string;
-    sizeBytes: number;
-  };
-  receipt: string;
-  state: "already_committed" | "object_present" | "upload_required";
-  upload: TransferGrant | null;
-  version: "filecheap-sync/1";
-};
-
-export type StashSummary = Pick<
-  CloudStash,
-  | "committedAt"
-  | "contentType"
-  | "sha256"
-  | "sizeBytes"
-  | "stashId"
-  | "storageVerification"
->;
-
 export class SyncService {
   constructor(
     private readonly store: ObjectStore,
@@ -49,8 +33,12 @@ export class SyncService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async createPlan(input: CreatePlanInput): Promise<SyncPlan> {
-    const existingStash = await this.catalog.find(input.stashId);
+  async createPlan(
+    input: CreatePlanInput,
+    signal?: AbortSignal,
+  ): Promise<SyncPlan> {
+    throwIfStorageOperationAborted(signal);
+    const existingStash = await this.catalog.findForPlan(input.stashId, signal);
     if (
       existingStash &&
       (existingStash.sha256 !== input.sha256 ||
@@ -60,7 +48,14 @@ export class SyncService {
     }
 
     const key = objectKey(input.sha256);
-    const object = await this.store.inspect(key);
+    const object = await this.store.inspect(key, signal);
+    if (
+      existingStash &&
+      !object &&
+      this.store.verification === "presence-size-etag"
+    ) {
+      throw committedObjectMissing(existingStash.stashId);
+    }
     if (object) {
       assertStoredObjectMatches(
         object,
@@ -105,22 +100,25 @@ export class SyncService {
       state: object ? "object_present" : "upload_required",
       upload: object
         ? null
-        : await this.store.issueUploadGrant({
-            contentType: input.contentType,
-            key,
-            sha256: input.sha256,
-            sizeBytes: input.sizeBytes,
-            validUntil,
-          }),
+        : await this.store.issueUploadGrant(
+            {
+              contentType: input.contentType,
+              key,
+              sha256: input.sha256,
+              sizeBytes: input.sizeBytes,
+              validUntil,
+            },
+            signal,
+          ),
       version: "filecheap-sync/1",
     };
   }
 
-  async commitPlan(input: CommitPlanInput): Promise<{
-    requiresFullVerification: true;
-    stash: StashSummary;
-    version: "filecheap-sync/1";
-  }> {
+  async commitPlan(
+    input: CommitPlanInput,
+    signal?: AbortSignal,
+  ): Promise<CommitPlanResponse> {
+    throwIfStorageOperationAborted(signal);
     const payload = verifyPayload(input.receipt, this.signingSecret);
     if (payload.kind !== "commit") {
       throw new PlatformError({
@@ -131,7 +129,7 @@ export class SyncService {
       });
     }
 
-    const existingStash = await this.catalog.find(payload.stashId);
+    const existingStash = await this.catalog.find(payload.stashId, signal);
     if (
       existingStash &&
       (existingStash.contentType !== payload.contentType ||
@@ -142,7 +140,7 @@ export class SyncService {
       throw stashConflict(payload.stashId);
     }
 
-    const object = await this.store.inspect(payload.key);
+    const object = await this.store.inspect(payload.key, signal);
     if (!object) {
       throw new PlatformError({
         code: "upload_incomplete",
@@ -163,16 +161,19 @@ export class SyncService {
       this.store.verification,
     );
 
-    const stash = await this.catalog.commit({
-      committedAt: this.now().toISOString(),
-      contentType: stashContentType,
-      etag: object.etag,
-      objectKey: payload.key,
-      sha256: payload.sha256,
-      sizeBytes: payload.sizeBytes,
-      stashId: payload.stashId,
-      storageVerification: this.store.verification,
-    });
+    const stash = await this.catalog.commit(
+      {
+        committedAt: this.now().toISOString(),
+        contentType: stashContentType,
+        etag: existingStash?.etag ?? object.etag,
+        objectKey: payload.key,
+        sha256: payload.sha256,
+        sizeBytes: payload.sizeBytes,
+        stashId: payload.stashId,
+        storageVerification: this.store.verification,
+      },
+      signal,
+    );
 
     return {
       requiresFullVerification: true,
@@ -181,14 +182,12 @@ export class SyncService {
     };
   }
 
-  async createDownload(input: CreateDownloadInput): Promise<{
-    expected: { sha256: string; sizeBytes: number };
-    grant: TransferGrant;
-    mustVerifySha256: true;
-    stashId: string;
-    version: "filecheap-sync/1";
-  }> {
-    const stash = await this.catalog.find(input.stashId);
+  async createDownload(
+    input: CreateDownloadInput,
+    signal?: AbortSignal,
+  ): Promise<DownloadPlan> {
+    throwIfStorageOperationAborted(signal);
+    const stash = await this.catalog.find(input.stashId, signal);
     if (!stash) {
       throw new PlatformError({
         code: "stash_not_found",
@@ -198,14 +197,9 @@ export class SyncService {
       });
     }
 
-    const object = await this.store.inspect(stash.objectKey);
+    const object = await this.store.inspect(stash.objectKey, signal);
     if (!object) {
-      throw new PlatformError({
-        code: "object_not_found",
-        detail: `The committed archive object for ${stash.stashId} is missing.`,
-        status: 404,
-        title: "Object not found",
-      });
+      throw committedObjectMissing(stash.stashId);
     }
     assertStoredObjectMatches(
       object,
@@ -220,20 +214,28 @@ export class SyncService {
     );
 
     const validUntil = new Date(this.now().getTime() + grantLifetimeMilliseconds);
-    return {
-      expected: { sha256: stash.sha256, sizeBytes: stash.sizeBytes },
-      grant: await this.store.issueDownloadGrant({
+    const grant = await this.store.issueDownloadGrant(
+      {
         key: stash.objectKey,
         validUntil,
-      }),
+      },
+      signal,
+    );
+    if (grant.method !== "GET") {
+      throw new Error("The storage adapter returned a non-GET download grant");
+    }
+    const downloadGrant = { ...grant, method: "GET" as const };
+    return {
+      expected: { sha256: stash.sha256, sizeBytes: stash.sizeBytes },
+      grant: downloadGrant,
       mustVerifySha256: true,
       stashId: stash.stashId,
       version: "filecheap-sync/1",
     };
   }
 
-  async listStashes(): Promise<StashSummary[]> {
-    return (await this.catalog.list()).map(stashSummary);
+  async listStashes(signal?: AbortSignal): Promise<StashSummary[]> {
+    return (await this.catalog.list(signal)).map(stashSummary);
   }
 }
 
@@ -280,7 +282,11 @@ function assertStoredObjectMatches(
   if (object.sizeBytes !== expected.sizeBytes) {
     throw integrityMismatch("The stored object size differs from the upload plan.");
   }
-  if (expected.etag && object.etag !== expected.etag) {
+  if (
+    verification === "presence-size-etag" &&
+    expected.etag &&
+    object.etag !== expected.etag
+  ) {
     throw integrityMismatch(
       "The stored object ETag differs from the committed catalog evidence.",
     );
@@ -293,6 +299,15 @@ function assertStoredObjectMatches(
       "The stored object SHA-256 differs from the upload plan.",
     );
   }
+}
+
+function committedObjectMissing(stashId: string): PlatformError {
+  return new PlatformError({
+    code: "committed_object_missing",
+    detail: `The committed archive object for ${stashId} is missing. Automatic repair is not safe for this storage adapter.`,
+    status: 409,
+    title: "Committed object missing",
+  });
 }
 
 function integrityMismatch(detail: string): PlatformError {

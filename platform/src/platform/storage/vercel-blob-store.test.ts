@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
   BlobNotFoundError,
   BlobPreconditionFailedError,
+  BlobRequestAbortedError,
+  BlobServiceNotAvailable,
+  BlobServiceRateLimited,
 } from "@vercel/blob";
 
 import {
@@ -9,7 +12,10 @@ import {
   VercelBlobStore,
 } from "@/platform/storage/vercel-blob-store";
 import type { PlatformConfig } from "@/shared/config/env";
-import { CatalogPreconditionError } from "@/shared/errors/platform-error";
+import {
+  CatalogPreconditionError,
+  PlatformError,
+} from "@/shared/errors/platform-error";
 
 const config: PlatformConfig = {
   apiToken: "local-development-token",
@@ -209,6 +215,91 @@ describe("VercelBlobStore signed grants", () => {
     await expect(
       new VercelBlobStore(config, unavailableBlob).writeText({ body: "first", key }),
     ).rejects.toBe(accessFailure);
+  });
+
+  test("propagates cancellation to Blob command options", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const controller = new AbortController();
+    const key = `v1/vaults/test/objects/${"d".repeat(64)}.age`;
+    const blob = {
+      ...grantOnlyBlobSdk(calls),
+      head: async (_key: string, options: Record<string, unknown>) => {
+        calls.push(options);
+        throw new BlobNotFoundError();
+      },
+    } as unknown as BlobSdk;
+    const store = new VercelBlobStore(config, blob);
+
+    await store.inspect(key, controller.signal);
+    await store.issueDownloadGrant(
+      { key, validUntil: new Date("2026-07-15T23:00:00.000Z") },
+      controller.signal,
+    );
+
+    expect(calls[0].abortSignal).toBe(controller.signal);
+    expect(calls[1].abortSignal).toBe(controller.signal);
+  });
+
+  test("normalizes retryable and canceled Blob failures", async () => {
+    const key = "v1/workspaces/default/catalog/v1.json";
+    for (const [failure, expected] of [
+      [
+        new BlobServiceRateLimited(7),
+        { code: "storage_rate_limited", retryAfterSeconds: 7, status: 503 },
+      ],
+      [
+        new BlobServiceNotAvailable(),
+        { code: "storage_unavailable", retryAfterSeconds: 1, status: 503 },
+      ],
+      [
+        new BlobRequestAbortedError(),
+        { code: "request_aborted", status: 408 },
+      ],
+    ] as const) {
+      const blob = {
+        ...grantOnlyBlobSdk([]),
+        put: async () => {
+          throw failure;
+        },
+      } as unknown as BlobSdk;
+
+      try {
+        await new VercelBlobStore(config, blob).writeText({ body: "{}", key });
+        throw new Error("Expected Blob failure to reject");
+      } catch (error) {
+        expect(error).toBeInstanceOf(PlatformError);
+        expect(error).toMatchObject(expected);
+      }
+    }
+  });
+
+  test("normalizes raw fetch aborts while reading a Blob catalog", async () => {
+    const key = "v1/workspaces/default/catalog/v1.json";
+    for (const get of [
+      async () => {
+        throw new DOMException("The request was aborted", "AbortError");
+      },
+      async () => ({
+        blob: { etag: "catalog-etag" },
+        statusCode: 200,
+        stream: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.error(
+              new DOMException("The stream was aborted", "AbortError"),
+            );
+          },
+        }),
+      }),
+    ]) {
+      const blob = {
+        ...grantOnlyBlobSdk([]),
+        get,
+      } as unknown as BlobSdk;
+
+      await expect(
+        new VercelBlobStore(config, blob).readText(key),
+      ).rejects.toMatchObject({ code: "request_aborted", status: 408 });
+    }
   });
 });
 

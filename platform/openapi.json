@@ -77,6 +77,8 @@
             }
           },
           "401": { "$ref": "#/components/responses/Unauthorized" },
+          "408": { "$ref": "#/components/responses/RequestAborted" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
@@ -110,10 +112,12 @@
           },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "400": { "$ref": "#/components/responses/BadRequest" },
+          "408": { "$ref": "#/components/responses/RequestAborted" },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
           "409": { "$ref": "#/components/responses/Conflict" },
           "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "422": { "$ref": "#/components/responses/ValidationError" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
@@ -147,6 +151,7 @@
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/InvalidCapability" },
           "400": { "$ref": "#/components/responses/BadRequest" },
+          "408": { "$ref": "#/components/responses/RequestAborted" },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
           "409": { "$ref": "#/components/responses/Conflict" },
           "410": { "$ref": "#/components/responses/ExpiredCapability" },
@@ -185,10 +190,13 @@
           },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "400": { "$ref": "#/components/responses/BadRequest" },
+          "408": { "$ref": "#/components/responses/RequestAborted" },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
           "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
           "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "422": { "$ref": "#/components/responses/ValidationError" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
@@ -317,6 +325,17 @@
           }
         }
       },
+      "RequestAborted": {
+        "description": "The client disconnected or canceled before the storage operation completed. A dispatched commit may require catalog reconciliation.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/Problem" }
+          }
+        }
+      },
       "InternalError": {
         "description": "Unexpected control-plane failure.",
         "headers": {
@@ -347,6 +366,12 @@
         "pattern": "^[a-f0-9]{64}$",
         "examples": ["d6b4eedf33431535c7214396a2bc571788c259e3d1a68d143ede79e81cc33fe4"]
       },
+      "StashId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+      },
       "Health": {
         "type": "object",
         "additionalProperties": false,
@@ -365,11 +390,11 @@
         "additionalProperties": false,
         "required": ["committedAt", "contentType", "sha256", "sizeBytes", "stashId", "storageVerification"],
         "properties": {
-          "committedAt": { "type": "string", "format": "date-time" },
+          "committedAt": { "type": "string", "format": "date-time", "minLength": 20, "maxLength": 40 },
           "contentType": { "const": "application/vnd.filecheap.stash" },
           "sha256": { "$ref": "#/components/schemas/Sha256" },
-          "sizeBytes": { "type": "integer", "minimum": 0 },
-          "stashId": { "type": "string" },
+          "sizeBytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+          "stashId": { "$ref": "#/components/schemas/StashId" },
           "storageVerification": {
             "enum": ["presence-size-etag", "server-sha256"],
             "description": "Evidence available at catalog commit time. A full client download and SHA-256 check is still required for recovery proof."
@@ -383,6 +408,8 @@
         "properties": {
           "stashes": {
             "type": "array",
+            "maxItems": 1000,
+            "uniqueItems": true,
             "items": { "$ref": "#/components/schemas/StashSummary" }
           },
           "version": { "const": "filecheap-sync/1" }
@@ -403,12 +430,7 @@
             "minimum": 1,
             "maximum": 67108864
           },
-          "stashId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
-          }
+          "stashId": { "$ref": "#/components/schemas/StashId" }
         }
       },
       "TransferGrant": {
@@ -416,14 +438,41 @@
         "additionalProperties": false,
         "required": ["expiresAt", "headers", "method", "url"],
         "properties": {
-          "expiresAt": { "type": "string", "format": "date-time" },
+          "expiresAt": { "type": "string", "format": "date-time", "minLength": 20, "maxLength": 40 },
           "headers": {
             "type": "object",
-            "additionalProperties": { "type": "string" }
+            "maxProperties": 16,
+            "propertyNames": { "minLength": 1, "maxLength": 128 },
+            "additionalProperties": { "type": "string", "maxLength": 4096 }
           },
           "method": { "enum": ["GET", "PUT"] },
-          "url": { "type": "string", "format": "uri" }
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 8192,
+            "description": "HTTPS transfer URL, or HTTP only on an explicit loopback host for local development. Credentials and fragments are forbidden."
+          }
         }
+      },
+      "UploadTransferGrant": {
+        "allOf": [
+          { "$ref": "#/components/schemas/TransferGrant" },
+          {
+            "type": "object",
+            "required": ["method"],
+            "properties": { "method": { "const": "PUT" } }
+          }
+        ]
+      },
+      "DownloadTransferGrant": {
+        "allOf": [
+          { "$ref": "#/components/schemas/TransferGrant" },
+          {
+            "type": "object",
+            "required": ["method"],
+            "properties": { "method": { "const": "GET" } }
+          }
+        ]
       },
       "SyncPlan": {
         "type": "object",
@@ -435,21 +484,52 @@
             "additionalProperties": false,
             "required": ["key", "sha256", "sizeBytes"],
             "properties": {
-              "key": { "type": "string" },
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024,
+                "description": "Immutable object key ending in /{sha256}.fcheap."
+              },
               "sha256": { "$ref": "#/components/schemas/Sha256" },
-              "sizeBytes": { "type": "integer", "minimum": 0 }
+              "sizeBytes": { "type": "integer", "minimum": 1, "maximum": 67108864 }
             }
           },
-          "receipt": { "type": "string" },
+          "receipt": { "type": "string", "minLength": 1, "maxLength": 4096 },
           "state": { "enum": ["already_committed", "object_present", "upload_required"] },
           "upload": {
             "anyOf": [
-              { "$ref": "#/components/schemas/TransferGrant" },
+              { "$ref": "#/components/schemas/UploadTransferGrant" },
               { "type": "null" }
             ]
           },
           "version": { "const": "filecheap-sync/1" }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": ["state"],
+              "properties": { "state": { "const": "upload_required" } }
+            },
+            "then": {
+              "required": ["upload"],
+              "properties": {
+                "upload": { "$ref": "#/components/schemas/UploadTransferGrant" }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": ["state"],
+              "properties": {
+                "state": { "enum": ["already_committed", "object_present"] }
+              }
+            },
+            "then": {
+              "required": ["upload"],
+              "properties": { "upload": { "type": "null" } }
+            }
+          }
+        ]
       },
       "CommitPlanInput": {
         "type": "object",
@@ -474,12 +554,7 @@
         "additionalProperties": false,
         "required": ["stashId"],
         "properties": {
-          "stashId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
-          }
+          "stashId": { "$ref": "#/components/schemas/StashId" }
         }
       },
       "DownloadPlan": {
@@ -493,12 +568,12 @@
             "required": ["sha256", "sizeBytes"],
             "properties": {
               "sha256": { "$ref": "#/components/schemas/Sha256" },
-              "sizeBytes": { "type": "integer", "minimum": 0 }
+              "sizeBytes": { "type": "integer", "minimum": 1, "maximum": 67108864 }
             }
           },
-          "grant": { "$ref": "#/components/schemas/TransferGrant" },
+          "grant": { "$ref": "#/components/schemas/DownloadTransferGrant" },
           "mustVerifySha256": { "const": true },
-          "stashId": { "type": "string" },
+          "stashId": { "$ref": "#/components/schemas/StashId" },
           "version": { "const": "filecheap-sync/1" }
         }
       },

@@ -1,3 +1,4 @@
+import { stashListSchema } from "@/features/sync/contracts";
 import { getSyncService } from "@/features/sync/factory";
 import { requireApiToken } from "@/shared/auth/bearer";
 import {
@@ -12,10 +13,10 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request): Promise<Response> {
   try {
     requireApiToken(request);
-    return jsonResponse(request, {
-      stashes: await getSyncService().listStashes(),
+    return jsonResponse(request, stashListSchema.parse({
+      stashes: await getSyncService().listStashes(request.signal),
       version: "filecheap-sync/1",
-    });
+    }));
   } catch (error) {
     return problemResponse(error, request);
   }

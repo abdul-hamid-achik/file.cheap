@@ -1,4 +1,7 @@
-import { createDownloadSchema } from "@/features/sync/contracts";
+import {
+  createDownloadSchema,
+  downloadPlanSchema,
+} from "@/features/sync/contracts";
 import { getSyncService } from "@/features/sync/factory";
 import { requireApiToken } from "@/shared/auth/bearer";
 import {
@@ -16,9 +19,8 @@ export async function POST(request: Request): Promise<Response> {
   try {
     requireApiToken(request);
     const input = parseRequest(createDownloadSchema, await parseJson(request));
-    return jsonResponse(request, await getSyncService().createDownload(input), {
-      status: 201,
-    });
+    const plan = await getSyncService().createDownload(input, request.signal);
+    return jsonResponse(request, downloadPlanSchema.parse(plan), { status: 201 });
   } catch (error) {
     return problemResponse(error, request);
   }

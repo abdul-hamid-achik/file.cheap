@@ -1,4 +1,7 @@
-import { commitPlanSchema } from "@/features/sync/contracts";
+import {
+  commitPlanResponseSchema,
+  commitPlanSchema,
+} from "@/features/sync/contracts";
 import { getSyncService } from "@/features/sync/factory";
 import { requireApiToken } from "@/shared/auth/bearer";
 import {
@@ -16,7 +19,8 @@ export async function POST(request: Request): Promise<Response> {
   try {
     requireApiToken(request);
     const input = parseRequest(commitPlanSchema, await parseJson(request));
-    return jsonResponse(request, await getSyncService().commitPlan(input));
+    const committed = await getSyncService().commitPlan(input, request.signal);
+    return jsonResponse(request, commitPlanResponseSchema.parse(committed));
   } catch (error) {
     return problemResponse(error, request);
   }

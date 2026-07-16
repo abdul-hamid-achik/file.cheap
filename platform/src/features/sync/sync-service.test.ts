@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import { CatalogRepository } from "@/features/catalog/catalog";
-import { stashContentType } from "@/features/sync/contracts";
+import {
+  protocolV1MaximumCatalogEntries,
+  stashContentType,
+} from "@/features/sync/contracts";
 import { objectKey, SyncService } from "@/features/sync/sync-service";
 import type {
   ObjectMetadata,
@@ -132,6 +135,36 @@ describe("SyncService", () => {
     const repair = await service.createPlan(input);
     expect(repair.state).toBe("upload_required");
     expect(repair.upload?.method).toBe("PUT");
+    store.seedObject(repair.object.key, input.sizeBytes);
+    await expect(
+      service.commitPlan({ receipt: repair.receipt }),
+    ).resolves.toMatchObject({ stash: { stashId: input.stashId } });
+    await expect(service.createPlan(input)).resolves.toMatchObject({
+      state: "already_committed",
+    });
+  });
+
+  test("fails closed when an ETag-only adapter loses a committed object", async () => {
+    const store = new MemoryObjectStore("presence-size-etag");
+    const service = new SyncService(store, new CatalogRepository(store), secret);
+    const input = {
+      contentType: stashContentType,
+      sha256: "6".repeat(64),
+      sizeBytes: 16,
+      stashId: "blob-repair-needs-verification",
+    };
+    const plan = await service.createPlan(input);
+    store.seedObject(plan.object.key, input.sizeBytes);
+    await service.commitPlan({ receipt: plan.receipt });
+    store.removeObject(plan.object.key);
+
+    await expect(service.createPlan(input)).rejects.toMatchObject({
+      code: "committed_object_missing",
+      status: 409,
+    });
+    await expect(
+      service.createDownload({ stashId: input.stashId }),
+    ).rejects.toMatchObject({ code: "committed_object_missing", status: 409 });
   });
 
   test("does not issue a download grant for missing or corrupted object bytes", async () => {
@@ -150,7 +183,7 @@ describe("SyncService", () => {
     store.removeObject(plan.object.key);
     await expect(
       service.createDownload({ stashId: input.stashId }),
-    ).rejects.toMatchObject({ code: "object_not_found", status: 404 });
+    ).rejects.toMatchObject({ code: "committed_object_missing", status: 409 });
 
     store.seedObject(plan.object.key, input.sizeBytes, "7".repeat(64));
     await expect(
@@ -159,7 +192,7 @@ describe("SyncService", () => {
   });
 
   test("rejects changed ETag evidence and unexpected object metadata", async () => {
-    const store = new MemoryObjectStore();
+    const store = new MemoryObjectStore("presence-size-etag");
     const service = new SyncService(store, new CatalogRepository(store), secret);
     const input = {
       contentType: stashContentType,
@@ -192,14 +225,63 @@ describe("SyncService", () => {
       status: 422,
     });
   });
+
+  test("rejects a new plan before issuing an upload grant when the catalog is full", async () => {
+    const store = new MemoryObjectStore();
+    const entries = Object.fromEntries(
+      Array.from({ length: protocolV1MaximumCatalogEntries }, (_, index) => {
+        const stashId = `stash-${index}`;
+        const sha256 = index.toString(16).padStart(64, "0");
+        return [
+          stashId,
+          {
+            committedAt: "2026-07-15T22:15:00.000Z",
+            contentType: stashContentType,
+            etag: sha256,
+            objectKey: objectKey(sha256),
+            sha256,
+            sizeBytes: 1,
+            stashId,
+            storageVerification: "server-sha256",
+          },
+        ];
+      }),
+    );
+    store.seedCatalog(
+      JSON.stringify({
+        revision: protocolV1MaximumCatalogEntries,
+        schemaVersion: 1,
+        stashes: entries,
+        updatedAt: "2026-07-15T22:15:00.000Z",
+      }),
+    );
+    const service = new SyncService(store, new CatalogRepository(store), secret);
+
+    await expect(
+      service.createPlan({
+        contentType: stashContentType,
+        sha256: "a".repeat(64),
+        sizeBytes: 1,
+        stashId: "overflow",
+      }),
+    ).rejects.toMatchObject({
+      code: "catalog_capacity_reached",
+      status: 409,
+    });
+    expect(store.uploadGrantsIssued).toBe(0);
+  });
 });
 
 class MemoryObjectStore implements ObjectStore {
   readonly driver = "local" as const;
-  readonly verification = "server-sha256" as const;
   private readonly objects = new Map<string, ObjectMetadata>();
   private readonly texts = new Map<string, TextObject>();
   private etag = 0;
+  uploadGrantsIssued = 0;
+
+  constructor(
+    readonly verification: ObjectStore["verification"] = "server-sha256",
+  ) {}
 
   seedObject(key: string, sizeBytes: number, verifiedSha256 = hashFromKey(key)): void {
     this.objects.set(key, {
@@ -227,6 +309,7 @@ class MemoryObjectStore implements ObjectStore {
   }
 
   async issueUploadGrant(): Promise<TransferGrant> {
+    this.uploadGrantsIssued += 1;
     return {
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
       headers: { "content-type": "application/vnd.filecheap.stash" },
@@ -246,6 +329,13 @@ class MemoryObjectStore implements ObjectStore {
 
   async readText(key: string): Promise<TextObject | null> {
     return this.texts.get(key) ?? null;
+  }
+
+  seedCatalog(body: string): void {
+    this.texts.set("v1/workspaces/default/catalog/v1.json", {
+      body,
+      etag: "catalog-seed",
+    });
   }
 
   async writeText(input: {
