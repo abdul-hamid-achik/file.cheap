@@ -1,5 +1,8 @@
 import { getObjectStore } from "@/platform/storage/factory";
-import { problemResponse } from "@/shared/http/problem";
+import {
+  methodNotAllowedResponse,
+  problemResponse,
+} from "@/shared/http/problem";
 import { jsonResponse } from "@/shared/http/response";
 
 export const runtime = "nodejs";
@@ -20,3 +23,15 @@ export function GET(request: Request): Response {
     return problemResponse(error, request);
   }
 }
+
+function unsupportedMethod(request: Request): Response {
+  return methodNotAllowedResponse(request, ["GET", "HEAD"]);
+}
+
+export {
+  unsupportedMethod as DELETE,
+  unsupportedMethod as OPTIONS,
+  unsupportedMethod as PATCH,
+  unsupportedMethod as POST,
+  unsupportedMethod as PUT,
+};

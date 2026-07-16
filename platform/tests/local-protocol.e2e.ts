@@ -49,6 +49,28 @@ try {
   server = await startServer();
   const firstPid = server.process.pid;
 
+  const homepage = await timedFetch(baseUrl);
+  assert(homepage.status === 200, "homepage did not load");
+  const contentSecurityPolicy = homepage.headers.get("content-security-policy") ?? "";
+  assert(
+    contentSecurityPolicy.includes("frame-ancestors 'none'"),
+    "homepage did not prevent framing",
+  );
+  assert(
+    contentSecurityPolicy.includes("https://vercel.com") &&
+      contentSecurityPolicy.includes("https://*.private.blob.vercel-storage.com"),
+    "homepage CSP did not allow signed private Blob transfers",
+  );
+  assert(
+    !contentSecurityPolicy.includes("'unsafe-eval'"),
+    "production CSP unexpectedly allowed eval",
+  );
+  assert(
+    homepage.headers.get("x-frame-options") === "DENY",
+    "homepage did not send legacy frame protection",
+  );
+  await homepage.arrayBuffer();
+
   const healthRequestId = requestId("health-first");
   const health = await requestJson<HealthResponse>(
     "/api/v1/health",
@@ -94,6 +116,29 @@ try {
   assertResponseMetadata(wrongAuth, wrongAuthRequestId);
   assert(wrongAuth.status === 401, "stashes endpoint accepted the wrong token");
   await wrongAuth.arrayBuffer();
+
+  const wrongMethodRequestId = requestId("wrong-method");
+  const wrongMethod = await timedFetch(`${baseUrl}/api/v1/sync/plans`, {
+    headers: { "x-request-id": wrongMethodRequestId },
+  });
+  assertResponseMetadata(wrongMethod, wrongMethodRequestId);
+  assert(wrongMethod.status === 405, "unsupported method did not return 405");
+  assert(wrongMethod.headers.get("allow") === "POST", "405 omitted Allow: POST");
+  assert(
+    ((await wrongMethod.json()) as ProblemDetails).code === "method_not_allowed",
+    "unsupported method used the wrong problem code",
+  );
+
+  const missingRouteRequestId = requestId("missing-api-route");
+  const missingRoute = await timedFetch(`${baseUrl}/api/v1/definitely-missing`, {
+    headers: { "x-request-id": missingRouteRequestId },
+  });
+  assertResponseMetadata(missingRoute, missingRouteRequestId);
+  assert(missingRoute.status === 404, "unknown API route did not return 404");
+  assert(
+    ((await missingRoute.json()) as ProblemDetails).code === "api_route_not_found",
+    "unknown API route did not use problem details",
+  );
 
   const mixedCaseAuthRequestId = requestId("auth-case-insensitive");
   const mixedCaseAuth = await timedFetch(`${baseUrl}/api/v1/stashes`, {
@@ -142,6 +187,23 @@ try {
     ((await unsupportedMediaType.json()) as ProblemDetails).code ===
       "unsupported_media_type",
     "unsupported media type used the wrong problem code",
+  );
+
+  const oversizedJsonRequestId = requestId("json-too-large");
+  const oversizedJson = await timedFetch(`${baseUrl}/api/v1/sync/plans`, {
+    body: JSON.stringify({ padding: "x".repeat(16 * 1024) }),
+    headers: {
+      authorization: `Bearer ${apiToken}`,
+      "content-type": "application/json",
+      "x-request-id": oversizedJsonRequestId,
+    },
+    method: "POST",
+  });
+  assertResponseMetadata(oversizedJson, oversizedJsonRequestId);
+  assert(oversizedJson.status === 413, "oversized JSON did not return 413");
+  assert(
+    ((await oversizedJson.json()) as ProblemDetails).code === "payload_too_large",
+    "oversized JSON used the wrong problem code",
   );
 
   const strictRequestId = requestId("strict-contract");
@@ -206,6 +268,33 @@ try {
     201,
   );
   assert(retryPlan.upload, "retry-safety plan did not issue an upload grant");
+  assert(
+    !new URL(retryPlan.upload.url).searchParams.has("token"),
+    "local upload grant leaked its capability in the URL",
+  );
+  assert(
+    Boolean(retryPlan.upload.headers["x-filecheap-transfer-token"]),
+    "local upload grant omitted its capability header",
+  );
+
+  const missingTransferHeaderRequestId = requestId("missing-transfer-header");
+  const missingTransferHeader = await timedFetch(retryPlan.upload.url, {
+    body: retryBytes,
+    headers: {
+      "content-type": contentType,
+      "x-request-id": missingTransferHeaderRequestId,
+    },
+    method: "PUT",
+  });
+  assertResponseMetadata(missingTransferHeader, missingTransferHeaderRequestId);
+  assert(
+    missingTransferHeader.status === 400,
+    "local upload accepted a capability-free request",
+  );
+  assert(
+    ((await missingTransferHeader.json()) as ProblemDetails).code === "missing_grant",
+    "capability-free upload used the wrong problem code",
+  );
 
   const oversizedRequestId = requestId("upload-too-large");
   const oversizedUpload = await uploadGrant(
@@ -344,6 +433,14 @@ try {
     { stashId },
     downloadRequestId,
     201,
+  );
+  assert(
+    !new URL(download.grant.url).searchParams.has("token"),
+    "local download grant leaked its capability in the URL",
+  );
+  assert(
+    Boolean(download.grant.headers["x-filecheap-transfer-token"]),
+    "local download grant omitted its capability header",
   );
   assert(download.mustVerifySha256, "download plan did not require SHA-256 verification");
 

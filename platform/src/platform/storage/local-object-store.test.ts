@@ -5,7 +5,10 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { LocalObjectStore } from "@/platform/storage/local-object-store";
+import {
+  LocalObjectStore,
+  localTransferTokenHeader,
+} from "@/platform/storage/local-object-store";
 import type { PlatformConfig } from "@/shared/config/env";
 import { CatalogPreconditionError } from "@/shared/errors/platform-error";
 
@@ -41,8 +44,9 @@ describe("LocalObjectStore", () => {
         method: "PUT",
       }),
       uploadUrl.searchParams.get("key")!,
-      uploadUrl.searchParams.get("token")!,
+      grant.headers[localTransferTokenHeader]!,
     );
+    expect(uploadUrl.searchParams.has("token")).toBe(false);
     expect(metadata.etag).toBe(sha256);
     expect(metadata.sizeBytes).toBe(bytes.byteLength);
 
@@ -53,8 +57,9 @@ describe("LocalObjectStore", () => {
     const downloadUrl = new URL(downloadGrant.url);
     const response = await store.serveDownload(
       downloadUrl.searchParams.get("key")!,
-      downloadUrl.searchParams.get("token")!,
+      downloadGrant.headers[localTransferTokenHeader]!,
     );
+    expect(downloadUrl.searchParams.has("token")).toBe(false);
     expect(response.headers.get("etag")).toBe(`"${sha256}"`);
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
   });
@@ -79,7 +84,7 @@ describe("LocalObjectStore", () => {
           method: "PUT",
         }),
         uploadUrl.searchParams.get("key")!,
-        uploadUrl.searchParams.get("token")!,
+        grant.headers[localTransferTokenHeader]!,
       ),
     ).rejects.toMatchObject({ code: "integrity_mismatch" });
   });
@@ -115,7 +120,7 @@ describe("LocalObjectStore", () => {
           method: "PUT",
         }),
         uploadUrl.searchParams.get("key")!,
-        uploadUrl.searchParams.get("token")!,
+        grant.headers[localTransferTokenHeader]!,
       ),
     ).rejects.toMatchObject({ code: "upload_too_large", status: 413 });
 
@@ -127,6 +132,92 @@ describe("LocalObjectStore", () => {
     expect(remainingFiles.map(String).some((entry) => entry.endsWith(".tmp"))).toBe(
       false,
     );
+  });
+
+  test("cancels an in-flight upload and removes its temporary bytes", async () => {
+    const { config, store } = await createStoreWithConfig();
+    const bytes = new TextEncoder().encode("eventually");
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const key = `v1/objects/${sha256}.fcheap`;
+    const grant = await store.issueUploadGrant({
+      contentType: "application/vnd.filecheap.stash",
+      key,
+      sha256,
+      sizeBytes: bytes.byteLength,
+      validUntil: new Date(Date.now() + 60_000),
+    });
+    const controller = new AbortController();
+    let transferStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      transferStarted = resolve;
+    });
+    let closeTimer: ReturnType<typeof setTimeout> | undefined;
+    let sentFirstChunk = false;
+    const request = new Request(grant.url, {
+      body: new ReadableStream<Uint8Array>({
+        cancel() {
+          clearTimeout(closeTimer);
+        },
+        pull(streamController) {
+          if (!sentFirstChunk) {
+            sentFirstChunk = true;
+            streamController.enqueue(bytes.slice(0, 1));
+            transferStarted();
+            return;
+          }
+          closeTimer ??= setTimeout(() => streamController.close(), 1_000);
+        },
+      }),
+      duplex: "half",
+      headers: grant.headers,
+      method: "PUT",
+      signal: controller.signal,
+    } as RequestInit & { duplex: "half" });
+    const upload = store.acceptUpload(
+      request,
+      key,
+      grant.headers[localTransferTokenHeader]!,
+    );
+
+    await started;
+    controller.abort();
+
+    await expect(upload).rejects.toMatchObject({
+      code: "upload_canceled",
+      status: 408,
+    });
+    expect(await store.inspect(key)).toBeNull();
+    await expectNoTemporaryFiles(config);
+  });
+
+  test("expires an upload that does not finish within its signed grant", async () => {
+    const { config, store } = await createStoreWithConfig();
+    const bytes = new TextEncoder().encode("too late");
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const key = `v1/objects/${sha256}.fcheap`;
+    const grant = await store.issueUploadGrant({
+      contentType: "application/vnd.filecheap.stash",
+      key,
+      sha256,
+      sizeBytes: bytes.byteLength,
+      validUntil: new Date(Date.now() + 50),
+    });
+    const request = new Request(grant.url, {
+      body: new ReadableStream<Uint8Array>({ start() {} }),
+      duplex: "half",
+      headers: grant.headers,
+      method: "PUT",
+    } as RequestInit & { duplex: "half" });
+
+    await expect(
+      store.acceptUpload(
+        request,
+        key,
+        grant.headers[localTransferTokenHeader]!,
+      ),
+    ).rejects.toMatchObject({ code: "expired_grant", status: 410 });
+    expect(await store.inspect(key)).toBeNull();
+    await expectNoTemporaryFiles(config);
   });
 
   test("enforces compare-and-swap across store instances", async () => {
@@ -192,6 +283,37 @@ describe("LocalObjectStore", () => {
     await expect(store.writeText({ body: "recovered", key })).resolves.toBeDefined();
     await expect(filesystem.stat(recoveryPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  test("fails fast without touching malformed catalog locks or catalog bytes", async () => {
+    const malformedOwners = [
+      "",
+      "{not-json",
+      `${JSON.stringify({ pid: 2_147_483_647, token: "bad-version", version: 2 })}\n`,
+      `${JSON.stringify({ pid: 2_147_483_648, token: "oversized-pid", version: 1 })}\n`,
+    ];
+
+    for (const [index, malformedOwner] of malformedOwners.entries()) {
+      const { config, store } = await createStoreWithConfig();
+      const key = `v1/workspaces/default/catalog/malformed-${index}.json`;
+      const initial = await store.writeText({ body: `preserve-${index}`, key });
+      const path = join(config.dataDirectory, "objects", ...key.split("/"));
+      const lockPath = `${path}.lock`;
+      await filesystem.writeFile(lockPath, malformedOwner);
+      const startedAt = performance.now();
+
+      await expect(
+        store.writeText({
+          body: `replace-${index}`,
+          expectedEtag: initial.etag,
+          key,
+        }),
+      ).rejects.toMatchObject({ code: "catalog_lock_invalid", status: 503 });
+
+      expect(performance.now() - startedAt).toBeLessThan(1_000);
+      expect(await filesystem.readFile(lockPath, "utf8")).toBe(malformedOwner);
+      expect((await store.readText(key))?.body).toBe(`preserve-${index}`);
+    }
+  });
 });
 
 async function writeDeadLock(path: string): Promise<void> {
@@ -202,6 +324,25 @@ async function writeDeadLock(path: string): Promise<void> {
       token: "terminated-test-process",
       version: 1,
     })}\n`,
+  );
+}
+
+async function expectNoTemporaryFiles(config: PlatformConfig): Promise<void> {
+  let remainingFiles: string[];
+  try {
+    remainingFiles = (
+      await filesystem.readdir(join(config.dataDirectory, "objects"), {
+        recursive: true,
+      })
+    ).map(String);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+  expect(remainingFiles.some((entry) => entry.endsWith(".tmp"))).toBe(
+    false,
   );
 }
 

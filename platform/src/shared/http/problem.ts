@@ -3,6 +3,8 @@ import type { ZodError, ZodType } from "zod";
 import { PlatformError } from "@/shared/errors/platform-error";
 import { jsonResponse, requestIdFor } from "@/shared/http/response";
 
+export const controlPlaneJsonLimitBytes = 16 * 1024;
+
 type ProblemDetails = {
   code: string;
   detail: string;
@@ -41,6 +43,35 @@ export function problemResponse(error: unknown, request: Request): Response {
     headers,
     status: problem.status,
   });
+}
+
+export function methodNotAllowedResponse(
+  request: Request,
+  allowedMethods: readonly string[],
+): Response {
+  const response = problemResponse(
+    new PlatformError({
+      code: "method_not_allowed",
+      detail: `${request.method} is not supported for this resource.`,
+      status: 405,
+      title: "Method not allowed",
+    }),
+    request,
+  );
+  response.headers.set("allow", allowedMethods.join(", "));
+  return response;
+}
+
+export function apiNotFoundResponse(request: Request): Response {
+  return problemResponse(
+    new PlatformError({
+      code: "api_route_not_found",
+      detail: "The requested platform API route does not exist.",
+      status: 404,
+      title: "API route not found",
+    }),
+    request,
+  );
 }
 
 function toProblem(
@@ -111,9 +142,23 @@ export async function parseJson(request: Request): Promise<unknown> {
     });
   }
 
+  const advertisedLength = request.headers.get("content-length");
+  if (advertisedLength !== null) {
+    const contentLength = Number(advertisedLength);
+    if (
+      Number.isFinite(contentLength) &&
+      contentLength > controlPlaneJsonLimitBytes
+    ) {
+      throw payloadTooLargeError();
+    }
+  }
+
   try {
-    return await request.json();
-  } catch {
+    return JSON.parse(await readLimitedText(request));
+  } catch (error) {
+    if (error instanceof PlatformError) {
+      throw error;
+    }
     throw new PlatformError({
       code: "invalid_json",
       detail: "The request body must be valid JSON.",
@@ -121,4 +166,51 @@ export async function parseJson(request: Request): Promise<unknown> {
       title: "Invalid JSON",
     });
   }
+}
+
+async function readLimitedText(request: Request): Promise<string> {
+  if (!request.body) {
+    return "";
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let sizeBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      sizeBytes += value.byteLength;
+      if (sizeBytes > controlPlaneJsonLimitBytes) {
+        await reader
+          .cancel("Control-plane JSON body exceeded its limit")
+          .catch(() => undefined);
+        throw payloadTooLargeError();
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(sizeBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder("utf-8", { fatal: true }).decode(body);
+}
+
+function payloadTooLargeError(): PlatformError {
+  return new PlatformError({
+    code: "payload_too_large",
+    detail: `Control-plane JSON bodies are limited to ${controlPlaneJsonLimitBytes} bytes.`,
+    status: 413,
+    title: "Payload too large",
+  });
 }

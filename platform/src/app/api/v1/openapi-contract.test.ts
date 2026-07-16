@@ -90,6 +90,9 @@ describe("OpenAPI contract", () => {
       expect(openApiDocument.paths[path].post.responses["415"].$ref).toBe(
         "#/components/responses/UnsupportedMediaType",
       );
+      expect(openApiDocument.paths[path].post.responses["413"].$ref).toBe(
+        "#/components/responses/PayloadTooLarge",
+      );
     }
     expect(openApiDocument.paths["/api/v1/health"].get.responses["500"].$ref).toBe(
       "#/components/responses/InternalError",

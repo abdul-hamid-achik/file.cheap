@@ -23,10 +23,19 @@ future streaming Go client. Responses produced by the documented application
 handlers carry an `X-Request-Id`, and their errors use RFC 9457-style problem
 details. Request objects are strict: unknown properties are rejected instead of
 silently ignored, and JSON endpoints reject other request media types with a
-typed `415`. Authentication failures advertise the Bearer challenge,
+typed `415`. Their bodies are streamed through a 16 KiB ceiling and reject
+larger payloads with a typed `413`; archive bytes use the separate data plane.
+Authentication failures advertise the Bearer challenge,
 while transient catalog contention carries a short `Retry-After` hint. Commit
 receipts are bounded before signature verification, and authentication and
 signing credentials must be distinct.
+
+The browser surface sends a restrictive CSP plus frame, MIME-sniffing,
+referrer, and permissions policies. Local transfer capabilities travel in a
+dedicated request header instead of the signed URL, reducing accidental
+exposure through history and access logs. Local uploads also stop on request
+cancel, signed-grant expiry, or the five-minute server deadline and remove
+their unpublished temporary bytes.
 
 ## Run locally
 
@@ -66,6 +75,10 @@ ADR-002 authorizes no payment integration in this laboratory.
 - a catalog that can use ETag compare-and-swap without requiring Neon locally;
 - a portable recovery card;
 - full download, SHA-256 verification, and a selected-file equivalence report.
+
+Malformed local lock records fail fast with a typed retryable error and remain
+untouched for inspection; the adapter never guesses that an unparseable lock
+or crash residue is safe to delete.
 
 Protocol v1 and the browser laboratory are capped at 64 MiB because this slice
 uses one non-resumable transfer and hashes whole files in browser memory. A

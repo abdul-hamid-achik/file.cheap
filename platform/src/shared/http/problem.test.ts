@@ -3,6 +3,9 @@ import { z } from "zod";
 
 import { PlatformError } from "@/shared/errors/platform-error";
 import {
+  apiNotFoundResponse,
+  controlPlaneJsonLimitBytes,
+  methodNotAllowedResponse,
   parseJson,
   parseRequest,
   problemResponse,
@@ -125,6 +128,68 @@ describe("RFC 9457 problem responses", () => {
     await expect(parseJson(jsonRequest)).resolves.toEqual({ ok: true });
   });
 
+  test("rejects an advertised JSON body over the control-plane limit", async () => {
+    const request = new Request(
+      "http://127.0.0.1:3100/api/v1/sync/plans",
+      {
+        body: "{}",
+        headers: {
+          "content-length": String(controlPlaneJsonLimitBytes + 1),
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+
+    const error = await captureAsyncError(() => parseJson(request));
+    expect(error).toMatchObject({ code: "payload_too_large", status: 413 });
+  });
+
+  test("enforces the JSON limit while streaming when length is absent", async () => {
+    const request = new Request(
+      "http://127.0.0.1:3100/api/v1/sync/commits",
+      {
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                `{"receipt":"${"x".repeat(controlPlaneJsonLimitBytes)}"}`,
+              ),
+            );
+            controller.close();
+          },
+        }),
+        // Node requires this when a Request carries a streaming body.
+        duplex: "half",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      } as RequestInit & { duplex: "half" },
+    );
+
+    const error = await captureAsyncError(() => parseJson(request));
+    expect(error).toMatchObject({ code: "payload_too_large", status: 413 });
+  });
+
+  test("accepts a valid body at the exact byte limit", async () => {
+    const prefix = '{"value":"';
+    const suffix = '"}';
+    const request = new Request(
+      "http://127.0.0.1:3100/api/v1/sync/plans",
+      {
+        body: `${prefix}${"x".repeat(
+          controlPlaneJsonLimitBytes - prefix.length - suffix.length,
+        )}${suffix}`,
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
+
+    const body = await parseJson(request);
+    expect((body as { value: string }).value.length).toBe(
+      controlPlaneJsonLimitBytes - prefix.length - suffix.length,
+    );
+  });
+
   test("advertises bearer authentication on 401 responses", () => {
     const request = new Request(
       "http://127.0.0.1:3100/api/v1/stashes",
@@ -181,6 +246,45 @@ describe("RFC 9457 problem responses", () => {
 
     expect(response.status).toBe(503);
     expect(response.headers.get("retry-after")).toBe("1");
+  });
+
+  test("returns correlated problem details for unsupported API methods", async () => {
+    const request = new Request(
+      "http://127.0.0.1:3100/api/v1/sync/plans",
+      {
+        headers: { "x-request-id": "wrong-method-01" },
+        method: "DELETE",
+      },
+    );
+    const response = methodNotAllowedResponse(request, ["POST"]);
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("POST");
+    expect(response.headers.get("content-type")).toBe(
+      "application/problem+json",
+    );
+    expect(await response.json()).toMatchObject({
+      code: "method_not_allowed",
+      requestId: "wrong-method-01",
+      status: 405,
+    });
+  });
+
+  test("returns JSON problem details for unknown API routes", async () => {
+    const request = new Request("http://127.0.0.1:3100/api/v1/nope", {
+      headers: { "x-request-id": "missing-route-01" },
+    });
+    const response = apiNotFoundResponse(request);
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toBe(
+      "application/problem+json",
+    );
+    expect(await response.json()).toMatchObject({
+      code: "api_route_not_found",
+      requestId: "missing-route-01",
+      status: 404,
+    });
   });
 });
 

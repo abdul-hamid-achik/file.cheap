@@ -2,6 +2,7 @@ import { commitPlanSchema } from "@/features/sync/contracts";
 import { getSyncService } from "@/features/sync/factory";
 import { requireApiToken } from "@/shared/auth/bearer";
 import {
+  methodNotAllowedResponse,
   parseJson,
   parseRequest,
   problemResponse,
@@ -20,3 +21,16 @@ export async function POST(request: Request): Promise<Response> {
     return problemResponse(error, request);
   }
 }
+
+function unsupportedMethod(request: Request): Response {
+  return methodNotAllowedResponse(request, ["POST"]);
+}
+
+export {
+  unsupportedMethod as DELETE,
+  unsupportedMethod as GET,
+  unsupportedMethod as HEAD,
+  unsupportedMethod as OPTIONS,
+  unsupportedMethod as PATCH,
+  unsupportedMethod as PUT,
+};

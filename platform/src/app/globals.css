@@ -472,6 +472,12 @@ input:focus-visible,
   align-items: center;
 }
 
+.labToolbarActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .labTokenLabel {
   display: grid;
   gap: 4px;
@@ -1191,6 +1197,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   .labToolbar label,
   .uploadRow,
   .recoveryCard { grid-template-columns: 1fr; }
+  .labToolbarActions button { flex: 1; }
   .labSafetyNotice { grid-template-columns: auto minmax(0, 1fr); padding-inline: 15px; }
   .labAdapterFacts {
     grid-column: 1 / -1;

@@ -26,6 +26,9 @@ import {
 } from "@/platform/storage/object-store";
 
 const localCatalogLockDeadlineMilliseconds = 15_000;
+const localUploadDeadlineMilliseconds = 5 * 60_000;
+const maximumProcessId = 2_147_483_647;
+export const localTransferTokenHeader = "x-filecheap-transfer-token";
 
 export class LocalObjectStore implements ObjectStore {
   readonly driver = "local" as const;
@@ -73,11 +76,14 @@ export class LocalObjectStore implements ObjectStore {
       },
       this.config.signingSecret,
     );
-    const query = new URLSearchParams({ key: input.key, token });
+    const query = new URLSearchParams({ key: input.key });
 
     return {
       expiresAt: input.validUntil.toISOString(),
-      headers: { "content-type": input.contentType },
+      headers: {
+        "content-type": input.contentType,
+        [localTransferTokenHeader]: token,
+      },
       method: "PUT",
       url: `${this.config.publicUrl}/api/v1/local-objects?${query}`,
     };
@@ -96,11 +102,11 @@ export class LocalObjectStore implements ObjectStore {
       },
       this.config.signingSecret,
     );
-    const query = new URLSearchParams({ key: input.key, token });
+    const query = new URLSearchParams({ key: input.key });
 
     return {
       expiresAt: input.validUntil.toISOString(),
-      headers: {},
+      headers: { [localTransferTokenHeader]: token },
       method: "GET",
       url: `${this.config.publicUrl}/api/v1/local-objects?${query}`,
     };
@@ -178,6 +184,14 @@ export class LocalObjectStore implements ObjectStore {
         title: "Empty upload",
       });
     }
+    const advertisedLength = request.headers.get("content-length");
+    if (
+      advertisedLength !== null &&
+      Number.isFinite(Number(advertisedLength)) &&
+      Number(advertisedLength) > payload.sizeBytes
+    ) {
+      throw uploadTooLarge();
+    }
 
     const existing = await this.inspect(key);
     if (existing) {
@@ -191,6 +205,9 @@ export class LocalObjectStore implements ObjectStore {
         title: "Object conflict",
       });
     }
+    if (request.signal.aborted) {
+      throw uploadCanceled();
+    }
 
     const path = this.pathFor(key);
     await filesystem.mkdir(dirname(path), { mode: 0o700, recursive: true });
@@ -198,26 +215,43 @@ export class LocalObjectStore implements ObjectStore {
     const hash = createHash("sha256");
     let receivedBytes = 0;
     const source = Readable.fromWeb(request.body as never);
+    const uploadDeadline = Math.min(
+      payload.exp,
+      Date.now() + localUploadDeadlineMilliseconds,
+    );
+    const deadlineError =
+      uploadDeadline === payload.exp ? expiredUploadGrant : uploadTimedOut;
+    const deadlineTimer = setTimeout(() => {
+      source.destroy(deadlineError());
+    }, Math.max(0, uploadDeadline - Date.now()));
+    deadlineTimer.unref();
+    const abortUpload = (): void => {
+      source.destroy(uploadCanceled());
+    };
+    request.signal.addEventListener("abort", abortUpload, { once: true });
+    if (request.signal.aborted) {
+      abortUpload();
+    }
     source.on("data", (chunk: Buffer) => {
       receivedBytes += chunk.length;
       hash.update(chunk);
       if (receivedBytes > payload.sizeBytes) {
-        source.destroy(
-          new PlatformError({
-            code: "upload_too_large",
-            detail: "The upload exceeded its signed byte size.",
-            status: 413,
-            title: "Upload too large",
-          }),
-        );
+        source.destroy(uploadTooLarge());
       }
     });
 
     try {
-      await pipeline(
-        source,
-        createWriteStream(temporaryPath, { flags: "wx", mode: 0o600 }),
-      );
+      try {
+        await pipeline(
+          source,
+          createWriteStream(temporaryPath, { flags: "wx", mode: 0o600 }),
+        );
+      } catch (error) {
+        if (request.signal.aborted && !(error instanceof PlatformError)) {
+          throw uploadCanceled();
+        }
+        throw error;
+      }
       const receivedHash = hash.digest("hex");
       if (receivedBytes !== payload.sizeBytes || receivedHash !== payload.sha256) {
         throw uploadIntegrityMismatch();
@@ -236,6 +270,8 @@ export class LocalObjectStore implements ObjectStore {
       }
       if (created) await syncDirectory(dirname(path));
     } finally {
+      clearTimeout(deadlineTimer);
+      request.signal.removeEventListener("abort", abortUpload);
       await filesystem.rm(temporaryPath, { force: true });
     }
 
@@ -373,7 +409,11 @@ async function withFileLock<T>(
     try {
       await lock.handle.close();
     } finally {
-      await removeLockIfOwned(lockPath, lock.identity);
+      try {
+        await removeLockIfOwned(lockPath, lock.identity);
+      } finally {
+        await filesystem.rm(lock.candidatePath, { force: true });
+      }
     }
   }
 }
@@ -392,6 +432,7 @@ type LockObservation = {
 };
 
 type OwnedFileLock = LockObservation & {
+  candidatePath: string;
   handle: Awaited<ReturnType<typeof filesystem.open>>;
   owner: LockOwner;
 };
@@ -427,6 +468,7 @@ async function tryAcquireFileLock(lockPath: string): Promise<OwnedFileLock | nul
     // contender can therefore never observe a half-initialized canonical lock.
     await handle.writeFile(`${JSON.stringify(owner)}\n`);
     await handle.sync();
+    const stat = await handle.stat();
     try {
       await filesystem.link(candidatePath, lockPath);
     } catch (error) {
@@ -434,10 +476,9 @@ async function tryAcquireFileLock(lockPath: string): Promise<OwnedFileLock | nul
       throw error;
     }
 
-    const stat = await handle.stat();
     acquired = true;
-    await filesystem.rm(candidatePath, { force: true });
     return {
+      candidatePath,
       handle,
       identity: { dev: stat.dev, ino: stat.ino },
       owner,
@@ -479,9 +520,10 @@ async function recoverAbandonedLock(
 ): Promise<boolean> {
   const observed = await observeLock(lockPath);
   if (!observed) return true;
+  if (!observed.owner) throw catalogLockInvalid();
   // Do not expire a live owner by elapsed time. Recovery is allowed only after
   // its process has ended, so a delayed writer cannot resume behind a new one.
-  if (!observed.owner || isProcessAlive(observed.owner.pid)) return false;
+  if (isProcessAlive(observed.owner.pid)) return false;
 
   const claim = await createRecoveryClaim(lockPath);
 
@@ -490,7 +532,8 @@ async function recoverAbandonedLock(
       const current = await observeLock(lockPath);
       if (!current) return true;
       if (!sameIdentity(current.identity, observed.identity)) return true;
-      if (!current.owner || isProcessAlive(current.owner.pid)) return false;
+      if (!current.owner) throw catalogLockInvalid();
+      if (isProcessAlive(current.owner.pid)) return false;
 
       const claims = await listActiveRecoveryClaims(lockPath);
       if (claims[0]?.path !== claim.path) {
@@ -501,12 +544,8 @@ async function recoverAbandonedLock(
       const finalObservation = await observeLock(lockPath);
       if (!finalObservation) return true;
       if (!sameIdentity(finalObservation.identity, observed.identity)) return true;
-      if (
-        !finalObservation.owner ||
-        isProcessAlive(finalObservation.owner.pid)
-      ) {
-        return false;
-      }
+      if (!finalObservation.owner) throw catalogLockInvalid();
+      if (isProcessAlive(finalObservation.owner.pid)) return false;
 
       const quarantinePath = `${lockPath}.abandoned.${claim.rank}.${randomUUID()}`;
       await filesystem.rename(lockPath, quarantinePath);
@@ -566,6 +605,7 @@ function parseLockOwner(body: string): LockOwner | null {
       owner.version !== 1 ||
       !Number.isInteger(owner.pid) ||
       Number(owner.pid) <= 0 ||
+      Number(owner.pid) > maximumProcessId ||
       typeof owner.token !== "string" ||
       owner.token.length === 0
     ) {
@@ -626,11 +666,56 @@ function catalogLockLost(): PlatformError {
   });
 }
 
+function catalogLockInvalid(): PlatformError {
+  return new PlatformError({
+    code: "catalog_lock_invalid",
+    detail: "The local catalog lock is malformed and requires inspection.",
+    status: 503,
+    title: "Invalid catalog lock",
+  });
+}
+
 function uploadIntegrityMismatch(): PlatformError {
   return new PlatformError({
     code: "integrity_mismatch",
     detail: "Uploaded bytes do not match the signed size and SHA-256.",
     status: 422,
     title: "Integrity mismatch",
+  });
+}
+
+function uploadTooLarge(): PlatformError {
+  return new PlatformError({
+    code: "upload_too_large",
+    detail: "The upload exceeded its signed byte size.",
+    status: 413,
+    title: "Upload too large",
+  });
+}
+
+function uploadCanceled(): PlatformError {
+  return new PlatformError({
+    code: "upload_canceled",
+    detail: "The upload was canceled before it completed.",
+    status: 408,
+    title: "Upload canceled",
+  });
+}
+
+function expiredUploadGrant(): PlatformError {
+  return new PlatformError({
+    code: "expired_grant",
+    detail: "The upload grant expired before the transfer completed.",
+    status: 410,
+    title: "Expired grant",
+  });
+}
+
+function uploadTimedOut(): PlatformError {
+  return new PlatformError({
+    code: "upload_timeout",
+    detail: "The upload exceeded the server transfer deadline.",
+    status: 408,
+    title: "Upload timed out",
   });
 }

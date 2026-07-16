@@ -1,7 +1,13 @@
 import { getObjectStore } from "@/platform/storage/factory";
-import { LocalObjectStore } from "@/platform/storage/local-object-store";
+import {
+  LocalObjectStore,
+  localTransferTokenHeader,
+} from "@/platform/storage/local-object-store";
 import { PlatformError } from "@/shared/errors/platform-error";
-import { problemResponse } from "@/shared/http/problem";
+import {
+  methodNotAllowedResponse,
+  problemResponse,
+} from "@/shared/http/problem";
 import {
   attachResponseMetadata,
   jsonResponse,
@@ -34,14 +40,25 @@ export async function GET(request: Request): Promise<Response> {
   }
 }
 
+function unsupportedMethod(request: Request): Response {
+  return methodNotAllowedResponse(request, ["GET", "HEAD", "PUT"]);
+}
+
+export {
+  unsupportedMethod as DELETE,
+  unsupportedMethod as OPTIONS,
+  unsupportedMethod as PATCH,
+  unsupportedMethod as POST,
+};
+
 function parameters(request: Request): { key: string; token: string } {
   const url = new URL(request.url);
   const key = url.searchParams.get("key");
-  const token = url.searchParams.get("token");
+  const token = request.headers.get(localTransferTokenHeader);
   if (!key || !token) {
     throw new PlatformError({
       code: "missing_grant",
-      detail: "Both key and signed transfer token are required.",
+      detail: `Both the key query parameter and ${localTransferTokenHeader} header are required.`,
       status: 400,
       title: "Missing grant",
     });

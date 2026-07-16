@@ -110,6 +110,7 @@
           },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "400": { "$ref": "#/components/responses/BadRequest" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
           "409": { "$ref": "#/components/responses/Conflict" },
           "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "422": { "$ref": "#/components/responses/ValidationError" },
@@ -146,6 +147,7 @@
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/InvalidCapability" },
           "400": { "$ref": "#/components/responses/BadRequest" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
           "409": { "$ref": "#/components/responses/Conflict" },
           "410": { "$ref": "#/components/responses/ExpiredCapability" },
           "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
@@ -183,6 +185,7 @@
           },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "400": { "$ref": "#/components/responses/BadRequest" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "422": { "$ref": "#/components/responses/ValidationError" },
@@ -294,6 +297,17 @@
       },
       "UnsupportedMediaType": {
         "description": "The request Content-Type is not application/json.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/Problem" }
+          }
+        }
+      },
+      "PayloadTooLarge": {
+        "description": "The control-plane JSON body exceeds the 16 KiB limit.",
         "headers": {
           "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
         },

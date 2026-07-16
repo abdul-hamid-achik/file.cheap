@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createRecoveryCard,
@@ -22,6 +22,10 @@ import {
   throwIfOperationCanceled,
   withRequestDeadline,
 } from "@/features/sync/request-lifecycle";
+import {
+  deriveRecoveryAttemptState,
+  shouldLockAfterConnectionFailure,
+} from "@/features/sync/recovery-lab-state";
 import type { StashSummary } from "@/features/sync/sync-service";
 
 const labFileLimitBytes = protocolV1MaxObjectBytes;
@@ -84,6 +88,8 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
   const [hydrationEvidence, setHydrationEvidence] = useState<HydrationEvidence | null>(null);
   const [recoveryReport, setRecoveryReport] = useState<RecoveryDrillReport | null>(null);
   const [reportDownloadRequested, setReportDownloadRequested] = useState(false);
+  const [currentRecoveryAttemptId, setCurrentRecoveryAttemptId] = useState<string | null>(null);
+  const [currentComparisonSucceeded, setCurrentComparisonSucceeded] = useState(false);
   const [status, setStatus] = useState<LabStatus>({
     kind: "idle",
     message: "Enter the local bearer token to unlock this simulated vault.",
@@ -104,14 +110,27 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
   const currentCardIdentity = recoveryCard
     ? recoveryCardIdentity(recoveryCard)
     : null;
+  const {
+    hasRetainedAttemptEvidence,
+    hydrationIsCurrentAttempt,
+    reportIsCurrentAttempt,
+  } = deriveRecoveryAttemptState({
+    comparisonSucceeded: currentComparisonSucceeded,
+    currentAttemptId: currentRecoveryAttemptId,
+    hydrationAttemptId: hydrationEvidence?.attemptId,
+    reportAttemptId: recoveryReport?.attemptId,
+  });
   const evidenceBelongsToPreviousDrill = Boolean(
     recoveryCard &&
       file &&
       (file !== cardSourceFile || recoveryCard.stashId !== stashId.trim()),
   );
+  const hasRetainedEvidence =
+    evidenceBelongsToPreviousDrill || hasRetainedAttemptEvidence;
   const canVerifyReopenedFile = Boolean(
     recoveryCard &&
       hydrationEvidence &&
+      hydrationIsCurrentAttempt &&
       hydrationEvidence.cardIdentity === currentCardIdentity &&
       hydrationEvidence.downloadedSha256 === recoveryCard.sha256,
   );
@@ -136,16 +155,23 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
     : cardOrigin === "imported" && connected
       ? "active"
       : "pending";
-  const compareStepStatus: RecoveryStepStatus = recoveryReport
+  const compareStepStatus: RecoveryStepStatus = reportIsCurrentAttempt
     ? "complete"
     : canVerifyReopenedFile
       ? "active"
       : "pending";
-  const reportStepStatus: RecoveryStepStatus = reportDownloadRequested
-    ? "complete"
-    : recoveryReport
-      ? "active"
-      : "pending";
+  const reportStepStatus: RecoveryStepStatus =
+    reportIsCurrentAttempt && reportDownloadRequested
+      ? "complete"
+      : reportIsCurrentAttempt
+        ? "active"
+        : "pending";
+
+  useEffect(() => {
+    return () => {
+      operationController.current?.abort(new OperationCanceledError());
+    };
+  }, []);
 
   async function connectVault() {
     if (!apiToken.trim()) {
@@ -163,8 +189,14 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
         message: "Vault unlocked for this tab. The token is not persisted.",
       });
     } catch (error) {
-      setConnected(false);
-      setStashes([]);
+      if (
+        shouldLockAfterConnectionFailure(
+          error instanceof ApiResponseError ? error.status : undefined,
+        )
+      ) {
+        setConnected(false);
+        setStashes([]);
+      }
       setStatus(errorStatus(error));
     } finally {
       endOperation();
@@ -212,6 +244,8 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
 
   function rejectArchiveSelection(message: string): void {
     setFile(null);
+    setStashId("");
+    setStashIdTouched(false);
     setStatus({
       kind: "error",
       message: `${message} The previous archive selection was cleared.`,
@@ -287,6 +321,8 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
       setHydrationEvidence(null);
       setRecoveryReport(null);
       setReportDownloadRequested(false);
+      setCurrentRecoveryAttemptId(null);
+      setCurrentComparisonSucceeded(false);
 
       let refreshError: unknown;
       try {
@@ -348,6 +384,8 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
       setRecoveryReport(null);
       setHydrationEvidence(null);
       setReportDownloadRequested(false);
+      setCurrentRecoveryAttemptId(null);
+      setCurrentComparisonSucceeded(false);
       setFile(null);
       setStashId("");
       setStashIdTouched(false);
@@ -391,6 +429,9 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
     const card = recoveryCard;
     const startedAt = new Date().toISOString();
     const attemptId = crypto.randomUUID();
+    setCurrentRecoveryAttemptId(attemptId);
+    setCurrentComparisonSucceeded(false);
+    setReportDownloadRequested(false);
     try {
       setStatus({ kind: "working", message: `Downloading every byte of ${card.stashId}…` });
       const plan = await apiRequest<DownloadResponse>(
@@ -459,9 +500,12 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
       !selectedFile ||
       !recoveryCard ||
       !hydrationEvidence ||
+      !hydrationIsCurrentAttempt ||
       hydrationEvidence.cardIdentity !== recoveryCardIdentity(recoveryCard) ||
       hydrationEvidence.downloadedSha256 !== recoveryCard.sha256
     ) return;
+    setCurrentComparisonSucceeded(false);
+    setReportDownloadRequested(false);
     if (selectedFile.size === 0) {
       setStatus({ kind: "error", message: "Choose a non-empty downloaded file." });
       return;
@@ -498,6 +542,7 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
           stashId: card.stashId,
         }),
       );
+      setCurrentComparisonSucceeded(true);
       setReportDownloadRequested(false);
       setStatus({
         kind: "success",
@@ -532,8 +577,19 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
     setStatus({ kind: "working", message: "Canceling the current operation…" });
   }
 
+  function lockVault(): void {
+    if (operationInFlight.current) return;
+    setApiToken("");
+    setConnected(false);
+    setStashes([]);
+    setStatus({
+      kind: "idle",
+      message: "Vault locked. The bearer token was cleared from this tab.",
+    });
+  }
+
   return (
-    <div className="labPanel" aria-busy={isWorking}>
+    <div className="labPanel">
       <form
         className="labToolbar"
         onSubmit={(event) => {
@@ -567,9 +623,16 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
             value={apiToken}
           />
         </label>
-        <button disabled={isWorking} type="submit">
-          {connected ? "Reconnect" : "Unlock vault"}
-        </button>
+        <div className="labToolbarActions">
+          <button disabled={isWorking} type="submit">
+            {connected ? "Reconnect" : "Unlock vault"}
+          </button>
+          {connected ? (
+            <button disabled={isWorking} onClick={lockVault} type="button">
+              Lock + clear token
+            </button>
+          ) : null}
+        </div>
       </form>
 
       <aside className="labSafetyNotice" aria-labelledby="lab-safety-title">
@@ -691,9 +754,9 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
         <div className="recoveryCard">
           {recoveryCard ? (
             <div className="recoveryCardSummary">
-              {evidenceBelongsToPreviousDrill ? (
+              {hasRetainedEvidence ? (
                 <span className="retainedEvidenceBadge">
-                  Retained evidence · previous drill
+                  Retained evidence · not the current attempt
                 </span>
               ) : null}
               <strong>{recoveryCard.stashId}</strong>
@@ -702,8 +765,10 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
               <span>
                 {evidenceBelongsToPreviousDrill
                   ? `This card belongs to ${recoveryCard.stashId}; the selected archive is a new drill.`
+                  : hasRetainedAttemptEvidence
+                    ? "A newer attempt did not complete. Earlier artifacts remain exportable, but do not count as current proof."
                   : cardOrigin === "imported"
-                    ? "Imported card · ready for recovery"
+                    ? "Imported unsigned metadata · verifies expected bytes, not who created the card"
                     : cardDownloadRequested
                       ? "Card download offered · re-import it to continue"
                       : "Generated card · export it, then re-import it to continue"}
@@ -747,6 +812,10 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
                     `${recoveryCard.stashId}.recovery-card.json`,
                   );
                   setCardDownloadRequested(true);
+                  setStatus({
+                    kind: "success",
+                    message: "Recovery card download offered. Re-import that saved JSON file to continue the drill.",
+                  });
                 }}
                 type="button"
               >Export card</button>
@@ -830,7 +899,9 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
               <div className="recoveryStepBody">
                 <strong>Export the recovery report</strong>
                 <span className="recoveryStepState">
-                  {reportDownloadRequested
+                  {!reportIsCurrentAttempt && recoveryReport
+                    ? "Previous attempt retained"
+                    : reportDownloadRequested
                     ? "Download offered"
                     : recoveryStepLabel(reportStepStatus)}
                 </span>
@@ -845,9 +916,17 @@ export function RecoveryLab({ storageDriver }: RecoveryLabProps) {
                     `${recoveryReport.stashId}.recovery-drill-report.json`,
                   );
                   setReportDownloadRequested(true);
+                  setStatus({
+                    kind: "success",
+                    message: "Recovery report download offered. It is an unsigned local observation, not proof of origin.",
+                  });
                 }}
                 type="button"
-              >Export report</button>
+              >
+                {!recoveryReport || reportIsCurrentAttempt
+                  ? "Export report"
+                  : "Export retained report"}
+              </button>
             </li>
           </ol>
         </div>
