@@ -69,7 +69,11 @@ describe("VercelBlobStore signed grants", () => {
 
     expect(grant.method).toBe("GET");
     expect(calls[0]).toMatchObject({ operations: ["get"], pathname: key });
-    expect(calls[1]).toMatchObject({ operation: "get", pathname: key });
+    expect(calls[1]).toMatchObject({
+      operation: "get",
+      pathname: key,
+      useCache: false,
+    });
     expect(calls.flatMap(Object.values)).not.toContain("*");
   });
 
@@ -180,6 +184,31 @@ describe("VercelBlobStore signed grants", () => {
         key,
       }),
     ).rejects.toBeInstanceOf(CatalogPreconditionError);
+  });
+
+  test("maps a concurrent first catalog creation to a retryable precondition", async () => {
+    const key = "v1/workspaces/default/catalog/v1.json";
+    const blob = {
+      ...grantOnlyBlobSdk([]),
+      put: async () => {
+        throw new BlobPreconditionFailedError();
+      },
+    } as unknown as BlobSdk;
+
+    await expect(
+      new VercelBlobStore(config, blob).writeText({ body: "first", key }),
+    ).rejects.toBeInstanceOf(CatalogPreconditionError);
+
+    const accessFailure = new Error("blob access denied");
+    const unavailableBlob = {
+      ...grantOnlyBlobSdk([]),
+      put: async () => {
+        throw accessFailure;
+      },
+    } as unknown as BlobSdk;
+    await expect(
+      new VercelBlobStore(config, unavailableBlob).writeText({ body: "first", key }),
+    ).rejects.toBe(accessFailure);
   });
 });
 

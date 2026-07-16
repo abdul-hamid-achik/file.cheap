@@ -56,6 +56,11 @@ export function getConfig(): PlatformConfig {
   ) {
     throw new Error("PLATFORM_SIGNING_SECRET must be replaced in production");
   }
+  if (parsed.PLATFORM_API_TOKEN === parsed.PLATFORM_SIGNING_SECRET) {
+    throw new Error(
+      "PLATFORM_API_TOKEN and PLATFORM_SIGNING_SECRET must be different values",
+    );
+  }
   if (
     parsed.PLATFORM_STORAGE_DRIVER === "vercel-blob" &&
     parsed.PLATFORM_BLOB_INTEGRITY !== "presence-size-etag-experimental"

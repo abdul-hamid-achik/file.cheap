@@ -88,6 +88,21 @@ describe("CatalogRepository concurrency", () => {
       status: 503,
     });
   });
+
+  test("rejects an idempotent commit whose stored identity differs", async () => {
+    const config = await createConfig();
+    const repository = new CatalogRepository(new LocalObjectStore(config));
+    const original = stash("identity", "d".repeat(64));
+    await repository.commit(original);
+
+    await expect(
+      repository.commit({
+        ...original,
+        etag: "different-etag",
+        objectKey: "v1/objects/different.fcheap",
+      }),
+    ).rejects.toMatchObject({ code: "stash_conflict", status: 409 });
+  });
 });
 
 class AlwaysConflictingObjectStore implements ObjectStore {

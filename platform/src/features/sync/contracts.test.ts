@@ -4,6 +4,7 @@ import {
   commitPlanSchema,
   createDownloadSchema,
   createPlanSchema,
+  protocolV1MaxObjectBytes,
   stashContentType,
 } from "@/features/sync/contracts";
 
@@ -35,6 +36,33 @@ describe("sync request contracts", () => {
     ).toThrow();
     expect(() =>
       createDownloadSchema.parse({ extra: true, stashId: "archive-01" }),
+    ).toThrow();
+  });
+
+  test("bounds signed commit receipts before verification", () => {
+    expect(commitPlanSchema.parse({ receipt: "receipt" })).toEqual({
+      receipt: "receipt",
+    });
+    expect(() =>
+      commitPlanSchema.parse({ receipt: "r".repeat(4_097) }),
+    ).toThrow();
+  });
+
+  test("keeps protocol v1 within the non-multipart laboratory limit", () => {
+    const base = {
+      sha256: "a".repeat(64),
+      stashId: "archive-01",
+    };
+
+    expect(
+      createPlanSchema.parse({ ...base, sizeBytes: protocolV1MaxObjectBytes })
+        .sizeBytes,
+    ).toBe(protocolV1MaxObjectBytes);
+    expect(() =>
+      createPlanSchema.parse({
+        ...base,
+        sizeBytes: protocolV1MaxObjectBytes + 1,
+      }),
     ).toThrow();
   });
 });

@@ -133,6 +133,8 @@ input:focus-visible,
   text-transform: uppercase;
 }
 
+.navMetaContext { display: inline; }
+
 .statusDot {
   width: 7px;
   height: 7px;
@@ -470,6 +472,21 @@ input:focus-visible,
   align-items: center;
 }
 
+.labTokenLabel {
+  display: grid;
+  gap: 4px;
+}
+
+.labTokenLabel small {
+  color: var(--ink-muted);
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.35;
+  text-transform: none;
+}
+
 .labToolbar span,
 .filePicker > span,
 .stashField > span,
@@ -500,12 +517,99 @@ input:focus-visible,
 .labToolbar input:focus,
 .stashField input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgb(241 119 79 / 12%); }
 
+.labSafetyNotice {
+  display: grid;
+  grid-template-columns: auto minmax(220px, .9fr) minmax(320px, 1.1fr);
+  gap: 17px;
+  align-items: center;
+  padding: 18px 20px;
+  border-bottom: 1px solid #614638;
+  background: rgb(241 119 79 / 6%);
+}
+
+.labSafetyMark {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  place-items: center;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.labSafetyCopy { display: grid; gap: 5px; }
+.labSafetyCopy strong { font-size: 13px; }
+.labSafetyCopy p {
+  max-width: 540px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.labAdapterFacts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  border-left: 1px solid var(--line-strong);
+}
+
+.labAdapterFacts div { min-width: 0; padding-left: 16px; }
+.labAdapterFacts div + div { border-left: 1px solid var(--line); }
+.labAdapterFacts dt {
+  color: var(--ink-muted);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.labAdapterFacts dd {
+  margin: 5px 0 0;
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.labJourneyNav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 18px 20px 0;
+}
+
+.labJourneyNav a {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  padding: 15px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 1.5%);
+  text-decoration: none;
+}
+
+.labJourneyNav a:hover { border-color: var(--line-strong); background: rgb(255 255 255 / 3%); }
+.labJourneyNav span {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.labJourneyNav strong { font-size: 13px; }
+.labJourneyNav small { color: var(--ink-muted); font-size: 10px; line-height: 1.45; }
+
 .uploadRow {
   display: grid;
   grid-template-columns: minmax(210px, 1.15fr) minmax(180px, .75fr) auto;
   gap: 14px;
   align-items: end;
   padding: 22px 20px;
+  scroll-margin-top: 20px;
 }
 
 .filePicker,
@@ -597,11 +701,29 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .labStatus.success > span { background: var(--green); }
 .labStatus.error > span { background: var(--accent); }
 
-.labStatusContent { display: grid; min-width: 0; gap: 6px; }
+.labStatusContent { display: grid; min-width: 0; flex: 1; gap: 6px; }
 .labStatusMessage { overflow-wrap: anywhere; }
 .labStatusDetail { color: var(--ink-muted); font-size: 10px; }
 .labStatusDetail summary { width: fit-content; cursor: pointer; }
 .labStatusDetail code { display: block; margin-top: 5px; overflow-wrap: anywhere; }
+
+.cancelOperation {
+  min-height: 30px;
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.cancelOperation:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 .fieldError {
   color: var(--accent) !important;
@@ -628,6 +750,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .recoveryDrill {
   border-bottom: 1px solid var(--line);
   background: linear-gradient(90deg, rgb(234 220 180 / 4%), transparent 55%);
+  scroll-margin-top: 20px;
 }
 
 .recoveryCard {
@@ -660,6 +783,30 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   min-width: 0;
   padding: 12px 3px;
 }
+
+.recoveryCard .retainedEvidenceBadge {
+  width: fit-content;
+  padding: 4px 7px;
+  border: 1px solid rgb(241 119 79 / 45%);
+  border-radius: 99px;
+  color: var(--accent);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.startNewDrillLink {
+  width: fit-content;
+  margin-top: 4px;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.startNewDrillLink:hover { color: var(--accent-hover); }
 
 .recoveryCardSummary.emptyRecovery {
   margin: 0;
@@ -981,8 +1128,9 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .footer a:hover { color: var(--accent); }
 
 @media (max-width: 980px) {
-  .nav { grid-template-columns: 1fr auto; }
-  .navLinks { display: none; }
+  .nav { grid-template-columns: auto 1fr auto; gap: 16px; }
+  .navLinks { justify-content: center; gap: 18px; }
+  .businessNavLink { display: none; }
   .hero { grid-template-columns: 1fr; }
   .heroCopy { max-width: 790px; }
   .receiptScene { width: min(530px, 85%); margin-inline: auto; }
@@ -994,6 +1142,9 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   .featuredPrice { transform: none; }
   .priceCard { min-height: 0; }
   .priceCard > p { min-height: 0; }
+  .labSafetyNotice { grid-template-columns: auto minmax(0, 1fr); }
+  .labAdapterFacts { grid-column: 2; border-left: 0; }
+  .labAdapterFacts div:first-child { padding-left: 0; }
 }
 
 @media (max-width: 760px) {
@@ -1006,13 +1157,19 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   .trustRail span:nth-child(4) { border-top: 1px solid var(--line); }
   .uploadRow { grid-template-columns: 1fr 1fr; }
   .uploadRow > button { grid-column: 1 / -1; }
+  .labJourneyNav { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 580px) {
   .shell { width: min(100% - 30px, 1200px); }
-  .nav { min-height: 68px; }
-  .navMeta { font-size: 0; }
-  .navMeta .statusDot { display: block; }
+  .nav { min-height: 68px; gap: 9px; }
+  .wordmark { gap: 7px; font-size: 14px; }
+  .wordmarkMark { width: 27px; height: 27px; font-size: 11px; }
+  .navLinks { gap: 10px; }
+  .navLinks a { font-size: 10px; }
+  .navMeta { gap: 5px; font-size: 8px; }
+  .navMetaContext { display: none; }
+  .statusDot { width: 6px; height: 6px; }
   .hero { gap: 70px; padding-block: 75px 76px; }
   .hero h1 { font-size: clamp(47px, 14.4vw, 70px); }
   .heroLead { font-size: 17px; }
@@ -1034,6 +1191,17 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   .labToolbar label,
   .uploadRow,
   .recoveryCard { grid-template-columns: 1fr; }
+  .labSafetyNotice { grid-template-columns: auto minmax(0, 1fr); padding-inline: 15px; }
+  .labAdapterFacts {
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr;
+    gap: 11px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+  }
+  .labAdapterFacts div { padding-left: 0; }
+  .labAdapterFacts div + div { padding-top: 11px; border-top: 1px solid var(--line); border-left: 0; }
+  .labJourneyNav { padding-inline: 15px; }
   .uploadRow > button { grid-column: auto; }
   .recoveryActions { justify-content: flex-start; }
   .recoveryCardSummary { padding: 4px 0; }

@@ -82,10 +82,7 @@ export class CatalogRepository {
         const loaded = await this.load();
         const existing = loaded.catalog.stashes[stash.stashId];
         if (existing) {
-          if (
-            existing.sha256 !== stash.sha256 ||
-            existing.sizeBytes !== stash.sizeBytes
-          ) {
+          if (!sameStashIdentity(existing, stash)) {
             throw new PlatformError({
               code: "stash_conflict",
               detail: `Stash ${stash.stashId} is already committed to different content.`,
@@ -160,6 +157,17 @@ export class CatalogRepository {
       release();
     }
   }
+}
+
+function sameStashIdentity(left: CloudStash, right: CloudStash): boolean {
+  return (
+    left.contentType === right.contentType &&
+    left.etag === right.etag &&
+    left.objectKey === right.objectKey &&
+    left.sha256 === right.sha256 &&
+    left.sizeBytes === right.sizeBytes &&
+    left.storageVerification === right.storageVerification
+  );
 }
 
 function catalogContention(): PlatformError {

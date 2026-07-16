@@ -40,6 +40,8 @@ catalog is enough to test one-workspace plan/upload/commit/download behavior.
 6. This prototype never evicts. A future encrypted client may consider eviction
    only after a complete hydrate-and-SHA-256 check and recovery-key export.
 7. Local `drop` never implies remote deletion.
+8. Protocol v1 accepts at most 64 MiB. Larger objects require a new
+   multipart/resume contract rather than a longer-lived single PUT.
 
 ## Why `platform/`
 
@@ -72,3 +74,5 @@ manifests, filenames, search indexes, and encryption keys do not belong there.
 - The Blob adapter is compile- and contract-tested but fails closed by default.
   A founder-only spike needs an explicit presence-only acknowledgement. User
   traffic remains blocked until staging and poisoned-path repair are designed.
+- Protocol v1 is intentionally small and non-resumable; it does not yet prove
+  the large-archive path needed by the Go client.

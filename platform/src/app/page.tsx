@@ -12,7 +12,7 @@ const protocolSteps = [
   {
     number: "02",
     title: "Move immutable bytes",
-    copy: "Archive bytes take a short-lived direct path. Content-derived keys make retries safe and conflicts visible.",
+    copy: "Archive bytes take a short-lived direct path. Hash-derived keys make retries deterministic and conflicts visible; recovery still proves full integrity.",
   },
   {
     number: "03",
@@ -44,13 +44,13 @@ export default function HomePage() {
           <span>file.cheap</span>
         </a>
         <div className="navLinks">
-          <a href="#recovery-lab">Recovery lab</a>
+          <a href="#recovery-lab">Lab</a>
           <a href="#protocol">Protocol</a>
-          <a href="#business-model">Business model</a>
+          <a className="businessNavLink" href="#business-model">Business model</a>
         </div>
         <div className="navMeta">
           <span className="statusDot" aria-hidden="true" />
-          research build · local only
+          <span><span className="navMetaContext">research build · </span>local lab</span>
         </div>
       </nav>
 
@@ -135,7 +135,7 @@ export default function HomePage() {
             keep the generated recovery card beside the stash manifest.
           </p>
         </div>
-        <RecoveryLab />
+        <RecoveryLab storageDriver={config.storageDriver} />
       </section>
 
       <section className="shell protocolSection" id="protocol" aria-labelledby="protocol-title">
@@ -182,6 +182,7 @@ export default function HomePage() {
             <ul>
               <li>Real identity and workspace isolation</li>
               <li>Transactional quota and usage ledger</li>
+              <li>Client-side encryption and recovery keys</li>
               <li>Staged upload verification and repair</li>
             </ul>
           </article>
@@ -222,7 +223,7 @@ export default function HomePage() {
               <p>A recovery hypothesis sized to test first-upload verification economics.</p>
               <ul>
                 <li>50 GB remote storage</li>
-                <li>5 GB download allowance / month · metering TBD</li>
+                <li>Routine download allowance · metering under validation</li>
                 <li>3 authorized devices</li>
               </ul>
             </article>

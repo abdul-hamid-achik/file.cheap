@@ -116,6 +116,7 @@ export class VercelBlobStore implements ObjectStore {
       access: "private",
       operation: "get",
       pathname: input.key,
+      useCache: false,
       validUntil,
     });
 

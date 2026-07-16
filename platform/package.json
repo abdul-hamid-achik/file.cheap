@@ -18,7 +18,7 @@
     "check": "bun run lint && bun run typecheck && bun test && bun run e2e:local"
   },
   "dependencies": {
-    "@vercel/blob": "2.4.0",
+    "@vercel/blob": "2.6.1",
     "next": "16.2.10",
     "react": "19.2.4",
     "react-dom": "19.2.4",

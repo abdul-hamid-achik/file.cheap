@@ -97,6 +97,20 @@ export function parseRequest<T>(schema: ZodType<T>, input: unknown): T {
 }
 
 export async function parseJson(request: Request): Promise<unknown> {
+  const mediaType = request.headers
+    .get("content-type")
+    ?.split(";", 1)[0]
+    ?.trim()
+    .toLowerCase();
+  if (mediaType !== "application/json") {
+    throw new PlatformError({
+      code: "unsupported_media_type",
+      detail: "The request Content-Type must be application/json.",
+      status: 415,
+      title: "Unsupported media type",
+    });
+  }
+
   try {
     return await request.json();
   } catch {

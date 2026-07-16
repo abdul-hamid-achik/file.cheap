@@ -25,6 +25,8 @@ import {
   type TransferGrant,
 } from "@/platform/storage/object-store";
 
+const localCatalogLockDeadlineMilliseconds = 15_000;
+
 export class LocalObjectStore implements ObjectStore {
   readonly driver = "local" as const;
   readonly verification = "server-sha256" as const;
@@ -333,7 +335,7 @@ async function withFileLock<T>(
   lockPath: string,
   operation: (assertOwned: () => Promise<void>) => Promise<T>,
 ): Promise<T> {
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + localCatalogLockDeadlineMilliseconds;
   let lock: OwnedFileLock | null = null;
 
   while (!lock) {
@@ -401,6 +403,16 @@ type RecoveryClaim = {
 };
 
 async function tryAcquireFileLock(lockPath: string): Promise<OwnedFileLock | null> {
+  // Avoid making every waiter write and fsync a candidate while a canonical
+  // lock is visibly present. The hard-link publication below remains the
+  // correctness boundary if the lock disappears or appears after this hint.
+  try {
+    await filesystem.stat(lockPath);
+    return null;
+  } catch (error) {
+    if (!isNodeError(error, "ENOENT")) throw error;
+  }
+
   const owner: LockOwner = {
     pid: process.pid,
     token: randomUUID(),

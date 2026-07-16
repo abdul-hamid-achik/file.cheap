@@ -6,7 +6,11 @@ import {
   type CreateDownloadInput,
   type CreatePlanInput,
 } from "@/features/sync/contracts";
-import type { ObjectStore, TransferGrant } from "@/platform/storage/object-store";
+import type {
+  ObjectMetadata,
+  ObjectStore,
+  TransferGrant,
+} from "@/platform/storage/object-store";
 import { PlatformError } from "@/shared/errors/platform-error";
 import {
   signPayload,
@@ -60,7 +64,13 @@ export class SyncService {
     if (object) {
       assertStoredObjectMatches(
         object,
-        { sha256: input.sha256, sizeBytes: input.sizeBytes },
+        {
+          contentType: input.contentType,
+          etag: existingStash?.etag,
+          key,
+          sha256: input.sha256,
+          sizeBytes: input.sizeBytes,
+        },
         this.store.verification,
       );
     }
@@ -122,7 +132,13 @@ export class SyncService {
     }
 
     const existingStash = await this.catalog.find(payload.stashId);
-    if (existingStash && existingStash.sha256 !== payload.sha256) {
+    if (
+      existingStash &&
+      (existingStash.contentType !== payload.contentType ||
+        existingStash.objectKey !== payload.key ||
+        existingStash.sha256 !== payload.sha256 ||
+        existingStash.sizeBytes !== payload.sizeBytes)
+    ) {
       throw stashConflict(payload.stashId);
     }
 
@@ -137,7 +153,13 @@ export class SyncService {
     }
     assertStoredObjectMatches(
       object,
-      { sha256: payload.sha256, sizeBytes: payload.sizeBytes },
+      {
+        contentType: payload.contentType,
+        etag: existingStash?.etag,
+        key: payload.key,
+        sha256: payload.sha256,
+        sizeBytes: payload.sizeBytes,
+      },
       this.store.verification,
     );
 
@@ -187,7 +209,13 @@ export class SyncService {
     }
     assertStoredObjectMatches(
       object,
-      { sha256: stash.sha256, sizeBytes: stash.sizeBytes },
+      {
+        contentType: stash.contentType,
+        etag: stash.etag,
+        key: stash.objectKey,
+        sha256: stash.sha256,
+        sizeBytes: stash.sizeBytes,
+      },
       this.store.verification,
     );
 
@@ -234,27 +262,44 @@ function stashSummary(stash: CloudStash): StashSummary {
 }
 
 function assertStoredObjectMatches(
-  object: { sizeBytes: number; verifiedSha256?: string },
-  expected: { sha256: string; sizeBytes: number },
+  object: ObjectMetadata,
+  expected: {
+    contentType: string;
+    etag?: string;
+    key: string;
+    sha256: string;
+    sizeBytes: number;
+  },
   verification: ObjectStore["verification"],
 ): void {
+  if (object.key !== expected.key || object.contentType !== expected.contentType) {
+    throw integrityMismatch(
+      "The stored object identity or content type differs from the upload plan.",
+    );
+  }
   if (object.sizeBytes !== expected.sizeBytes) {
-    throw new PlatformError({
-      code: "integrity_mismatch",
-      detail: "The stored object size differs from the upload plan.",
-      status: 422,
-      title: "Integrity mismatch",
-    });
+    throw integrityMismatch("The stored object size differs from the upload plan.");
+  }
+  if (expected.etag && object.etag !== expected.etag) {
+    throw integrityMismatch(
+      "The stored object ETag differs from the committed catalog evidence.",
+    );
   }
   if (
     verification === "server-sha256" &&
     object.verifiedSha256 !== expected.sha256
   ) {
-    throw new PlatformError({
-      code: "integrity_mismatch",
-      detail: "The stored object SHA-256 differs from the upload plan.",
-      status: 422,
-      title: "Integrity mismatch",
-    });
+    throw integrityMismatch(
+      "The stored object SHA-256 differs from the upload plan.",
+    );
   }
+}
+
+function integrityMismatch(detail: string): PlatformError {
+  return new PlatformError({
+    code: "integrity_mismatch",
+    detail,
+    status: 422,
+    title: "Integrity mismatch",
+  });
 }

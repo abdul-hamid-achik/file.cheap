@@ -202,6 +202,37 @@ reserved balance. A reconciler removes their staging objects. Deletion appends
 are explicit `manual_adjustment` entries; ledger rows are never rewritten. A
 unique source reference prevents double accounting.
 
+### Neon and Blob lifecycle
+
+Neon and Blob do not share a transaction. The service must persist an explicit
+state machine instead of trying to make a database commit and an object-store
+mutation appear atomic:
+
+```text
+reserved → uploaded → verified → committed
+                    ↘ quarantined
+reserved/uploaded   → expired → releasing → released
+```
+
+Every transition carries one stable operation/idempotency key. The reservation
+transaction creates `reserved`; the client then uploads once to a random,
+non-overwritable pathname. After verification, a second Neon transaction locks
+that reservation, records the immutable object and stash revision, moves bytes
+from reserved to committed, writes the ledger entry, and marks the operation
+`committed`. Retrying any step returns or advances the same operation.
+
+Physical rename is not assumed. The random staging pathname is promoted
+logically by the atomic `verified → committed` Neon transaction and retained as
+the final object. If a future Blob primitive is used to copy or promote bytes,
+that external step adds an explicit durable `promoting` state and is repaired by
+the same reconciler; it cannot sit invisibly inside a database transaction.
+
+An outbox/reconciler resumes `uploaded`, `verified`, `releasing`, and any future
+`promoting` operations after process death. It quarantines integrity failures,
+releases quota only once, removes abandoned staging bytes after the retention
+window, and alerts on a committed reference whose object is missing. Neither a
+timeout nor a webhook retry may decrement or increment quota twice.
+
 The 50 GB plan storage limit is a hard limit over committed plus reserved
 encrypted bytes. The 5 GB monthly download allowance is initially a product
 hypothesis, not an invoice meter. Direct signed URLs do not by themselves give

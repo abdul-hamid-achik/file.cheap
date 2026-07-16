@@ -123,6 +123,27 @@ try {
     "malformed JSON used the wrong problem code",
   );
 
+  const unsupportedMediaTypeRequestId = requestId("unsupported-media-type");
+  const unsupportedMediaType = await timedFetch(`${baseUrl}/api/v1/sync/plans`, {
+    body: JSON.stringify({ contentType, sha256, sizeBytes: bytes.byteLength, stashId }),
+    headers: {
+      authorization: `Bearer ${apiToken}`,
+      "content-type": "text/plain",
+      "x-request-id": unsupportedMediaTypeRequestId,
+    },
+    method: "POST",
+  });
+  assertResponseMetadata(unsupportedMediaType, unsupportedMediaTypeRequestId);
+  assert(
+    unsupportedMediaType.status === 415,
+    "non-JSON request media type did not return 415",
+  );
+  assert(
+    ((await unsupportedMediaType.json()) as ProblemDetails).code ===
+      "unsupported_media_type",
+    "unsupported media type used the wrong problem code",
+  );
+
   const strictRequestId = requestId("strict-contract");
   const strictProblem = await api<ProblemDetails>(
     "/api/v1/sync/plans",

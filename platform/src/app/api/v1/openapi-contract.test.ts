@@ -82,6 +82,26 @@ describe("OpenAPI contract", () => {
       openApiDocument.paths["/api/v1/sync/commits"].post.responses["410"]
         .$ref,
     ).toBe("#/components/responses/ExpiredCapability");
+    for (const path of [
+      "/api/v1/sync/plans",
+      "/api/v1/sync/commits",
+      "/api/v1/sync/downloads",
+    ] as const) {
+      expect(openApiDocument.paths[path].post.responses["415"].$ref).toBe(
+        "#/components/responses/UnsupportedMediaType",
+      );
+    }
+    expect(openApiDocument.paths["/api/v1/health"].get.responses["500"].$ref).toBe(
+      "#/components/responses/InternalError",
+    );
+    expect(
+      openApiDocument.components.schemas.CommitPlanInput.properties.receipt
+        .maxLength,
+    ).toBe(4_096);
+    expect(
+      openApiDocument.components.schemas.CreatePlanInput.properties.sizeBytes
+        .maximum,
+    ).toBe(64 * 1024 * 1024);
   });
 
   test("serves the same document through the GET Route Handler", async () => {

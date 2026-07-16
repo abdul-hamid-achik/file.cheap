@@ -22,8 +22,11 @@ bytes do not pass through a Vercel Function.
 future streaming Go client. Responses produced by the documented application
 handlers carry an `X-Request-Id`, and their errors use RFC 9457-style problem
 details. Request objects are strict: unknown properties are rejected instead of
-silently ignored. Authentication failures advertise the Bearer challenge,
-while transient catalog contention carries a short `Retry-After` hint.
+silently ignored, and JSON endpoints reject other request media types with a
+typed `415`. Authentication failures advertise the Bearer challenge,
+while transient catalog contention carries a short `Retry-After` hint. Commit
+receipts are bounded before signature verification, and authentication and
+signing credentials must be distinct.
 
 ## Run locally
 
@@ -64,9 +67,16 @@ ADR-002 authorizes no payment integration in this laboratory.
 - a portable recovery card;
 - full download, SHA-256 verification, and a selected-file equivalence report.
 
-The browser laboratory is capped at 64 MiB because it hashes whole files in
-memory. This is an explicit prototype limit, not the future Go client's limit.
-The prototype never deletes or evicts a local stash.
+Protocol v1 and the browser laboratory are capped at 64 MiB because this slice
+uses one non-resumable transfer and hashes whole files in browser memory. A
+future streaming Go client needs a separately versioned multipart/resume
+contract before larger archives are claimed as supported. The prototype never
+deletes or evicts a local stash.
+
+Browser control-plane requests have a 30-second deadline; archive transfers
+have a five-minute deadline and a visible cancel action. A successful commit is
+kept successful even if the subsequent catalog refresh fails, so its generated
+recovery card remains usable and the user is prompted to reconnect.
 
 The exported drill report is a local client observation, explicitly marked
 `tamperEvident: false`. It records what this browser checked; it is not a signed
@@ -74,8 +84,10 @@ server receipt and cannot prove which file a person selected.
 
 The local adapter verifies SHA-256 while accepting an upload. Vercel Blob's
 direct signed upload can prove presence, byte size, and an opaque ETag at commit
-time, but not the client-declared SHA-256. The catalog records this distinction;
-recovery is proven only by a complete client download and hash check.
+time, but not the client-declared SHA-256. The catalog records this distinction,
+rechecks path, media type, size, and committed ETag before granting recovery, and
+bypasses the Blob CDN cache for that signed GET. Recovery is proven only by a
+complete client download and hash check.
 
 The Blob adapter therefore fails closed unless a controlled spike explicitly
 sets `PLATFORM_BLOB_INTEGRITY=presence-size-etag-experimental`. Before any user

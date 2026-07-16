@@ -157,6 +157,41 @@ describe("SyncService", () => {
       service.createDownload({ stashId: input.stashId }),
     ).rejects.toMatchObject({ code: "integrity_mismatch", status: 422 });
   });
+
+  test("rejects changed ETag evidence and unexpected object metadata", async () => {
+    const store = new MemoryObjectStore();
+    const service = new SyncService(store, new CatalogRepository(store), secret);
+    const input = {
+      contentType: stashContentType,
+      sha256: "7".repeat(64),
+      sizeBytes: 16,
+      stashId: "changed-evidence",
+    };
+    const plan = await service.createPlan(input);
+    store.seedObject(plan.object.key, input.sizeBytes);
+    await service.commitPlan({ receipt: plan.receipt });
+
+    store.changeObject(plan.object.key, { etag: "replacement-etag" });
+    await expect(service.createPlan(input)).rejects.toMatchObject({
+      code: "integrity_mismatch",
+      status: 422,
+    });
+    await expect(service.commitPlan({ receipt: plan.receipt })).rejects.toMatchObject({
+      code: "integrity_mismatch",
+      status: 422,
+    });
+    await expect(
+      service.createDownload({ stashId: input.stashId }),
+    ).rejects.toMatchObject({ code: "integrity_mismatch", status: 422 });
+
+    store.changeObject(plan.object.key, {
+      contentType: "application/octet-stream",
+    });
+    await expect(service.createPlan(input)).rejects.toMatchObject({
+      code: "integrity_mismatch",
+      status: 422,
+    });
+  });
 });
 
 class MemoryObjectStore implements ObjectStore {
@@ -179,6 +214,12 @@ class MemoryObjectStore implements ObjectStore {
 
   removeObject(key: string): void {
     this.objects.delete(key);
+  }
+
+  changeObject(key: string, changes: Partial<ObjectMetadata>): void {
+    const current = this.objects.get(key);
+    if (!current) throw new Error(`Missing test object: ${key}`);
+    this.objects.set(key, { ...current, ...changes });
   }
 
   async inspect(key: string): Promise<ObjectMetadata | null> {

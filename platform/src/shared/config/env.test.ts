@@ -85,6 +85,18 @@ describe("platform environment", () => {
     });
   });
 
+  test("keeps authentication and signing credentials independent", () => {
+    prepareLocalEnvironment();
+    process.env.PLATFORM_API_TOKEN = "shared-credential-that-is-long-enough";
+    process.env.PLATFORM_SIGNING_SECRET =
+      "shared-credential-that-is-long-enough";
+    resetConfigForTests();
+
+    expect(() => getConfig()).toThrow(
+      "PLATFORM_API_TOKEN and PLATFORM_SIGNING_SECRET must be different values",
+    );
+  });
+
   test("requires https outside loopback in production", () => {
     prepareLocalEnvironment();
     mutableEnvironment.NODE_ENV = "production";

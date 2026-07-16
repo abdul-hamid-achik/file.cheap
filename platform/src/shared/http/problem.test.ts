@@ -97,6 +97,34 @@ describe("RFC 9457 problem responses", () => {
     });
   });
 
+  test("requires application/json while accepting media type parameters", async () => {
+    const unsupportedRequest = new Request(
+      "http://127.0.0.1:3100/api/v1/sync/plans",
+      {
+        body: "{}",
+        headers: { "content-type": "text/plain" },
+        method: "POST",
+      },
+    );
+    const unsupportedError = await captureAsyncError(() =>
+      parseJson(unsupportedRequest),
+    );
+    expect(unsupportedError).toMatchObject({
+      code: "unsupported_media_type",
+      status: 415,
+    });
+
+    const jsonRequest = new Request(
+      "http://127.0.0.1:3100/api/v1/sync/plans",
+      {
+        body: '{"ok":true}',
+        headers: { "content-type": "Application/JSON; Charset=UTF-8" },
+        method: "POST",
+      },
+    );
+    await expect(parseJson(jsonRequest)).resolves.toEqual({ ok: true });
+  });
+
   test("advertises bearer authentication on 401 responses", () => {
     const request = new Request(
       "http://127.0.0.1:3100/api/v1/stashes",

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const stashContentType = "application/vnd.filecheap.stash" as const;
+export const protocolV1MaxObjectBytes = 64 * 1024 * 1024;
 
 export const stashIdSchema = z
   .string()
@@ -18,14 +19,14 @@ export const createPlanSchema = z
   .object({
     contentType: z.literal(stashContentType).default(stashContentType),
     sha256: sha256Schema,
-    sizeBytes: z.number().int().positive().max(5_000_000_000_000),
+    sizeBytes: z.number().int().positive().max(protocolV1MaxObjectBytes),
     stashId: stashIdSchema,
   })
   .strict();
 
 export const commitPlanSchema = z
   .object({
-    receipt: z.string().min(1),
+    receipt: z.string().min(1).max(4_096),
   })
   .strict();
 
