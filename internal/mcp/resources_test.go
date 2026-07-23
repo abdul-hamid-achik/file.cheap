@@ -91,6 +91,26 @@ func TestMCPResourcesAndPrompts(t *testing.T) {
 		t.Fatalf("tool guide = %+v, resource guide = %+v", toolGuide, guide)
 	}
 
+	siteTool, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "fcheap_docs",
+		Arguments: map[string]any{"action": "site"},
+	})
+	if err != nil {
+		t.Fatalf("call fcheap_docs site: %v", err)
+	}
+	if siteTool.IsError {
+		t.Fatalf("fcheap_docs site returned tool error: %s", toolResultText(siteTool))
+	}
+	var site struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal([]byte(toolResultText(siteTool)), &site); err != nil {
+		t.Fatalf("decode fcheap_docs site: %v", err)
+	}
+	if site.URL != "https://file.cheap/guide/" {
+		t.Fatalf("fcheap_docs site URL = %q, want canonical guide root", site.URL)
+	}
+
 	// Embedded-page output echoes the canonical page name, even when the input
 	// includes the optional Markdown suffix.
 	showTool, err := cs.CallTool(ctx, &mcp.CallToolParams{

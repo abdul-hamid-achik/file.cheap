@@ -1,0 +1,9 @@
+{
+  "$schema": "urn:filecheap.dev:artifact-ref:v1",
+  "version": 1,
+  "provider": "fcheap-local",
+  "uri": "fcheap://stash/demo_20260723_184505.123456789_0123456789abcdef01234567",
+  "artifact_id": "demo_20260723_184505.123456789_0123456789abcdef01234567",
+  "kind": "filecheap.stash",
+  "web_url": "https://cloud.file.cheap/artifacts/local"
+}

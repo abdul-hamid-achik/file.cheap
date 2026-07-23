@@ -1,8 +1,18 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 
 import { requireApiToken } from "@/shared/auth/bearer";
 
 const token = "test-api-token-long-enough";
+const originalLabEnabled = process.env.PLATFORM_RECOVERY_LAB_ENABLED;
+const originalVercel = process.env.VERCEL;
+
+afterEach(() => {
+  restoreEnvironment(
+    "PLATFORM_RECOVERY_LAB_ENABLED",
+    originalLabEnabled,
+  );
+  restoreEnvironment("VERCEL", originalVercel);
+});
 
 describe("bearer authentication", () => {
   test("accepts a case-insensitive scheme and optional whitespace", () => {
@@ -31,10 +41,30 @@ describe("bearer authentication", () => {
       ).toThrow("valid bearer token");
     }
   });
+
+  test("rejects operational API access before reading credentials when the lab is disabled", () => {
+    process.env.VERCEL = "1";
+    delete process.env.PLATFORM_RECOVERY_LAB_ENABLED;
+
+    expect(() =>
+      requireApiToken(
+        requestWithAuthorization(`Bearer ${token}`),
+        token,
+      ),
+    ).toThrow("experimental recovery lab is disabled");
+  });
 });
 
 function requestWithAuthorization(authorization?: string): Request {
   return new Request("http://127.0.0.1:3100/api/v1/stashes", {
     headers: authorization ? { authorization } : undefined,
   });
+}
+
+function restoreEnvironment(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
 }

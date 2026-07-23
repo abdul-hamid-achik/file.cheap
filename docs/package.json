@@ -3,9 +3,13 @@
   "private": true,
   "type": "module",
   "packageManager": "bun@1.3.11",
+  "overrides": {
+    "vite": "6.4.3"
+  },
   "scripts": {
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",
+    "docs:platform": "vitepress build && vite preview --host 127.0.0.1 --port 5173 --outDir .vitepress/dist",
     "docs:preview": "vitepress preview",
     "docs:verify": "bun run docs:build && bun run seo:check",
     "og": "bun .vitepress/tools/generate-og-images.mjs",
@@ -13,6 +17,7 @@
   },
   "devDependencies": {
     "sharp": "^0.35.3",
+    "vite": "6.4.3",
     "vitepress": "^1.6.0"
   }
 }

@@ -2,7 +2,7 @@
 
 file.cheap is a local stdio Model Context Protocol server. Your MCP client
 launches `fcheap mcp serve` as a child process and communicates through standard
-input and output. The same 14 tools, three resource shapes, two prompts, and
+input and output. The same 15 tools, three resource shapes, two prompts, and
 agent operating instructions are available in every compatible client.
 
 Install file.cheap and run `fcheap doctor` before adding it to a client. The
@@ -79,8 +79,8 @@ server.
 
 The server advertises all three MCP surfaces:
 
-- **14 tools:** save, list, info, restore, drop, search, analyze, diff, connect,
-  vacuum, TTL, sweep, cleanup, and embedded docs.
+- **15 tools:** save, list, info, restore, drop, search, analyze, diff, connect,
+  artifact reference, vacuum, TTL, sweep, cleanup, and embedded docs.
 - **Resources:** `fcheap://agent-guide`, `fcheap://stashes`, and
   `fcheap://stash/{id}` for a single manifest.
 - **Prompts:** `investigate_stash` and `find_across_stashes`.
@@ -90,6 +90,10 @@ The server advertises all three MCP surfaces:
 Keep the [MCP tools cheat sheet](/learn/mcp-tools-cheat-sheet) nearby when
 designing an agent workflow. The complete schemas and safety behavior are in the
 [MCP server reference](/mcp/overview).
+
+Use the [local artifact reference guide](/integrations/local-artifact-references)
+when an MCP workflow needs to hand stash metadata to Chalupa, Cairntrace, or
+Glyphrun without moving the saved bytes.
 
 The stash resources expose summaries and manifests. They do not expose
 arbitrary saved file bodies. Search returns matching snippets; restore to a

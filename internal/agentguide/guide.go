@@ -82,6 +82,12 @@ func New(version string) Guide {
 				MCP:      []string{"fcheap_info", "fcheap://stash/{id}"},
 			},
 			{
+				ID:       "reference",
+				Guidance: "When another tool needs to retain an artifact pointer, emit a credential-free local ArtifactRefV1; it remains resolvable only on a device that has this vault.",
+				CLI:      []string{"fcheap artifact-ref <stash-id> --json"},
+				MCP:      []string{"fcheap_artifact_ref"},
+			},
+			{
 				ID:       "preserve",
 				Guidance: "Save only a path within the user's requested scope and surface any secret warning.",
 				CLI:      []string{"fcheap save <path> --json"},
@@ -110,6 +116,7 @@ func New(version string) Guide {
 			capability("save", "Save a file or directory as a stash.", "fcheap save", "fcheap_save", "writes_vault", "user_intent", "built_in", "configured_embedder_when_indexing"),
 			capability("list", "List and filter stash summaries.", "fcheap list", "fcheap_list", "read", "none", "built_in", "none"),
 			capability("info", "Read one full stash manifest.", "fcheap info", "fcheap_info", "read", "none", "built_in", "none"),
+			capability("artifact-ref", "Emit a credential-free ArtifactRefV1 for an existing local stash.", "fcheap artifact-ref", "fcheap_artifact_ref", "read", "none", "built_in", "none"),
 			capability("restore", "Restore and hash-verify stash contents.", "fcheap restore", "fcheap_restore", "writes_target", "user_intent", "built_in", "none"),
 			capability("drop", "Permanently delete a stash.", "fcheap drop", "fcheap_drop", "deletes", "explicit", "built_in", "none"),
 			capability("search", "Search indexed stash files.", "fcheap search", "fcheap_search", "read", "none", "built_in", "configured_embedder_for_semantic_or_hybrid"),
@@ -127,6 +134,7 @@ func New(version string) Guide {
 			{ID: "explicit-deletion", Requirement: "Never force a drop or apply sweep or cleanup without explicit user intent."},
 			{ID: "safe-restore", Requirement: "Prefer a fresh temporary restore target; write into an existing target only when replacement is explicitly intended."},
 			{ID: "secret-warning", Requirement: "Surface save-time secret warnings before sharing content or allowing remote embedding."},
+			{ID: "local-reference-boundary", Requirement: "A fcheap-local ArtifactRefV1 is a pointer, not an upload; never claim it is remotely accessible unless the resolving device has that local vault."},
 			{ID: "remote-model-boundary", Requirement: "A local MCP server does not imply a local model; tool and resource results may be sent to the MCP client's model provider."},
 			{ID: "embedding-boundary", Requirement: "Semantic or hybrid search and analysis may send document or query text to the configured embedder; search queries are not secret-scanned."},
 			{ID: "evidence-not-proof", Requirement: "Treat semantic and vecgrep matches as investigation leads and verify them against source evidence."},
@@ -139,7 +147,7 @@ func New(version string) Guide {
 			Prompts:   []string{"investigate_stash", "find_across_stashes"},
 		},
 		Docs: DocsGuide{
-			Site:     "https://file.cheap",
+			Site:     "https://file.cheap/guide/",
 			Embedded: []string{"fcheap docs list", "fcheap docs show guide/getting-started", "fcheap docs show mcp/overview"},
 		},
 	}
@@ -168,6 +176,7 @@ func MCPInstructions() string {
 		"Prefer fcheap_restore without a target so it uses a fresh temporary directory. " +
 		"Never call fcheap_drop with force=true or apply fcheap_sweep/fcheap_cleanup without explicit user intent. " +
 		"Analysis and semantic/hybrid search may send content or queries to a configured remote embedder; queries are not secret-scanned. " +
-		"fcheap_connect requires optional vecgrep and returns leads, not proof. Keep stash IDs in reports. " +
+		"fcheap_connect requires optional vecgrep and returns leads, not proof. " +
+		"fcheap_artifact_ref is read-only and emits a local pointer, not an upload; it resolves only on devices with that vault. Keep stash IDs in reports. " +
 		"Read fcheap://agent-guide or call fcheap_docs with action=guide for the complete operating guide."
 }

@@ -175,10 +175,14 @@ In smart mode, `--json` separates the plan from the mutation result:
   automatic deletion. Target them with `fcheap cleanup --apply --tool codemap`.
 - **vidtrace/cairntrace** stashes are evidence. Missing-source and other heuristic
   recommendations remain review-only unless an explicit TTL expired.
-- **glyphrun/tinyvault** — not currently fcheap callers; no special handling needed.
+- **glyphrun** artifact packs can be saved and referenced manually; treat them
+  as evidence unless the workflow explicitly marks them as regenerable.
+- **tinyvault** is not currently an fcheap caller; no special handling is needed.
 
 ## See also
 
 - [`sweep`](/cli/sweep) — drop stashes whose TTL has expired
 - [`ttl`](/cli/ttl) — set a TTL on a stash
 - [`vacuum`](/cli/vacuum) — clean up orphaned DB/index entries
+- [Local artifact references](/integrations/local-artifact-references) — hand
+  stash metadata to ecosystem tools without moving bytes

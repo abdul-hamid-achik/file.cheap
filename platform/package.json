@@ -4,7 +4,8 @@
   "private": true,
   "packageManager": "bun@1.3.11",
   "overrides": {
-    "postcss": "8.5.10"
+    "postcss": "8.5.22",
+    "sharp": "0.35.3"
   },
   "scripts": {
     "audit:production": "bun audit --production",
@@ -19,7 +20,7 @@
   },
   "dependencies": {
     "@vercel/blob": "2.6.1",
-    "next": "16.2.10",
+    "next": "16.2.11",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "zod": "4.3.5"
@@ -30,7 +31,7 @@
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "eslint": "9.39.2",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "16.2.11",
     "typescript": "5.9.3"
   }
 }

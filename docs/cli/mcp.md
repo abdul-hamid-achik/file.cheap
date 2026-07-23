@@ -43,6 +43,7 @@ Add fcheap to your Claude Code MCP config:
 | `fcheap_analyze` | Index a stash and optionally search within it |
 | `fcheap_diff` | Compare a stash against a target directory |
 | `fcheap_connect` | Connect a stash to a codebase via vecgrep semantic search to surface candidate `file:line` locations |
+| `fcheap_artifact_ref` | Emit a versioned local reference for an existing stash |
 | `fcheap_vacuum` | Remove orphaned metadata/index entries for stashes whose directory is gone, then compact the DB |
 | `fcheap_ttl` | Set or clear a stash expiry |
 | `fcheap_sweep` | Plan or apply deletion of expired stashes |

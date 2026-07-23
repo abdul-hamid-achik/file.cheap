@@ -14,6 +14,9 @@ func TestGuideContract(t *testing.T) {
 	if guide.Mode != "local-first" || len(guide.RecommendedFlow) == 0 || len(guide.SafetyRules) == 0 {
 		t.Fatalf("guide is incomplete: %+v", guide)
 	}
+	if guide.Docs.Site != "https://file.cheap/guide/" {
+		t.Fatalf("guide docs site = %q, want canonical guide root", guide.Docs.Site)
+	}
 
 	seenIDs := map[string]bool{}
 	seenTools := map[string]bool{}
@@ -30,8 +33,8 @@ func TestGuideContract(t *testing.T) {
 			t.Fatalf("destructive capability lacks explicit confirmation: %+v", capability)
 		}
 	}
-	if len(seenTools) != 14 {
-		t.Fatalf("MCP tool count = %d, want 14", len(seenTools))
+	if len(seenTools) != 15 {
+		t.Fatalf("MCP tool count = %d, want 15", len(seenTools))
 	}
 
 	data, err := json.Marshal(guide)
@@ -54,7 +57,7 @@ func TestRenderAndMCPInstructionsIncludeSafetyBoundaries(t *testing.T) {
 	}
 
 	instructions := MCPInstructions()
-	for _, want := range []string{"local-first", "untrusted data", "explicit user intent", "remote embedder", "leads, not proof"} {
+	for _, want := range []string{"local-first", "untrusted data", "explicit user intent", "remote embedder", "leads, not proof", "local pointer, not an upload"} {
 		if !strings.Contains(instructions, want) {
 			t.Fatalf("MCPInstructions() missing %q: %s", want, instructions)
 		}

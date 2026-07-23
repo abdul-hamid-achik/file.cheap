@@ -1,0 +1,13 @@
+{
+  "$schema": "urn:filecheap.dev:artifact-ref:v1",
+  "version": 1,
+  "provider": "link",
+  "uri": "https://artifacts.example.com/reports/report-01",
+  "kind": "chalupa.report",
+  "producer": {
+    "tool": "chalupa",
+    "version": "0.9.0",
+    "native_schema": "urn:chalupa.dev:report:v1",
+    "native_id": "report_01"
+  }
+}

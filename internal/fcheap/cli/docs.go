@@ -12,6 +12,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const onlineDocsURL = "https://file.cheap/guide/"
+
 var (
 	docsPort   int
 	docsOpen   bool
@@ -164,12 +166,11 @@ Examples:
 var docsOpenCmd = &cobra.Command{
 	Use:   "open",
 	Short: "Open the online docs site in a browser",
-	Long:  `Open https://file.cheap (the deployed docs site) in the default browser.`,
+	Long:  `Open https://file.cheap/guide/ (the online docs site) in the default browser.`,
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		url := "https://file.cheap"
-		printer.Info("Opening %s...", url)
-		return openBrowser(url)
+		printer.Info("Opening %s...", onlineDocsURL)
+		return openBrowser(onlineDocsURL)
 	},
 }
 

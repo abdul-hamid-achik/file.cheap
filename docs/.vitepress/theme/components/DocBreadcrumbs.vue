@@ -19,7 +19,7 @@ const sectionRoots: Record<string, string> = {
   cli: '/cli/',
   compare: '/compare/git-stash-worktree',
   guide: '/guide/',
-  integrations: '/integrations/mcp-clients',
+  integrations: '/integrations/local-artifact-references',
   learn: '/learn',
   mcp: '/mcp/overview',
   studio: '/studio/overview',
@@ -28,7 +28,7 @@ const sectionRoots: Record<string, string> = {
 const crumbs = computed(() => {
   const pathname = route.path.replace(/[?#].*$/, '').replace(/\/$/, '')
   const section = pathname.split('/').filter(Boolean)[0]
-  const values = [{ label: 'file.cheap', href: '/' }]
+  const values = [{ label: 'file.cheap platform', href: 'https://file.cheap/' }]
 
   if (section) {
     values.push({

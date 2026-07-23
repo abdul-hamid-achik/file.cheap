@@ -20,6 +20,7 @@ Run `fcheap agent` for the embedded agent operating guide.
 | Command | Purpose |
 |---|---|
 | [`save`](/cli/save) | Snapshot a file or directory with provenance, hashes, and secret scanning |
+| [`artifact-ref`](/cli/artifact-ref) | Emit versioned metadata that points to an existing local stash |
 | [`list`](/cli/list) | Browse and filter stash summaries |
 | [`info`](/cli/info) | Read one complete stash manifest |
 | [`restore`](/cli/restore) | Materialize a stash and verify its hashes |
@@ -108,6 +109,10 @@ indexing and search. `connect` executes the separately installed vecgrep binary.
 
 No command in this reference uploads stashes to a shipped file.cheap cloud
 service; cloud sync is not part of the current product.
+
+`artifact-ref` lets another tool store a pointer to a local stash. The pointer
+does not move bytes and resolves only where the referenced vault is available.
+See [Local artifact references for agent tools](/integrations/local-artifact-references).
 
 ## More help
 

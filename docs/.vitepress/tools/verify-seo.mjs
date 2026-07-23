@@ -10,6 +10,55 @@ const distDir = join(docsDir, '.vitepress', 'dist')
 const siteUrl = 'https://file.cheap'
 const failures = []
 
+const vercelConfig = JSON.parse(readFileSync(join(docsDir, 'vercel.json'), 'utf8'))
+const allRouteHeaders = vercelConfig.headers?.find((rule) => rule.source === '/(.*)')?.headers || []
+const responseHeaders = new Map(
+  allRouteHeaders.map((header) => [header.key.toLowerCase(), header.value]),
+)
+for (const name of [
+  'content-security-policy',
+  'strict-transport-security',
+  'x-content-type-options',
+  'x-frame-options',
+  'referrer-policy',
+  'permissions-policy',
+]) {
+  if (!responseHeaders.has(name)) failures.push(`vercel.json is missing the ${name} header`)
+}
+
+const contentSecurityPolicy = responseHeaders.get('content-security-policy') || ''
+for (const directive of [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+]) {
+  if (!contentSecurityPolicy.includes(directive)) {
+    failures.push(`vercel.json CSP is missing ${directive}`)
+  }
+}
+if (responseHeaders.get('x-content-type-options') !== 'nosniff') {
+  failures.push('vercel.json must set X-Content-Type-Options to nosniff')
+}
+if (responseHeaders.get('x-frame-options') !== 'DENY') {
+  failures.push('vercel.json must set X-Frame-Options to DENY')
+}
+if (responseHeaders.get('referrer-policy') !== 'strict-origin-when-cross-origin') {
+  failures.push('vercel.json must set a strict cross-origin referrer policy')
+}
+if (!responseHeaders.get('strict-transport-security')?.startsWith('max-age=')) {
+  failures.push('vercel.json must set an HSTS max-age')
+}
+const permissionsPolicy = responseHeaders.get('permissions-policy') || ''
+for (const capability of ['camera=()', 'geolocation=()', 'microphone=()', 'payment=()', 'usb=()']) {
+  if (!permissionsPolicy.includes(capability)) {
+    failures.push(`vercel.json Permissions-Policy is missing ${capability}`)
+  }
+}
+
 function walk(directory, predicate) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name)
@@ -112,7 +161,7 @@ for (const file of htmlFiles) {
 
   const route = routeFor(page)
   const expectedCanonical = canonicalFor(route)
-  expectedSitemapUrls.add(expectedCanonical)
+  if (route !== '/') expectedSitemapUrls.add(expectedCanonical)
 
   if (!robots.includes('index') || robots.includes('noindex')) {
     failures.push(`${page}: page is not explicitly indexable`)
@@ -256,6 +305,9 @@ for (const file of htmlFiles) {
 
 const sitemap = readFileSync(join(distDir, 'sitemap.xml'), 'utf8')
 const sitemapUrls = new Set([...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]))
+if (sitemapUrls.has(`${siteUrl}/`)) {
+  failures.push('docs sitemap must not include the platform root')
+}
 for (const url of expectedSitemapUrls) {
   if (!sitemapUrls.has(url)) failures.push(`sitemap is missing ${url}`)
 }
@@ -264,8 +316,8 @@ for (const url of sitemapUrls) {
 }
 
 const robotsText = readFileSync(join(distDir, 'robots.txt'), 'utf8')
-if (!robotsText.includes('Sitemap: https://file.cheap/sitemap.xml')) {
-  failures.push('robots.txt does not advertise the canonical sitemap')
+if (!robotsText.includes('Sitemap: https://file.cheap/docs-sitemap.xml')) {
+  failures.push('robots.txt does not advertise the canonical docs sitemap')
 }
 
 const securityText = readFileSync(join(distDir, '.well-known', 'security.txt'), 'utf8')

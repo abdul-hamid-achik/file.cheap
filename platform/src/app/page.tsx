@@ -1,154 +1,176 @@
-import { RecoveryLab } from "@/features/sync/recovery-lab";
-import { getConfig } from "@/shared/config/env";
+import type { Metadata } from "next";
+import Link from "next/link";
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-static";
 
-const protocolSteps = [
+export const metadata: Metadata = {
+  alternates: {
+    canonical: "/",
+  },
+  description:
+    "Save agent-generated files locally with provenance and hashes, search them later, and restore verified bytes through the file.cheap CLI or MCP server.",
+  openGraph: {
+    description:
+      "Save, find, and restore agent artifacts through one verified local-first lifecycle.",
+    images: [
+      {
+        alt: "file.cheap — the local artifact vault for coding agents",
+        height: 630,
+        url: "/og.png",
+        width: 1200,
+      },
+    ],
+    title: "file.cheap — local artifact vault for coding agents",
+    type: "website",
+    url: "/",
+  },
+  robots: {
+    follow: true,
+    index: true,
+  },
+  title: "Local artifact vault for coding agents",
+  twitter: {
+    card: "summary_large_image",
+    description:
+      "Save, find, and restore agent artifacts through one verified local-first lifecycle.",
+    images: ["/og.png"],
+    title: "file.cheap — local artifact vault for coding agents",
+  },
+};
+
+const workflowSteps = [
   {
+    copy: "Copy any file or directory into the local vault. The manifest records its source, producing tool, tags, sizes, hashes, and likely secret findings.",
     number: "01",
-    title: "Plan the transfer",
-    copy: "The control plane validates development authorization, size, hash, and current catalog state before any archive moves.",
+    title: "Save the artifact",
   },
   {
+    copy: "Index readable files when you need retrieval. Keyword search stays local; semantic and hybrid modes remain explicit optional choices.",
     number: "02",
-    title: "Move immutable bytes",
-    copy: "Archive bytes take a short-lived direct path. Hash-derived keys make retries deterministic and conflicts visible; recovery still proves full integrity.",
+    title: "Index what matters",
   },
   {
+    copy: "Search across saved files and inspect provenance before restoring. Results are ranked leads, never a substitute for the complete artifact.",
     number: "03",
-    title: "Commit the reference",
-    copy: "Only an object that passes the active adapter checks can enter the catalog. The local stash remains untouched and authoritative.",
+    title: "Find the evidence",
   },
   {
+    copy: "Restore into a fresh directory and verify every recovered file against the hashes in its manifest before treating it as faithful evidence.",
     number: "04",
-    title: "Recover and prove",
-    copy: "Download the archive, hash it again, and compare the result with the original recovery contract.",
+    title: "Restore and prove",
   },
-] as const;
-
-const billingFlow = [
-  ["Account", "A real user and workspace boundary"],
-  ["Checkout", "Stripe-hosted purchase and customer portal"],
-  ["Entitlement", "Verified billing state projected in Neon"],
-  ["Device", "CLI authorization reads current access"],
 ] as const;
 
 export default function HomePage() {
-  const config = getConfig();
-
   return (
     <main>
       <nav className="nav shell" aria-label="Primary navigation">
-        <a className="wordmark" href="https://file.cheap" aria-label="file.cheap home">
+        <Link className="wordmark" href="/" aria-label="file.cheap home">
           <span className="wordmarkMark" aria-hidden="true">f·</span>
           <span>file.cheap</span>
-        </a>
+        </Link>
         <div className="navLinks">
-          <a href="#recovery-lab">Lab</a>
-          <a href="#protocol">Protocol</a>
-          <a className="businessNavLink" href="#business-model">Business model</a>
+          <a href="#workflow">Workflow</a>
+          <a className="navSecondaryLink" href="#agents">Agents</a>
+          <a className="navOptionalLink" href="/guide/">Docs</a>
         </div>
         <div className="navMeta">
-          <span className="statusDot" aria-hidden="true" />
-          <span><span className="navMetaContext">research build · </span>local lab</span>
+          <span className="statusDot available" aria-hidden="true" />
+          <span><span className="navMetaContext">available · </span>local core</span>
         </div>
       </nav>
 
       <section className="hero shell" aria-labelledby="hero-title">
         <div className="heroCopy">
-          <div className="eyebrow">Optional remote vault / protocol v1</div>
+          <div className="eyebrow">Local artifact vault for coding agents</div>
           <h1 id="hero-title">
-            Keep the local copy.<br />
-            <em>Prove the remote one.</em>
+            Keep the files your agents create.<br />
+            <em>Find them when they matter.</em>
           </h1>
           <p className="heroLead">
-            A recovery-first experiment for moving immutable file.cheap stashes through
-            a provider-neutral protocol, then downloading the archive and proving its
-            exact SHA-256. Nothing here deletes, evicts, or weakens the local vault.
+            Save any file tree with provenance and hashes, search it locally, and
+            restore the exact bytes later. file.cheap gives people, CLIs, and MCP
+            clients one durable lifecycle without requiring a cloud account.
           </p>
           <div className="heroActions">
-            <a className="button primary" href="#recovery-lab">Run a recovery drill</a>
-            <a className="button secondary" href="#protocol">Inspect the boundaries</a>
+            <a className="button primary" href="/guide/getting-started">
+              Install file.cheap
+            </a>
+            <a className="button secondary" href="/integrations/mcp-clients">
+              Connect an agent
+            </a>
           </div>
-          <dl className="heroFacts" aria-label="Prototype facts">
-            <div><dt>{config.storageDriver}</dt><dd>active adapter</dd></div>
-            <div><dt>SHA-256</dt><dd>recovery contract</dd></div>
-            <div><dt>zero</dt><dd>local files removed</dd></div>
+          <dl className="heroFacts" aria-label="Product facts">
+            <div><dt>local</dt><dd>source of truth</dd></div>
+            <div><dt>SHA-256</dt><dd>verified restore</dd></div>
+            <div><dt>15</dt><dd>typed MCP tools</dd></div>
           </dl>
         </div>
 
-        <aside className="receiptScene" aria-label="Example recovery receipt">
+        <aside className="receiptScene" aria-label="Example local stash receipt">
           <div className="receiptGlow" aria-hidden="true" />
           <div className="receiptCard">
             <div className="receiptTopline">
-              <span>Illustrative drill report</span>
-              <span className="verifiedBadge"><i aria-hidden="true">✓</i> example passed</span>
+              <span>Local stash manifest</span>
+              <span className="verifiedBadge">
+                <i aria-hidden="true">✓</i> hashes verified
+              </span>
             </div>
             <div className="receiptTitle">
               <span className="receiptGlyph" aria-hidden="true">◫</span>
               <div>
-                <strong>agent-session.fcheap</strong>
-                <span>immutable archive · 18.4 MB</span>
+                <strong>checkout-investigation</strong>
+                <span>38 files · agent artifact</span>
               </div>
             </div>
             <div className="receiptHash">
-              <span>SHA-256</span>
-              <code>9f27 2b11 8a6e ··· 0e44 b31c</code>
+              <span>stash ID</span>
+              <code>8f3a 91c2 ··· local vault</code>
             </div>
             <ol className="receiptTimeline">
-              <li className="complete"><span>Local archive selected</span><b>01</b></li>
-              <li className="complete"><span>Remote object committed</span><b>02</b></li>
-              <li className="complete"><span>Archive downloaded</span><b>03</b></li>
-              <li className="complete"><span>Bytes matched locally</span><b>04</b></li>
+              <li className="complete"><span>Artifact saved</span><b>01</b></li>
+              <li className="complete"><span>Readable files indexed</span><b>02</b></li>
+              <li className="complete"><span>Evidence found by query</span><b>03</b></li>
+              <li className="complete"><span>Restore hashes verified</span><b>04</b></li>
             </ol>
             <div className="receiptFooter">
-              <span>proof, not a promise</span>
-              <span>protocol v1</span>
+              <span>manifest is durable</span>
+              <span>indexes rebuild</span>
             </div>
           </div>
-            <div className="receiptCaption">
-              <span aria-hidden="true">↳</span>
-              A recovery card is a portable contract. The local drill report is observational
-              evidence, not a tamper-evident receipt.
+          <div className="receiptCaption">
+            <span aria-hidden="true">↳</span>
+            Search narrows the evidence. A verified restore recovers the complete
+            saved bytes when an investigation needs more than a snippet.
           </div>
         </aside>
       </section>
 
-      <section className="trustRail" aria-label="Design guarantees">
+      <section className="trustRail" aria-label="Product guarantees">
         <div className="shell">
-          <span>Local-first by default</span>
-          <span>Provider-neutral grants</span>
-          <span>Content-addressed objects</span>
-          <span>Deep verification required</span>
+          <span>No account required</span>
+          <span>Local manifest authority</span>
+          <span>Private keyword search</span>
+          <span>Verified recovery</span>
         </div>
       </section>
 
-      <section className="shell labSection" id="recovery-lab" aria-labelledby="lab-title">
-        <div className="sectionHeading splitHeading">
-          <div>
-            <div className="eyebrow">The complete recovery loop</div>
-            <h2 id="lab-title">Trust the proof.<br />Not the progress bar.</h2>
-          </div>
-          <p>
-            This browser lab exercises the same authenticated HTTP grants a future Go
-            client can consume. Use a small test archive, complete all five steps, and
-            keep the generated recovery card beside the stash manifest.
-          </p>
-        </div>
-        <RecoveryLab storageDriver={config.storageDriver} />
-      </section>
-
-      <section className="shell protocolSection" id="protocol" aria-labelledby="protocol-title">
+      <section
+        className="shell protocolSection"
+        id="workflow"
+        aria-labelledby="workflow-title"
+      >
         <div className="sectionHeading">
-          <div className="eyebrow">A deliberately narrow protocol</div>
-          <h2 id="protocol-title">Four transitions.<br />One invariant.</h2>
+          <div className="eyebrow">A complete artifact lifecycle</div>
+          <h2 id="workflow-title">Save the work.<br />Recover the context.</h2>
           <p className="sectionLead">
-            Remote bytes may extend the local workflow; they never become permission to
-            destroy its source of truth.
+            Temporary folders, traces, screenshots, reports, and generated bundles
+            become named, searchable stashes with an explicit path back to their
+            original bytes.
           </p>
         </div>
         <div className="protocolGrid">
-          {protocolSteps.map((step) => (
+          {workflowSteps.map((step) => (
             <article key={step.number}>
               <span className="stepNumber">{step.number}</span>
               <div className="protocolIcon" aria-hidden="true"><i /></div>
@@ -157,119 +179,49 @@ export default function HomePage() {
             </article>
           ))}
         </div>
-        <div className="boundaryGrid">
+
+        <div className="boundaryGrid" id="agents">
           <article className="boundaryCard localBoundary">
-            <div className="boundaryLabel"><span aria-hidden="true">●</span> now · local lab</div>
-            <h3>Blob-shaped without Blob lock-in</h3>
+            <div className="boundaryLabel">
+              <span aria-hidden="true">●</span> people · CLI and Studio
+            </div>
+            <h3>A vault that stays understandable</h3>
             <p>
-              The protocol talks in plans, receipts, and transfer grants. The active
-              <strong> {config.storageDriver}</strong> adapter can be replaced without changing
-              the future CLI contract.
+              Inspect manifests, browse stashes, compare a saved tree with current
+              files, and choose exactly when an operation may write or delete.
             </p>
             <ul>
-              <li>Bearer-protected control plane</li>
-              <li>Immutable, hash-derived object keys</li>
-              <li>Restart-safe local catalog</li>
+              <li>Local SQLite and search indexes</li>
+              <li>Streaming compression and verified restore</li>
+              <li>Explicit retention and cleanup decisions</li>
             </ul>
           </article>
           <article className="boundaryCard futureBoundary">
-            <div className="boundaryLabel"><span aria-hidden="true">◇</span> gate · before customers</div>
-            <h3>Neon is the transactional boundary</h3>
+            <div className="boundaryLabel">
+              <span aria-hidden="true">◇</span> agents · stdio MCP
+            </div>
+            <h3>A filing system agents can operate safely</h3>
             <p>
-              Blob stores bytes. It cannot safely own tenants, quota reservations,
-              entitlements, webhook deduplication, or multi-device conflicts.
+              Typed tools, resources, prompts, and a version-matched operating guide
+              let any compatible MCP client preserve and retrieve artifacts without
+              inventing storage behavior.
             </p>
             <ul>
-              <li>Real identity and workspace isolation</li>
-              <li>Transactional quota and usage ledger</li>
-              <li>Client-side encryption and recovery keys</li>
-              <li>Staged upload verification and repair</li>
+              <li>Fifteen typed local tools</li>
+              <li>Queryable manifests and bounded search results</li>
+              <li>Safety guidance available inside the protocol</li>
             </ul>
           </article>
-        </div>
-      </section>
-
-      <section className="businessSection" id="business-model" aria-labelledby="business-title">
-        <div className="shell">
-          <div className="sectionHeading splitHeading businessHeading">
-            <div>
-              <div className="eyebrow">Path to sustainability</div>
-              <h2 id="business-title">Charge for the safety net.<br />Never the local tool.</h2>
-            </div>
-            <div className="hypothesisCopy">
-              <span className="hypothesisBadge">Design hypothesis · not for sale</span>
-              <p>
-                The free CLI earns trust locally. A paid vault can fund durable remote
-                storage, verified restores, and multi-device continuity without turning
-                core recovery into a subscription hostage.
-              </p>
-            </div>
-          </div>
-
-          <div className="pricingGrid" aria-label="Future pricing hypothesis">
-            <article className="priceCard">
-              <div className="priceHeader"><h3>Local</h3><small>available now</small></div>
-              <div className="price"><strong>$0</strong><span>local core</span></div>
-              <p>The complete local-first workflow remains useful without an account.</p>
-              <ul>
-                <li>Save, restore, search, and diff</li>
-                <li>SQLite and vector indexes on-device</li>
-                <li>CLI, Studio, MCP, and docs</li>
-              </ul>
-            </article>
-            <article className="priceCard featuredPrice">
-              <div className="priceHeader"><h3>Remote Vault Beta</h3><small>hypothesis</small></div>
-              <div className="price"><strong>$15</strong><span>/ month</span></div>
-              <p>A recovery hypothesis sized to test first-upload verification economics.</p>
-              <ul>
-                <li>50 GB remote storage</li>
-                <li>Routine download allowance · metering under validation</li>
-                <li>3 authorized devices</li>
-              </ul>
-            </article>
-            <article className="priceCard quietPrice">
-              <div className="priceHeader"><h3>Teams</h3><small>later</small></div>
-              <div className="price"><strong>—</strong><span>after demand</span></div>
-              <p>Shared custody requires a different security and collaboration model.</p>
-              <ul>
-                <li>Workspace roles and audit history</li>
-                <li>Policy-managed retention</li>
-                <li>Consolidated billing</li>
-              </ul>
-            </article>
-          </div>
-
-          <div className="billingBlueprint" aria-labelledby="billing-flow-title">
-            <div className="billingIntro">
-              <span className="eyebrow">Future Stripe boundary</span>
-              <h3 id="billing-flow-title">Payment records intent.<br />Entitlement policy grants access.</h3>
-              <p>
-                A successful browser redirect is never an entitlement. Only verified
-                webhook delivery or reconciled canonical Stripe state, persisted in Neon,
-                can update the internal access projection read by an authorized device.
-              </p>
-            </div>
-            <ol className="billingFlow">
-              {billingFlow.map(([title, copy], index) => (
-                <li key={title}>
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                  <div><strong>{title}</strong><small>{copy}</small></div>
-                </li>
-              ))}
-            </ol>
-            <div className="recoveryPromise">
-              <span aria-hidden="true">↗</span>
-              <p><strong>Recovery-first billing:</strong> payment trouble may pause new uploads after a grace period. Existing recovery and export remain available through a clearly documented retention window before any tombstone lifecycle.</p>
-            </div>
-          </div>
         </div>
       </section>
 
       <footer className="shell footer">
-        <span>Branch experiment · never deployed</span>
+        <span>Local-first core · open source</span>
         <div>
-          <a href="#recovery-lab">Back to lab ↑</a>
-          <a href="https://file.cheap/docs/">Local-first docs ↗</a>
+          <a href="/guide/">Documentation</a>
+          <a href="https://github.com/abdul-hamid-achik/file.cheap">
+            Source
+          </a>
         </div>
       </footer>
     </main>

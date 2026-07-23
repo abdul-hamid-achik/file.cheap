@@ -1,13 +1,22 @@
 import openApiDocument from "../../../../../openapi.json";
 
-import { methodNotAllowedResponse } from "@/shared/http/problem";
+import {
+  methodNotAllowedResponse,
+  problemResponse,
+} from "@/shared/http/problem";
 import { jsonResponse } from "@/shared/http/response";
+import { requireRecoveryLabAccess } from "@/shared/config/recovery-lab-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export function GET(request: Request): Response {
-  return jsonResponse(request, openApiDocument);
+  try {
+    requireRecoveryLabAccess();
+    return jsonResponse(request, openApiDocument);
+  } catch (error) {
+    return problemResponse(error, request);
+  }
 }
 
 function unsupportedMethod(request: Request): Response {

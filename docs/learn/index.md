@@ -22,6 +22,9 @@ permanent folder on your machine.
 - [Build a local-first agent stack](/learn/local-first-agent-stack) — see how
   fcheap, MCP, Ollama, and optional vecgrep fit together without a hosted
   application.
+- [Share local artifacts across agent tools](/integrations/local-artifact-references) —
+  connect Chalupa, Cairntrace, and Glyphrun with versioned stash metadata
+  without moving the saved bytes.
 - [MCP tools cheat sheet](/learn/mcp-tools-cheat-sheet) — choose the smallest
   safe tool, resource, or prompt for an agent workflow.
 - [Agent operating guide](/guide/agent-guide) — give an assistant the

@@ -160,4 +160,38 @@ describe("OpenAPI contract", () => {
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(document).toEqual(openApiDocument);
   });
+
+  test("does not advertise the experimental contract when the lab is disabled", async () => {
+    const originalLabEnabled = process.env.PLATFORM_RECOVERY_LAB_ENABLED;
+    process.env.PLATFORM_RECOVERY_LAB_ENABLED = "false";
+
+    try {
+      const { GET } = await import("@/app/api/v1/openapi.json/route");
+      const request = new Request(
+        "https://file.cheap/api/v1/openapi.json",
+        { headers: { "x-request-id": "openapi-disabled-01" } },
+      );
+
+      const response = GET(request);
+      const problem = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(response.headers.get("content-type")).toContain(
+        "application/problem+json",
+      );
+      expect(response.headers.get("x-request-id")).toBe("openapi-disabled-01");
+      expect(problem).toMatchObject({
+        code: "route_unavailable",
+        requestId: "openapi-disabled-01",
+        status: 404,
+        title: "Route unavailable",
+      });
+    } finally {
+      if (originalLabEnabled === undefined) {
+        delete process.env.PLATFORM_RECOVERY_LAB_ENABLED;
+      } else {
+        process.env.PLATFORM_RECOVERY_LAB_ENABLED = originalLabEnabled;
+      }
+    }
+  });
 });

@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:filecheap.dev:artifact-ref:v1",
+  "title": "file.cheap ArtifactRefV1",
+  "description": "A stable, credential-free artifact reference. This revision accepts strict local, cloud, and external-link variants. Integrity is intentionally absent until file.cheap has a canonical TreeDigestV2 or portable bundle digest; legacy ContentHash must not be copied into this contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "version",
+    "provider",
+    "uri",
+    "kind"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "urn:filecheap.dev:artifact-ref:v1"
+    },
+    "version": {
+      "const": 1
+    },
+    "provider": {
+      "enum": [
+        "fcheap-local",
+        "fcheap-cloud",
+        "link"
+      ]
+    },
+    "uri": {
+      "type": "string",
+      "maxLength": 2048
+    },
+    "artifact_id": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "kind": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "producer": {
+      "$ref": "#/$defs/producer"
+    },
+    "web_url": {
+      "description": "Optional stable convenience URL for fcheap-cloud only. Signed URLs, credentials, query strings, and fragments are forbidden.",
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https://[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:/[A-Za-z0-9._~!$&'()*+,;=:@/\\-]*)?$"
+    }
+  },
+  "oneOf": [
+    {
+      "title": "Local stash reference",
+      "description": "The only variant emitted by the current fcheap CLI and MCP server. It resolves only on devices that possess the referenced local vault.",
+      "required": [
+        "artifact_id"
+      ],
+      "properties": {
+        "provider": {
+          "const": "fcheap-local"
+        },
+        "uri": {
+          "pattern": "^fcheap://stash/[A-Za-z0-9][A-Za-z0-9._-]{0,98}$"
+        },
+        "artifact_id": {
+          "maxLength": 99,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,98}$"
+        }
+      },
+      "not": {
+        "required": [
+          "web_url"
+        ]
+      }
+    },
+    {
+      "title": "Hosted file.cheap artifact reference",
+      "description": "Reserved for a future hosted vault. The current recovery laboratory is not an implementation of this provider.",
+      "required": [
+        "artifact_id"
+      ],
+      "properties": {
+        "provider": {
+          "const": "fcheap-cloud"
+        },
+        "uri": {
+          "pattern": "^fcheap://cloud/vaults/[A-Za-z0-9][A-Za-z0-9._-]{0,159}/artifacts/[A-Za-z0-9][A-Za-z0-9._-]{0,159}$"
+        },
+        "artifact_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$"
+        }
+      }
+    },
+    {
+      "title": "Stable external link reference",
+      "description": "A metadata-only HTTP(S) pointer. Consumers must not treat it as a signed transfer URL or fetch it server-side without a separate policy decision.",
+      "properties": {
+        "provider": {
+          "const": "link"
+        },
+        "uri": {
+          "pattern": "^https?://[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:/[A-Za-z0-9._~!$&'()*+,;=:@/\\-]*)?$"
+        }
+      },
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "artifact_id"
+            ]
+          },
+          {
+            "required": [
+              "web_url"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool"
+      ],
+      "properties": {
+        "tool": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+\\-]*$"
+        },
+        "native_schema": {
+          "type": "string",
+          "maxLength": 256,
+          "format": "uri",
+          "pattern": "^(?:urn:[!-~]+|https://[!-~]+)$",
+          "not": {
+            "pattern": "(^[A-Za-z][A-Za-z0-9+.-]*://[^/?#]*@)|\\?"
+          }
+        },
+        "native_id": {
+          "type": "string",
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "entrypoint": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$",
+          "not": {
+            "pattern": "(^|/)\\.\\.?(/|$)"
+          }
+        }
+      }
+    }
+  }
+}

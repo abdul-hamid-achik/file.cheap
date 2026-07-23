@@ -4,7 +4,16 @@ Guidelines for AI agents working on the file.cheap codebase.
 
 ## Architecture
 
-file.cheap is a local-first CLI tool + MCP server for saving, restoring, compressing, and analyzing files and folders for agent workflows. There is no API server, no cloud infrastructure. Everything stores files locally on the user's machine.
+file.cheap's shipped product is a local-first CLI tool + MCP server for saving,
+restoring, compressing, and analyzing files and folders for agent workflows. The
+Go core stores files locally on the user's machine and has no dependency on the
+optional hosted platform.
+
+The repository also contains `platform/`, an isolated Next.js public website and
+recovery-protocol laboratory. The website may be deployed independently from the
+Go product. The recovery lab and `/api/v1` are disabled by default in hosted
+environments, and the multi-customer remote vault is not shipped. The platform
+rules below apply only inside that directory.
 
 ### Key Layers
 
@@ -28,7 +37,15 @@ file.cheap is a local-first CLI tool + MCP server for saving, restoring, compres
 
 10. **Studio TUI** (`internal/studio/`) -- Bubbletea v2 terminal interface for browsing stashes, viewing manifests, and triggering operations.
 
-11. **Docs** (`docs/`) -- VitePress documentation site. Deployed to Vercel at file.cheap. The `fcheap docs` CLI command serves, builds, lists, and reads doc pages.
+11. **Docs** (`docs/`) -- VitePress documentation site. Its historical
+    `file.cheap/{guide,cli,mcp,...}` URLs remain canonical and are routed through
+    the public platform project to a separately deployed docs artifact. The
+    `fcheap docs` CLI command serves, builds, lists, and reads doc pages.
+
+12. **Public Platform** (`platform/`) -- isolated Next.js website plus a gated,
+    single-workspace recovery laboratory. It is a separate deployment and
+    dependency boundary. Nothing under `platform/` may be imported by the Go
+    local-first core.
 
 ## Code Style
 
@@ -99,6 +116,74 @@ Built with `charm.land/bubbletea/v2` and `charm.land/lipgloss/v2`. Uses `tea.New
 
 Built with glyphrun. Specs live in `e2e/flows/`. Each spec builds the binary as a precondition, runs CLI commands in a PTY, and verifies outcomes via screen content and exit codes.
 
+## Public Platform Conventions
+
+These conventions apply only to `platform/`. They narrow the Go core's
+prohibition on HTTP servers and cloud SDKs so the isolated website can contain a
+Next.js control plane and Vercel Blob adapter. Never import the application or
+its dependencies from the local-first Go core.
+
+### Scope and release state
+
+- The Next.js root page is the public product website. It may be deployed
+  independently, but code readiness does not authorize a production domain
+  cutover.
+- The recovery lab and stateful `/api/v1` routes are a single-workspace
+  experiment. Keep them disabled on public deployments. `/api/v1/health` may
+  report that the public site is healthy without initializing storage.
+- A static bearer token is acceptable only for local development or a
+  controlled preview protected by Vercel access controls.
+- The lab is not a public remote vault. Do not send it customer data or use it
+  as the integration boundary for Chalupa, Cairntrace, or Glyphrun.
+
+### Technology and boundaries
+
+- Use Bun for installs and scripts. Do not add npm or Yarn lockfiles.
+- Use Next.js App Router, strict TypeScript, and Route Handlers under
+  `platform/src/app/api/v1/`.
+- Keep `/` independent of storage credentials and recovery configuration.
+- Pin `FILECHEAP_DOCS_ORIGIN` to a reviewed immutable Vercel docs deployment.
+  Never point it to `file.cheap`, `www.file.cheap`, the active platform
+  deployment, or a moving branch/project alias.
+- Route Handlers authenticate, validate, call a feature service, and translate
+  errors. Business rules belong in `platform/src/features/`.
+- Provider SDKs belong behind ports in `platform/src/platform/`. Only the
+  Vercel Blob adapter may import `@vercel/blob`.
+- Local adapter data is disposable and lives under `platform/.data/`.
+- Archive objects are immutable and SHA-256 addressed. Never overwrite one
+  silently or bind one stash ID to two hashes.
+- Large archive bytes require direct signed transfers in a future production
+  design; do not proxy them through a Vercel Function.
+- API errors use `application/problem+json` and the RFC 9457 shape.
+
+### Recovery-lab constraints
+
+- `PLATFORM_RECOVERY_LAB_ENABLED` must be false or absent on the public
+  deployment. An explicit `true` is only for a controlled, access-protected
+  preview.
+- Do not add auth providers, payments, email, teams, continuous sync, public
+  sharing, background deletion, or telemetry to the lab.
+- Blob is not a production multi-tenant catalog. Add a transactional database
+  before any external multi-customer beta.
+- Never infer remote safety from `HEAD` or ETag alone. The prototype never
+  evicts local content. A future encrypted client needs a complete
+  hydrate-and-hash check and recovery-key export before eviction is considered.
+
+### Platform verification
+
+Run from `platform/`:
+
+```sh
+bun run check
+bun run audit:production
+```
+
+The check performs linting, strict type checking, unit and contract tests, a
+production build, and an isolated recovery E2E. The audit must report no known
+production dependency vulnerabilities. Before a domain cutover, follow the root
+[`DEPLOYMENT.md`](DEPLOYMENT.md); preview, domain assignment, and rollback are
+separate release gates.
+
 ## Storage Layout
 
 ```
@@ -120,10 +205,13 @@ Never bundle external binaries. Detect at runtime, show clear errors with `fchea
 
 ## What NOT to Do
 
-- Don't add HTTP server/API code
-- Don't add authentication or billing
-- Don't import cloud SDKs (S3, GCS, etc.)
-- Don't add telemetry, metrics, or tracing
+These restrictions apply to the Go local-first core. The public platform has
+only the narrow exceptions documented above.
+
+- Don't add HTTP server/API code to the Go core
+- Don't add authentication or billing to the Go core
+- Don't import cloud SDKs (S3, GCS, etc.) into the Go core
+- Don't add telemetry, metrics, or tracing to the Go core
 - Don't bundle external binaries
 - Don't use `os/exec` outside of `internal/analyze/` (for vecgrep subprocess) and `internal/fcheap/cli/docs.go` (for VitePress dev/build)
 
@@ -137,7 +225,18 @@ When you need to document something, add a note, or capture a decision:
 2. Notes should follow the existing vault structure (folders by topic)
 3. The vault is the single source of truth for project knowledge -- architecture decisions, debugging notes, feature plans, etc.
 
-The `docs/` directory in this repo is specifically for the **VitePress documentation site** deployed to Vercel at `file.cheap`. It contains user-facing documentation written in Markdown and built with VitePress. Do not confuse the two:
+The `docs/` directory in this repo is specifically for the **VitePress
+documentation site**. It contains user-facing Markdown built separately and
+served through the public `file.cheap` platform on the existing documentation
+routes. Do not confuse the two:
 
 - `~/notes/projects/file.cheap` (Obsidian vault) -- internal notes, decisions, research
-- `docs/` (VitePress site) -- public-facing documentation at file.cheap
+- `docs/` (VitePress site) -- public-facing documentation at
+  `file.cheap/guide`, `file.cheap/cli`, and the other historical docs routes
+
+Architecture decisions live only in the Obsidian vault, not under `platform/`.
+The current decisions are:
+
+- `projects/file.cheap/ADR-001-blob-first-recovery-prototype.md`
+- `projects/file.cheap/ADR-002-stripe-billing-boundary.md`
+- `projects/file.cheap/ADR-003-public-site-and-docs-zones.md`

@@ -21,6 +21,7 @@ version. MCP clients receive the same guide during initialization and through
 | `fcheap_analyze` | Index a stash and optionally search it | Yes | Remote embedding of flagged content is blocked by default |
 | `fcheap_diff` | Compare a stash with a directory | No | Reports only-in-stash, only-in-target, and changed files |
 | `fcheap_connect` | Rank source code related to evidence | Yes, with indexing | Requires external vecgrep; results are leads, not proof |
+| `fcheap_artifact_ref` | Emit a versioned local stash reference | No | The reference resolves only where the matching vault exists |
 | `fcheap_vacuum` | Remove orphaned derived entries and compact indexes | Yes | Payload manifests remain the source of truth |
 | `fcheap_ttl` | Set or clear stash expiry | Yes | Expiry does not delete until sweep is applied |
 | `fcheap_sweep` | Preview or apply expired-stash deletion | Optional | Preview is the default |
@@ -65,4 +66,5 @@ metadata and file hashes, not arbitrary file bodies.
 
 For input fields and exact structured output, use the full
 [MCP server reference](/mcp/overview). For client configuration, see
-[Connect file.cheap to MCP clients](/integrations/mcp-clients).
+[Connect file.cheap to MCP clients](/integrations/mcp-clients). For cross-tool
+handoffs, see [Local artifact references](/integrations/local-artifact-references).

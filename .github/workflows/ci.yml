@@ -81,8 +81,11 @@ jobs:
       - name: Build and verify docs
         run: bun run docs:verify
 
+      - name: Audit docs build dependencies
+        run: bun audit
+
   platform:
-    name: Platform prototype
+    name: Platform
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -100,6 +103,9 @@ jobs:
 
       - name: Verify isolated platform
         run: bun run check
+
+      - name: Audit platform production dependencies
+        run: bun run audit:production
 
   build:
     name: Build

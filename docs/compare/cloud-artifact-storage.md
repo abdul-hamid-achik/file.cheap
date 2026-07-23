@@ -5,10 +5,12 @@ moving bytes. file.cheap is good at giving local agent artifacts identity,
 provenance, search, explicit retention, and verified restore. They are different
 layers, not interchangeable brands of the same product.
 
-file.cheap currently has no cloud storage or account service. Everything in its
-vault stays on the user's machine unless an optional embedder is configured to
-receive text. Use this comparison to decide whether local lifecycle tooling is
-enough or whether you also need an independently managed remote copy.
+The shipped file.cheap product has no cloud-storage account service. Its public
+website includes a gated recovery laboratory, but the hosted remote vault is not
+available to users. Everything in the local vault stays on the user's machine
+unless an optional embedder is configured to receive text. Use this comparison
+to decide whether local lifecycle tooling is enough or whether you also need an
+independently managed remote copy.
 
 ## Compare the jobs
 
@@ -71,4 +73,6 @@ reduce downloads, while an automatic two-way mirror can amplify them.
 For the current product, start with [`compress`](/cli/compress),
 [`cleanup`](/cli/cleanup), and [`restore`](/cli/restore). Read
 [local-first vs cloud artifacts](/learn/local-first-vs-cloud-artifacts) for a
-policy framework rather than a vendor comparison.
+policy framework rather than a vendor comparison. A
+[local artifact reference](/integrations/local-artifact-references) can let a
+control plane record the stash identity, but it is metadata—not a remote copy.

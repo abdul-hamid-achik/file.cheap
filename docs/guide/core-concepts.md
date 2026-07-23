@@ -31,6 +31,24 @@ Every stash contains `manifest.json`. It records information such as:
 The manifest travels with the payload. SQLite and veclite make the local vault
 queryable, but neither derived index replaces the manifest or saved content.
 
+## Artifact references point without copying
+
+An artifact reference is a versioned metadata envelope that identifies one
+existing stash:
+
+```text
+fcheap://stash/<stash-id>
+```
+
+It lets a control plane or another agent tool record where evidence belongs
+without copying the payload into that product. The URI remains local: it
+resolves only on a machine whose configured vault contains the stash.
+
+The reference does not replace the manifest and does not carry a signed URL or
+credentials. Use [`artifact-ref`](/cli/artifact-ref) to emit one, and see the
+[ecosystem integration guide](/integrations/local-artifact-references) for
+Chalupa, Cairntrace, and Glyphrun handoffs.
+
 ## Payloads and derived indexes have different jobs
 
 The default layout is:
@@ -128,8 +146,9 @@ protects a stash from sweep and cleanup application.
 ## Local-first is not the same as backed up
 
 The local vault avoids a hosted dependency and keeps normal reads off the
-network. It does not protect against loss of the machine or disk. file.cheap has
-no shipped cloud sync service today, so independently design backup and key
+network. It does not protect against loss of the machine or disk. The public
+file.cheap website does not change that storage model: its recovery laboratory
+is gated, and no hosted vault ships today. Independently design backup and key
 recovery for evidence that must survive local hardware failure.
 
 Continue with [Workflow examples](/guide/workflows), or use the

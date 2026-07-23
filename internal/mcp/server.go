@@ -14,6 +14,7 @@ import (
 	doccontent "github.com/abdul-hamid-achik/file.cheap/docs"
 	"github.com/abdul-hamid-achik/file.cheap/internal/agentguide"
 	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
+	"github.com/abdul-hamid-achik/file.cheap/internal/artifactref"
 	"github.com/abdul-hamid-achik/file.cheap/internal/cleanup"
 	"github.com/abdul-hamid-achik/file.cheap/internal/diff"
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
@@ -205,6 +206,49 @@ func (s *Server) registerTools(srv *mcp.Server) {
 			return toolError("info failed: %v", err), nil, nil
 		}
 		return textResult(st.Manifest), nil, nil
+	})
+
+	// fcheap_artifact_ref
+	type artifactRefInput struct {
+		StashID         string `json:"stash_id" jsonschema:"The existing local stash ID to reference"`
+		Kind            string `json:"kind,omitempty" jsonschema:"Artifact kind override; defaults to a safe kind derived from the stash bundle"`
+		ProducerTool    string `json:"producer_tool,omitempty" jsonschema:"Tool that produced the native artifact; required when any producer metadata is supplied"`
+		ProducerVersion string `json:"producer_version,omitempty" jsonschema:"Version of the producer tool"`
+		NativeSchema    string `json:"native_schema,omitempty" jsonschema:"Absolute schema URI for the native artifact"`
+		NativeID        string `json:"native_id,omitempty" jsonschema:"Producer-native artifact ID"`
+		Entrypoint      string `json:"entrypoint,omitempty" jsonschema:"Safe relative path to the native descriptor inside the stash"`
+	}
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "fcheap_artifact_ref",
+		Description: "Return a stable, credential-free ArtifactRefV1 for an existing local stash. This is read-only and does not upload or sign anything.",
+		Annotations: &mcp.ToolAnnotations{
+			DestructiveHint: &f,
+			OpenWorldHint:   &f,
+			IdempotentHint:  true,
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in artifactRefInput) (*mcp.CallToolResult, any, error) {
+		mgr, err := stash.NewManager(s.stashDir)
+		if err != nil {
+			return toolError("create stash manager: %v", err), nil, nil
+		}
+		st, err := mgr.Info(ctx, in.StashID)
+		if err != nil {
+			return toolError("artifact ref failed: %v", err), nil, nil
+		}
+		ref, err := artifactref.NewLocal(st.Manifest.ID, st.Manifest.BundleType, artifactref.LocalOptions{
+			Kind: in.Kind,
+			Producer: artifactref.Producer{
+				Tool:         in.ProducerTool,
+				Version:      in.ProducerVersion,
+				NativeSchema: in.NativeSchema,
+				NativeID:     in.NativeID,
+				Entrypoint:   in.Entrypoint,
+			},
+		})
+		if err != nil {
+			return toolError("%v", err), nil, nil
+		}
+		return textResult(ref), nil, nil
 	})
 
 	// fcheap_restore
@@ -678,7 +722,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 			}), nil, nil
 		case "site":
 			return textResult(map[string]string{
-				"url":               "https://file.cheap",
+				"url":               "https://file.cheap/guide/",
 				"local":             "fcheap docs serve",
 				"local_requirement": "file.cheap source checkout with Bun",
 			}), nil, nil

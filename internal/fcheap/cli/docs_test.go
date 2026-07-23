@@ -57,6 +57,12 @@ func TestDocsBuildInvocationUsesRequestedOutput(t *testing.T) {
 	}
 }
 
+func TestOnlineDocsURLTargetsGuide(t *testing.T) {
+	if onlineDocsURL != "https://file.cheap/guide/" {
+		t.Fatalf("onlineDocsURL = %q, want canonical guide root", onlineDocsURL)
+	}
+}
+
 func mustGetwd(t *testing.T) string {
 	t.Helper()
 	dir, err := filepath.Abs(".")

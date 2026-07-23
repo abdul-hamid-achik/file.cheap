@@ -143,6 +143,11 @@ input:focus-visible,
   background: transparent;
 }
 
+.statusDot.available {
+  border-color: var(--green);
+  background: var(--green);
+}
+
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1.12fr) minmax(390px, 0.75fr);
@@ -1180,6 +1185,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   .wordmarkMark { width: 27px; height: 27px; font-size: 11px; }
   .navLinks { gap: 10px; }
   .navLinks a { font-size: 10px; }
+  .navSecondaryLink { display: none; }
   .navMeta { gap: 5px; font-size: 8px; }
   .navMetaContext { display: none; }
   .statusDot { width: 6px; height: 6px; }

@@ -1,0 +1,9 @@
+{
+  "$schema": "urn:filecheap.dev:artifact-ref:v1",
+  "version": 1,
+  "provider": "fcheap-cloud",
+  "uri": "fcheap://cloud/vaults/vlt_01/artifacts/art_01",
+  "artifact_id": "art_01",
+  "kind": "cairntrace.run",
+  "web_url": "https://cloud.file.cheap/artifacts/art_01?token=secret"
+}

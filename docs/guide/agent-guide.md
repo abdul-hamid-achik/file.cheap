@@ -29,7 +29,11 @@ with `{"action":"guide"}`.
 - Search results are ranked leads. Restore verifies the complete saved bytes.
 - `diff` compares corresponding directory trees. `connect` searches a codebase
   for locations related to evidence.
-- The product has no shipped cloud sync, account, or HTTP API today.
+- An artifact reference points another tool to a stash without copying its
+  bytes. A local reference resolves only where the matching vault exists.
+- The installed product has no shipped cloud sync, account, or HTTP API. The
+  public website and its gated recovery laboratory are separate from these local
+  agent tools; no hosted vault is available to users.
 
 ## Stay inside the user's scope
 
@@ -58,6 +62,7 @@ to finish an indexing request.
 | Browse summaries | `fcheap list` | `fcheap_list` or `fcheap://stashes` | Read-only |
 | Inspect one manifest | `fcheap info <id>` | `fcheap_info` or `fcheap://stash/{id}` | Read-only |
 | Save a snapshot | `fcheap save <path>` | `fcheap_save` | Creates durable data |
+| Emit a local artifact reference | `fcheap artifact-ref <id>` | `fcheap_artifact_ref` | Read-only |
 | Index saved text | `fcheap analyze <id>` | `fcheap_analyze` | Updates derived index |
 | Search saved files | `fcheap search <query>` | `fcheap_search` | Read-only; an embedder may receive query text |
 | Compare a matching tree | `fcheap diff <id> <dir>` | `fcheap_diff` | Read-only |
@@ -83,6 +88,8 @@ to finish an indexing request.
 8. Require explicit user intent before permanent deletion or applied cleanup.
 9. Keep stash IDs in the final investigation record so another agent can
    reproduce the lookup.
+10. When another product needs the artifact identity, emit a versioned
+    reference and state that it requires the matching local vault.
 
 ## Reading content through MCP
 
@@ -170,6 +177,16 @@ fcheap connect <stash-id> /absolute/path/to/repository --index
 
 `--index` builds vecgrep's derived repository index. Report candidate locations
 as hypotheses to inspect, not as confirmed root causes.
+
+### Attach evidence to another tool
+
+```bash
+fcheap artifact-ref <stash-id> --kind cairntrace.run --json
+```
+
+Pass the complete envelope to the receiving integration. Do not present the
+reference as an upload or a public URL. See
+[Local artifact references for agent tools](/integrations/local-artifact-references).
 
 ### Review storage safely
 

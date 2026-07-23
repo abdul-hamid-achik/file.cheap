@@ -30,6 +30,10 @@ const PAGE_META: Record<string, PageMeta> = {
     title: 'fcheap analyze — index stashes for search',
     description: 'Index a local stash in veclite and optionally search it with BM25, semantic, or hybrid retrieval.',
   },
+  'cli/artifact-ref.md': {
+    title: 'fcheap artifact-ref — local stash references',
+    description: 'Emit a versioned fcheap-local reference so agent tools can share metadata for an existing stash without copying its bytes.',
+  },
   'cli/cleanup.md': {
     title: 'fcheap cleanup — reclaim local stash space',
     description: 'Score, review, and safely remove expired, duplicate, orphaned, or regenerable local stashes.',
@@ -144,7 +148,7 @@ const PAGE_META: Record<string, PageMeta> = {
   },
   'mcp/overview.md': {
     title: 'MCP file server for Claude Code and Codex',
-    description: 'Configure file.cheap as a local stdio MCP server with 14 tools, resources, and investigation prompts.',
+    description: 'Configure file.cheap as a local stdio MCP server with 15 tools, resources, and investigation prompts.',
     image: '/og-mcp.png',
   },
   'studio/overview.md': {
@@ -155,6 +159,10 @@ const PAGE_META: Record<string, PageMeta> = {
     title: 'Connect file.cheap to MCP clients',
     description: 'Add the local file.cheap MCP server to Claude Code, Codex CLI, OpenCode, and any stdio MCP client.',
     image: '/og-mcp.png',
+  },
+  'integrations/local-artifact-references.md': {
+    title: 'Local artifact references for agent tools',
+    description: 'Connect Chalupa, Cairntrace, and Glyphrun with versioned local stash references while file.cheap keeps ownership of bytes and restore.',
   },
   'compare/git-stash-worktree.md': {
     title: 'file.cheap vs Git stash and worktree',
@@ -191,7 +199,7 @@ const PAGE_META: Record<string, PageMeta> = {
   },
   'learn/mcp-tools-cheat-sheet.md': {
     title: 'file.cheap MCP tools cheat sheet',
-    description: 'Choose among all 14 local MCP tools, resources, and prompts with concise safety and workflow guidance.',
+    description: 'Choose among all 15 local MCP tools, resources, and prompts with concise safety and workflow guidance.',
     image: '/og-mcp.png',
   },
 }
@@ -214,7 +222,8 @@ const softwareApplication = {
   featureList: [
     'Save and restore file and folder snapshots with hash verification',
     'BM25 keyword, semantic, and hybrid search across stashes',
-    'MCP server with 14 tools, resources, and prompts',
+    'MCP server with 15 tools, resources, and prompts',
+    'Versioned local artifact references for cross-tool handoffs',
     'Diff stashes against a live codebase',
     'Trace artifacts to likely owning code with vecgrep',
     'Streaming tar and zstd compression',
@@ -246,7 +255,7 @@ const sectionRoots: Record<string, string> = {
   cli: '/cli',
   compare: '/compare/git-stash-worktree',
   guide: '/guide',
-  integrations: '/integrations/mcp-clients',
+  integrations: '/integrations/local-artifact-references',
   learn: '/learn',
   mcp: '/mcp/overview',
   studio: '/studio/overview',
@@ -336,6 +345,7 @@ const sidebar = {
       text: 'Agent integrations',
       items: [
         { text: 'Agent operating guide', link: '/guide/agent-guide' },
+        { text: 'Share local artifact references', link: '/integrations/local-artifact-references' },
         { text: 'Connect MCP clients', link: '/integrations/mcp-clients' },
         { text: 'MCP server reference', link: '/mcp/overview' },
       ],
@@ -354,6 +364,7 @@ const sidebar = {
       items: [
         { text: 'Overview and global flags', link: '/cli/' },
         { text: 'save', link: '/cli/save' },
+        { text: 'artifact-ref', link: '/cli/artifact-ref' },
         { text: 'list', link: '/cli/list' },
         { text: 'info', link: '/cli/info' },
         { text: 'restore', link: '/cli/restore' },
@@ -398,6 +409,7 @@ const sidebar = {
       text: 'MCP',
       items: [
         { text: 'Server overview and schemas', link: '/mcp/overview' },
+        { text: 'Share local artifact references', link: '/integrations/local-artifact-references' },
         { text: 'Agent operating guide', link: '/guide/agent-guide' },
         { text: 'Connect clients', link: '/integrations/mcp-clients' },
         { text: 'Tools cheat sheet', link: '/learn/mcp-tools-cheat-sheet' },
@@ -409,6 +421,7 @@ const sidebar = {
     {
       text: 'Agent integrations',
       items: [
+        { text: 'Share local artifact references', link: '/integrations/local-artifact-references' },
         { text: 'Connect MCP clients', link: '/integrations/mcp-clients' },
         { text: 'Agent operating guide', link: '/guide/agent-guide' },
         { text: 'MCP server reference', link: '/mcp/overview' },
@@ -559,16 +572,19 @@ export default defineConfig({
     hostname: SITE_URL,
     lastmodDateOnly: false,
     transformItems: (items) =>
-      items.map((item) => ({
-        ...item,
-        url: item.url === '/' ? item.url : item.url.replace(/\/$/, ''),
-      })),
+      items
+        .filter((item) => item.url !== '' && item.url !== '/')
+        .map((item) => ({
+          ...item,
+          url: item.url.replace(/\/$/, ''),
+        })),
   },
 
   themeConfig: {
     siteTitle: 'file.cheap',
     sidebar,
     nav: [
+      { text: 'Platform', link: 'https://file.cheap/' },
       { text: 'Get started', link: '/guide/getting-started' },
       { text: 'Workflows', link: '/guide/workflows' },
       { text: 'CLI', link: '/cli/' },
@@ -578,6 +594,7 @@ export default defineConfig({
           { text: 'Server overview', link: '/mcp/overview' },
           { text: 'Agent operating guide', link: '/guide/agent-guide' },
           { text: 'Connect clients', link: '/integrations/mcp-clients' },
+          { text: 'Local artifact references', link: '/integrations/local-artifact-references' },
         ],
       },
       {

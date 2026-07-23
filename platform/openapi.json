@@ -54,7 +54,8 @@
                 "schema": { "type": "object" }
               }
             }
-          }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
     },

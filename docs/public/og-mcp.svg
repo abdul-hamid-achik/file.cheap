@@ -22,7 +22,7 @@
   <text x="76" y="86" fill="#9bd99e" font-family="ui-monospace, monospace" font-size="19" font-weight="700" letter-spacing="3">MODEL CONTEXT PROTOCOL</text>
   <text x="72" y="175" fill="url(#amber)" font-family="ui-monospace, monospace" font-size="68" font-weight="700" letter-spacing="-3">Give your agent</text>
   <text x="72" y="247" fill="url(#amber)" font-family="ui-monospace, monospace" font-size="54" font-weight="700" letter-spacing="-2">a local artifact vault.</text>
-  <text x="76" y="306" fill="#ece6d6" font-family="system-ui, sans-serif" font-size="28">14 typed tools · resources · prompts · stdio</text>
+  <text x="76" y="306" fill="#ece6d6" font-family="system-ui, sans-serif" font-size="28">15 typed tools · resources · prompts · stdio</text>
 
   <g font-family="ui-monospace, monospace" font-size="15">
     <rect x="76" y="362" width="150" height="42" rx="10" fill="#1b1812" stroke="#524d40"/>
@@ -41,7 +41,7 @@
     <text x="0" y="94" fill="#e8a33d">fcheap_restore</text>
     <text x="184" y="22" fill="#9bd99e">fcheap_diff</text>
     <text x="184" y="58" fill="#9bd99e">fcheap_connect</text>
-    <text x="184" y="94" fill="#9bd99e">+ 9 more</text>
+    <text x="184" y="94" fill="#9bd99e">+ 10 more</text>
   </g>
 
   <g transform="translate(764 116)" filter="url(#shadow)">

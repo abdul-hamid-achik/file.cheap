@@ -10,12 +10,16 @@ files, and optional local model tools add semantic retrieval.
 The default path stays inside one machine. Network access appears only when you
 configure a remote embedder or independently copy a stash somewhere else.
 
+A versioned `fcheap-local` artifact reference can cross process or product
+boundaries as metadata, but it does not change that network boundary. The
+reference resolves only where its source vault exists.
+
 ## The pieces
 
 ### MCP client
 
 Claude Code, Codex CLI, OpenCode, or another stdio MCP client launches
-`fcheap mcp serve`. It can call 14 typed tools, read stash resources, and use
+`fcheap mcp serve`. It can call 15 typed tools, read stash resources, and use
 investigation prompts. The client never needs direct access to the vault layout.
 
 ### file.cheap
@@ -87,4 +91,4 @@ the MCP server; add Ollama only when paraphrase search improves real work, and
 add vecgrep only when connecting evidence to source code is a repeated need.
 
 Next, compare [BM25, semantic, and hybrid search](/learn/bm25-semantic-hybrid-search)
-or follow the [vidtrace-to-code investigation](/learn/vidtrace-to-code).
+or follow the [local artifact reference integration](/integrations/local-artifact-references).

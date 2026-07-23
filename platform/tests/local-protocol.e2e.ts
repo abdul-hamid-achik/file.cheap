@@ -20,6 +20,7 @@ const serverEnvironment: Record<string, string | undefined> = {
   PLATFORM_API_TOKEN: apiToken,
   PLATFORM_DATA_DIR: dataDirectory,
   PLATFORM_PUBLIC_URL: "http://127.0.0.1:3100",
+  PLATFORM_RECOVERY_LAB_ENABLED: "true",
   PLATFORM_SIGNING_SECRET: signingSecret,
   PLATFORM_STORAGE_DRIVER: "local",
 };
@@ -69,7 +70,29 @@ try {
     homepage.headers.get("x-frame-options") === "DENY",
     "homepage did not send legacy frame protection",
   );
-  await homepage.arrayBuffer();
+  const homepageHtml = await homepage.text();
+  assert(
+    homepageHtml.includes("Keep the files your agents create"),
+    "homepage did not render the static local product",
+  );
+  assert(
+    !homepageHtml.includes("Development bearer token"),
+    "homepage exposed the experimental recovery client",
+  );
+
+  const lab = await timedFetch(`${baseUrl}/lab`);
+  assert(lab.status === 200, "explicitly enabled recovery lab did not load");
+  const labHtml = await lab.text();
+  assert(
+    labHtml.includes("Development bearer token"),
+    "recovery lab did not render its controlled client",
+  );
+  assert(
+    /<meta[^>]+name="robots"[^>]+content="noindex, nofollow, noarchive, nosnippet"/u.test(
+      labHtml,
+    ),
+    "recovery lab did not emit a complete noindex policy",
+  );
 
   const healthRequestId = requestId("health-first");
   const health = await requestJson<HealthResponse>(

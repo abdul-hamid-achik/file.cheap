@@ -19,7 +19,7 @@ fcheap docs <subcommand> [flags]
 |---|---|---:|
 | `list` | List canonical embedded Markdown page paths | Yes |
 | `show <page>` | Print one embedded page to stdout | Yes |
-| `open` | Open `https://file.cheap` in the default browser | Yes |
+| `open` | Open `https://file.cheap/guide/` in the default browser | Yes |
 | `serve` | Start the VitePress development server | Source checkout only |
 | `build` | Build the production documentation site | Source checkout only |
 | `preview` | Preview the built site locally | Source checkout only |
@@ -105,9 +105,14 @@ Contributors can run the Bun scripts directly from `docs/` as well:
 bun install --frozen-lockfile
 bun run docs:dev
 bun run docs:build
+bun run docs:platform
 bun run docs:preview
 bun run docs:verify
 ```
+
+`docs:platform` builds the site and serves its production-like preview on
+`127.0.0.1:5173` for the composed Next.js website. Use `docs:dev` when working
+on the VitePress site directly.
 
 The VitePress project and its dependencies are not bundled into release
 packages. Installed users do not need Bun to run `docs list`, `docs show`, or

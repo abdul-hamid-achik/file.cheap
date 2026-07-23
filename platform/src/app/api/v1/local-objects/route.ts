@@ -12,12 +12,14 @@ import {
   attachResponseMetadata,
   jsonResponse,
 } from "@/shared/http/response";
+import { requireRecoveryLabAccess } from "@/shared/config/recovery-lab-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function PUT(request: Request): Promise<Response> {
   try {
+    requireRecoveryLabAccess();
     const { key, token } = parameters(request);
     const store = localStore();
     return jsonResponse(request, await store.acceptUpload(request, key, token), {
@@ -30,6 +32,7 @@ export async function PUT(request: Request): Promise<Response> {
 
 export async function GET(request: Request): Promise<Response> {
   try {
+    requireRecoveryLabAccess();
     const { key, token } = parameters(request);
     return attachResponseMetadata(
       request,

@@ -54,6 +54,33 @@ fcheap restore <stash-id>
 The default destination is a fresh temporary directory. The command prints that
 path and reports whether the restored files match their manifest hashes.
 
+## Hand an artifact to Chalupa
+
+When Cairntrace or Glyphrun produces evidence for a Chalupa suite run, save the
+completed run directory and emit a versioned reference:
+
+```bash
+fcheap save /absolute/path/to/completed-run \
+  --tool cairntrace \
+  --tag checkout-e2e
+
+fcheap artifact-ref <stash-id> \
+  --kind cairntrace.run \
+  --producer-tool cairntrace \
+  --native-schema urn:cairntrace.dev:run:v1 \
+  --native-id <native-run-id> \
+  --entrypoint run.json \
+  --json
+```
+
+The `task report` integration must attach that envelope when it first ingests
+the source run. Chalupa stores run metadata and the reference; file.cheap keeps
+the bytes, manifest hashes, retention, and restore behavior.
+
+The reference does not upload anything. `fcheap://stash/<stash-id>` resolves
+only on a machine whose configured vault contains that stash. See the complete
+[Chalupa, Cairntrace, and Glyphrun integration guide](/integrations/local-artifact-references).
+
 ## Compare a generated tree over time
 
 `diff` is useful when the stash and target represent the same directory shape.

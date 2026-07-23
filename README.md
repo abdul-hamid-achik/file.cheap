@@ -7,7 +7,8 @@ and temporary folders that agent workflows create. Each stash gets provenance,
 per-file hashes, searchable content, and a deliberate lifecycle—without requiring
 an account or hosted service.
 
-[Documentation](https://file.cheap/) ·
+[Website](https://file.cheap/) ·
+[Documentation](https://file.cheap/guide/) ·
 [Five-minute start](https://file.cheap/guide/getting-started) ·
 [Agent guide](https://file.cheap/guide/agent-guide) ·
 [MCP setup](https://file.cheap/integrations/mcp-clients)
@@ -27,8 +28,63 @@ file.cheap gives them:
 - a CLI, terminal Studio, and local stdio MCP server;
 - explicit compression, TTL, sweep, cleanup, and deletion.
 
-It is not cloud sync, consumer backup, or a replacement for Git. The current
-product stores its vault on your machine.
+It is not consumer backup or a replacement for Git. The shipped CLI stores its
+vault on your machine. The repository also contains a public website and a gated
+remote-vault laboratory, but no hosted vault is currently offered to users.
+
+## Repository surfaces
+
+The repository deliberately keeps three different surfaces separate:
+
+| Surface | Directory | Status |
+| --- | --- | --- |
+| Local vault | Go packages under `cmd/` and `internal/` | Shipped product |
+| Public documentation | `docs/` | VitePress site, deployed independently |
+| Public website and recovery lab | `platform/` | Website launch-ready; lab experimental and gated |
+
+The Next.js project serves the product home and rewrites the established
+`/guide`, `/cli`, `/mcp`, `/integrations`, `/learn`, `/compare`, and `/studio`
+paths to one reviewed, immutable docs deployment. The public page does not need
+storage credentials. The `/lab` UI and stateful recovery endpoints stay hidden
+on hosted deployments unless a controlled, access-protected preview explicitly
+sets `PLATFORM_RECOVERY_LAB_ENABLED=true`.
+
+The lab is a single-workspace protocol experiment, not the integration surface
+for Chalupa, Cairntrace, or Glyphrun. Those tools should exchange stable local
+artifact references and keep file.cheap responsible for bytes, integrity, and
+restore.
+
+### Recovery laboratory
+
+When explicitly enabled, the laboratory separates a small JSON control plane
+from the archive data plane:
+
+1. `POST /api/v1/sync/plans` validates authorization, size, content type, hash,
+   and catalog state, then returns a constrained transfer grant.
+2. The client uploads one immutable
+   `application/vnd.filecheap.stash` archive through that grant.
+3. `POST /api/v1/sync/commits` records available adapter evidence and binds the
+   object to a stash ID.
+4. `POST /api/v1/sync/downloads` revalidates object presence and issues an exact
+   download grant; the client must download every byte and verify SHA-256.
+
+`GET /api/v1/stashes` exposes the current single-workspace catalog.
+`GET /api/v1/openapi.json` exposes the OpenAPI 3.1 contract only while the lab
+is enabled. `GET /api/v1/health` remains public so a deployment can report
+`recoveryLab: "disabled"` without initializing storage.
+
+Local development uses a disposable filesystem adapter under `platform/.data/`.
+The production-shaped adapter keeps Private Vercel Blob behind a replaceable
+port and lets archive bytes bypass Vercel Functions. Its direct upload can prove
+presence, size, and opaque ETag at commit time—not the caller-declared SHA-256.
+The Blob adapter therefore fails closed unless a controlled experiment
+explicitly acknowledges that limitation.
+
+Protocol v1 is capped at 64 MiB, uses one non-resumable transfer, and never
+deletes or evicts a local stash. It tests idempotent plan/commit behavior,
+conflict handling, portable recovery cards, and complete recovery drills. It
+does not establish accounts, tenant isolation, billing, transactional quotas,
+client-side encryption, continuous sync, or disaster recovery.
 
 ## Install
 
@@ -143,7 +199,7 @@ ranked source-code candidates—not proof of code ownership.
 Requirements:
 
 - Go 1.25+
-- Bun 1.3+ for the VitePress site
+- Bun 1.3+ for the VitePress docs and Next.js public website
 
 ```bash
 go test ./...
@@ -152,7 +208,33 @@ go build ./cmd/fcheap
 cd docs
 bun install --frozen-lockfile
 bun run docs:verify
+bun audit
+
+cd ../platform
+bun install --frozen-lockfile
+bun run check
+bun run audit:production
 ```
+
+To run the composed website locally, serve a production-like docs build and
+start Next in a second terminal:
+
+```bash
+cd docs
+bun run docs:platform
+
+cd ../platform
+cp .env.example .env.local
+bun run dev
+```
+
+The platform is available at `http://127.0.0.1:3100`. Use `bun run docs:dev`
+when developing the docs directly; the composed site intentionally proxies the
+static preview so local routing matches the deployed topology.
+
+The production topology, preview matrix, domain cutover, and rollback procedure
+are in [`DEPLOYMENT.md`](DEPLOYMENT.md). Passing local checks does not authorize
+a deployment or domain change.
 
 See the [core concepts](https://file.cheap/guide/core-concepts), the
 [CLI reference](https://file.cheap/cli/), and

@@ -15,6 +15,7 @@ save, list, search, or restore a stash.
 | Understand manifests, indexes, and the local storage model | [Core concepts](/guide/core-concepts) |
 | Follow complete CLI and agent workflows | [Workflow examples](/guide/workflows) |
 | Give an AI assistant safe operating instructions | [Agent guide](/guide/agent-guide) |
+| Share saved artifacts with Chalupa, Cairntrace, or Glyphrun | [Local artifact references](/integrations/local-artifact-references) |
 | Connect Claude Code, Codex CLI, or another MCP client | [MCP client setup](/integrations/mcp-clients) |
 | Diagnose an installation or operation | [Troubleshooting](/guide/troubleshooting) |
 | Look up a command or global flag | [CLI reference](/cli/) |
@@ -56,10 +57,11 @@ binary includes:
 - retention, cleanup planning, and a Studio terminal interface;
 - embedded documentation and an operating guide for agents.
 
-It does not currently provide cloud sync, accounts, an HTTP API, authentication,
-or billing. Optional OpenAI and non-loopback Ollama embedders can receive text
-when you explicitly configure them; the stash payload itself remains in the
-local vault.
+The installed product does not provide cloud sync, accounts, an HTTP API,
+authentication, or billing. file.cheap also has a public product website and a
+gated recovery laboratory, but no hosted vault ships to users. Optional OpenAI
+and non-loopback Ollama embedders can receive text when you explicitly configure
+them; the stash payload itself remains in the local vault.
 
 ## Next step
 

@@ -125,6 +125,7 @@ func init() {
 	rootCmd.AddCommand(restoreCmd)
 	rootCmd.AddCommand(dropCmd)
 	rootCmd.AddCommand(infoCmd)
+	rootCmd.AddCommand(artifactRefCmd)
 	rootCmd.AddCommand(compressCmd)
 	rootCmd.AddCommand(analyzeCmd)
 	rootCmd.AddCommand(searchCmd)

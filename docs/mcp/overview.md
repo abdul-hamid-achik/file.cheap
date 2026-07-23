@@ -13,11 +13,13 @@ restore, analyze, or compare files, it calls a typed fcheap tool. Agents can
 also read stash metadata and the operating guide as resources, then launch
 multi-step investigations from prompts.
 
-The vault is local. OpenAI and non-loopback Ollama embedders are the exception:
-when explicitly configured, they receive text during semantic/hybrid indexing
-and search. file.cheap does not expose an HTTP server or shipped cloud sync.
-A local MCP process also does not imply a local language model: the client may
-send tool and resource results to its configured model provider.
+The installed vault and MCP server are local. OpenAI and non-loopback Ollama
+embedders are the exception: when explicitly configured, they receive text
+during semantic/hybrid indexing and search. The public file.cheap website and
+its gated recovery laboratory are separate; this MCP server exposes neither a
+hosted HTTP API nor shipped cloud sync. A local MCP process also does not imply a
+local language model: the client may send tool and resource results to its
+configured model provider.
 
 ## Setup
 
@@ -83,7 +85,7 @@ In `~/.config/opencode/opencode.json`, under `mcp`:
 
 Register a server named `fcheap` that runs `fcheap mcp serve` over stdio. Clients
 that read a `.mcp.json` (`mcpServers` map) use the same shape as the Claude Code
-JSON above. On first connect the server advertises 14 tools, the
+JSON above. On first connect the server advertises 15 tools, the
 `fcheap://agent-guide` and `fcheap://stashes` resources, the
 `fcheap://stash/{id}` resource template, and two prompts. Its initialization
 instructions include the concise agent guide.
@@ -139,6 +141,35 @@ Get detailed information about a stash.
 - `stash_id` (string, required) -- the stash ID
 
 **Output:** Full manifest with file tree
+
+### fcheap_artifact_ref
+
+Return a stable ArtifactRefV1 for an existing local stash. This read-only,
+idempotent tool does not upload, sign, restore, or mutate the stash.
+
+**Input:**
+
+- `stash_id` (string, required) -- existing local stash ID
+- `kind` (string, optional) -- lowercase artifact kind; defaults to a safe kind
+  derived from the manifest bundle type
+- `producer_tool` (string, optional) -- native producer name; required when any
+  other producer field is supplied
+- `producer_version` (string, optional) -- producer version
+- `native_schema` (string, optional) -- absolute schema URI without credentials
+  or a query string
+- `native_id` (string, optional) -- producer-native artifact ID
+- `entrypoint` (string, optional) -- safe relative path to the native descriptor
+  inside the stash
+
+**Output:** The strict JSON envelope with `$schema`,
+`version: 1`, `provider: "fcheap-local"`,
+`uri: "fcheap://stash/<artifact_id>"`, `artifact_id`, `kind`, and optional
+`producer`. The same value is available as structured tool content.
+
+The emitted local envelope has no `integrity` or `web_url` field and never
+contains credentials or signed URLs. Its URI resolves only where the matching
+local vault exists. See [`artifact-ref`](/cli/artifact-ref) and the
+[ecosystem integration guide](/integrations/local-artifact-references).
 
 ### fcheap_restore
 

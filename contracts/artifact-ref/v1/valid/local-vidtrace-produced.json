@@ -1,0 +1,15 @@
+{
+  "$schema": "urn:filecheap.dev:artifact-ref:v1",
+  "version": 1,
+  "provider": "fcheap-local",
+  "uri": "fcheap://stash/run_20260723_184501.123456789_89abcdef0123456789abcdef",
+  "artifact_id": "run_20260723_184501.123456789_89abcdef0123456789abcdef",
+  "kind": "cairntrace.run",
+  "producer": {
+    "tool": "cairntrace",
+    "version": "1.8.0",
+    "native_schema": "urn:cairntrace.dev:run:v1",
+    "native_id": "run_01",
+    "entrypoint": "run.json"
+  }
+}
