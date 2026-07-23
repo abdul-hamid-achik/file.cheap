@@ -28,7 +28,7 @@ const sectionRoots: Record<string, string> = {
 const crumbs = computed(() => {
   const pathname = route.path.replace(/[?#].*$/, '').replace(/\/$/, '')
   const section = pathname.split('/').filter(Boolean)[0]
-  const values = [{ label: 'file.cheap platform', href: 'https://file.cheap/' }]
+  const values = [{ label: 'file.cheap platform', href: '/' }]
 
   if (section) {
     values.push({
@@ -49,7 +49,11 @@ const crumbs = computed(() => {
   <nav class="fc-breadcrumbs" aria-label="Breadcrumb">
     <ol>
       <li v-for="(crumb, index) in crumbs" :key="crumb.href">
-        <a v-if="index < crumbs.length - 1" :href="crumb.href">{{ crumb.label }}</a>
+        <a
+          v-if="index < crumbs.length - 1"
+          :href="crumb.href"
+          :target="crumb.href === '/' ? '_self' : undefined"
+        >{{ crumb.label }}</a>
         <span v-else aria-current="page">{{ crumb.label }}</span>
       </li>
     </ol>

@@ -699,9 +699,8 @@ async function startServer(): Promise<RunningServer> {
 }
 
 async function buildApplication(): Promise<void> {
-  const nextCli = join(platformRoot, "node_modules", "next", "dist", "bin", "next");
   const build = Bun.spawn(
-    [globalThis.process.execPath, nextCli, "build"],
+    [globalThis.process.execPath, "run", "build"],
     {
       cwd: platformRoot,
       env: serverEnvironment,

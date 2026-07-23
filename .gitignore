@@ -9,7 +9,14 @@ bin/
 dist/
 .glyphrun/
 
-# VitePress docs (built on Vercel)
+# VitePress docs (built inside the platform project)
+platform/docs/node_modules/
+platform/docs/.vitepress/dist/
+platform/docs/.vitepress/cache/
+platform/public/_docs/
+
+# Local leftovers from the former standalone docs project
+docs/.vercel/
 docs/node_modules/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
@@ -52,3 +59,4 @@ testdata/*.jpeg
 testdata/*.png
 testdata/*.gif
 testdata/*.webp
+.vercel

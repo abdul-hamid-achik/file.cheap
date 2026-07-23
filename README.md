@@ -34,20 +34,24 @@ remote-vault laboratory, but no hosted vault is currently offered to users.
 
 ## Repository surfaces
 
-The repository deliberately keeps three different surfaces separate:
+The repository has one shipped local product and one unified public site:
 
 | Surface | Directory | Status |
 | --- | --- | --- |
 | Local vault | Go packages under `cmd/` and `internal/` | Shipped product |
-| Public documentation | `docs/` | VitePress site, deployed independently |
-| Public website and recovery lab | `platform/` | Website launch-ready; lab experimental and gated |
+| Public website | `platform/` | One Next.js application and Vercel project |
+| Public documentation source | `platform/docs/` | VitePress, embedded in the CLI and built into the public site |
 
-The Next.js project serves the product home and rewrites the established
-`/guide`, `/cli`, `/mcp`, `/integrations`, `/learn`, `/compare`, and `/studio`
-paths to one reviewed, immutable docs deployment. The public page does not need
-storage credentials. The `/lab` UI and stateful recovery endpoints stay hidden
-on hosted deployments unless a controlled, access-protected preview explicitly
-sets `PLATFORM_RECOVERY_LAB_ENABLED=true`.
+The existing Vercel project `file-cheap` builds from `platform/`. Its build first
+renders VitePress into the internal `public/_docs` namespace, then Next.js serves
+the landing page at `/` and maps the established `/guide`, `/cli`, `/mcp`,
+`/integrations`, `/learn`, `/compare`, and `/studio` routes to that local
+artifact. There is no second docs deployment or external docs origin.
+
+The public page does not need storage credentials. The `/lab` UI and stateful
+recovery endpoints stay hidden on hosted deployments unless a controlled,
+access-protected preview explicitly sets
+`PLATFORM_RECOVERY_LAB_ENABLED=true`.
 
 The lab is a single-workspace protocol experiment, not the integration surface
 for Chalupa, Cairntrace, or Glyphrun. Those tools should exchange stable local
@@ -205,32 +209,30 @@ Requirements:
 go test ./...
 go build ./cmd/fcheap
 
-cd docs
+cd platform/docs
 bun install --frozen-lockfile
 bun run docs:verify
 bun audit
 
-cd ../platform
+cd ..
 bun install --frozen-lockfile
 bun run check
 bun run audit:production
 ```
 
-To run the composed website locally, serve a production-like docs build and
-start Next in a second terminal:
+To run the complete website locally:
 
 ```bash
-cd docs
-bun run docs:platform
-
-cd ../platform
+cd platform
+bun install --cwd docs --frozen-lockfile
+bun install --frozen-lockfile
 cp .env.example .env.local
 bun run dev
 ```
 
-The platform is available at `http://127.0.0.1:3100`. Use `bun run docs:dev`
-when developing the docs directly; the composed site intentionally proxies the
-static preview so local routing matches the deployed topology.
+The site is available at `http://127.0.0.1:3100`. `bun run dev` stages the docs
+and starts Next.js on that one origin. For VitePress-only authoring, run
+`bun run docs:dev` from `platform/`.
 
 The production topology, preview matrix, domain cutover, and rollback procedure
 are in [`DEPLOYMENT.md`](DEPLOYMENT.md). Passing local checks does not authorize

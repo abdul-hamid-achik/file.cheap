@@ -11,13 +11,13 @@ import (
 	"path/filepath"
 	"sort"
 
-	doccontent "github.com/abdul-hamid-achik/file.cheap/docs"
 	"github.com/abdul-hamid-achik/file.cheap/internal/agentguide"
 	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
 	"github.com/abdul-hamid-achik/file.cheap/internal/artifactref"
 	"github.com/abdul-hamid-achik/file.cheap/internal/cleanup"
 	"github.com/abdul-hamid-achik/file.cheap/internal/diff"
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
+	doccontent "github.com/abdul-hamid-achik/file.cheap/platform/docs"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

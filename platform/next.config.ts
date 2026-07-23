@@ -1,24 +1,26 @@
 import type { NextConfig } from "next";
 
-import { createDocsRewrites, resolveDocsOrigin } from "./docs-routing";
+import { createDocsRewrites } from "./docs-routing";
 
 const isDevelopment = process.env.NODE_ENV !== "production";
-const docsOrigin = resolveDocsOrigin();
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
   `connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com https://vercel.com https://*.private.blob.vercel-storage.com${
     isDevelopment ? " ws: wss:" : ""
   }`,
-  "font-src 'self' https://fonts.gstatic.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
   "form-action 'self'",
   "frame-ancestors 'none'",
   "img-src 'self' blob: data:",
+  "manifest-src 'self'",
   "object-src 'none'",
   `script-src 'self' 'unsafe-inline'${
     isDevelopment ? " 'unsafe-eval'" : ""
   }`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "worker-src 'self' blob:",
+  "upgrade-insecure-requests",
 ].join("; ");
 
 export const platformSecurityHeaders = [
@@ -29,9 +31,13 @@ export const platformSecurityHeaders = [
   },
   {
     key: "Permissions-Policy",
-    value: "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
+    value:
+      "camera=(), display-capture=(), geolocation=(), microphone=(), payment=(), publickey-credentials-get=(), usb=()",
   },
-  { key: "Referrer-Policy", value: "no-referrer" },
+  {
+    key: "Referrer-Policy",
+    value: "strict-origin-when-cross-origin",
+  },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
 ] as const;
@@ -49,7 +55,7 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return {
       afterFiles: [],
-      beforeFiles: createDocsRewrites(docsOrigin),
+      beforeFiles: createDocsRewrites(),
       fallback: [],
     };
   },
@@ -58,6 +64,19 @@ const nextConfig: NextConfig = {
       {
         headers: [...platformSecurityHeaders],
         source: "/:path*",
+      },
+      {
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+        source: "/_docs/:path*",
+      },
+      {
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+        source: "/assets/:path*",
       },
     ];
   },

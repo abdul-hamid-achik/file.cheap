@@ -582,9 +582,13 @@ export default defineConfig({
 
   themeConfig: {
     siteTitle: 'file.cheap',
+    logoLink: {
+      link: '/',
+      target: '_self',
+    },
     sidebar,
     nav: [
-      { text: 'Platform', link: 'https://file.cheap/' },
+      { text: 'Platform', link: '/', target: '_self' },
       { text: 'Get started', link: '/guide/getting-started' },
       { text: 'Workflows', link: '/guide/workflows' },
       { text: 'CLI', link: '/cli/' },
@@ -616,7 +620,7 @@ export default defineConfig({
       copyright: 'Copyright © 2026 Abdul Hamid Achik.',
     },
     editLink: {
-      pattern: 'https://github.com/abdul-hamid-achik/file.cheap/edit/main/docs/:path',
+      pattern: 'https://github.com/abdul-hamid-achik/file.cheap/edit/main/platform/docs/:path',
       text: 'Edit this page on GitHub',
     },
     docFooter: {

@@ -3,10 +3,9 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { describe, expect, test } from "bun:test";
 
 import {
+  DOCS_OUTPUT_PREFIX,
   DOCS_ROOT_ASSETS,
   DOCS_SECTIONS,
-  LOCAL_DOCS_ORIGIN,
-  resolveDocsOrigin,
 } from "./docs-routing";
 import nextConfig, { platformSecurityHeaders } from "./next.config";
 
@@ -34,10 +33,23 @@ describe("platform security headers", () => {
     expect(nextConfig.headers).toBeFunction();
     const rules = await nextConfig.headers!();
 
-    expect(rules).toHaveLength(1);
+    expect(rules).toHaveLength(3);
     expect(rules[0]).toEqual({
       headers: [...platformSecurityHeaders],
       source: "/:path*",
+    });
+    expect(rules[1]).toEqual({
+      headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      source: "/_docs/:path*",
+    });
+    expect(rules[2]).toEqual({
+      headers: [
+        {
+          key: "Cache-Control",
+          value: "public, max-age=31536000, immutable",
+        },
+      ],
+      source: "/assets/:path*",
     });
   });
 
@@ -53,12 +65,18 @@ describe("platform security headers", () => {
     expect(policy).toContain("https://*.private.blob.vercel-storage.com");
     expect(policy).toContain("https://fonts.googleapis.com");
     expect(policy).toContain("https://fonts.gstatic.com");
-    expect(policy).toContain("font-src 'self' https://fonts.gstatic.com");
+    expect(policy).toContain(
+      "font-src 'self' data: https://fonts.gstatic.com",
+    );
     expect(policy).toContain(
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     );
     expect(headers.get("Permissions-Policy")).toContain("payment=()");
-    expect(headers.get("Referrer-Policy")).toBe("no-referrer");
+    expect(policy).toContain("worker-src 'self' blob:");
+    expect(policy).toContain("upgrade-insecure-requests");
+    expect(headers.get("Referrer-Policy")).toBe(
+      "strict-origin-when-cross-origin",
+    );
     expect(headers.get("Strict-Transport-Security")).toBe(
       "max-age=31536000",
     );
@@ -67,81 +85,27 @@ describe("platform security headers", () => {
   });
 });
 
-describe("documentation origin", () => {
-  test("uses a loopback VitePress server outside Vercel", () => {
-    expect(resolveDocsOrigin({})).toBe(LOCAL_DOCS_ORIGIN);
-  });
-
-  test("requires an explicit origin on Vercel", () => {
-    expect(() => resolveDocsOrigin({ VERCEL: "1" })).toThrow(
-      "FILECHEAP_DOCS_ORIGIN is required on Vercel",
-    );
-  });
-
-  test("accepts a distinct immutable HTTPS deployment", () => {
-    expect(
-      resolveDocsOrigin({
-        FILECHEAP_DOCS_ORIGIN:
-          "https://file-cheap-docs-4f7a9c2-the-lacanians.vercel.app/",
-        PLATFORM_PUBLIC_URL: "https://file.cheap",
-        VERCEL: "1",
-        VERCEL_URL: "file-cheap-platform-git-abc.vercel.app",
-      }),
-    ).toBe("https://file-cheap-docs-4f7a9c2-the-lacanians.vercel.app");
-  });
-
-  test("rejects malformed, unsafe, and looping origins", () => {
-    const invalidEnvironments = [
-      { FILECHEAP_DOCS_ORIGIN: "not a URL" },
-      { FILECHEAP_DOCS_ORIGIN: "http://docs.example.com" },
-      {
-        FILECHEAP_DOCS_ORIGIN: "http://127.0.0.1:5173",
-        VERCEL: "1",
-      },
-      { FILECHEAP_DOCS_ORIGIN: "https://user:secret@docs.example.com" },
-      { FILECHEAP_DOCS_ORIGIN: "https://docs.example.com/subpath" },
-      { FILECHEAP_DOCS_ORIGIN: "https://docs.example.com?preview=1" },
-      { FILECHEAP_DOCS_ORIGIN: "https://docs.example.com/#preview" },
-      { FILECHEAP_DOCS_ORIGIN: "https://file.cheap" },
-      { FILECHEAP_DOCS_ORIGIN: "https://www.file.cheap" },
-      { FILECHEAP_DOCS_ORIGIN: "https://FILE.CHEAP." },
-      {
-        FILECHEAP_DOCS_ORIGIN:
-          "https://file-cheap-docs-git-main-the-lacanians.vercel.app",
-      },
-      {
-        FILECHEAP_DOCS_ORIGIN: "https://platform-preview.vercel.app",
-        VERCEL: "1",
-        VERCEL_URL: "platform-preview.vercel.app",
-      },
-      {
-        FILECHEAP_DOCS_ORIGIN: "http://127.0.0.1:3100",
-        PLATFORM_PUBLIC_URL: "http://127.0.0.1:3100",
-      },
-    ];
-
-    for (const environment of invalidEnvironments) {
-      expect(() => resolveDocsOrigin(environment)).toThrow();
-    }
-  });
-});
-
 describe("documentation routing", () => {
-  test("proxies every documentation section and preserves path and query", async () => {
+  test("serves every documentation section from the staged build", async () => {
     const { getRewrittenUrl } = await loadConfigTesting();
 
     for (const section of DOCS_SECTIONS) {
       const response = await responseFor(
-        `https://platform.example/${section}/reference.html?source=test`,
+        `https://platform.example/${section}/reference?source=test`,
       );
-      const rewritten = new URL(getRewrittenUrl(response)!);
-      expect(rewritten.hostname).toBe("127.0.0.1");
-      expect(rewritten.pathname).toBe(`/${section}/reference.html`);
+      const rewritten = new URL(
+        getRewrittenUrl(response)!,
+        "https://platform.example",
+      );
+      expect(rewritten.hostname).toBe("platform.example");
+      expect(rewritten.pathname).toBe(
+        `${DOCS_OUTPUT_PREFIX}/${section}/reference.html`,
+      );
       expect(rewritten.search).toBe("?source=test");
     }
   });
 
-  test("preserves both clean section-root forms", async () => {
+  test("maps both clean section-root forms to their generated index", async () => {
     const { getRewrittenUrl } = await loadConfigTesting();
 
     expect(
@@ -149,18 +113,36 @@ describe("documentation routing", () => {
         getRewrittenUrl(
           await responseFor("https://platform.example/guide"),
         )!,
+        "https://platform.example",
       ).pathname,
-    ).toBe("/guide");
+    ).toBe(`${DOCS_OUTPUT_PREFIX}/guide/index.html`);
     expect(
       new URL(
         getRewrittenUrl(
           await responseFor("https://platform.example/guide/"),
         )!,
+        "https://platform.example",
       ).pathname,
-    ).toBe("/guide/");
+    ).toBe(`${DOCS_OUTPUT_PREFIX}/guide/index.html`);
   });
 
-  test("proxies VitePress bundles and every public root asset", async () => {
+  test("does not append a second extension to legacy HTML requests", async () => {
+    const { getRewrittenUrl } = await loadConfigTesting();
+    const rewritten = new URL(
+      getRewrittenUrl(
+        await responseFor(
+          "https://platform.example/guide/getting-started.html",
+        ),
+      )!,
+      "https://platform.example",
+    );
+
+    expect(rewritten.pathname).toBe(
+      `${DOCS_OUTPUT_PREFIX}/guide/getting-started.html`,
+    );
+  });
+
+  test("serves VitePress bundles and every public root asset", async () => {
     const { getRewrittenUrl } = await loadConfigTesting();
 
     const bundleRewrite = new URL(
@@ -169,8 +151,11 @@ describe("documentation routing", () => {
           "https://platform.example/assets/chunks/search.js?version=abc",
         ),
       )!,
+      "https://platform.example",
     );
-    expect(bundleRewrite.pathname).toBe("/assets/chunks/search.js");
+    expect(bundleRewrite.pathname).toBe(
+      `${DOCS_OUTPUT_PREFIX}/assets/chunks/search.js`,
+    );
     expect(bundleRewrite.search).toBe("?version=abc");
 
     for (const asset of DOCS_ROOT_ASSETS) {
@@ -178,12 +163,13 @@ describe("documentation routing", () => {
         getRewrittenUrl(
           await responseFor(`https://platform.example${asset}`),
         )!,
+        "https://platform.example",
       );
-      expect(rewritten.pathname).toBe(asset);
+      expect(rewritten.pathname).toBe(`${DOCS_OUTPUT_PREFIX}${asset}`);
     }
   });
 
-  test("proxies the docs sitemap without claiming the platform sitemap", async () => {
+  test("serves the docs sitemap without claiming the platform sitemap", async () => {
     const { getRewrittenUrl } = await loadConfigTesting();
 
     expect(
@@ -191,8 +177,9 @@ describe("documentation routing", () => {
         getRewrittenUrl(
           await responseFor("https://platform.example/docs-sitemap.xml"),
         )!,
+        "https://platform.example",
       ).pathname,
-    ).toBe("/sitemap.xml");
+    ).toBe(`${DOCS_OUTPUT_PREFIX}/sitemap.xml`);
     expect(
       getRewrittenUrl(
         await responseFor("https://platform.example/sitemap.xml"),
@@ -227,6 +214,7 @@ describe("documentation routing", () => {
       "/@vite/client",
       "/.vitepress/theme/index.ts",
       "/api/v1/health",
+      "/_docs/guide/index.html",
       "/node_modules/vitepress/index.js",
       "/_next/static/app.js",
       "/unknown",
@@ -243,7 +231,7 @@ describe("documentation routing", () => {
     expect(Array.isArray(rewrites)).toBeFalse();
     if (!Array.isArray(rewrites)) {
       expect(rewrites.beforeFiles).toContainEqual({
-        destination: `${LOCAL_DOCS_ORIGIN}/assets/:path*`,
+        destination: `${DOCS_OUTPUT_PREFIX}/assets/:path*`,
         source: "/assets/:path*",
       });
       expect(rewrites.afterFiles).toEqual([]);

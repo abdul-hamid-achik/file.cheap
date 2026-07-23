@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { dirname, join, relative } from 'node:path'
+import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
 
@@ -10,10 +10,11 @@ const distDir = join(docsDir, '.vitepress', 'dist')
 const siteUrl = 'https://file.cheap'
 const failures = []
 
-const vercelConfig = JSON.parse(readFileSync(join(docsDir, 'vercel.json'), 'utf8'))
-const allRouteHeaders = vercelConfig.headers?.find((rule) => rule.source === '/(.*)')?.headers || []
+const { platformSecurityHeaders } = await import(
+  new URL('../../../next.config.ts', import.meta.url).href
+)
 const responseHeaders = new Map(
-  allRouteHeaders.map((header) => [header.key.toLowerCase(), header.value]),
+  platformSecurityHeaders.map((header) => [header.key.toLowerCase(), header.value]),
 )
 for (const name of [
   'content-security-policy',
@@ -23,7 +24,7 @@ for (const name of [
   'referrer-policy',
   'permissions-policy',
 ]) {
-  if (!responseHeaders.has(name)) failures.push(`vercel.json is missing the ${name} header`)
+  if (!responseHeaders.has(name)) failures.push(`next.config.ts is missing the ${name} header`)
 }
 
 const contentSecurityPolicy = responseHeaders.get('content-security-policy') || ''
@@ -35,27 +36,30 @@ for (const directive of [
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+  'upgrade-insecure-requests',
 ]) {
   if (!contentSecurityPolicy.includes(directive)) {
-    failures.push(`vercel.json CSP is missing ${directive}`)
+    failures.push(`next.config.ts CSP is missing ${directive}`)
   }
 }
 if (responseHeaders.get('x-content-type-options') !== 'nosniff') {
-  failures.push('vercel.json must set X-Content-Type-Options to nosniff')
+  failures.push('next.config.ts must set X-Content-Type-Options to nosniff')
 }
 if (responseHeaders.get('x-frame-options') !== 'DENY') {
-  failures.push('vercel.json must set X-Frame-Options to DENY')
+  failures.push('next.config.ts must set X-Frame-Options to DENY')
 }
 if (responseHeaders.get('referrer-policy') !== 'strict-origin-when-cross-origin') {
-  failures.push('vercel.json must set a strict cross-origin referrer policy')
+  failures.push('next.config.ts must set a strict cross-origin referrer policy')
 }
 if (!responseHeaders.get('strict-transport-security')?.startsWith('max-age=')) {
-  failures.push('vercel.json must set an HSTS max-age')
+  failures.push('next.config.ts must set an HSTS max-age')
 }
 const permissionsPolicy = responseHeaders.get('permissions-policy') || ''
 for (const capability of ['camera=()', 'geolocation=()', 'microphone=()', 'payment=()', 'usb=()']) {
   if (!permissionsPolicy.includes(capability)) {
-    failures.push(`vercel.json Permissions-Policy is missing ${capability}`)
+    failures.push(`next.config.ts Permissions-Policy is missing ${capability}`)
   }
 }
 

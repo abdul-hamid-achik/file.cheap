@@ -1,0 +1,12 @@
+# The existing Vercel project builds only the unified app under platform/.
+/*
+!platform
+!.vercelignore
+
+# Generated or local-only platform state.
+platform/.data/
+platform/coverage/
+platform/docs/.vitepress/cache/
+platform/docs/.vitepress/dist/
+platform/public/_docs/
+platform/tsconfig.tsbuildinfo

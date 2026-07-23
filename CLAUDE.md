@@ -4,7 +4,11 @@ Guidelines for Claude Code working on the file.cheap codebase.
 
 ## What This Project Is
 
-file.cheap is a local-first CLI tool + MCP server that saves, restores, compresses, analyzes, and diffs files and folders for agent workflows. The binary is called `fcheap`. Everything runs locally -- no cloud, no API server, no database (except embedded SQLite for metadata).
+file.cheap is a local-first CLI tool + MCP server that saves, restores,
+compresses, analyzes, and diffs files and folders for agent workflows. The
+binary is called `fcheap`; its source of truth is local. The repository also
+contains an isolated public Next.js site and a disabled-by-default recovery
+laboratory under `platform/`.
 
 ## Architecture Quick Reference
 
@@ -15,12 +19,14 @@ file.cheap is a local-first CLI tool + MCP server that saves, restores, compress
 - `internal/analyze/` -- BM25 keyword search (veclite) + vecgrep subprocess
 - `internal/diff/` -- stash-to-directory comparison
 - `internal/db/` -- SQLite metadata (modernc.org/sqlite, CGO-free)
-- `internal/mcp/` -- MCP server: 11 tools (incl. fcheap_docs) + resources (`fcheap://stashes`, `fcheap://stash/{id}`) + prompts (`investigate_stash`, `find_across_stashes`) (modelcontextprotocol/go-sdk)
+- `internal/mcp/` -- MCP server: 15 tools (incl. fcheap_docs) + resources (`fcheap://stashes`, `fcheap://stash/{id}`) + prompts (`investigate_stash`, `find_across_stashes`) (modelcontextprotocol/go-sdk)
 - `internal/studio/` -- Bubbletea v2 TUI
 - `internal/fcheap/cli/` -- Cobra CLI commands
 - `internal/fcheap/config/` -- YAML config + env overrides
 - `internal/fcheap/output/` -- printer, tables, progress
 - `internal/fcheap/version/` -- build-time version injection
+- `platform/` -- the single Next.js/Vercel public site
+- `platform/docs/` -- VitePress source, staged into the Next build and embedded in the Go binary
 
 ## Key Patterns
 
@@ -59,16 +65,19 @@ When you need to document something, add a note, or capture a decision:
 2. Notes should follow the existing vault structure (folders by topic)
 3. The vault is the single source of truth for project knowledge
 
-The `docs/` directory is specifically for the **VitePress documentation site** deployed to Vercel at file.cheap:
+The `platform/docs/` directory is the public VitePress source. It is not a
+separate deployment: the `platform/` build stages it under `public/_docs` and
+serves its historical routes from the existing `file-cheap` Vercel project.
+
 - `~/notes/projects/file.cheap` (Obsidian vault) -- internal notes, decisions, research
-- `docs/` (VitePress site) -- public-facing documentation at file.cheap
+- `platform/docs/` (VitePress source) -- public-facing documentation at file.cheap
 
 ## What NOT to Do
 
-- Don't add HTTP server/API code
-- Don't add authentication or billing
-- Don't import cloud SDKs (S3, GCS, etc.)
-- Don't add telemetry, metrics, or tracing
+- Don't add HTTP server/API code to the Go core
+- Don't add authentication or billing to the Go core
+- Don't import cloud SDKs (S3, GCS, etc.) into the Go core
+- Don't add telemetry, metrics, or tracing to the Go core
 - Don't bundle external binaries
 - Don't use `os/exec` outside of `internal/analyze/` (for vecgrep subprocess) and `internal/fcheap/cli/docs.go` (for VitePress dev/build)
 - Don't add database dependencies beyond embedded SQLite

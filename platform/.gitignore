@@ -2,6 +2,7 @@
 .next/
 .vercel/
 node_modules/
+public/_docs/
 .env.local
 *.tsbuildinfo
 coverage/

@@ -95,24 +95,24 @@ fcheap docs preview --port 8080 --open
 |---|---|---|---|
 | `serve` | `--port` | `5173` | Development-server port |
 | `serve` | `--open` | `false` | Open a browser after startup |
-| `build` | `--output` | `docs/.vitepress/dist` | Production output directory |
+| `build` | `--output` | `platform/docs/.vitepress/dist` | Production output directory |
 | `preview` | `--port` | `4173` | Preview-server port |
 | `preview` | `--open` | `false` | Open a browser after startup |
 
-Contributors can run the Bun scripts directly from `docs/` as well:
+Contributors can run the VitePress scripts directly from `platform/docs/`:
 
 ```bash
 bun install --frozen-lockfile
 bun run docs:dev
 bun run docs:build
-bun run docs:platform
 bun run docs:preview
 bun run docs:verify
 ```
 
-`docs:platform` builds the site and serves its production-like preview on
-`127.0.0.1:5173` for the composed Next.js website. Use `docs:dev` when working
-on the VitePress site directly.
+The parent `platform/` project stages that build under `public/_docs` before
+starting or building Next.js. Use `bun run docs:dev` here for VitePress-only
+authoring, or `bun run dev` from `platform/` to test the complete site on one
+origin.
 
 The VitePress project and its dependencies are not bundled into release
 packages. Installed users do not need Bun to run `docs list`, `docs show`, or

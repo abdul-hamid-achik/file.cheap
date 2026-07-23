@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	doccontent "github.com/abdul-hamid-achik/file.cheap/docs"
+	doccontent "github.com/abdul-hamid-achik/file.cheap/platform/docs"
 	"github.com/spf13/cobra"
 )
 
@@ -40,7 +40,7 @@ var docsServeCmd = &cobra.Command{
 	Long: `Start a local VitePress development server for the docs site.
 
 Requires a file.cheap source checkout plus Bun. If node_modules is missing,
-fcheap installs the exact dependencies from docs/bun.lock.`,
+fcheap installs the exact dependencies from platform/docs/bun.lock.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		docsDir := findDocsDir()
@@ -72,7 +72,7 @@ var docsBuildCmd = &cobra.Command{
 	Short: "Build the docs site for production",
 	Long: `Build the VitePress docs site for production deployment.
 
-The output goes to docs/.vitepress/dist/ by default, or the directory
+The output goes to platform/docs/.vitepress/dist/ by default, or the directory
 specified by --output.
 
 Requires a file.cheap source checkout plus Bun.`,
@@ -211,7 +211,7 @@ func init() {
 	docsServeCmd.Flags().IntVar(&docsPort, "port", 5173, "Port for the dev server")
 	docsServeCmd.Flags().BoolVar(&docsOpen, "open", false, "Open browser on start")
 
-	docsBuildCmd.Flags().StringVar(&docsOutput, "output", "", "Output directory (default: docs/.vitepress/dist)")
+	docsBuildCmd.Flags().StringVar(&docsOutput, "output", "", "Output directory (default: platform/docs/.vitepress/dist)")
 
 	docsPreviewCmd.Flags().IntVar(&docsPort, "port", 4173, "Port for the preview server")
 	docsPreviewCmd.Flags().BoolVar(&docsOpen, "open", false, "Open browser on start")
@@ -228,9 +228,14 @@ func init() {
 // Read-only list/show commands use embedded Markdown and do not call this.
 func findDocsDir() string {
 	candidates := []string{
+		filepath.Join("platform", "docs"),
 		"docs",
+		".",
+		filepath.Join("..", "platform", "docs"),
 		filepath.Join("..", "docs"),
+		filepath.Join("..", "..", "platform", "docs"),
 		filepath.Join("..", "..", "docs"),
+		filepath.Join("..", "..", "..", "platform", "docs"),
 	}
 	for _, c := range candidates {
 		abs, err := filepath.Abs(c)
@@ -254,7 +259,7 @@ func checkDocsDeps(docsDir string) error {
 			installArgs = []string{"install", "--frozen-lockfile"}
 			installName = "bun install --frozen-lockfile"
 		}
-		printer.Warn("node_modules not found in docs/. Running %s...", installName)
+		printer.Warn("node_modules not found in platform/docs/. Running %s...", installName)
 		installCmd := exec.CommandContext(GetContext(), "bun", installArgs...)
 		installCmd.Dir = docsDir
 		installCmd.Stdout = os.Stdout
@@ -276,7 +281,7 @@ func docsBuildInvocation(docsDir, outputDir string) ([]string, string, error) {
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve docs output directory: %w", err)
 	}
-	return append(args, "--outDir", absOutput), absOutput, nil
+	return append(args, "--", "--outDir", absOutput), absOutput, nil
 }
 
 func docsSourceRequiredError() error {

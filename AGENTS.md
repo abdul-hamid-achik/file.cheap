@@ -9,11 +9,12 @@ restoring, compressing, and analyzing files and folders for agent workflows. The
 Go core stores files locally on the user's machine and has no dependency on the
 optional hosted platform.
 
-The repository also contains `platform/`, an isolated Next.js public website and
-recovery-protocol laboratory. The website may be deployed independently from the
-Go product. The recovery lab and `/api/v1` are disabled by default in hosted
-environments, and the multi-customer remote vault is not shipped. The platform
-rules below apply only inside that directory.
+The repository also contains `platform/`, the unified Next.js public website,
+VitePress documentation source, and recovery-protocol laboratory. The existing
+Vercel project `file-cheap` builds only this directory. The recovery lab and
+`/api/v1` are disabled by default in hosted environments, and the multi-customer
+remote vault is not shipped. The platform rules below apply only inside that
+directory.
 
 ### Key Layers
 
@@ -37,15 +38,18 @@ rules below apply only inside that directory.
 
 10. **Studio TUI** (`internal/studio/`) -- Bubbletea v2 terminal interface for browsing stashes, viewing manifests, and triggering operations.
 
-11. **Docs** (`docs/`) -- VitePress documentation site. Its historical
-    `file.cheap/{guide,cli,mcp,...}` URLs remain canonical and are routed through
-    the public platform project to a separately deployed docs artifact. The
-    `fcheap docs` CLI command serves, builds, lists, and reads doc pages.
+11. **Docs** (`platform/docs/`) -- VitePress source embedded in the `fcheap`
+    binary and staged into `platform/public/_docs` during the same Next.js build.
+    Internal rewrites preserve the historical
+    `file.cheap/{guide,cli,mcp,...}` URLs. The `fcheap docs` CLI command serves,
+    builds, lists, and reads doc pages.
 
 12. **Public Platform** (`platform/`) -- isolated Next.js website plus a gated,
-    single-workspace recovery laboratory. It is a separate deployment and
-    dependency boundary. Nothing under `platform/` may be imported by the Go
-    local-first core.
+    single-workspace recovery laboratory. It is the sole public deployment and
+    remains a runtime dependency boundary. The only Go import allowed from this
+    tree is the static `platform/docs` content package used by CLI and MCP
+    embedding; the Go core must never import the Next.js application or cloud
+    adapters.
 
 ## Code Style
 
@@ -64,7 +68,7 @@ rules below apply only inside that directory.
 2. Register in `internal/fcheap/cli/root.go` `init()`
 3. If it needs MCP exposure, add a tool in `internal/mcp/server.go`
 4. Add e2e spec in `e2e/flows/cli_<name>.yml`
-5. If it needs a docs page, add `docs/cli/<name>.md` and update `docs/.vitepress/config.ts` nav
+5. If it needs a docs page, add `platform/docs/cli/<name>.md` and update `platform/docs/.vitepress/config.ts` nav
 
 ### MCP Tools
 
@@ -125,9 +129,9 @@ its dependencies from the local-first Go core.
 
 ### Scope and release state
 
-- The Next.js root page is the public product website. It may be deployed
-  independently, but code readiness does not authorize a production domain
-  cutover.
+- The Next.js root page is the public product website. The existing
+  `file-cheap` Vercel project deploys `platform/`; code readiness does not
+  authorize a production domain cutover.
 - The recovery lab and stateful `/api/v1` routes are a single-workspace
   experiment. Keep them disabled on public deployments. `/api/v1/health` may
   report that the public site is healthy without initializing storage.
@@ -142,9 +146,10 @@ its dependencies from the local-first Go core.
 - Use Next.js App Router, strict TypeScript, and Route Handlers under
   `platform/src/app/api/v1/`.
 - Keep `/` independent of storage credentials and recovery configuration.
-- Pin `FILECHEAP_DOCS_ORIGIN` to a reviewed immutable Vercel docs deployment.
-  Never point it to `file.cheap`, `www.file.cheap`, the active platform
-  deployment, or a moving branch/project alias.
+- Build VitePress locally into `platform/public/_docs` before every Next.js
+  build. Never restore `FILECHEAP_DOCS_ORIGIN` or an external docs rewrite.
+- Keep `/_docs/*` as an internal build namespace. Public links and canonical
+  metadata must use the historical clean routes.
 - Route Handlers authenticate, validate, call a feature service, and translate
   errors. Business rules belong in `platform/src/features/`.
 - Provider SDKs belong behind ports in `platform/src/platform/`. Only the
@@ -174,6 +179,7 @@ its dependencies from the local-first Go core.
 Run from `platform/`:
 
 ```sh
+bun install --cwd docs --frozen-lockfile
 bun run check
 bun run audit:production
 ```
@@ -225,13 +231,13 @@ When you need to document something, add a note, or capture a decision:
 2. Notes should follow the existing vault structure (folders by topic)
 3. The vault is the single source of truth for project knowledge -- architecture decisions, debugging notes, feature plans, etc.
 
-The `docs/` directory in this repo is specifically for the **VitePress
-documentation site**. It contains user-facing Markdown built separately and
-served through the public `file.cheap` platform on the existing documentation
-routes. Do not confuse the two:
+The `platform/docs/` directory is specifically for the public **VitePress
+documentation source**. It contains user-facing Markdown, is embedded into the
+CLI/MCP package, and is built as part of the one public platform deployment. Do
+not confuse it with the internal vault:
 
 - `~/notes/projects/file.cheap` (Obsidian vault) -- internal notes, decisions, research
-- `docs/` (VitePress site) -- public-facing documentation at
+- `platform/docs/` (VitePress source) -- public-facing documentation at
   `file.cheap/guide`, `file.cheap/cli`, and the other historical docs routes
 
 Architecture decisions live only in the Obsidian vault, not under `platform/`.

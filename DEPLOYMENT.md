@@ -1,30 +1,42 @@
 # file.cheap public-site deployment
 
-This runbook prepares and releases the public Next.js website while preserving
-the established VitePress documentation routes. It does not authorize or launch
-the hosted remote vault.
+This runbook releases the landing page, public platform, and VitePress
+documentation as one deployment. It does not authorize or launch a hosted
+multi-customer vault.
 
-Production actions require an explicit release decision. Do not set
-`PLATFORM_RECOVERY_LAB_ENABLED=true` in Production.
+Production actions require an explicit release decision. Keep
+`PLATFORM_RECOVERY_LAB_ENABLED=false` in Production.
 
 The architectural decision behind this topology lives in the Obsidian vault at
 `projects/file.cheap/ADR-003-public-site-and-docs-zones.md`.
 
-## Project topology
+## One-project topology
 
-| Project | Vercel Root Directory | Responsibility |
-| --- | --- | --- |
-| `file-cheap-platform` | `platform` | Public home, routing, root SEO files |
-| existing docs project | `docs` | Immutable VitePress pages and assets |
+| Field | Value |
+| --- | --- |
+| Vercel team | `The Lacanians` |
+| Vercel project | `file-cheap` |
+| Project ID | `prj_fnjqc2T8VT2lWHeznMWk7WoH0LyG` |
+| Root Directory | `platform` |
+| Framework | Next.js |
+| Public domains | `file.cheap`, `www.file.cheap` |
 
-Keep both projects in the same Vercel team and connected to the same Git
-repository. Keep the existing docs project and its deployment history until the
-new topology has been stable and rollback has been rehearsed.
+The `platform` build performs two steps:
 
-### Inspected rollback baseline
+1. build `platform/docs` with VitePress into `platform/public/_docs`;
+2. build Next.js, which serves `/` and rewrites the historical documentation
+   routes to that local static artifact.
 
-On 2026-07-23, the docs-only production deployment inspected before this change
-was:
+`/_docs` is an internal namespace. Canonical URLs remain `/guide`, `/cli`,
+`/mcp`, `/integrations`, `/learn`, `/compare`, and `/studio`.
+
+There is no `FILECHEAP_DOCS_ORIGIN`, separate docs project, cross-project proxy,
+or domain transfer.
+
+### Inspected production baseline
+
+The known-good docs-only Production deployment that was serving before this
+consolidation is:
 
 ```text
 deployment: dpl_ANfHYewYPFzKkQhSDB8jSYLgZg9G
@@ -32,30 +44,29 @@ commit:     1878dc90f926c93530418dae6c09b44fc64e88b4
 origin:     https://file-cheap-hziatwuzq-the-lacanians.vercel.app
 ```
 
-It is a concrete pre-cutover fallback, not an instruction to use stale content.
-Reinspect it and record the current known-good docs deployment at release time.
+It belongs to the same `file-cheap` project and remains a rollback target until
+the unified site has completed its observation window.
 
-## Required platform environment
+An accidental project named `file-cheap-platform`
+(`prj_hkdLMzqZmccAv3myWu2mVnjL2DeX`) was created while exploring the rejected
+two-project topology. A final audit found no deployments, custom domains, Git
+connection, or project-owned resources. It was permanently removed on
+2026-07-23; do not recreate it.
 
-Configure these independently for Preview and Production:
+## Required environment
+
+Configure Preview and Production independently:
 
 | Variable | Preview | Production |
 | --- | --- | --- |
-| `FILECHEAP_DOCS_ORIGIN` | Reviewed immutable docs preview/production origin | Reviewed immutable docs production origin |
-| `PLATFORM_PUBLIC_URL` | Preview origin when testing the lab; otherwise optional for the public site | `https://file.cheap` |
+| `PLATFORM_PUBLIC_URL` | Preview origin when testing the lab; otherwise optional | `https://file.cheap` |
 | `PLATFORM_RECOVERY_LAB_ENABLED` | `false`; use `true` only for an access-protected lab review | `false` |
 
-`FILECHEAP_DOCS_ORIGIN` must be a bare HTTPS origin using the automatic URL of a
-specific READY deployment. Do not use `file.cheap`, `www.file.cheap`, the
-platform project alias, a branch alias, or a moving docs project alias.
-
-The public website needs no Blob token, API bearer token, or signing secret while
-the recovery laboratory is disabled. Never add production-shaped recovery
-credentials merely to make the marketing site render.
+The public site and documentation need no Blob token, API bearer token, signing
+secret, or database connection. Never add recovery credentials merely to make
+the website render.
 
 ### Provisioned but disconnected Blob store
-
-The following team-level resource was created on 2026-07-23:
 
 | Field | Value |
 | --- | --- |
@@ -63,21 +74,17 @@ The following team-level resource was created on 2026-07-23:
 | Store ID | `store_ymiqdgWHI6Oebjz2` |
 | Access | Private |
 | Region | `iad1` |
-| Vercel team | `The Lacanians` |
 | Connected projects | None |
 
-Do not connect this store to the docs project. Creating it does not enable the
-recovery laboratory and no deployment currently receives its token. If a
-controlled Blob Preview is explicitly approved later, connect it only to
-`file-cheap-platform` and only to the selected Preview environment; Vercel will
-then inject `BLOB_READ_WRITE_TOKEN`. Keep Production disconnected while the
-laboratory remains prohibited for user traffic.
+Creating the store does not enable the recovery laboratory. If a controlled
+Blob Preview is explicitly approved later, connect it only to the selected
+Preview environment of the existing `file-cheap` project. Keep Production
+disconnected while the lab remains prohibited for user traffic.
 
-### Provisioned Neon project on the existing paid account
+### Provisioned but disconnected Neon project
 
-The metadata database was created on 2026-07-23 in the existing Neon
-organization `personal`, whose plan is `launch` (the current paid
-Starter-equivalent account), rather than as a Vercel-managed Free resource:
+The metadata database uses the existing paid Neon organization `personal`
+(`launch`, the current paid Starter-equivalent plan):
 
 | Field | Value |
 | --- | --- |
@@ -87,18 +94,11 @@ Starter-equivalent account), rather than as a Vercel-managed Free resource:
 | Compute | `ep-dawn-surf-avarkl8w` |
 | Region | `aws-us-east-1` |
 | Autoscaling | `0.25` to `1` CU |
-| Scale to zero | After 300 seconds of inactivity |
-| Vercel projects connected | None |
+| Scale to zero | After 300 seconds |
+| Connected Vercel projects | None |
 
-The short-lived Vercel Marketplace Free resource created during provisioning
-was disconnected and deleted after the paid-account requirement was clarified.
-Do not recreate a parallel Vercel-managed Neon project, and do not inject its
-connection string merely for the current laboratory: the present implementation
-does not consume Neon. Once transactional catalog code actually uses it and an
-access-protected Recovery Lab Preview is explicitly approved, add the pooled
-connection string only to that selected `file-cheap-platform` Preview
-environment. Keep it out of the docs project and out of Production while the
-laboratory remains disabled.
+Do not inject its connection string until transactional catalog code consumes
+it and an access-protected Preview is explicitly approved.
 
 ## 1. Local release gates
 
@@ -106,173 +106,144 @@ From the repository root:
 
 ```sh
 go test ./...
+go vet ./...
+CGO_ENABLED=0 go build ./cmd/fcheap
 
-cd docs
+cd platform/docs
 bun ci
 bun run docs:verify
 bun audit
 
-cd ../platform
+cd ..
 bun ci
 bun run check
 bun run audit:production
 ```
 
-The docs verifier must report all source pages plus 404, exclude
-`https://file.cheap/` from the docs sitemap, and confirm that `robots.txt`
-advertises `https://file.cheap/docs-sitemap.xml`.
+The docs verifier must report 44 source pages plus 404. The integrated build
+must remove and regenerate `public/_docs`, serve both sitemaps, and preserve the
+historical clean routes.
 
-## 2. Prepare the docs deployment
+## 2. Link the existing project
 
-1. Leave `file.cheap` and `www.file.cheap` on the existing docs project.
-2. Set that project's Root Directory to `docs`.
-3. Deploy the candidate commit.
-4. Record its deployment ID, commit SHA, READY state, and automatic immutable
-   `.vercel.app` URL.
-5. Test the automatic URL directly:
-   - `/guide/getting-started`
-   - `/cli/`
-   - `/assets/` resources referenced by those pages
-   - `/sitemap.xml`
-   - local search and navigation
-6. Preserve the currently serving docs deployment URL as the topology rollback
-   target.
-
-Do not use the docs project production alias for `FILECHEAP_DOCS_ORIGIN`.
-
-## 3. Create and verify a platform Preview
-
-Create or update the `file-cheap-platform` project with Root Directory
-`platform`. Set `FILECHEAP_DOCS_ORIGIN` to the immutable docs URL recorded above
-and keep `PLATFORM_RECOVERY_LAB_ENABLED=false`.
-
-After the Preview is READY, confirm its commit and run:
+Run from the repository root. The project Root Directory selects `platform/`
+for the remote build:
 
 ```sh
-vercel inspect <platform-preview-url>
-vercel curl / --deployment <platform-preview-url>
-vercel curl /guide/getting-started --deployment <platform-preview-url>
-vercel curl /cli/ --deployment <platform-preview-url>
-vercel curl /docs --deployment <platform-preview-url>
-vercel curl /robots.txt --deployment <platform-preview-url>
-vercel curl /sitemap.xml --deployment <platform-preview-url>
-vercel curl /docs-sitemap.xml --deployment <platform-preview-url>
-vercel curl /lab --deployment <platform-preview-url>
-vercel curl /api/v1/health --deployment <platform-preview-url>
-vercel curl /api/v1/openapi.json --deployment <platform-preview-url>
-vercel logs --deployment <platform-preview-url> --level error --limit 50
+vercel link --project file-cheap --scope the-lacanians --yes
+vercel project inspect file-cheap --scope the-lacanians
+```
+
+Confirm the project ID exactly matches
+`prj_fnjqc2T8VT2lWHeznMWk7WoH0LyG`. Do not create another project.
+
+The Vercel project Root Directory must be `platform` before enabling automatic
+Git deployments of the consolidated commit. Changing that setting does not
+replace the currently serving Production deployment.
+
+The root `.vercelignore` is an allowlist for `platform/`. Keep it in place for
+CLI deployments so Go binaries, release artifacts, local vault data, and other
+repository-only files are never uploaded. A dry run should report roughly 150
+source files and 1.2 MB before dependencies are installed remotely.
+
+## 3. Create and verify a Preview
+
+Keep the lab disabled and deploy from the repository root:
+
+```sh
+vercel --scope the-lacanians --yes
+```
+
+After the Preview is READY, record its deployment ID, commit SHA, and automatic
+URL. Exercise:
+
+```sh
+vercel inspect <preview-url>
+vercel curl / --deployment <preview-url>
+vercel curl /guide/getting-started --deployment <preview-url>
+vercel curl /guide/getting-started.html --deployment <preview-url>
+vercel curl /cli/ --deployment <preview-url>
+vercel curl /mcp/overview --deployment <preview-url>
+vercel curl /docs --deployment <preview-url>
+vercel curl /assets/<reviewed-hashed-asset> --deployment <preview-url>
+vercel curl /robots.txt --deployment <preview-url>
+vercel curl /sitemap.xml --deployment <preview-url>
+vercel curl /docs-sitemap.xml --deployment <preview-url>
+vercel curl /lab --deployment <preview-url>
+vercel curl /api/v1/health --deployment <preview-url>
+vercel curl /api/v1/openapi.json --deployment <preview-url>
+vercel logs --deployment <preview-url> --level error --limit 50
 ```
 
 Expected results:
 
-- `/` returns the public website with an indexable canonical
-  `https://file.cheap/`.
-- Historical docs routes return 200 with their original
-  `https://file.cheap/...` canonical URLs.
+- `/` is the public landing page with canonical `https://file.cheap/`.
+- Every historical docs route returns its VitePress page and canonical URL.
 - `/docs` and `/docs/` permanently redirect to `/guide`.
-- VitePress JS, CSS, fonts, images, local search, and clean URLs work through the
-  platform origin.
-- `/robots.txt` advertises `/sitemap.xml` and `/docs-sitemap.xml`.
-- `/sitemap.xml` contains the platform root; `/docs-sitemap.xml` contains docs
-  routes and not the root.
-- `/lab`, `/api/v1/openapi.json`, and all stateful recovery/catalog endpoints
-  return 404 while the recovery switch is false.
-- `/api/v1/health` returns 200 with `recoveryLab: "disabled"` and
-  `storage: "disabled"` without reading recovery credentials or storage.
-- Response security headers are present and the browser console has no CSP or
-  mixed-content errors.
-- Error logs are empty for the exercised routes.
+- VitePress local search, client navigation, CSS, fonts, images, and direct
+  refreshes work on the Preview origin.
+- `/sitemap.xml` contains the platform root.
+- `/docs-sitemap.xml` contains docs routes and excludes the root.
+- Direct `/_docs/*` responses carry `X-Robots-Tag: noindex, nofollow`.
+- Hashed `/assets/*` responses are immutable.
+- `/lab`, OpenAPI, and stateful recovery routes return 404 while the switch is
+  false.
+- `/api/v1/health` reports the lab and storage disabled without reading recovery
+  credentials.
+- Security headers are present and browser/runtime error logs are empty.
 
-Test keyboard navigation, mobile layout, a 404, and at least one page from every
-docs section before proceeding.
+Test keyboard navigation, local search, mobile layout, a 404, and at least one
+page from each docs section.
 
-## 4. Stage the Production platform artifact
+### Verified consolidated Preview
 
-Build a Production deployment using Production environment variables, but do
-not assign the custom domains yet. A Preview promotion may rebuild with
-Production variables; inspect and test the resulting Production deployment
-rather than assuming it is byte-identical to Preview.
+The first one-project Preview passed this matrix on 2026-07-23:
 
-Record:
-
-- platform deployment ID and immutable automatic URL;
-- Git commit SHA;
-- pinned docs deployment ID and origin;
-- current docs rollback deployment ID and origin;
-- the person approving the domain cutover.
-
-Repeat the Preview matrix against the staged Production automatic URL.
-
-## 5. Cut over the domains
-
-Use Vercel's zero-downtime project-domain procedure within the same team:
-
-1. Alias the staged platform deployment's **automatic URL** to `file.cheap`.
-2. Alias the same deployment to `www.file.cheap`.
-3. Verify both hostnames before changing project ownership.
-4. Remove the domains from the docs project and add them to the platform
-   project.
-5. Configure `www.file.cheap` to redirect permanently to `file.cheap`.
-6. Do not delete or rename the docs project or either recorded deployment.
-
-Example shape—replace every placeholder with a recorded value:
-
-```sh
-vercel alias set <platform-automatic-url> file.cheap
-vercel alias set <platform-automatic-url> www.file.cheap
+```text
+deployment: dpl_8ukQAqTTVu1uXxyqLm87nwrSjT2S
+status:     READY
+environment: Preview
+origin:     https://file-cheap-e0sxc03e9-the-lacanians.vercel.app
 ```
 
-Domain mutation is intentionally absent from CI.
+The Preview is protected by Vercel Authentication. It returned the landing
+page, every docs section, clean and legacy HTML routes, both sitemaps, immutable
+hashed assets, the expected security headers, and a disabled-lab health
+contract. No error-level runtime logs were present. It is evidence for this
+architecture, not authorization to promote its dirty working-tree snapshot.
 
-## 6. Post-cutover verification
+## 4. Production cutover
 
-Repeat the complete route matrix on `https://file.cheap` and
-`https://www.file.cheap`. Additionally verify:
+Do not run this section without explicit approval.
 
-- TLS and the `www` redirect;
-- canonical, Open Graph, and Twitter metadata;
-- both sitemaps and every URL in the docs sitemap;
-- VitePress local search and hashed assets;
-- no rewrite loop or accidental `.vercel.app` canonical;
-- `/lab`, OpenAPI, and the stateful recovery/catalog endpoints remain closed;
-- public health reports the lab and storage disabled;
-- platform runtime error logs for at least 15 minutes.
+Because the existing `file-cheap` project already owns both public domains, the
+cutover needs no alias migration and no second project. Create a Production
+deployment from the verified commit, inspect its READY state, and promote only
+that deployment:
 
-Keep the release record and both rollback origins after the observation window.
+```sh
+vercel --prod --scope the-lacanians --yes
+```
+
+Immediately repeat the complete Preview matrix on `https://file.cheap` and
+`https://www.file.cheap`. Verify TLS, the `www` redirect, both sitemaps,
+canonical and social metadata, VitePress search, the disabled lab, and runtime
+error logs for at least 15 minutes.
+
+Record the deployment ID, Git commit, approver, timestamp, and verification
+result.
 
 ## Rollback
 
-Choose the smallest rollback that restores the failed boundary.
-
-### Platform-code regression
-
-Roll back to a previously serving platform deployment:
+Rollback stays inside the same Vercel project:
 
 ```sh
-vercel rollback <known-good-platform-deployment>
+vercel rollback <known-good-deployment>
 ```
 
-Then repeat the public route and log checks.
+If the unified release fails before a newer known-good platform deployment
+exists, roll back to the inspected docs-only baseline above. Recheck `/`,
+`/guide/getting-started`, `/cli/`, both public domains, TLS, and logs.
 
-### Docs-only regression
-
-Create a platform deployment with `FILECHEAP_DOCS_ORIGIN` restored to the last
-known-good immutable docs origin. Verify it before promoting it. Do not point the
-variable at a mutable project alias.
-
-### Routing or topology failure
-
-Immediately alias both public hostnames back to the recorded immutable docs
-deployment:
-
-```sh
-vercel alias set <known-good-docs-automatic-url> file.cheap
-vercel alias set <known-good-docs-automatic-url> www.file.cheap
-```
-
-After traffic is restored, reassign the domains to the docs project in Vercel.
-This is a cross-project rollback; `vercel rollback` in the platform project alone
-cannot restore the former docs-only topology.
-
-Document the failure, deployment IDs, timestamps, and verification result before
-attempting another cutover.
+Do not delete the baseline deployment until the unified site has survived the
+observation window and rollback has been rehearsed.
