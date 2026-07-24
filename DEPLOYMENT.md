@@ -4,7 +4,10 @@ This runbook releases the landing page, public platform, and VitePress
 documentation as one deployment. It does not authorize or launch a hosted
 multi-customer vault.
 
-Production actions require an explicit release decision. Keep
+Production actions require an explicit release decision. The Vercel project is
+connected to GitHub and `main` is its Production branch, so approval must happen
+before merging or pushing a release commit to `main`; that push starts the
+Production deployment automatically. Keep
 `PLATFORM_RECOVERY_LAB_ENABLED=false` in Production.
 
 The architectural decision behind this topology lives in the Obsidian vault at
@@ -33,7 +36,7 @@ The `platform` build performs two steps:
 There is no `FILECHEAP_DOCS_ORIGIN`, separate docs project, cross-project proxy,
 or domain transfer.
 
-### Inspected production baseline
+### Rollback baseline
 
 The known-good docs-only Production deployment that was serving before this
 consolidation is:
@@ -45,7 +48,27 @@ origin:     https://file-cheap-hziatwuzq-the-lacanians.vercel.app
 ```
 
 It belongs to the same `file-cheap` project and remains a rollback target until
-the unified site has completed its observation window.
+the unified site has completed its observation window. It stopped serving the
+public aliases when the unified `main` deployment became READY.
+
+### Current unified Production
+
+Pushing the verified consolidated commit to `main` triggered the existing
+project's GitHub Production deployment:
+
+```text
+deployment: dpl_GPjoTjLi14rcHqgv1mWi6ynJgpM5
+commit:     d202fff4f1dd8e211f2d6984a63b759971a54618
+origin:     https://file-cheap-2hvfb9xof-the-lacanians.vercel.app
+aliases:    https://file.cheap, https://www.file.cheap
+status:     READY
+```
+
+The build cloned `abdul-hamid-achik/file.cheap`, branch `main`, and used
+`platform` as the project Root Directory. The public smoke matrix passed on
+desktop and mobile: landing, docs navigation and search, clean and legacy docs
+routes, both sitemaps, immutable assets, security headers, and the disabled-lab
+boundary. No error-level runtime logs were found.
 
 An accidental project named `file-cheap-platform`
 (`prj_hkdLMzqZmccAv3myWu2mVnjL2DeX`) was created while exploring the rejected
@@ -137,9 +160,10 @@ vercel project inspect file-cheap --scope the-lacanians
 Confirm the project ID exactly matches
 `prj_fnjqc2T8VT2lWHeznMWk7WoH0LyG`. Do not create another project.
 
-The Vercel project Root Directory must be `platform` before enabling automatic
-Git deployments of the consolidated commit. Changing that setting does not
-replace the currently serving Production deployment.
+The Vercel project Root Directory must remain `platform`. Automatic Git
+deployments are already enabled: a push to `main` creates a Production
+deployment and may move the public aliases after the build becomes READY.
+Changing project settings alone does not authorize a release.
 
 The root `.vercelignore` is an allowlist for `platform/`. Keep it in place for
 CLI deployments so Go binaries, release artifacts, local vault data, and other
@@ -212,26 +236,33 @@ hashed assets, the expected security headers, and a disabled-lab health
 contract. No error-level runtime logs were present. It is evidence for this
 architecture, not authorization to promote its dirty working-tree snapshot.
 
-## 4. Production cutover
+## 4. Production release
 
 Do not run this section without explicit approval.
 
-Because the existing `file-cheap` project already owns both public domains, the
-cutover needs no alias migration and no second project. Create a Production
-deployment from the verified commit, inspect its READY state, and promote only
-that deployment:
+Because the existing `file-cheap` project owns both public domains and `main` is
+its Production branch, the normal release action is to merge the fully verified
+commit to `main` and push it. Do not also run a manual Production deployment for
+the same commit.
 
 ```sh
-vercel --prod --scope the-lacanians --yes
+git switch main
+git merge --ff-only <verified-release-branch>
+git push origin main
+vercel inspect https://file.cheap --scope the-lacanians
 ```
 
-Immediately repeat the complete Preview matrix on `https://file.cheap` and
-`https://www.file.cheap`. Verify TLS, the `www` redirect, both sitemaps,
-canonical and social metadata, VitePress search, the disabled lab, and runtime
-error logs for at least 15 minutes.
+Wait for both GitHub CI and the Vercel deployment to complete. Immediately
+repeat the complete Preview matrix on `https://file.cheap` and
+`https://www.file.cheap`. Verify TLS, both hosts, canonical and social metadata,
+both sitemaps, VitePress search, the disabled lab, and runtime error logs for at
+least 15 minutes.
 
 Record the deployment ID, Git commit, approver, timestamp, and verification
 result.
+
+Use `vercel --prod` only for an explicitly approved manual release or recovery
+that cannot follow the normal Git path. Record why it was necessary.
 
 ## Rollback
 
