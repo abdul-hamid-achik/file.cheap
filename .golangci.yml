@@ -1,0 +1,11 @@
+version: "2"
+
+linters:
+  exclusions:
+    paths:
+      - ^platform/(docs/)?node_modules/
+
+formatters:
+  exclusions:
+    paths:
+      - ^platform/(docs/)?node_modules/

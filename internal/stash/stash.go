@@ -928,6 +928,73 @@ func (m *Manager) Info(ctx context.Context, id string) (*Stash, error) {
 	return &Stash{Manifest: man, Dir: stashDir}, nil
 }
 
+// ValidateArtifactEntrypoint confirms that an optional artifact descriptor is
+// a regular file in this stash. Compressed stashes are scanned as tar headers
+// only; their content is never extracted for this validation.
+//
+// Callers must validate entrypoint syntax before calling this method.
+func (m *Manager) ValidateArtifactEntrypoint(ctx context.Context, st *Stash, entrypoint string) error {
+	if entrypoint == "" {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if st == nil || st.Manifest == nil || st.Dir == "" {
+		return fmt.Errorf("artifact entrypoint requires an existing stash")
+	}
+	if st.Manifest.FileCount == 0 {
+		return fmt.Errorf("artifact entrypoint %q is not a regular file in stash content", entrypoint)
+	}
+	if len(st.Manifest.Files) > 0 {
+		listed := false
+		for _, file := range st.Manifest.Files {
+			if filepath.ToSlash(file.Path) == entrypoint {
+				listed = true
+				break
+			}
+		}
+		if !listed {
+			return fmt.Errorf("artifact entrypoint %q is not a regular file in stash content", entrypoint)
+		}
+	}
+
+	contentDir := filepath.Join(st.Dir, "content")
+	if dirExists(contentDir) {
+		candidate := filepath.Join(contentDir, filepath.FromSlash(entrypoint))
+		if !pathWithin(candidate, contentDir) {
+			return fmt.Errorf("artifact entrypoint %q is outside stash content", entrypoint)
+		}
+		if err := ensureNoSymlinkDestination(contentDir, filepath.Dir(candidate)); err != nil {
+			return fmt.Errorf("validate artifact entrypoint %q: %w", entrypoint, err)
+		}
+		info, err := os.Lstat(candidate)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("artifact entrypoint %q is not a regular file in stash content", entrypoint)
+			}
+			return fmt.Errorf("stat artifact entrypoint %q: %w", entrypoint, err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("artifact entrypoint %q is not a regular file in stash content", entrypoint)
+		}
+		return nil
+	}
+
+	archivePath, ok := findArchive(st.Dir)
+	if !ok {
+		return fmt.Errorf("artifact entrypoint %q cannot be checked: stash has no content", entrypoint)
+	}
+	found, err := compress.HasRegularFileContext(ctx, archivePath, entrypoint)
+	if err != nil {
+		return fmt.Errorf("check artifact entrypoint %q in compressed stash: %w", entrypoint, err)
+	}
+	if !found {
+		return fmt.Errorf("artifact entrypoint %q is not a regular file in stash content", entrypoint)
+	}
+	return nil
+}
+
 // Exists returns true if a stash with the given ID has a readable,
 // self-consistent manifest. An invalid (e.g. traversal) ID, a partial save, or
 // a corrupt/misplaced manifest is never considered an operational stash. This

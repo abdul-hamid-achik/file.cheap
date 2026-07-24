@@ -107,6 +107,9 @@ jobs:
       - name: Verify isolated platform
         run: bun run check
 
+      - name: Build unified public site
+        run: bun run build
+
       - name: Audit platform production dependencies
         run: bun run audit:production
 

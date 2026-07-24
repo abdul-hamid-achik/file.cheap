@@ -191,6 +191,67 @@ func TestCompressAndRestore(t *testing.T) {
 	}
 }
 
+func TestValidateArtifactEntrypointForExtractedAndCompressedStashes(t *testing.T) {
+	tmp := t.TempDir()
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(tmp, "source")
+	if err := os.MkdirAll(filepath.Join(src, "reports"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "reports", "run.json"), []byte(`{"status":"passed"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	st, err := mgr.Save(context.Background(), &SaveOptions{SourcePath: src})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mgr.ValidateArtifactEntrypoint(context.Background(), st, "reports/run.json"); err != nil {
+		t.Fatalf("ValidateArtifactEntrypoint extracted: %v", err)
+	}
+	if err := mgr.ValidateArtifactEntrypoint(context.Background(), st, "reports/missing.json"); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("ValidateArtifactEntrypoint missing error = %v", err)
+	}
+
+	if _, err := mgr.Compress(context.Background(), st.Manifest.ID, "zstd"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(st.Dir, "content")); !os.IsNotExist(err) {
+		t.Fatalf("compressed stash still has content tree: %v", err)
+	}
+	if err := mgr.ValidateArtifactEntrypoint(context.Background(), st, "reports/run.json"); err != nil {
+		t.Fatalf("ValidateArtifactEntrypoint compressed: %v", err)
+	}
+	if err := mgr.ValidateArtifactEntrypoint(context.Background(), st, "reports/missing.json"); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("ValidateArtifactEntrypoint compressed missing error = %v", err)
+	}
+
+	// Early manifests can omit the per-file list while retaining file_count.
+	// Keep validating those stashes by inspecting their archive.
+	st.Manifest.Files = nil
+	if err := mgr.ValidateArtifactEntrypoint(context.Background(), st, "reports/run.json"); err != nil {
+		t.Fatalf("ValidateArtifactEntrypoint legacy manifest: %v", err)
+	}
+}
+
+func TestValidateArtifactEntrypointRejectsEmptyStashWithoutArchiveScan(t *testing.T) {
+	mgr, err := NewManager(filepath.Join(t.TempDir(), "vault"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := &Stash{
+		Manifest: &manifest.Manifest{FileCount: 0},
+		Dir:      t.TempDir(),
+	}
+	err = mgr.ValidateArtifactEntrypoint(context.Background(), st, "run.json")
+	if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("ValidateArtifactEntrypoint empty stash error = %v", err)
+	}
+}
+
 func TestDrop(t *testing.T) {
 	tmp := t.TempDir()
 	mgr, err := NewManager(filepath.Join(tmp, "vault"))

@@ -56,26 +56,42 @@ path and reports whether the restored files match their manifest hashes.
 
 ## Hand an artifact to Chalupa
 
-When Cairntrace or Glyphrun produces evidence for a Chalupa suite run, save the
-completed run directory and emit a versioned reference:
+For a Cairntrace run, save its completed run directory directly:
 
 ```bash
-fcheap save /absolute/path/to/completed-run \
+fcheap save /absolute/path/to/<completed-cairn-run-dir> \
   --tool cairntrace \
-  --tag checkout-e2e
+  --tag checkout-e2e \
+  --json
 
 fcheap artifact-ref <stash-id> \
   --kind cairntrace.run \
   --producer-tool cairntrace \
   --native-schema urn:cairntrace.dev:run:v1 \
-  --native-id <native-run-id> \
+  --native-id <raw-cairn-run-id> \
   --entrypoint run.json \
   --json
 ```
 
-The `task report` integration must attach that envelope when it first ingests
-the source run. Chalupa stores run metadata and the reference; file.cheap keeps
-the bytes, manifest hashes, retention, and restore behavior.
+Copy `id` from the first command into `<stash-id>` in the second. Put the
+complete ArtifactRefV1 result in a Chalupa artifact sidecar under that same raw
+Cairn run ID, then submit both files:
+
+```bash
+task report \
+  CONFIG=/absolute/path/to/chalupa.yml \
+  REPORT=./cairn-stats.json \
+  ARTIFACTS=./artifact-sidecar.json \
+  SUITE=checkout-e2e
+```
+
+Attach the sidecar on the source run's first ingest. Retries must resend the
+same normalized run and references; Chalupa rejects later changes instead of
+overwriting evidence. Chalupa stores run metadata and the reference while
+file.cheap keeps the bytes, manifest hashes, retention, and restore behavior.
+
+Use the direct save until Cairntrace's `cairn stash save --format json` wrapper
+forwards file.cheap's top-level `id`.
 
 The reference does not upload anything. `fcheap://stash/<stash-id>` resolves
 only on a machine whose configured vault contains that stash. See the complete

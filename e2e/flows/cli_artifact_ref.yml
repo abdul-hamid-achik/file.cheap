@@ -1,0 +1,91 @@
+version: 1
+name: cli_artifact_ref
+
+metadata:
+  feature: cli
+  owner: core
+  priority: high
+  tags:
+    - smoke
+
+intent: |
+  Verify that a saved local stash can emit a strict ArtifactRefV1 with native
+  producer metadata, and that an unknown stash is rejected.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - |
+      export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-stash-artifact-ref
+      rm -rf /tmp/fcheap-e2e-stash-artifact-ref /tmp/fcheap-e2e-artifact-ref-src
+      mkdir -p /tmp/fcheap-e2e-artifact-ref-src
+      echo '{"run":"run_01"}' > /tmp/fcheap-e2e-artifact-ref-src/run.json
+      ./bin/fcheap save /tmp/fcheap-e2e-artifact-ref-src --tag artifact-ref-test --tool cairntrace
+      STASH_ID=$(./bin/fcheap list --tag artifact-ref-test --json | grep -o '"id": "[^"]*"' | head -1 | cut -d'"' -f4)
+      ./bin/fcheap artifact-ref "$STASH_ID" \
+        --kind cairntrace.run \
+        --producer-tool cairntrace \
+        --producer-version 1.8.0 \
+        --native-schema urn:cairntrace.dev:run:v1 \
+        --native-id run_01 \
+        --entrypoint run.json \
+        --json
+      ./bin/fcheap artifact-ref "$STASH_ID" \
+        --kind glyphrun.run \
+        --producer-tool glyphrun \
+        --producer-version 1.0.0 \
+        --native-schema urn:glyphrun.dev:run:v1 \
+        --native-id run_01 \
+        --entrypoint run.json \
+        --json
+      if ./bin/fcheap artifact-ref missing_stash_for_e2e --json >/dev/null 2>&1; then
+        exit 1
+      fi
+      echo "Unknown stash rejected"
+  cwd: "."
+  timeoutMs: 30000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: artifact-ref succeeds and the negative case is rejected
+    verify:
+      process:
+        exitCode: 0
+  - id: emits_contract
+    description: output identifies the strict local ArtifactRefV1 contract
+    verify:
+      screen:
+        contains: "urn:filecheap.dev:artifact-ref:v1"
+  - id: preserves_producer
+    description: output preserves the producer and native artifact identity
+    verify:
+      screen:
+        contains: "urn:cairntrace.dev:run:v1"
+  - id: emits_glyphrun_producer
+    description: artifact-ref preserves Glyphrun native producer metadata
+    verify:
+      screen:
+        contains: "urn:glyphrun.dev:run:v1"
+  - id: rejects_missing_stash
+    description: artifact-ref does not invent references for unknown stashes
+    verify:
+      screen:
+        contains: "Unknown stash rejected"

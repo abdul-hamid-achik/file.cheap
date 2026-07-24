@@ -1,0 +1,7 @@
+{
+  "$schema": "urn:filecheap.dev:artifact-ref:v1",
+  "version": 1,
+  "provider": "link",
+  "uri": "https://artifacts.example:99999/report",
+  "kind": "chalupa.report"
+}

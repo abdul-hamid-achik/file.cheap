@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -303,6 +304,12 @@ func validateStableHTTPURL(field, value string, httpsOnly bool) error {
 	if (httpsOnly && parsed.Scheme != "https") ||
 		(!httpsOnly && parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return invalid(field, "must use an allowed HTTP(S) scheme")
+	}
+	if port := parsed.Port(); port != "" {
+		number, err := strconv.Atoi(port)
+		if err != nil || number > 65535 {
+			return invalid(field, "must use a port between 0 and 65535")
+		}
 	}
 	return nil
 }

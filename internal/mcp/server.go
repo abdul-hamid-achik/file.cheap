@@ -248,6 +248,11 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		if err != nil {
 			return toolError("%v", err), nil, nil
 		}
+		if ref.Producer != nil {
+			if err := mgr.ValidateArtifactEntrypoint(ctx, st, ref.Producer.Entrypoint); err != nil {
+				return toolError("%v", err), nil, nil
+			}
+		}
 		return textResult(ref), nil, nil
 	})
 

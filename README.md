@@ -11,7 +11,8 @@ an account or hosted service.
 [Documentation](https://file.cheap/guide/) ·
 [Five-minute start](https://file.cheap/guide/getting-started) ·
 [Agent guide](https://file.cheap/guide/agent-guide) ·
-[MCP setup](https://file.cheap/integrations/mcp-clients)
+[MCP setup](https://file.cheap/integrations/mcp-clients) ·
+[Artifact handoff](https://file.cheap/integrations/local-artifact-references)
 
 ## Why it exists
 
@@ -57,6 +58,13 @@ The lab is a single-workspace protocol experiment, not the integration surface
 for Chalupa, Cairntrace, or Glyphrun. Those tools should exchange stable local
 artifact references and keep file.cheap responsible for bytes, integrity, and
 restore.
+
+`fcheap artifact-ref <stash-id> --json` and the `fcheap_artifact_ref` MCP tool
+emit the same strict, credential-free `fcheap-local` envelope for an existing
+stash. The command landed after `v0.29.0` and is available from `main` until the
+next tagged release. See the
+[local artifact handoff guide](https://file.cheap/integrations/local-artifact-references)
+for Cairntrace, Glyphrun, and Chalupa examples.
 
 ### Recovery laboratory
 

@@ -181,11 +181,13 @@ Run from `platform/`:
 ```sh
 bun install --cwd docs --frozen-lockfile
 bun run check
+bun run build
 bun run audit:production
 ```
 
-The check performs linting, strict type checking, unit and contract tests, a
-production build, and an isolated recovery E2E. The audit must report no known
+The check performs linting, strict type checking, unit and contract tests, and
+an isolated recovery E2E. The separate build stages and verifies the VitePress
+site before producing the Next.js artifact. The audit must report no known
 production dependency vulnerabilities. Before a domain cutover, follow the root
 [`DEPLOYMENT.md`](DEPLOYMENT.md); preview, domain assignment, and rollback are
 separate release gates.

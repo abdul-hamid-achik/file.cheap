@@ -159,16 +159,37 @@ idempotent tool does not upload, sign, restore, or mutate the stash.
   or a query string
 - `native_id` (string, optional) -- producer-native artifact ID
 - `entrypoint` (string, optional) -- safe relative path to the native descriptor
-  inside the stash
+  inside the stash; it must identify a regular saved file
 
 **Output:** The strict JSON envelope with `$schema`,
 `version: 1`, `provider: "fcheap-local"`,
 `uri: "fcheap://stash/<artifact_id>"`, `artifact_id`, `kind`, and optional
 `producer`. The same value is available as structured tool content.
 
+For example, an agent attaching a Glyphrun pack can call:
+
+```json
+{
+  "stash_id": "<stash-id>",
+  "kind": "glyphrun.run",
+  "producer_tool": "glyphrun",
+  "native_schema": "urn:glyphrun.dev:run:v1",
+  "native_id": "<raw-glyphrun-run-id>",
+  "entrypoint": "run.json"
+}
+```
+
+The structured result is the complete ArtifactRefV1 object. Pass that object
+unchanged to the receiving integration; do not reduce it to a stash ID, invent
+an `integrity` value, or replace its URI with a local filesystem path. For
+Chalupa, place it in the artifact sidecar under the matching raw Cairn run ID
+before the run's first ingest.
+
 The emitted local envelope has no `integrity` or `web_url` field and never
 contains credentials or signed URLs. Its URI resolves only where the matching
-local vault exists. See [`artifact-ref`](/cli/artifact-ref) and the
+local vault exists. The tool returns an error instead of a reference when an
+optional entrypoint is absent or is not a regular file. See
+[`artifact-ref`](/cli/artifact-ref) and the
 [ecosystem integration guide](/integrations/local-artifact-references).
 
 ### fcheap_restore

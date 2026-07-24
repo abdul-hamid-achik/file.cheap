@@ -70,6 +70,80 @@ func TestArchiveExtractRoundTrip(t *testing.T) {
 	}
 }
 
+func TestHasRegularFileContext(t *testing.T) {
+	for _, algo := range []Algorithm{Zstd, Gzip, None} {
+		t.Run(string(algo), func(t *testing.T) {
+			tmp := t.TempDir()
+			src := filepath.Join(tmp, "src")
+			if err := os.MkdirAll(src, 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(src, "run.json"), []byte(`{"run":"run_01"}`), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			ext := map[Algorithm]string{Zstd: "content.tar.zst", Gzip: "content.tar.gz", None: "content.tar"}[algo]
+			archive := filepath.Join(tmp, ext)
+			if _, err := Archive(src, archive, algo); err != nil {
+				t.Fatal(err)
+			}
+
+			found, err := HasRegularFileContext(context.Background(), archive, "run.json")
+			if err != nil || !found {
+				t.Fatalf("HasRegularFileContext existing = (%t, %v), want (true, nil)", found, err)
+			}
+			found, err = HasRegularFileContext(context.Background(), archive, "missing.json")
+			if err != nil || found {
+				t.Fatalf("HasRegularFileContext missing = (%t, %v), want (false, nil)", found, err)
+			}
+		})
+	}
+}
+
+func TestHasRegularFileContextBoundsArchiveScan(t *testing.T) {
+	tmp := t.TempDir()
+	src := filepath.Join(tmp, "src")
+	if err := os.MkdirAll(src, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "run.json"), []byte(`{"run":"run_01"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(tmp, "content.tar")
+	if _, err := Archive(src, archive, None); err != nil {
+		t.Fatal(err)
+	}
+
+	originalBytes := maxExtractedBytes
+	originalInspectionBytes := maxArchiveInspectionBytes
+	originalHeaders := maxArchiveScanHeaders
+	t.Cleanup(func() {
+		maxExtractedBytes = originalBytes
+		maxArchiveInspectionBytes = originalInspectionBytes
+		maxArchiveScanHeaders = originalHeaders
+	})
+
+	maxArchiveInspectionBytes = 100
+	if _, err := HasRegularFileContext(context.Background(), archive, "run.json"); err == nil ||
+		!strings.Contains(err.Error(), "decompressed inspection cap") {
+		t.Fatalf("decompressed byte cap error = %v", err)
+	}
+
+	maxArchiveInspectionBytes = originalInspectionBytes
+	maxExtractedBytes = 1
+	if _, err := HasRegularFileContext(context.Background(), archive, "run.json"); err == nil ||
+		!strings.Contains(err.Error(), "byte inspection cap") {
+		t.Fatalf("byte cap error = %v", err)
+	}
+
+	maxExtractedBytes = originalBytes
+	maxArchiveScanHeaders = 0
+	if _, err := HasRegularFileContext(context.Background(), archive, "run.json"); err == nil ||
+		!strings.Contains(err.Error(), "header inspection cap") {
+		t.Fatalf("header cap error = %v", err)
+	}
+}
+
 func TestArchiveUnknownAlgo(t *testing.T) {
 	tmp := t.TempDir()
 	src := filepath.Join(tmp, "src")

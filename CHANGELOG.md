@@ -9,6 +9,26 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+### Added
+- **Versioned local artifact handoff.** `fcheap artifact-ref` and the
+  `fcheap_artifact_ref` MCP tool emit a strict, credential-free
+  `ArtifactRefV1` for an existing local stash so Cairntrace, Glyphrun, Chalupa,
+  and other tools can exchange provenance without moving artifact bytes.
+- **Unified public product site.** The landing page and VitePress documentation
+  now ship from the existing `file-cheap` Vercel project at `file.cheap`, while
+  the recovery laboratory and stateful API remain disabled in Production.
+
+### Changed
+- The public guides now document the implemented Chalupa artifact sidecar,
+  Cairntrace's raw run-ID join, Glyphrun packs, first-ingest immutability, retry
+  behavior, and the local-vault availability boundary.
+
+### Fixed
+- Artifact-reference conformance now rejects mismatched cloud identities,
+  empty native schema URNs, and HTTP(S) ports outside the supported range.
+- CLI and MCP artifact-reference producers verify an optional entrypoint
+  against saved stash content before returning a usable reference.
+
 ## [0.29.0] - 2026-07-12
 
 ### Added

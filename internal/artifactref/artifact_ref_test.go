@@ -137,7 +137,7 @@ func TestValidateInterchangeProviderVariants(t *testing.T) {
 			URI:        "fcheap://cloud/vaults/vlt_01/artifacts/art_01",
 			ArtifactID: "art_01",
 			Kind:       "cairntrace.run",
-			WebURL:     "https://cloud.file.cheap/artifacts/art_01",
+			WebURL:     "https://artifacts.example/artifacts/art_01",
 		},
 		{
 			Schema:   SchemaURI,
@@ -183,7 +183,7 @@ func TestValidateInterchangeProviderVariants(t *testing.T) {
 			URI:        LocalURI(fixtureID),
 			ArtifactID: fixtureID,
 			Kind:       "filecheap.stash",
-			WebURL:     "https://cloud.file.cheap/artifacts/local",
+			WebURL:     "https://artifacts.example/artifacts/local",
 		},
 		{
 			Schema:     SchemaURI,
@@ -192,12 +192,37 @@ func TestValidateInterchangeProviderVariants(t *testing.T) {
 			URI:        "fcheap://cloud/vaults/vlt_01/artifacts/art_01",
 			ArtifactID: "art_01",
 			Kind:       "cairntrace.run",
-			WebURL:     "https://cloud.file.cheap/artifacts/art_01?token=secret",
+			WebURL:     "https://artifacts.example/artifacts/art_01?token=secret",
+		},
+		{
+			Schema:   SchemaURI,
+			Version:  Version,
+			Provider: ProviderLink,
+			URI:      "https://artifacts.example:99999/report",
+			Kind:     "chalupa.report",
 		},
 	}
 	for _, ref := range invalid {
 		if err := ref.Validate(); err == nil {
 			t.Fatalf("Validate accepted invalid %s ref: %+v", ref.Provider, ref)
+		}
+	}
+}
+
+func TestValidateStableHTTPURLPortBounds(t *testing.T) {
+	for _, test := range []struct {
+		url  string
+		want bool
+	}{
+		{url: "https://artifacts.example:0/report", want: true},
+		{url: "https://artifacts.example:00000/report", want: true},
+		{url: "https://artifacts.example:65535/report", want: true},
+		{url: "https://artifacts.example:65536/report", want: false},
+		{url: "https://artifacts.example:99999/report", want: false},
+	} {
+		err := validateStableHTTPURL(".uri", test.url, false)
+		if (err == nil) != test.want {
+			t.Fatalf("validateStableHTTPURL(%q) error = %v, want accepted=%t", test.url, err, test.want)
 		}
 	}
 }
@@ -279,6 +304,17 @@ func TestPublishedSchemaIdentityAndStrictness(t *testing.T) {
 	if !strings.Contains(schema.Description, "Integrity is intentionally absent") ||
 		!strings.Contains(schema.Description, "legacy ContentHash") {
 		t.Fatalf("schema description does not explain omitted integrity: %q", schema.Description)
+	}
+	var linkVariant struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(schema.OneOf[2], &linkVariant); err != nil {
+		t.Fatalf("decode link schema variant: %v", err)
+	}
+	for _, raw := range []json.RawMessage{schema.Properties["web_url"], linkVariant.Properties["uri"]} {
+		if !strings.Contains(string(raw), "3[0-5]") || strings.Contains(string(raw), "[0-9]{1,5}") {
+			t.Fatalf("schema port pattern is not aligned with 0..65535: %s", raw)
+		}
 	}
 	var provider struct {
 		Enum []string `json:"enum"`

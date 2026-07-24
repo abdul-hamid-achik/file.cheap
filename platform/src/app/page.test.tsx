@@ -9,10 +9,17 @@ describe("public homepage", () => {
 
     expect(html).toContain("Keep the files your agents create");
     expect(html).toContain('href="/guide/getting-started"');
-    expect(html).toContain('href="/integrations/mcp-clients"');
+    expect(html).toContain('href="/integrations/local-artifact-references"');
     expect(html).toContain("Fifteen typed local tools");
-    expect(html).toContain('class="navSecondaryLink"');
+    expect(html).toContain('href="#main-content"');
+    expect(html).toContain('id="main-content"');
+    expect(html).toContain('class="navIntegrationLink"');
     expect(html).toContain('class="navOptionalLink" href="/guide/"');
+    expect(html).toContain("Cairntrace or Glyphrun");
+    expect(html).toContain("ArtifactRefV1");
+    expect(html).toContain("Chalupa");
+    expect(html).toContain("Once separately deployed");
+    expect(html).toContain("not a sync service");
     expect(html).not.toContain("Development bearer token");
     expect(html).not.toContain("$15");
     expect(html).not.toContain("Remote Vault Beta");

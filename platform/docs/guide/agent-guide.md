@@ -181,11 +181,19 @@ as hypotheses to inspect, not as confirmed root causes.
 ### Attach evidence to another tool
 
 ```bash
-fcheap artifact-ref <stash-id> --kind cairntrace.run --json
+fcheap artifact-ref <stash-id> \
+  --kind cairntrace.run \
+  --producer-tool cairntrace \
+  --native-schema urn:cairntrace.dev:run:v1 \
+  --native-id <raw-cairn-run-id> \
+  --entrypoint run.json \
+  --json
 ```
 
 Pass the complete envelope to the receiving integration. Do not present the
-reference as an upload or a public URL. See
+reference as an upload or a public URL. A Chalupa report sidecar must attach it
+under the matching raw Cairn run ID on first ingest; retries resend the same
+reference. See
 [Local artifact references for agent tools](/integrations/local-artifact-references).
 
 ### Review storage safely

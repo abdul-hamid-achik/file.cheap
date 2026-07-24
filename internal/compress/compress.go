@@ -23,11 +23,23 @@ const (
 	None Algorithm = "none"
 )
 
-// maxExtractedBytes caps total bytes written during a single Extract, as
-// defense-in-depth against a decompression bomb (a small archive that expands to
-// fill the disk). It is far above any realistic agent-workflow stash. A var (not
-// const) so tests can lower it.
+// maxExtractedBytes caps both total bytes written during Extract and logical
+// bytes traversed during archive inspection, as defense-in-depth against a
+// decompression bomb. It is far above any realistic agent-workflow stash. A var
+// (not const) so tests can lower it.
 var maxExtractedBytes int64 = 20 << 30 // 20 GiB
+
+// maxArchiveInspectionBytes caps the decompressed stream consumed while
+// inspecting tar metadata. It includes file bodies skipped by archive/tar,
+// padding, and PAX/GNU extension records that Next consumes internally. The
+// extra GiB above maxExtractedBytes leaves ample room for valid tar overhead.
+// A var lets tests exercise the failure path.
+var maxArchiveInspectionBytes int64 = 21 << 30 // 21 GiB
+
+// maxArchiveScanHeaders bounds metadata-only archive inspection. The manifest
+// itself is capped at 64 MiB, so a valid stash cannot approach this number of
+// entries. A var lets tests exercise the failure path.
+var maxArchiveScanHeaders = 1_000_000
 
 // Archive creates a compressed tar archive from a directory.
 // The archive is written to outputPath. If algo is None, creates an uncompressed tar.
@@ -137,7 +149,7 @@ func ArchiveContext(ctx context.Context, srcDir, outputPath string, algo Algorit
 		if herr != nil {
 			return herr
 		}
-		hdr.Name = rel
+		hdr.Name = filepath.ToSlash(rel)
 		if info.IsDir() {
 			// Directory headers preserve empty directories and their permissions;
 			// omitting them made a compressed round-trip lose empty trees.
@@ -179,6 +191,75 @@ func ArchiveContext(ctx context.Context, srcDir, outputPath string, algo Algorit
 // Extract decompresses a tar archive to a target directory.
 func Extract(archivePath, targetDir string) error {
 	return ExtractContext(context.Background(), archivePath, targetDir)
+}
+
+// HasRegularFileContext reports whether an archive contains name as a regular
+// file. It streams tar headers without extracting files, so callers can verify
+// metadata that names a file in a compressed stash without materializing it.
+func HasRegularFileContext(ctx context.Context, archivePath, name string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return false, fmt.Errorf("open archive: %w", err)
+	}
+	defer f.Close() //nolint:errcheck
+
+	ext := filepath.Ext(archivePath)
+	var reader io.Reader = f
+	var gzReader *gzip.Reader
+	var zstDecoder *zstd.Decoder
+	switch ext {
+	case ".zst":
+		dec, err := zstd.NewReader(f)
+		if err != nil {
+			return false, fmt.Errorf("init zstd decoder: %w", err)
+		}
+		zstDecoder = dec
+		reader = dec
+		defer zstDecoder.Close()
+	case ".gz", ".tgz":
+		gz, err := gzip.NewReader(f)
+		if err != nil {
+			return false, fmt.Errorf("init gzip: %w", err)
+		}
+		gzReader = gz
+		reader = gz
+		defer gzReader.Close() //nolint:errcheck
+	}
+
+	tr := tar.NewReader(&archiveInspectionReader{
+		ctx:       ctx,
+		reader:    reader,
+		remaining: maxArchiveInspectionBytes,
+		limit:     maxArchiveInspectionBytes,
+	})
+	var scannedBytes int64
+	var scannedHeaders int
+	for {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return false, nil
+		}
+		if err != nil {
+			return false, fmt.Errorf("read tar: %w", err)
+		}
+		scannedHeaders++
+		if scannedHeaders > maxArchiveScanHeaders {
+			return false, fmt.Errorf("archive exceeds %d-header inspection cap", maxArchiveScanHeaders)
+		}
+		if hdr.Size < 0 || hdr.Size > maxExtractedBytes-scannedBytes {
+			return false, fmt.Errorf("archive exceeds %d-byte inspection cap (possible decompression bomb)", maxExtractedBytes)
+		}
+		scannedBytes += hdr.Size
+		if filepath.ToSlash(hdr.Name) == name && hdr.FileInfo().Mode().IsRegular() {
+			return true, nil
+		}
+	}
 }
 
 // ExtractContext is Extract with cancellation support between entries and
@@ -370,4 +451,44 @@ func (r *contextReader) Read(p []byte) (int, error) {
 		return 0, err
 	}
 	return r.reader.Read(p)
+}
+
+// archiveInspectionReader bounds every decompressed byte consumed by
+// archive/tar, including metadata records and implicit entry-body skips that
+// are not visible to callers of Reader.Next.
+type archiveInspectionReader struct {
+	ctx       context.Context
+	reader    io.Reader
+	remaining int64
+	limit     int64
+}
+
+func (r *archiveInspectionReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	if r.remaining <= 0 {
+		var probe [1]byte
+		for {
+			n, err := r.reader.Read(probe[:])
+			if n > 0 {
+				return 0, fmt.Errorf(
+					"archive exceeds %d-byte decompressed inspection cap (possible decompression bomb)",
+					r.limit,
+				)
+			}
+			if err != nil {
+				return 0, err
+			}
+			if err := r.ctx.Err(); err != nil {
+				return 0, err
+			}
+		}
+	}
+	if int64(len(p)) > r.remaining {
+		p = p[:r.remaining]
+	}
+	n, err := r.reader.Read(p)
+	r.remaining -= int64(n)
+	return n, err
 }

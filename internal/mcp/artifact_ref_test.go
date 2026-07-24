@@ -163,6 +163,20 @@ func TestArtifactRefToolValidatesInputAndIsReadOnly(t *testing.T) {
 	if !invalid.IsError || !strings.Contains(toolResultText(invalid), ".producer.tool") {
 		t.Fatalf("invalid result = %+v", invalid)
 	}
+	missingEntrypoint, err := session.CallTool(ctx, &mcpsdk.CallToolParams{
+		Name: "fcheap_artifact_ref",
+		Arguments: map[string]any{
+			"stash_id":      saved.Manifest.ID,
+			"producer_tool": "cairntrace",
+			"entrypoint":    "missing.json",
+		},
+	})
+	if err != nil {
+		t.Fatalf("call missing entrypoint: %v", err)
+	}
+	if !missingEntrypoint.IsError || !strings.Contains(toolResultText(missingEntrypoint), "not a regular file") {
+		t.Fatalf("missing entrypoint result = %+v", missingEntrypoint)
+	}
 	if !mgr.Exists(saved.Manifest.ID) {
 		t.Fatal("read-only artifact ref tool changed the stash")
 	}

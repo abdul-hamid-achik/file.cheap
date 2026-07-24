@@ -105,24 +105,56 @@ The run result and the artifact reference describe different facts:
 
 No product needs a foreign key into another product's database.
 
+## Compatibility status
+
+| Component | Current handoff |
+|---|---|
+| file.cheap CLI | `fcheap artifact-ref` emits a validated local reference for an existing stash |
+| file.cheap MCP | `fcheap_artifact_ref` returns the same reference as structured tool content |
+| Cairntrace | Save the completed run directory with `fcheap save`; Cairntrace wrapper ID forwarding is pending |
+| Glyphrun | Save the completed `.glyphrun/runs/<run-id>` pack with `fcheap save` |
+| Chalupa | `task report REPORT=... ARTIFACTS=...` accepts an ArtifactRefV1 sidecar; its Production deployment is still pending |
+| Hosted file.cheap vault | Not available; `fcheap-cloud` remains a reserved provider |
+
+Both current file.cheap constructors emit an `fcheap-local` reference. Chalupa
+can preserve and display that metadata without being able to restore the bytes
+from its server.
+
+Artifact references landed after `v0.29.0`. Until the next tagged CLI release,
+install file.cheap from the current `main` branch and confirm the command with
+`fcheap artifact-ref --help`.
+
 ## Cairntrace
 
-Save the completed Cairntrace artifact directory, then emit a reference with
-producer metadata that identifies the native run:
+Cairntrace writes a self-contained run directory. After the pack is complete,
+save the absolute directory with file.cheap and copy `id` from the JSON result:
 
 ```bash
-fcheap save /absolute/path/to/.cairntrace/runs/<run-id> \
+fcheap save /absolute/path/to/<completed-cairn-run-dir> \
   --tool cairntrace \
-  --tag checkout-e2e
+  --tag checkout-e2e \
+  --json
+```
 
+Then ask file.cheap to construct the reference:
+
+```bash
 fcheap artifact-ref <stash-id> \
   --kind cairntrace.run \
   --producer-tool cairntrace \
   --native-schema urn:cairntrace.dev:run:v1 \
-  --native-id <run-id> \
+  --native-id <raw-cairn-run-id> \
   --entrypoint run.json \
   --json
 ```
+
+`latest` and `previous` are valid Cairntrace run selectors, but the
+`producer.native_id` and the Chalupa sidecar key must use the resolved raw run
+ID. They must not use Chalupa's environment-namespaced `sourceRunId`.
+
+The current Cairntrace `cairn stash save --format json` wrapper does not
+reliably forward the top-level `id` returned by file.cheap. Until its parser
+accepts `data.id`, use the direct `fcheap save` command above.
 
 Keep Cairntrace's native result unchanged. The reference is an additional
 handoff record; it is not a replacement for Cairntrace's stats or context
@@ -153,17 +185,76 @@ that the receiving interface can present clearly.
 
 ## Chalupa
 
-Chalupa should store the artifact reference as metadata on the corresponding
-suite run. It must not store the artifact bytes, attempt to crawl the local URI,
-or treat an unresolved local reference as a failed suite.
+The Chalupa repository implements a strict artifact sidecar keyed by raw Cairn
+run ID. The sidecar is a separate document so the Cairn stats schema stays
+unchanged:
+
+```json
+{
+  "$schema": "urn:chalupa.run:artifact-sidecar:v1",
+  "version": 1,
+  "runs": {
+    "run_demo_20260723_001": [
+      {
+        "$schema": "urn:filecheap.dev:artifact-ref:v1",
+        "version": 1,
+        "provider": "fcheap-local",
+        "uri": "fcheap://stash/<stash-id>",
+        "artifact_id": "<stash-id>",
+        "kind": "cairntrace.run",
+        "producer": {
+          "tool": "cairntrace",
+          "native_schema": "urn:cairntrace.dev:run:v1",
+          "native_id": "run_demo_20260723_001",
+          "entrypoint": "run.json"
+        }
+      }
+    ]
+  }
+}
+```
+
+Place the complete object printed by `fcheap artifact-ref` under its matching
+raw Cairn run ID. Do not type a second, reduced `{kind, stashId}` shape and do
+not add Chalupa fields inside the ArtifactRefV1 envelope. The file.cheap command
+prints one reference; the reporting integration is responsible for assembling
+the sidecar around one or more of those objects.
+
+Generate Cairn's report with run rows, then send both documents:
+
+```bash
+cairn stats \
+  --group-by suite \
+  --include-runs \
+  --format json > ./cairn-stats.json
+
+task report \
+  CONFIG=/absolute/path/to/chalupa.yml \
+  REPORT=./cairn-stats.json \
+  ARTIFACTS=./artifact-sidecar.json \
+  SUITE=checkout-e2e
+```
+
+Every sidecar key must match a raw run ID in the Cairn stats document. Chalupa
+rejects orphan keys, unknown fields, and duplicate `provider` + `uri`
+identities within one run. Its current bounds are 250 run keys, 20 references
+per run, 4 MiB of raw Cairn JSON, 1 MiB of sidecar JSON, and 256 KiB for the
+normalized request. Omitting `ARTIFACTS` preserves the artifact-free reporting
+flow.
+
+Chalupa stores the complete artifact reference as metadata on the corresponding
+suite run. It does not store the artifact bytes, crawl a local URI, or treat an
+unresolved local reference as a failed suite.
 
 `task report` must attach the reference during the run's **first ingestion**.
 The control plane cannot discover a local stash later. If a retry uses the same
-source run ID, send the same reference again so the ingest remains idempotent.
+source run ID, resend the exact same normalized run and sidecar. `task report`
+uses a fresh HMAC nonce for the retry; identical content deduplicates.
 
-Until the Chalupa report adapter accepts this versioned envelope, treat the JSON
-as the integration contract and adapt it explicitly at the report boundary. Do
-not silently drop `$schema`, `version`, `uri`, or producer metadata.
+Changing the artifacts or other run facts for the same source run returns
+`409 run_ingest_conflict` and does not overwrite the stored run. The adapter is
+implemented in Chalupa but not yet deployed to Chalupa Production, so complete
+its database migration and release gate before relying on the hosted readback.
 
 ## Recovery Lab is not this boundary
 

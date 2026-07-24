@@ -51,24 +51,23 @@ It belongs to the same `file-cheap` project and remains a rollback target until
 the unified site has completed its observation window. It stopped serving the
 public aliases when the unified `main` deployment became READY.
 
-### Current unified Production
+### Prior verified unified Production baseline
 
-Pushing the verified consolidated commit to `main` triggered the existing
-project's GitHub Production deployment:
+Before the ecosystem UX release, the latest verified unified deployment on the
+existing project's Production branch was:
 
 ```text
-deployment: dpl_GPjoTjLi14rcHqgv1mWi6ynJgpM5
-commit:     d202fff4f1dd8e211f2d6984a63b759971a54618
-origin:     https://file-cheap-2hvfb9xof-the-lacanians.vercel.app
+deployment: dpl_9Cj9jtJDAZPvf8uj3MUkebE9wQJp
+commit:     283dbcc84172df65ea93020e5b39876d39fadcab
+origin:     https://file-cheap-fh5autisx-the-lacanians.vercel.app
 aliases:    https://file.cheap, https://www.file.cheap
 status:     READY
 ```
 
-The build cloned `abdul-hamid-achik/file.cheap`, branch `main`, and used
-`platform` as the project Root Directory. The public smoke matrix passed on
-desktop and mobile: landing, docs navigation and search, clean and legacy docs
-routes, both sitemaps, immutable assets, security headers, and the disabled-lab
-boundary. No error-level runtime logs were found.
+Treat this as the immediate rollback target for the next release. Use
+`vercel inspect https://file.cheap --scope the-lacanians --format=json` to
+resolve the live deployment after `main` advances; do not assume a hard-coded
+deployment remains current.
 
 An accidental project named `file-cheap-platform`
 (`prj_hkdLMzqZmccAv3myWu2mVnjL2DeX`) was created while exploring the rejected
@@ -140,6 +139,7 @@ bun audit
 cd ..
 bun ci
 bun run check
+bun run build
 bun run audit:production
 ```
 

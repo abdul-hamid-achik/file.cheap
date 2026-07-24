@@ -85,9 +85,15 @@ fcheap artifact-ref <stash-id> \
 ```
 
 `entrypoint` is relative to the stash root. It cannot be absolute, contain
-backslashes, or traverse with `.` or `..`. The command validates its syntax,
-not whether that path exists in the saved tree. `native_schema` must be a
-`urn:` or `https://` URI without embedded credentials or a query string.
+backslashes, or traverse with `.` or `..`. The command also requires it to be a
+regular file in the saved tree. Compressed stashes are checked by streaming
+archive headers; the command does not extract their content. `native_schema`
+must be a `urn:` or `https://` URI without embedded credentials or a query
+string.
+
+Artifact references landed after the `v0.29.0` release. Until the next tagged
+release is published, install from the current `main` branch and verify
+availability with `fcheap artifact-ref --help`.
 
 ## Contract rules
 
@@ -99,7 +105,12 @@ ArtifactRefV1 is intentionally strict:
 - `uri` must exactly equal `fcheap://stash/<artifact_id>`;
 - `artifact_id` is the real opaque stash ID, not a new integration ID;
 - `kind` is a bounded lowercase token such as `cairntrace.run`;
+- HTTP(S) ports must be in the inclusive range `0..65535`;
 - unknown JSON fields are not part of the contract.
+
+The published JSON Schema validates structure. The Go validator and the
+versioned valid/invalid fixture corpus additionally enforce semantic identity
+rules. See `contracts/artifact-ref/v1/README.md` in the source repository.
 
 ArtifactRefV1 has no `integrity` field because the existing manifest content
 hash is not a portable archive or tree digest. The local variant has no
@@ -109,6 +120,20 @@ URL, token, or recovery key to the envelope.
 The interchange schema also reserves strict `fcheap-cloud` and `link` variants
 for other adapters. `artifact-ref` and `fcheap_artifact_ref` do not construct
 those variants, and the gated Recovery Lab is not a hosted provider.
+
+## Validation and failures
+
+The command exits nonzero without emitting a usable reference when:
+
+- the stash does not exist in the configured local vault;
+- any producer field is supplied without `--producer-tool`;
+- `kind`, `native_schema`, `native_id`, or `entrypoint` violates the bounded
+  ArtifactRefV1 syntax;
+- `entrypoint` does not identify a regular file in the saved stash; or
+- the stash manifest cannot be read.
+
+Failure does not modify the stash. A script should check the exit status before
+placing stdout in a Chalupa sidecar or another consumer payload.
 
 ## Human output
 

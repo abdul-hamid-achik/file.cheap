@@ -43,6 +43,11 @@ var artifactRefCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if ref.Producer != nil {
+			if err := mgr.ValidateArtifactEntrypoint(GetContext(), st, ref.Producer.Entrypoint); err != nil {
+				return err
+			}
+		}
 
 		if printer.IsJSON() {
 			return printer.JSON(ref)

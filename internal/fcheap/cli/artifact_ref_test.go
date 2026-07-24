@@ -21,8 +21,11 @@ func TestArtifactRefCommandJSONContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := filepath.Join(t.TempDir(), "result.json")
-	if err := os.WriteFile(source, []byte(`{"status":"passed"}`), 0600); err != nil {
+	source := filepath.Join(t.TempDir(), "source")
+	if err := os.MkdirAll(filepath.Join(source, "reports"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "reports", "report.json"), []byte(`{"status":"passed"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	saved, err := mgr.Save(context.Background(), &stash.SaveOptions{SourcePath: source})
@@ -152,6 +155,12 @@ func TestArtifactRefCommandRejectsPartialOrUnsafeProducer(t *testing.T) {
 	err = artifactRefCmd.RunE(artifactRefCmd, []string{saved.Manifest.ID})
 	if err == nil || !strings.Contains(err.Error(), ".producer.entrypoint") {
 		t.Fatalf("error = %v, want entrypoint validation", err)
+	}
+
+	artifactRefEntrypoint = "missing.json"
+	err = artifactRefCmd.RunE(artifactRefCmd, []string{saved.Manifest.ID})
+	if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("error = %v, want missing entrypoint validation", err)
 	}
 }
 

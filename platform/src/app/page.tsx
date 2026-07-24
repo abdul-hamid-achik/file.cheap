@@ -63,15 +63,16 @@ const workflowSteps = [
 
 export default function HomePage() {
   return (
-    <main>
+    <>
+      <a className="skipLink" href="#main-content">Skip to content</a>
       <nav className="nav shell" aria-label="Primary navigation">
         <Link className="wordmark" href="/" aria-label="file.cheap home">
           <span className="wordmarkMark" aria-hidden="true">f·</span>
           <span>file.cheap</span>
         </Link>
         <div className="navLinks">
-          <a href="#workflow">Workflow</a>
-          <a className="navSecondaryLink" href="#agents">Agents</a>
+          <a className="navWorkflowLink" href="#workflow">Workflow</a>
+          <a className="navIntegrationLink" href="#integrations">Integrations</a>
           <a className="navOptionalLink" href="/guide/">Docs</a>
         </div>
         <div className="navMeta">
@@ -80,6 +81,7 @@ export default function HomePage() {
         </div>
       </nav>
 
+      <main id="main-content" tabIndex={-1}>
       <section className="hero shell" aria-labelledby="hero-title">
         <div className="heroCopy">
           <div className="eyebrow">Local artifact vault for coding agents</div>
@@ -90,20 +92,21 @@ export default function HomePage() {
           <p className="heroLead">
             Save any file tree with provenance and hashes, search it locally, and
             restore the exact bytes later. file.cheap gives people, CLIs, and MCP
-            clients one durable lifecycle without requiring a cloud account.
+            clients one durable lifecycle on the machine that holds the evidence—no
+            cloud account or hosted vault required.
           </p>
           <div className="heroActions">
             <a className="button primary" href="/guide/getting-started">
-              Install file.cheap
+              Install the local CLI
             </a>
-            <a className="button secondary" href="/integrations/mcp-clients">
-              Connect an agent
+            <a className="button secondary" href="/integrations/local-artifact-references">
+              See the artifact handoff
             </a>
           </div>
           <dl className="heroFacts" aria-label="Product facts">
             <div><dt>local</dt><dd>source of truth</dd></div>
             <div><dt>SHA-256</dt><dd>verified restore</dd></div>
-            <div><dt>15</dt><dd>typed MCP tools</dd></div>
+            <div><dt>stdio MCP</dt><dd>agent-ready tools</dd></div>
           </dl>
         </div>
 
@@ -180,6 +183,53 @@ export default function HomePage() {
           ))}
         </div>
 
+        <section className="integrationSection" id="integrations" aria-labelledby="integrations-title">
+          <div className="integrationHeading">
+            <div>
+              <div className="eyebrow">ArtifactRefV1 · local metadata handoff</div>
+              <h2 id="integrations-title">Keep one artifact. Give each tool its own job.</h2>
+            </div>
+            <p>
+              Cairntrace and Glyphrun create evidence; file.cheap snapshots and
+              verifies it; a Chalupa report adapter can record a portable reference
+              with the matching suite run. The bytes remain in the local vault.
+            </p>
+          </div>
+
+          <ol className="handoffFlow" aria-label="Local artifact handoff">
+            <li>
+              <span className="handoffNumber">01</span>
+              <strong>Cairntrace or Glyphrun</strong>
+              <p>Finish a native run pack before any snapshot is taken.</p>
+            </li>
+            <li>
+              <span className="handoffNumber">02</span>
+              <strong>file.cheap</strong>
+              <p>Save the completed pack, then emit its versioned local artifact reference.</p>
+            </li>
+            <li>
+              <span className="handoffNumber">03</span>
+              <strong>Chalupa adapter</strong>
+              <p>Once separately deployed, it attaches the complete reference during ingestion.</p>
+            </li>
+            <li>
+              <span className="handoffNumber">04</span>
+              <strong>Matching local vault</strong>
+              <p>An operator resolves and restores only where the stash exists.</p>
+            </li>
+          </ol>
+
+          <aside className="integrationBoundary" aria-label="Integration boundary">
+            <span className="integrationBoundaryMark" aria-hidden="true">↳</span>
+            <p>
+              This is a metadata handoff, not a sync service: Chalupa does not
+              receive artifact bytes, its report adapter ships separately, and an
+              unresolved local reference is shown as unavailable—not as a failed run.
+            </p>
+            <a href="/integrations/local-artifact-references">Read the local artifact reference guide</a>
+          </aside>
+        </section>
+
         <div className="boundaryGrid" id="agents">
           <article className="boundaryCard localBoundary">
             <div className="boundaryLabel">
@@ -219,11 +269,13 @@ export default function HomePage() {
         <span>Local-first core · open source</span>
         <div>
           <a href="/guide/">Documentation</a>
+          <a href="/integrations/local-artifact-references">Integrations</a>
           <a href="https://github.com/abdul-hamid-achik/file.cheap">
             Source
           </a>
         </div>
       </footer>
-    </main>
+      </main>
+    </>
   );
 }

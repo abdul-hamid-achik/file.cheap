@@ -58,6 +58,25 @@ input:focus-visible,
   outline-offset: 3px;
 }
 
+.skipLink {
+  position: fixed;
+  z-index: 100;
+  top: 12px;
+  left: 12px;
+  padding: 10px 13px;
+  border: 1px solid var(--paper);
+  border-radius: 6px;
+  background: var(--page-deep);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  transform: translateY(-160%);
+}
+
+.skipLink:focus { transform: translateY(0); }
+
 .shell {
   width: min(1200px, calc(100% - 56px));
   margin-inline: auto;
@@ -947,6 +966,83 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 
 .protocolSection { border-top: 1px solid var(--line); }
 
+.integrationSection {
+  margin-top: 112px;
+  padding: clamp(28px, 5vw, 54px);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgb(241 119 79 / 7%), transparent 37%),
+    var(--surface);
+  scroll-margin-top: 20px;
+}
+
+.integrationHeading {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr);
+  gap: clamp(34px, 8vw, 118px);
+  align-items: end;
+}
+
+.integrationHeading h2 {
+  max-width: 690px;
+  margin: 16px 0 0;
+  font-size: clamp(31px, 4.2vw, 54px);
+  font-weight: 620;
+  letter-spacing: -.055em;
+  line-height: 1;
+}
+
+.integrationHeading > p {
+  max-width: 480px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.72;
+}
+
+.handoffFlow {
+  display: grid;
+  grid-template-columns: minmax(0, .95fr) minmax(0, 1.12fr) minmax(0, 1fr) minmax(0, .93fr);
+  margin: 52px 0 0;
+  padding: 0;
+  border-block: 1px solid var(--line);
+  list-style: none;
+}
+
+.handoffFlow li {
+  min-width: 0;
+  min-height: 196px;
+  padding: 21px 22px 24px 0;
+}
+
+.handoffFlow li + li { padding-left: 22px; border-left: 1px solid var(--line); }
+.handoffNumber { color: var(--accent); font-family: var(--mono); font-size: 10px; font-weight: 700; }
+.handoffFlow strong { display: block; margin-top: 38px; font-size: 15px; letter-spacing: -.02em; }
+.handoffFlow p { margin: 9px 0 0; color: var(--ink-muted); font-size: 12px; line-height: 1.62; }
+
+.integrationBoundary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 15px;
+  align-items: center;
+  margin-top: 28px;
+  padding: 17px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.integrationBoundaryMark { color: var(--accent); font-family: var(--mono); font-size: 18px; }
+.integrationBoundary p { max-width: 650px; margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.62; }
+.integrationBoundary a {
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration-color: rgb(234 220 180 / 45%);
+  text-underline-offset: 4px;
+}
+.integrationBoundary a:hover { color: var(--accent-hover); }
+
 .protocolGrid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1152,6 +1248,12 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   .hero { grid-template-columns: 1fr; }
   .heroCopy { max-width: 790px; }
   .receiptScene { width: min(530px, 85%); margin-inline: auto; }
+  .integrationHeading { grid-template-columns: 1fr; gap: 24px; }
+  .handoffFlow { grid-template-columns: repeat(2, 1fr); }
+  .handoffFlow li:nth-child(3) { padding-left: 0; border-top: 1px solid var(--line); border-left: 0; }
+  .handoffFlow li:nth-child(4) { border-top: 1px solid var(--line); }
+  .integrationBoundary { grid-template-columns: auto minmax(0, 1fr); }
+  .integrationBoundary a { grid-column: 2; width: fit-content; }
   .protocolGrid { grid-template-columns: repeat(2, 1fr); }
   .protocolGrid article:nth-child(3) { border-left: 0; border-top: 1px solid var(--line); }
   .protocolGrid article:nth-child(4) { border-top: 1px solid var(--line); }
@@ -1181,14 +1283,14 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 @media (max-width: 580px) {
   .shell { width: min(100% - 30px, 1200px); }
   .nav { min-height: 68px; gap: 9px; }
+  .nav { grid-template-columns: 1fr auto; }
   .wordmark { gap: 7px; font-size: 14px; }
   .wordmarkMark { width: 27px; height: 27px; font-size: 11px; }
-  .navLinks { gap: 10px; }
+  .navLinks { justify-self: end; gap: 10px; }
   .navLinks a { font-size: 10px; }
-  .navSecondaryLink { display: none; }
-  .navMeta { gap: 5px; font-size: 8px; }
-  .navMetaContext { display: none; }
-  .statusDot { width: 6px; height: 6px; }
+  .navWorkflowLink,
+  .navIntegrationLink,
+  .navMeta { display: none; }
   .hero { gap: 70px; padding-block: 75px 76px; }
   .hero h1 { font-size: clamp(47px, 14.4vw, 70px); }
   .heroLead { font-size: 17px; }
@@ -1237,6 +1339,14 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   .protocolGrid article + article { min-height: 240px; padding: 23px 0; border-top: 1px solid var(--line); border-left: 0; }
   .protocolGrid article:first-child { border-top: 0; }
   .protocolIcon { margin-top: 34px; }
+  .integrationSection { margin-top: 74px; padding: 27px 23px; }
+  .integrationHeading h2 { font-size: clamp(33px, 11vw, 49px); }
+  .handoffFlow { grid-template-columns: 1fr; margin-top: 38px; }
+  .handoffFlow li,
+  .handoffFlow li + li { min-height: 0; padding: 20px 0; border-top: 1px solid var(--line); border-left: 0; }
+  .handoffFlow li:first-child { border-top: 0; }
+  .handoffFlow strong { margin-top: 22px; }
+  .integrationBoundary { gap: 10px; margin-top: 22px; }
   .boundaryCard { min-height: 0; padding: 27px 23px; }
   .boundaryCard h3 { margin-top: 35px; }
   .priceCard { padding: 25px 21px; }
