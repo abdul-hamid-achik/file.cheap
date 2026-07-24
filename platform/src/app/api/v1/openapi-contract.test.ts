@@ -61,6 +61,22 @@ describe("OpenAPI contract", () => {
   });
 
   test("documents strict media type, auth challenge, and retryable contention", () => {
+    expect(openApiDocument.components.schemas.Health.oneOf).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          properties: expect.objectContaining({
+            recoveryLab: { const: "disabled" },
+            storage: { const: "disabled" },
+          }),
+        }),
+        expect.objectContaining({
+          properties: expect.objectContaining({
+            recoveryLab: { const: "enabled" },
+            storage: { enum: ["local", "vercel-blob"] },
+          }),
+        }),
+      ]),
+    );
     expect(
       openApiDocument.components.schemas.CreatePlanInput.properties.contentType
         .const,

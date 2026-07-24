@@ -20,11 +20,11 @@
     "/api/v1/health": {
       "get": {
         "operationId": "getHealth",
-        "summary": "Inspect prototype liveness and active adapters",
+        "summary": "Inspect site liveness and recovery-lab state",
         "tags": ["System"],
         "responses": {
           "200": {
-            "description": "The control plane is alive.",
+            "description": "The public site or enabled recovery lab is alive.",
             "headers": {
               "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
             },
@@ -374,17 +374,36 @@
         "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
       },
       "Health": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["database", "deployment", "status", "storage", "storageVerification", "version"],
-        "properties": {
-          "database": { "const": "none" },
-          "deployment": { "const": "local-prototype" },
-          "status": { "const": "ok" },
-          "storage": { "enum": ["local", "vercel-blob"] },
-          "storageVerification": { "enum": ["presence-size-etag", "server-sha256"] },
-          "version": { "const": "filecheap-sync/1" }
-        }
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["database", "deployment", "recoveryLab", "status", "storage", "storageVerification", "version"],
+            "properties": {
+              "database": { "const": "none" },
+              "deployment": { "const": "public-site" },
+              "recoveryLab": { "const": "disabled" },
+              "status": { "const": "ok" },
+              "storage": { "const": "disabled" },
+              "storageVerification": { "const": "not-applicable" },
+              "version": { "const": "filecheap-site/1" }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["database", "deployment", "recoveryLab", "status", "storage", "storageVerification", "version"],
+            "properties": {
+              "database": { "const": "none" },
+              "deployment": { "const": "local-prototype" },
+              "recoveryLab": { "const": "enabled" },
+              "status": { "const": "ok" },
+              "storage": { "enum": ["local", "vercel-blob"] },
+              "storageVerification": { "enum": ["presence-size-etag", "server-sha256"] },
+              "version": { "const": "filecheap-sync/1" }
+            }
+          }
+        ]
       },
       "StashSummary": {
         "type": "object",
