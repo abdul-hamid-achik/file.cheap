@@ -5,6 +5,7 @@ import { requireApiToken } from "@/shared/auth/bearer";
 const token = "test-api-token-long-enough";
 const originalLabEnabled = process.env.PLATFORM_RECOVERY_LAB_ENABLED;
 const originalVercel = process.env.VERCEL;
+const originalVercelEnvironment = process.env.VERCEL_ENV;
 
 afterEach(() => {
   restoreEnvironment(
@@ -12,6 +13,7 @@ afterEach(() => {
     originalLabEnabled,
   );
   restoreEnvironment("VERCEL", originalVercel);
+  restoreEnvironment("VERCEL_ENV", originalVercelEnvironment);
 });
 
 describe("bearer authentication", () => {
@@ -45,6 +47,19 @@ describe("bearer authentication", () => {
   test("rejects operational API access before reading credentials when the lab is disabled", () => {
     process.env.VERCEL = "1";
     delete process.env.PLATFORM_RECOVERY_LAB_ENABLED;
+
+    expect(() =>
+      requireApiToken(
+        requestWithAuthorization(`Bearer ${token}`),
+        token,
+      ),
+    ).toThrow("experimental recovery lab is disabled");
+  });
+
+  test("rejects operational API access in Vercel Production even when the flag is true", () => {
+    process.env.VERCEL = "1";
+    process.env.VERCEL_ENV = "production";
+    process.env.PLATFORM_RECOVERY_LAB_ENABLED = "true";
 
     expect(() =>
       requireApiToken(

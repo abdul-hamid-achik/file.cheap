@@ -191,8 +191,9 @@ export default function HomePage() {
             </div>
             <p>
               Cairntrace and Glyphrun create evidence; file.cheap snapshots and
-              verifies it; a Chalupa report adapter can record a portable reference
-              with the matching suite run. The bytes remain in the local vault.
+              verifies it. For artifacts associated with a Cairn run, a Chalupa
+              report adapter can record the portable reference under that matching
+              raw run ID. The bytes remain in the local vault.
             </p>
           </div>
 
@@ -209,8 +210,8 @@ export default function HomePage() {
             </li>
             <li>
               <span className="handoffNumber">03</span>
-              <strong>Chalupa adapter</strong>
-              <p>Once separately deployed, it attaches the complete reference during ingestion.</p>
+              <strong>Optional Chalupa path</strong>
+              <p>For a matching Cairn run ID, its separately deployed adapter attaches the complete reference during first ingestion.</p>
             </li>
             <li>
               <span className="handoffNumber">04</span>
@@ -225,6 +226,7 @@ export default function HomePage() {
               This is a metadata handoff, not a sync service: Chalupa does not
               receive artifact bytes, its report adapter ships separately, and an
               unresolved local reference is shown as unavailable—not as a failed run.
+              Glyphrun references can also remain independent of Chalupa.
             </p>
             <a href="/integrations/local-artifact-references">Read the local artifact reference guide</a>
           </aside>

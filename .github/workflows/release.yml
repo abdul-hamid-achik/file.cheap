@@ -14,6 +14,7 @@ jobs:
 
   release:
     needs: validation
+    if: github.repository == 'abdul-hamid-achik/file.cheap'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -28,6 +29,16 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+
+      - name: Require Homebrew tap credentials
+        shell: bash
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [[ -z "${HOMEBREW_TAP_TOKEN:-}" ]]; then
+            echo "::error::HOMEBREW_TAP_TOKEN is required for canonical releases so the Homebrew cask cannot be omitted."
+            exit 1
+          fi
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7

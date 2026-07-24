@@ -10,6 +10,14 @@ glyph run e2e/flows/<name>.yml --format md            # run one flow
 glyph context latest --format md                      # after a failure, get context
 ```
 
+CI pins Glyphrun `v0.15.0` and runs `cli_artifact_ref.yml` as a release gate.
+That focused flow builds the CLI, saves a real stash, emits Cairntrace and
+Glyphrun ArtifactRefV1 envelopes, and verifies the missing-stash failure. The
+same job runs the in-memory MCP tests and a separate `go install` smoke that
+exercises the installed binary's save-to-ArtifactRef contract.
+Glyphrun `v0.15.0` requires Go 1.26, so that isolated CI job uses Go 1.26.5;
+the file.cheap module and release build remain pinned by `go.mod` to Go 1.25.12.
+
 ## Layout
 
 ```

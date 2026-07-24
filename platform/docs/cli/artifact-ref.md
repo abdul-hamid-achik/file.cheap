@@ -1,8 +1,8 @@
 # artifact-ref
 
-Emit a stable, credential-free reference to an existing stash. The command is
-read-only: it validates the stash and prints metadata without uploading,
-restoring, or changing it.
+Emit a stable reference with credential-free transport fields for an existing
+stash. The command is read-only: it validates the stash and prints metadata
+without uploading, restoring, or changing it.
 
 ## Usage
 
@@ -91,9 +91,9 @@ archive headers; the command does not extract their content. `native_schema`
 must be a `urn:` or `https://` URI without embedded credentials or a query
 string.
 
-Artifact references landed after the `v0.29.0` release. Until the next tagged
-release is published, install from the current `main` branch and verify
-availability with `fcheap artifact-ref --help`.
+Artifact references are available in `v0.30.0` and later. Check the installed
+release with `fcheap version` and inspect the copyable examples with
+`fcheap artifact-ref --help`.
 
 ## Contract rules
 
@@ -116,6 +116,21 @@ ArtifactRefV1 has no `integrity` field because the existing manifest content
 hash is not a portable archive or tree digest. The local variant has no
 `web_url` because a local stash has no stable web location. Never add a signed
 URL, token, or recovery key to the envelope.
+
+### Security scope
+
+“Credential-free” describes the transport contract, not a DLP guarantee. The
+validator rejects URL userinfo, queries, and fragments in transport `uri` and
+`web_url` fields, and the contract has no dedicated bearer-token, credential,
+or recovery-key field. `producer.native_schema` rejects userinfo and queries
+but may use a fragment. Validation does not secret-scan or redact permitted
+identifiers, paths, `kind`, or producer fields. The envelope omits the stash
+name and tags, but its artifact ID, native ID, schema, tool, and entrypoint can
+still reveal operational information. Use non-sensitive metadata and apply a
+separate disclosure policy before sharing a reference.
+
+Other CLI and MCP responses may include user-provided stash names and tags.
+Save-time content scanning does not sanitize those metadata fields.
 
 The interchange schema also reserves strict `fcheap-cloud` and `link` variants
 for other adapters. `artifact-ref` and `fcheap_artifact_ref` do not construct

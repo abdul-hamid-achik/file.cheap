@@ -85,6 +85,15 @@ func TestArtifactRefCommandIsRegisteredWithStableFlags(t *testing.T) {
 			t.Errorf("artifact-ref missing --%s", flag)
 		}
 	}
+	for _, want := range []string{
+		"metadata pointer, not an upload",
+		"fcheap artifact-ref <stash-id> --json",
+		"--producer-tool cairntrace",
+	} {
+		if !strings.Contains(artifactRefCmd.Long+"\n"+artifactRefCmd.Example, want) {
+			t.Errorf("artifact-ref help missing %q", want)
+		}
+	}
 }
 
 func TestArtifactRefCommandHumanDefaultsAndLoadsExistingStash(t *testing.T) {

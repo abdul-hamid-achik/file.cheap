@@ -18,7 +18,9 @@ describe("public homepage", () => {
     expect(html).toContain("Cairntrace or Glyphrun");
     expect(html).toContain("ArtifactRefV1");
     expect(html).toContain("Chalupa");
-    expect(html).toContain("Once separately deployed");
+    expect(html).toContain("Optional Chalupa path");
+    expect(html).toContain("matching Cairn run ID");
+    expect(html).toContain("Glyphrun references can also remain independent");
     expect(html).toContain("not a sync service");
     expect(html).not.toContain("Development bearer token");
     expect(html).not.toContain("$15");

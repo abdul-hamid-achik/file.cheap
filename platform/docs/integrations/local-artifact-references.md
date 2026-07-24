@@ -35,8 +35,19 @@ Version 1 uses this envelope:
 
 ArtifactRefV1 intentionally has no `integrity` field. Restore verifies the
 saved bytes against the stash manifest; the reference itself does not duplicate
-those hashes. The local variant also has no `web_url`, signed URL, bearer token,
-recovery key, or other credential.
+those hashes. The local variant defines no `web_url` or dedicated credential or
+recovery-key field, and its `fcheap://` URI is not signed.
+
+Credential-free is a transport property, not a DLP claim. ArtifactRefV1 rejects
+URL userinfo, queries, and fragments in transport `uri` and `web_url` fields
+and has no dedicated credential field. `producer.native_schema` rejects
+userinfo and queries but may use a fragment. Validation does not secret-scan or
+redact permitted identifiers, paths, caller-supplied `kind`, or producer
+metadata. The envelope omits stash names and tags, while the artifact ID,
+native ID, schema, tool, and entrypoint can still reveal operational
+information. Use non-sensitive metadata and apply the receiving system's
+disclosure policy before persisting or displaying a reference. Other
+file.cheap CLI and MCP surfaces may return user-provided stash names and tags.
 
 Generate the envelope from an existing stash instead of constructing it by
 hand:
@@ -60,9 +71,10 @@ constructors emit only `fcheap-local`.
   fragment.
 - `link` uses a stable HTTP(S) `uri` and omits `artifact_id` and `web_url`.
 
-No variant permits a signed URL, secret, or `integrity` copied from the legacy
-manifest content hash. The Recovery Lab does not implement the
-`fcheap-cloud` provider.
+No variant defines a dedicated secret field or permits query-bearing signed
+URLs or an `integrity` value copied from the legacy manifest content hash.
+Permitted identifiers and paths are not DLP-scanned. The Recovery Lab does not
+implement the `fcheap-cloud` provider.
 
 ## Local resolution boundary
 
@@ -120,9 +132,9 @@ Both current file.cheap constructors emit an `fcheap-local` reference. Chalupa
 can preserve and display that metadata without being able to restore the bytes
 from its server.
 
-Artifact references landed after `v0.29.0`. Until the next tagged CLI release,
-install file.cheap from the current `main` branch and confirm the command with
-`fcheap artifact-ref --help`.
+Artifact references are available in file.cheap `v0.30.0` and later. Confirm the
+installed release with `fcheap version` and inspect the copyable command
+examples with `fcheap artifact-ref --help`.
 
 ## Cairntrace
 
@@ -220,13 +232,27 @@ not add Chalupa fields inside the ArtifactRefV1 envelope. The file.cheap command
 prints one reference; the reporting integration is responsible for assembling
 the sidecar around one or more of those objects.
 
-Generate Cairn's report with run rows, then send both documents:
+Before generating the report, ensure every included Cairn run was recorded with
+the target suite and a grouping label, for example
+`--label suite=checkout-e2e --label path=<variant>`. Then filter that suite,
+group by the cohort label, and include the raw run rows:
 
 ```bash
 cairn stats \
-  --group-by suite \
+  --group-by path \
+  --label suite=checkout-e2e \
   --include-runs \
   --format json > ./cairn-stats.json
+
+jq -e --slurpfile sidecar ./artifact-sidecar.json '
+  [.runs[].runId] as $run_ids
+  | ($run_ids | length > 0)
+    and (
+      $sidecar[0].runs
+      | keys
+      | all(. as $id | $run_ids | index($id) != null)
+    )
+' ./cairn-stats.json
 
 task report \
   CONFIG=/absolute/path/to/chalupa.yml \
@@ -235,7 +261,8 @@ task report \
   SUITE=checkout-e2e
 ```
 
-Every sidecar key must match a raw run ID in the Cairn stats document. Chalupa
+The `jq` preflight requires at least one report run and verifies that every
+sidecar key matches a raw run ID in that exact filtered document. Chalupa also
 rejects orphan keys, unknown fields, and duplicate `provider` + `uri`
 identities within one run. Its current bounds are 250 run keys, 20 references
 per run, 4 MiB of raw Cairn JSON, 1 MiB of sidecar JSON, and 256 KiB for the

@@ -54,7 +54,7 @@ terminal:
 
 preconditions:
   commands:
-    - run: "go build -o ./bin/fcheap ./cmd/fcheap"
+    - run: "CGO_ENABLED=0 go build -o ./bin/fcheap ./cmd/fcheap"
       timeoutMs: 120000
 
 imports:

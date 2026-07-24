@@ -8,7 +8,7 @@ import HomeStats from './HomeStats.vue'
 import HomeTerminal from './HomeTerminal.vue'
 import HomeWorkflow from './HomeWorkflow.vue'
 
-const quickInstall = 'brew install --no-quarantine abdul-hamid-achik/tap/fcheap'
+const quickInstall = 'brew install --cask --no-quarantine abdul-hamid-achik/tap/fcheap'
 </script>
 
 <template>

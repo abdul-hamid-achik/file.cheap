@@ -36,7 +36,7 @@ Use the matching arm64 release artifact on an arm64 Linux system.
 go install github.com/abdul-hamid-achik/file.cheap/cmd/fcheap@latest
 ```
 
-Source installation requires Go 1.25 or newer.
+Source installation requires Go 1.25.12 or newer.
 
 ## Check the installation
 
@@ -104,6 +104,21 @@ fcheap info <stash-id>
 The manifest shows provenance, tags, saved paths, hashes, compression, expiry,
 and secret-scan metadata.
 
+## Hand it to another tool (optional)
+
+When another local tool needs to retain a pointer to the saved artifact, emit
+the versioned reference instead of copying the bytes:
+
+```bash
+fcheap artifact-ref <stash-id> --json
+```
+
+The result is metadata, not an upload. Its `fcheap://` URI resolves only on a
+device whose configured vault contains this stash. Add producer flags when an
+integration needs a native run ID or descriptor; the
+[local artifact handoff guide](/integrations/local-artifact-references) has
+Cairntrace, Glyphrun, and Chalupa recipes.
+
 ## Restore and verify it
 
 ```bash
@@ -163,6 +178,8 @@ not the current working directory.
 - Read [Core concepts](/guide/core-concepts) for the manifest and index model.
 - Follow [Workflow examples](/guide/workflows) for evidence, diff, connect, and
   retention recipes.
+- Share a stable local pointer with the
+  [artifact handoff guide](/integrations/local-artifact-references).
 - Run `fcheap agent` or read the [Agent operating guide](/guide/agent-guide)
   before delegating operations to an assistant.
 - Connect an MCP client with the [MCP setup guide](/integrations/mcp-clients).

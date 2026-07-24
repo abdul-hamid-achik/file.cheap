@@ -185,9 +185,10 @@ an `integrity` value, or replace its URI with a local filesystem path. For
 Chalupa, place it in the artifact sidecar under the matching raw Cairn run ID
 before the run's first ingest.
 
-The emitted local envelope has no `integrity` or `web_url` field and never
-contains credentials or signed URLs. Its URI resolves only where the matching
-local vault exists. The tool returns an error instead of a reference when an
+The emitted local envelope has no `integrity`, `web_url`, or dedicated
+credential field. Its `fcheap://` URI is not signed and resolves only where the
+matching local vault exists. Permitted identifiers and producer metadata are
+not DLP-scanned. The tool returns an error instead of a reference when an
 optional entrypoint is absent or is not a regular file. See
 [`artifact-ref`](/cli/artifact-ref) and the
 [ecosystem integration guide](/integrations/local-artifact-references).

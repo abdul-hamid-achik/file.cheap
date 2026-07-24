@@ -9,11 +9,17 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-07-23
+
 ### Added
 - **Versioned local artifact handoff.** `fcheap artifact-ref` and the
-  `fcheap_artifact_ref` MCP tool emit a strict, credential-free
-  `ArtifactRefV1` for an existing local stash so Cairntrace, Glyphrun, Chalupa,
-  and other tools can exchange provenance without moving artifact bytes.
+  `fcheap_artifact_ref` MCP tool emit a strict `ArtifactRefV1` with
+  credential-free transport fields for an existing local stash so Cairntrace,
+  Glyphrun, Chalupa, and other tools can exchange provenance without moving
+  artifact bytes.
+- **Version-matched agent guidance.** `fcheap agent`, MCP
+  `fcheap://agent-guide`, and the embedded documentation give clients one
+  machine-readable operating contract for safe local vault workflows.
 - **Unified public product site.** The landing page and VitePress documentation
   now ship from the existing `file-cheap` Vercel project at `file.cheap`, while
   the recovery laboratory and stateful API remain disabled in Production.
@@ -28,6 +34,9 @@ Per-release binaries and notes are also on the
   empty native schema URNs, and HTTP(S) ports outside the supported range.
 - CLI and MCP artifact-reference producers verify an optional entrypoint
   against saved stash content before returning a usable reference.
+- Vercel Production now keeps the Recovery Lab closed even if its feature flag
+  is set accidentally, and canonical releases fail before publishing when the
+  Homebrew tap credential is absent.
 
 ## [0.29.0] - 2026-07-12
 
@@ -381,7 +390,8 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.29.0...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.30.0...HEAD
+[0.30.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.26.2...v0.27.0

@@ -20,7 +20,22 @@ var (
 var artifactRefCmd = &cobra.Command{
 	Use:   "artifact-ref <stash-id>",
 	Short: "Emit a portable reference to a local stash",
-	Args:  cobra.ExactArgs(1),
+	Long: `Emit a versioned fcheap-local reference for an existing stash.
+
+The reference is a metadata pointer, not an upload or signed URL. It resolves
+only on a device whose configured file.cheap vault contains the stash.`,
+	Example: `  # Minimal pointer for another local tool
+  fcheap artifact-ref <stash-id> --json
+
+  # Preserve producer identity for a completed Cairntrace run
+  fcheap artifact-ref <stash-id> \
+    --kind cairntrace.run \
+    --producer-tool cairntrace \
+    --native-schema urn:cairntrace.dev:run:v1 \
+    --native-id <raw-run-id> \
+    --entrypoint run.json \
+    --json`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mgr, err := stash.NewManager(cfg.StashDir)
 		if err != nil {

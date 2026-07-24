@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:filecheap.dev:artifact-ref:v1",
   "title": "file.cheap ArtifactRefV1",
-  "description": "A stable, credential-free artifact reference. This revision accepts strict local, cloud, and external-link variants. Integrity is intentionally absent until file.cheap has a canonical TreeDigestV2 or portable bundle digest; legacy ContentHash must not be copied into this contract.",
+  "description": "A stable artifact reference with credential-free transport fields. Caller-supplied metadata is not DLP-scanned. This revision accepts strict local, cloud, and external-link variants. Integrity is intentionally absent until file.cheap has a canonical TreeDigestV2 or portable bundle digest; legacy ContentHash must not be copied into this contract.",
   "type": "object",
   "additionalProperties": false,
   "required": [

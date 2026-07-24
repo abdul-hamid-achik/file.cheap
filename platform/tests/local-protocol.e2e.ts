@@ -23,9 +23,10 @@ const serverEnvironment: Record<string, string | undefined> = {
   PLATFORM_RECOVERY_LAB_ENABLED: "true",
   PLATFORM_SIGNING_SECRET: signingSecret,
   PLATFORM_STORAGE_DRIVER: "local",
+  // Exercise the exact controlled-preview gate against a production build.
+  VERCEL_ENV: "preview",
 };
 delete serverEnvironment.VERCEL;
-delete serverEnvironment.VERCEL_ENV;
 
 const uniqueValue = `${Date.now()}-${randomUUID()}`;
 const bytes = new TextEncoder().encode(

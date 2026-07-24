@@ -220,7 +220,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_artifact_ref",
-		Description: "Return a stable, credential-free ArtifactRefV1 for an existing local stash. This is read-only and does not upload or sign anything.",
+		Description: "Return a stable ArtifactRefV1 with credential-free transport fields for an existing local stash. Caller metadata is not DLP-scanned. This is read-only and does not upload or sign anything.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &f,
 			OpenWorldHint:   &f,

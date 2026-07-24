@@ -5,12 +5,14 @@ import { resetObjectStoreForTests } from "@/platform/storage/factory";
 import { resetConfigForTests } from "@/shared/config/env";
 
 const originalVercel = process.env.VERCEL;
+const originalVercelEnvironment = process.env.VERCEL_ENV;
 const originalStorageDriver = process.env.PLATFORM_STORAGE_DRIVER;
 const originalLabEnabled = process.env.PLATFORM_RECOVERY_LAB_ENABLED;
 const originalConsoleError = console.error;
 
 afterEach(() => {
   restoreEnvironment("VERCEL", originalVercel);
+  restoreEnvironment("VERCEL_ENV", originalVercelEnvironment);
   restoreEnvironment("PLATFORM_STORAGE_DRIVER", originalStorageDriver);
   restoreEnvironment(
     "PLATFORM_RECOVERY_LAB_ENABLED",
@@ -46,8 +48,29 @@ describe("health Route Handler", () => {
     });
   });
 
+  test("keeps storage disabled in Vercel Production even when the lab flag is true", async () => {
+    process.env.VERCEL = "1";
+    process.env.VERCEL_ENV = "production";
+    process.env.PLATFORM_RECOVERY_LAB_ENABLED = "true";
+    process.env.PLATFORM_STORAGE_DRIVER = "local";
+    resetObjectStoreForTests();
+    resetConfigForTests();
+
+    const response = GET(
+      new Request("https://file.cheap/api/v1/health"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      deployment: "public-site",
+      recoveryLab: "disabled",
+      storage: "disabled",
+    });
+  });
+
   test("returns a typed problem when enabled lab configuration is invalid", async () => {
     process.env.VERCEL = "1";
+    process.env.VERCEL_ENV = "preview";
     process.env.PLATFORM_STORAGE_DRIVER = "local";
     process.env.PLATFORM_RECOVERY_LAB_ENABLED = "true";
     console.error = () => undefined;

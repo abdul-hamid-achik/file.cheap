@@ -48,7 +48,8 @@ var (
 	stableHTTPPattern = regexp.MustCompile(`^https?://[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:/[A-Za-z0-9._~!$&'()*+,;=:@/-]*)?$`)
 )
 
-// ArtifactRefV1 is a stable, credential-free artifact reference.
+// ArtifactRefV1 is a stable reference with credential-free transport fields.
+// Caller-supplied metadata is syntax-validated but is not DLP-scanned.
 //
 // Integrity is intentionally absent: the legacy manifest ContentHash is not a
 // portable tree or bundle digest. WebURL is allowed only as a convenience for

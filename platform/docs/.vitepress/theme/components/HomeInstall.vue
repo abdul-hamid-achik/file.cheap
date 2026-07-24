@@ -24,7 +24,7 @@ const tabs = [
     id: 'source',
     label: 'From source',
     command: 'go install github.com/abdul-hamid-achik/file.cheap/cmd/fcheap@latest',
-    note: 'Requires Go 1.25 or newer and produces a CGO-free binary.',
+    note: 'Requires Go 1.25.12 or newer and produces a CGO-free binary.',
   },
 ]
 
@@ -119,6 +119,7 @@ function onKeydown(event: KeyboardEvent, index: number) {
           <span>NEXT</span>
           <code>fcheap doctor</code>
           <code>fcheap save ./artifact --index</code>
+          <code>fcheap artifact-ref &lt;stash-id&gt; --json</code>
           <code>fcheap agent</code>
         </div>
       </div>

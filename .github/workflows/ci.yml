@@ -29,6 +29,49 @@ jobs:
           files: coverage.out
           fail_ci_if_error: false
 
+  artifact-contract:
+    name: Artifact handoff contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go for the pinned Glyphrun runner
+        uses: actions/setup-go@v6
+        with:
+          # The main test job validates the repository's go.mod version.
+          # Glyphrun v0.15.0 requires Go 1.26.
+          go-version: '1.26.5'
+          cache: true
+
+      - name: Verify CLI and MCP contract surfaces
+        run: go test ./internal/artifactref ./internal/fcheap/cli ./internal/mcp
+
+      - name: Verify the installed binary contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          install_dir="$RUNNER_TEMP/fcheap-installed"
+          stash_dir="$RUNNER_TEMP/fcheap-installed-stash"
+          source_dir="$RUNNER_TEMP/fcheap-installed-source"
+          mkdir -p "$install_dir" "$source_dir"
+          printf '%s\n' '{"run":"installed-contract"}' > "$source_dir/run.json"
+          GOBIN="$install_dir" CGO_ENABLED=0 go install ./cmd/fcheap
+          save_json="$("$install_dir/fcheap" --stash-dir "$stash_dir" save "$source_dir" --tool glyphrun --json)"
+          stash_id="$(jq -er '.id | select(type == "string" and length > 0)' <<< "$save_json")"
+          reference_json="$("$install_dir/fcheap" --stash-dir "$stash_dir" artifact-ref "$stash_id" --producer-tool glyphrun --entrypoint run.json --json)"
+          jq -e --arg stash_id "$stash_id" '
+            ."$schema" == "urn:filecheap.dev:artifact-ref:v1" and
+            .version == 1 and
+            .provider == "fcheap-local" and
+            .artifact_id == $stash_id
+          ' <<< "$reference_json"
+
+      - name: Install pinned Glyphrun runner
+        run: go install github.com/abdul-hamid-achik/glyphrun/cmd/glyph@v0.15.0
+
+      - name: Run save-to-ArtifactRef binary flow
+        run: '"$(go env GOPATH)/bin/glyph" run e2e/flows/cli_artifact_ref.yml --format md'
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -116,7 +159,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [test, lint, security, docs, platform]
+    needs: [test, artifact-contract, lint, security, docs, platform]
     steps:
       - uses: actions/checkout@v5
 

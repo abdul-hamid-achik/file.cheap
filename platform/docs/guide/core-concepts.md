@@ -44,10 +44,12 @@ It lets a control plane or another agent tool record where evidence belongs
 without copying the payload into that product. The URI remains local: it
 resolves only on a machine whose configured vault contains the stash.
 
-The reference does not replace the manifest and does not carry a signed URL or
-credentials. Use [`artifact-ref`](/cli/artifact-ref) to emit one, and see the
-[ecosystem integration guide](/integrations/local-artifact-references) for
-Chalupa, Cairntrace, and Glyphrun handoffs.
+The reference does not replace the manifest. The local variant defines no
+`web_url` or dedicated credential field, and its `fcheap://` URI is not signed.
+Permitted metadata is not DLP-scanned. Use
+[`artifact-ref`](/cli/artifact-ref) to emit one, and see the [ecosystem
+integration guide](/integrations/local-artifact-references) for Chalupa,
+Cairntrace, and Glyphrun handoffs.
 
 ## Payloads and derived indexes have different jobs
 

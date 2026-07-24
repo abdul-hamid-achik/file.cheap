@@ -83,7 +83,7 @@ func New(version string) Guide {
 			},
 			{
 				ID:       "reference",
-				Guidance: "When another tool needs to retain an artifact pointer, emit a credential-free local ArtifactRefV1; it remains resolvable only on a device that has this vault.",
+				Guidance: "When another tool needs to retain an artifact pointer, emit a local ArtifactRefV1 with credential-free transport fields; caller metadata is not DLP-scanned, and the reference remains resolvable only on a device that has this vault.",
 				CLI:      []string{"fcheap artifact-ref <stash-id> --json"},
 				MCP:      []string{"fcheap_artifact_ref"},
 			},
@@ -116,7 +116,7 @@ func New(version string) Guide {
 			capability("save", "Save a file or directory as a stash.", "fcheap save", "fcheap_save", "writes_vault", "user_intent", "built_in", "configured_embedder_when_indexing"),
 			capability("list", "List and filter stash summaries.", "fcheap list", "fcheap_list", "read", "none", "built_in", "none"),
 			capability("info", "Read one full stash manifest.", "fcheap info", "fcheap_info", "read", "none", "built_in", "none"),
-			capability("artifact-ref", "Emit a credential-free ArtifactRefV1 for an existing local stash.", "fcheap artifact-ref", "fcheap_artifact_ref", "read", "none", "built_in", "none"),
+			capability("artifact-ref", "Emit an ArtifactRefV1 with credential-free transport fields for an existing local stash; caller metadata is not DLP-scanned.", "fcheap artifact-ref", "fcheap_artifact_ref", "read", "none", "built_in", "none"),
 			capability("restore", "Restore and hash-verify stash contents.", "fcheap restore", "fcheap_restore", "writes_target", "user_intent", "built_in", "none"),
 			capability("drop", "Permanently delete a stash.", "fcheap drop", "fcheap_drop", "deletes", "explicit", "built_in", "none"),
 			capability("search", "Search indexed stash files.", "fcheap search", "fcheap_search", "read", "none", "built_in", "configured_embedder_for_semantic_or_hybrid"),

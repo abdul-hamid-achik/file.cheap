@@ -52,7 +52,8 @@ artifact. There is no second docs deployment or external docs origin.
 The public page does not need storage credentials. The `/lab` UI and stateful
 recovery endpoints stay hidden on hosted deployments unless a controlled,
 access-protected preview explicitly sets
-`PLATFORM_RECOVERY_LAB_ENABLED=true`.
+`PLATFORM_RECOVERY_LAB_ENABLED=true`. Vercel Production ignores that flag and
+keeps the laboratory closed.
 
 The lab is a single-workspace protocol experiment, not the integration surface
 for Chalupa, Cairntrace, or Glyphrun. Those tools should exchange stable local
@@ -60,9 +61,11 @@ artifact references and keep file.cheap responsible for bytes, integrity, and
 restore.
 
 `fcheap artifact-ref <stash-id> --json` and the `fcheap_artifact_ref` MCP tool
-emit the same strict, credential-free `fcheap-local` envelope for an existing
-stash. The command landed after `v0.29.0` and is available from `main` until the
-next tagged release. See the
+emit the same strict `fcheap-local` envelope with credential-free transport
+fields for an existing stash. The local URI has no userinfo, query, fragment,
+or dedicated credential field; this is not DLP for permitted identifiers,
+paths, caller-supplied producer metadata, stash names, or tags exposed by other
+CLI and MCP operations. The command is available in `v0.30.0` and later. See the
 [local artifact handoff guide](https://file.cheap/integrations/local-artifact-references)
 for Cairntrace, Glyphrun, and Chalupa examples.
 
@@ -127,7 +130,8 @@ go install github.com/abdul-hamid-achik/file.cheap/cmd/fcheap@latest
 
 ## First stash
 
-Run a complete save → search → inspect → restore workflow:
+Run a complete save → search → inspect workflow, then either hand off a stable
+local pointer or restore the verified bytes:
 
 ```bash
 # Check the local paths and optional integrations.
@@ -139,6 +143,9 @@ fcheap save ./agent-artifacts --tag bug-142 --tool my-agent --index
 # Copy the returned stash ID, then find content across indexed stashes.
 fcheap search "columns disappeared after refresh"
 fcheap info <stash-id>
+
+# Give another tool a versioned pointer without copying artifact bytes.
+fcheap artifact-ref <stash-id> --json
 
 # Restore to a fresh temporary directory and verify every hash.
 fcheap restore <stash-id>
@@ -210,7 +217,7 @@ ranked source-code candidates—not proof of code ownership.
 
 Requirements:
 
-- Go 1.25+
+- Go 1.25.12 or newer
 - Bun 1.3+ for the VitePress docs and Next.js public website
 
 ```bash

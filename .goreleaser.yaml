@@ -91,6 +91,8 @@ homebrew_casks:
     homepage: "https://github.com/abdul-hamid-achik/file.cheap"
     description: "The local artifact vault for coding agents"
     license: "MIT"
+    # The canonical tag workflow requires this token before GoReleaser starts.
+    # Keep snapshots and fork-local checks usable without upstream tap access.
     skip_upload: "{{ if .Env.HOMEBREW_TAP_TOKEN }}false{{ else }}true{{ end }}"
     hooks:
       post:

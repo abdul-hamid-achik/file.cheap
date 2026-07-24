@@ -1,8 +1,18 @@
 # ArtifactRefV1 conformance
 
-`urn:filecheap.dev:artifact-ref:v1` is an immutable, credential-free
-interchange contract. Backward-incompatible changes require a new schema URI
-and a new versioned directory.
+`urn:filecheap.dev:artifact-ref:v1` is an immutable interchange contract with
+credential-free transport fields. Backward-incompatible changes require a new
+schema URI and a new versioned directory.
+
+“Credential-free” is a URL and transport invariant, not a data-loss-prevention
+claim. Transport `uri` and `web_url` fields reject URL userinfo, queries, and
+fragments, and the contract defines no dedicated bearer-token, credential, or
+recovery-key field. `producer.native_schema` rejects userinfo and queries but
+may use a fragment. Validators syntax-check but do not secret-scan or redact
+permitted identifiers, paths, `kind`, or `producer` metadata. A reference omits
+the stash name and tags, but its artifact ID, native ID, schema, tool, and
+entrypoint can still reveal operational information. Producers must use
+non-sensitive metadata, and consumers must apply their own disclosure policy.
 
 The contract has three complementary sources:
 
