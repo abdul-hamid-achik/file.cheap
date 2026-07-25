@@ -168,6 +168,10 @@ const PAGE_META: Record<string, PageMeta> = {
     title: 'Local artifact references for agent tools',
     description: 'Connect Chalupa, Cairntrace, and Glyphrun with versioned local stash references while file.cheap keeps ownership of bytes and restore.',
   },
+  'integrations/email-delivery.md': {
+    title: 'Email delivery and inbound forwarding',
+    description: 'Operate domain-scoped sending and signed inbound forwarding without exposing a public mail relay or private forwarding address.',
+  },
   'compare/git-stash-worktree.md': {
     title: 'file.cheap vs Git stash and worktree',
     description: 'Choose the right tool for source changes, parallel branches, and durable agent artifacts with a practical comparison.',
@@ -351,6 +355,7 @@ const sidebar = {
         { text: 'Agent operating guide', link: '/guide/agent-guide' },
         { text: 'Share local artifact references', link: '/integrations/local-artifact-references' },
         { text: 'Connect MCP clients', link: '/integrations/mcp-clients' },
+        { text: 'Email delivery', link: '/integrations/email-delivery' },
         { text: 'MCP server reference', link: '/mcp/overview' },
       ],
     },
@@ -428,6 +433,7 @@ const sidebar = {
       items: [
         { text: 'Share local artifact references', link: '/integrations/local-artifact-references' },
         { text: 'Connect MCP clients', link: '/integrations/mcp-clients' },
+        { text: 'Email delivery', link: '/integrations/email-delivery' },
         { text: 'Agent operating guide', link: '/guide/agent-guide' },
         { text: 'MCP server reference', link: '/mcp/overview' },
         { text: 'Local-first agent stack', link: '/learn/local-first-agent-stack' },

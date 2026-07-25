@@ -272,6 +272,7 @@ export default function HomePage() {
         <div>
           <a href="/guide/">Documentation</a>
           <a href="/integrations/local-artifact-references">Integrations</a>
+          <a href="mailto:hello@file.cheap">Email</a>
           <a href="https://github.com/abdul-hamid-achik/file.cheap">
             Source
           </a>

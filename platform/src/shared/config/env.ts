@@ -31,6 +31,14 @@ export type PlatformConfig = {
 
 let cachedConfig: PlatformConfig | undefined;
 
+export function getDatabaseUrl(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): string {
+  const value = z.string().min(1).safeParse(env.DATABASE_URL);
+  if (!value.success) throw new Error("DATABASE_URL is required for database access");
+  return value.data;
+}
+
 export function getConfig(): PlatformConfig {
   if (cachedConfig) {
     return cachedConfig;
@@ -102,7 +110,7 @@ export function getConfig(): PlatformConfig {
     adminToken: parsed.FILECHEAP_ADMIN_TOKEN!,
     blobReadWriteToken: parsed.BLOB_READ_WRITE_TOKEN,
     cronSecret: parsed.CRON_SECRET!,
-    databaseUrl: parsed.DATABASE_URL!,
+    databaseUrl: getDatabaseUrl(),
     oidc: oidcConfigured ? { audience: parsed.FILECHEAP_OIDC_AUDIENCE!, issuer: parsed.FILECHEAP_OIDC_ISSUER!, subjects: oidcSubjects } : undefined,
     publisherTokens,
     publicUrl,

@@ -22,6 +22,7 @@ describe("public homepage", () => {
     expect(html).toContain("matching Cairn run ID");
     expect(html).toContain("Glyphrun references can also remain independent");
     expect(html).toContain("not a sync service");
+    expect(html).toContain('href="mailto:hello@file.cheap"');
     expect(html).not.toContain("Development bearer token");
     expect(html).not.toContain("$15");
     expect(html).not.toContain("Remote Vault Beta");

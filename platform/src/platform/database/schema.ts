@@ -64,3 +64,63 @@ export const artifactObjects = pgTable("artifact_objects", {
     table.ordinal,
   ),
 ]);
+
+// Pseudonymized, joinable SHA-256 digests—not provider identifiers or
+// addresses—make retries durable without turning this ledger into an inbox.
+export const inboundEmailReplays = pgTable("inbound_email_replays", {
+  id: text("id").primaryKey(),
+  svixIdSha256: text("svix_id_sha256").notNull(),
+  emailIdSha256: text("email_id_sha256").notNull(),
+  status: text("status").notNull(),
+  attempts: integer("attempts").notNull(),
+  leaseToken: text("lease_token"),
+  processingLeaseExpiresAt: timestamp("processing_lease_expires_at", {
+    withTimezone: true,
+  }),
+  forwardedAt: timestamp("forwarded_at", { withTimezone: true }),
+  ambiguousAt: timestamp("ambiguous_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+}, (table) => [
+  check(
+    "inbound_email_replays_status_check",
+    sql`${table.status} in ('processing', 'forwarded', 'ignored', 'ambiguous', 'rejected')`,
+  ),
+  check("inbound_email_replays_attempts_check", sql`${table.attempts} > 0`),
+  check(
+    "inbound_email_replays_attempts_upper_bound_check",
+    sql`${table.attempts} <= 8`,
+  ),
+  check(
+    "inbound_email_replays_svix_digest_check",
+    sql`${table.svixIdSha256} ~ '^[a-f0-9]{64}$'`,
+  ),
+  check(
+    "inbound_email_replays_email_digest_check",
+    sql`${table.emailIdSha256} ~ '^[a-f0-9]{64}$'`,
+  ),
+  check(
+    "inbound_email_replays_expiry_check",
+    sql`${table.expiresAt} > ${table.createdAt}`,
+  ),
+  check(
+    "inbound_email_replays_processing_lease_check",
+    sql`(${table.status} = 'processing') = (${table.leaseToken} is not null and ${table.processingLeaseExpiresAt} is not null)`,
+  ),
+  check(
+    "inbound_email_replays_forwarded_check",
+    sql`(${table.status} = 'forwarded') = (${table.forwardedAt} is not null)`,
+  ),
+  check(
+    "inbound_email_replays_ambiguous_check",
+    sql`(${table.status} = 'ambiguous') = (${table.ambiguousAt} is not null)`,
+  ),
+  uniqueIndex("inbound_email_replays_svix_digest_unique").on(
+    table.svixIdSha256,
+  ),
+  uniqueIndex("inbound_email_replays_email_digest_unique").on(
+    table.emailIdSha256,
+  ),
+  index("inbound_email_replays_expiry_index").on(table.expiresAt),
+]);

@@ -43,7 +43,7 @@ nfpms:
     package_name: fcheap
     vendor: Abdul Hamid Achik
     homepage: "https://github.com/abdul-hamid-achik/file.cheap"
-    maintainer: "Abdul Hamid Achik <abdulachik@icloud.com>"
+    maintainer: "file.cheap maintainers <hello@file.cheap>"
     description: "The local artifact vault for coding agents"
     license: MIT
     formats:

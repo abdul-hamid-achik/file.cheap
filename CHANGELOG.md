@@ -9,6 +9,20 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-07-25
+
+### Added
+
+- Added separate domain-scoped sending operations and a signed inbound Resend
+  webhook that forwards only `hello@file.cheap` to one encrypted private
+  destination.
+- Added exact-recipient, anti-loop, raw-body, idempotency, and provider-failure
+  coverage plus an English email operations guide.
+
+### Fixed
+
+- Pinned CI and release checkout actions to the reviewed Node 24 release.
+
 ## [0.31.1] - 2026-07-24
 
 ### Security
@@ -429,7 +443,8 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.31.1...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.31.1...v0.32.0
 [0.31.1]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.30.2...v0.31.0
 [0.30.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.29.0...v0.30.0

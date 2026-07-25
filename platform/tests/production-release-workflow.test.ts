@@ -48,7 +48,7 @@ describe("production release sequencing", () => {
 
   test("uses pinned actions and Bun without deployment credentials or a second deployer", () => {
     expect(workflow).toContain(
-      "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     );
     expect(workflow).toContain(
       "actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c",

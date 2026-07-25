@@ -64,6 +64,9 @@ Configure Preview and Production independently:
 | `FILECHEAP_ADMIN_TOKEN` | Distinct private administrator credential | Distinct private administrator credential |
 | `CRON_SECRET` | Distinct Vercel Cron credential | Distinct Vercel Cron credential |
 | `BLOB_READ_WRITE_TOKEN` | Preview private Blob store credential | Production private Blob store credential |
+| `RESEND_RECEIVE_API_KEY` | Not configured | Full-access key read only by current signed-webhook code |
+| `RESEND_WEBHOOK_SECRET` | Not configured | Endpoint-specific Svix signing secret |
+| `RESEND_FORWARD_TO` | Not configured | One private forwarding destination |
 
 The public site and documentation do not read Blob, Neon, or private-service
 credentials. The authenticated artifact service initializes them lazily.
@@ -114,6 +117,48 @@ builds that SHA. Its required `Production verification` and
 both jobs succeed. GitHub Actions needs no Vercel token, organization ID, or
 project ID. Keep the direct database URL out of Vercel and pull-request jobs.
 
+### Email delivery
+
+Email is optional and Production-only. Resend receives
+`hello@file.cheap` through `POST /api/webhooks/resend` and forwards it to the
+fixed `RESEND_FORWARD_TO` destination after raw-body signature verification,
+exact-recipient filtering, loop prevention, durable digest replay suppression,
+and provider idempotency. The route is a private provider callback exception,
+not part of `/api/v1`. It fetches only bounded rendered metadata, omits all
+attachments, and never stores or logs content, provider IDs, or the private
+destination. This lowers duplicate risk but does not make an exactly-once
+delivery promise.
+
+Use a separate domain-scoped `RESEND_SEND_API_KEY` for trusted outbound mail.
+The platform does not need that key. The receiving-forward API requires a
+team-wide full-access `RESEND_RECEIVE_API_KEY`; Resend cannot scope it to one
+domain. Isolate it per product and keep all three runtime values Sensitive and
+Production-only; current code reads them only in the signed webhook path.
+Vercel Production environment variables are project/server-runtime scoped, not
+per-route: other same-project server code could access `process.env`. True
+route isolation requires a separate deployment or secret broker. Never copy
+these values into Preview.
+
+Before enabling mail, publish the exact Resend SPF, DKIM, MX, and DMARC records
+for the selected receiving domain. Review the existing root MX first; if the
+root domain needs a normal mailbox provider later, move reception to a
+dedicated subdomain. Deploy the route, create one webhook at
+`https://file.cheap/api/webhooks/resend` subscribed only to `email.received`,
+and store its signing secret, the team-wide receiving key, and the destination
+as Production-only Sensitive values. Apply the accompanying Drizzle migration
+through the normal reviewed release gate before enabling the webhook.
+
+Send one test message to `hello@file.cheap` after deployment. Confirm Resend
+records the delivery, the callback returns `200`, the private recipient gets a
+body-only copy with a valid Reply-To, and application logs contain no mail
+metadata or content. A `401` indicates invalid signed bytes or secret; `413`
+means the webhook envelope exceeded its limit; `502` means forwarding, a 2xx
+provider receipt, or durable replay finalization was not completed (the
+provider may already have accepted the message); and `503` indicates missing
+email configuration. Do not put
+the receiving credentials in Preview, browsers, CLI/MCP processes, or artifact
+producers.
+
 ### Private Blob store
 
 A private Blob store holds immutable artifact bytes. Its exact name, ID, region,
@@ -155,7 +200,7 @@ The pinned Glyphrun runner requires Go 1.26.5, so `GOTOOLCHAIN` isolates that
 one compatibility gate. file.cheap itself remains pinned to Go 1.25.12 by
 `go.mod`.
 
-The docs verifier must report 45 source pages plus 404. The integrated build
+The docs verifier must report 46 source pages plus 404. The integrated build
 must remove and regenerate `public/_docs`, serve both sitemaps, and preserve the
 historical clean routes.
 
