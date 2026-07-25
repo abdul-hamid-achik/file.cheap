@@ -28,13 +28,13 @@ fcheap search <query> [flags]
 
 ```bash
 # Basic search across all indexed stashes
-fcheap search "Internal Migrant"
+fcheap search "checkout retry"
 
 # Cap the number of results
 fcheap search "columns not showing" --limit 5
 
 # Scope the search to one stash
-fcheap search "checkout" --stash OPG-15061_20260622
+fcheap search "checkout" --stash example_1234_20260622
 ```
 
 ## How It Works
@@ -89,11 +89,11 @@ Check availability with [`doctor`](/cli/doctor). Without an embedder, `semantic`
 ```
 Search Results (2)
 
-OPG-15061_20260622  ›  logs/app.log
+example_1234_20260622  ›  logs/app.log
   Score: 1.91 (keyword)
-  └─ ...the INTEL_Workers_ITA_International = "Internal Migrant" condition...
+  └─ ...checkout_retry_enabled = false after the session refresh...
 
-OPG-15061_20260622  ›  frames/f2.png @ 12s
+example_1234_20260622  ›  frames/f2.png @ 12s
   Score: 0.62 (keyword)
   └─ Retry button shown after error
 ```

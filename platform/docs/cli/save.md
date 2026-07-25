@@ -31,7 +31,7 @@ fcheap save /tmp/artifacts --tag bug-123 --tool vidtrace
 fcheap save ./report.pdf --tag evidence --tag pdf --tool manual
 
 # Save with source provenance
-fcheap save /tmp/vidtrace-output --tag OPG-15061 --tool vidtrace --source ~/Downloads/OPG-15061.mp4
+fcheap save /tmp/vidtrace-output --tag EXAMPLE-1234 --tool vidtrace --source ~/Downloads/EXAMPLE-1234.mp4
 
 # Mark the stash expired after 7 days; apply sweep separately to delete it
 fcheap save /tmp/codemap-snapshot --tag codemap-snapshot --tool codemap --ttl 7d
@@ -91,7 +91,7 @@ Saved stash: <generated-stash-id>
   Bundle: vidtrace
   Files: 805
   Size: 45.2 MB
-  Tags: [OPG-15061]
+  Tags: [EXAMPLE-1234]
 ! 2 potential secret(s) detected in this stash — review before sharing or restoring elsewhere
   └─ .env:1 [aws-access-key]
   └─ config.yaml:7 [generic-secret]

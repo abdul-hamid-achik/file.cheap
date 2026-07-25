@@ -21,10 +21,10 @@ target:
       export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-stash-saveindex
       rm -rf /tmp/fcheap-e2e-stash-saveindex /tmp/fcheap-e2e-saveindex-src
       mkdir -p /tmp/fcheap-e2e-saveindex-src
-      echo "The Internal Migrant condition is not working" > /tmp/fcheap-e2e-saveindex-src/notes.txt
+      echo "The checkout retry condition is not working" > /tmp/fcheap-e2e-saveindex-src/notes.txt
       ./bin/fcheap save /tmp/fcheap-e2e-saveindex-src --tag saveindex-test --index
       echo "---"
-      ./bin/fcheap search "Internal Migrant" --json
+      ./bin/fcheap search "checkout retry" --json
   cwd: "."
   timeoutMs: 30000
 
@@ -60,4 +60,4 @@ outcomes:
     description: search finds the just-saved content without a separate analyze
     verify:
       screen:
-        contains: "Internal Migrant"
+        contains: "checkout retry"

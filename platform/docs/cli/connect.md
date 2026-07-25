@@ -52,10 +52,10 @@ semantic results are empty or unexpectedly weak.
 
 ```bash
 # Connect a vidtrace bug bundle to the codebase where the bug lives
-fcheap connect OPG-15061 ~/projects/my-app --index
+fcheap connect example_1234_20260622 ~/projects/my-app --index
 
 # Narrow with an explicit query and fewer results
-fcheap connect OPG-15061 ~/projects/my-app --query "login token refresh" --limit 5
+fcheap connect example_1234_20260622 ~/projects/my-app --query "login token refresh" --limit 5
 ```
 
 ## How It Works
@@ -83,7 +83,7 @@ suffix) and a separate integer `line` field, so callers can build a
 
 ```json
 {
-  "stash_id": "OPG-15061_20260622",
+  "stash_id": "example_1234_20260622",
   "codebase": "~/projects/my-app",
   "query": "login token refresh failed ...",
   "matches": [
@@ -107,7 +107,7 @@ search).
 ## Output
 
 ```
-Connect OPG-15061 → ~/projects/my-app
+Connect example_1234_20260622 → ~/projects/my-app
 
   Query: login token refresh failed with 401 unauthorized it logs me out...
 

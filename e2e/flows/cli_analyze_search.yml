@@ -20,14 +20,14 @@ target:
       export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-stash-analyze
       rm -rf /tmp/fcheap-e2e-stash-analyze /tmp/fcheap-e2e-analyze-src
       mkdir -p /tmp/fcheap-e2e-analyze-src
-      echo "The Internal Migrant condition is not working" > /tmp/fcheap-e2e-analyze-src/notes.txt
+      echo "The checkout retry condition is not working" > /tmp/fcheap-e2e-analyze-src/notes.txt
       echo "Columns are not showing up in the UI" > /tmp/fcheap-e2e-analyze-src/bug.txt
       ./bin/fcheap save /tmp/fcheap-e2e-analyze-src --tag analyze-test
       STASH_ID=$(./bin/fcheap list --tag analyze-test --json | grep -o '"id": "[^"]*"' | head -1 | cut -d'"' -f4)
       echo "Stash ID: $STASH_ID"
       ./bin/fcheap analyze "$STASH_ID"
       echo "---"
-      ./bin/fcheap search "Internal Migrant"
+      ./bin/fcheap search "checkout retry"
   cwd: "."
   timeoutMs: 30000
 

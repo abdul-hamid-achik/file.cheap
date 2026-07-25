@@ -25,7 +25,7 @@ fcheap list [flags]
 fcheap list
 
 # Filter by tag or tool
-fcheap list --tag OPG-15061
+fcheap list --tag EXAMPLE-1234
 
 # Filter by multiple tags (AND — stash must contain all of them).
 # Used by codemap's per-branch index cache: list codemap snapshots for one repo.
@@ -52,7 +52,7 @@ where applicable (the Studio TUI additionally shows a `⚠ secrets` chip):
 Stashes (3)
 
 ID                         TOOL      TAGS        FILES  SIZE     AGE       EXP    COMP
-opg_15061_20260622         vidtrace  bug,login   805    45.2 MiB  2h ago   -      zst
+example_1234_20260622      vidtrace  bug,login   805    45.2 MiB  2h ago   -      zst
 config_snap_20260622       -         config      1      2.1 KiB   5h ago   7d     -
 logs_20260622              -         logs        42     1.2 MiB   1d ago   -      -
 ```

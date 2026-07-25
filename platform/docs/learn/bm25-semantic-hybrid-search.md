@@ -16,7 +16,7 @@ BM25 is a keyword-ranking algorithm. It rewards documents that contain the
 query terms, gives uncommon terms more weight, and adjusts for document length.
 It is usually the best first choice for:
 
-- error codes such as `ECONNRESET` or `OPG-15061`;
+- error codes such as `ECONNRESET` or `EXAMPLE-1234`;
 - function, field, and command names;
 - quoted log fragments;
 - filenames and product-specific terminology;
@@ -58,7 +58,7 @@ Hybrid search asks both indexes and merges their ranked results. It is a strong
 default when a query mixes exact language with intent:
 
 ```bash
-fcheap search 'OPG-15061 columns disappeared after refresh' --mode hybrid
+fcheap search 'EXAMPLE-1234 columns disappeared after refresh' --mode hybrid
 ```
 
 The ticket ID gives BM25 a precise anchor while the rest of the sentence gives

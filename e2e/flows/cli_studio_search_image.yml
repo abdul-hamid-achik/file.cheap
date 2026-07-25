@@ -42,7 +42,7 @@ preconditions:
       timeoutMs: 60000
     - run: |
         cat > /tmp/fcheap-e2e-simg-src/metadata.json <<'JSON'
-        {"schema_version":"1","source_video":"/Downloads/OPG.mp4","duration_seconds":24}
+        {"schema_version":"1","source_video":"/Downloads/EXAMPLE-1234.mp4","duration_seconds":24}
         JSON
       timeoutMs: 5000
     - run: |
@@ -53,7 +53,7 @@ preconditions:
         ]}
         JSON
       timeoutMs: 5000
-    - run: "FCHEAP_STASH_DIR=/tmp/fcheap-e2e-simg-store ./bin/fcheap save /tmp/fcheap-e2e-simg-src --name OPG-frames --tool vidtrace"
+    - run: "FCHEAP_STASH_DIR=/tmp/fcheap-e2e-simg-store ./bin/fcheap save /tmp/fcheap-e2e-simg-src --name example-frames --tool vidtrace"
       timeoutMs: 15000
     - run: |
         export FCHEAP_STASH_DIR=/tmp/fcheap-e2e-simg-store
@@ -64,7 +64,7 @@ preconditions:
 steps:
   - wait:
       screen:
-        contains: "OPG-frames"
+        contains: "example-frames"
       timeoutMs: 5000
   # Open search and query the frame OCR text.
   - press: "/"

@@ -33,7 +33,7 @@ preconditions:
       timeoutMs: 120000
     - run: "rm -rf /tmp/fcheap-e2e-studio-store /tmp/fcheap-e2e-studio-src && mkdir -p /tmp/fcheap-e2e-studio-src/logs"
       timeoutMs: 5000
-    - run: "printf 'login failure on retry\\nInternal Migrant flag set\\n' > /tmp/fcheap-e2e-studio-src/logs/app.log"
+    - run: "printf 'login failure on retry\\ncheckout retry flag set\\n' > /tmp/fcheap-e2e-studio-src/logs/app.log"
       timeoutMs: 5000
     - run: "printf 'bug report: checkout crashes\\n' > /tmp/fcheap-e2e-studio-src/notes.md"
       timeoutMs: 5000

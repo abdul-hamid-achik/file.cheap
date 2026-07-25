@@ -48,6 +48,11 @@ tasks:
     cmds:
       - go run golang.org/x/vuln/cmd/govulncheck@{{.GOVULNCHECK_VERSION}} ./...
 
+  privacy:
+    desc: Reject workplace-specific references in tracked paths and content
+    cmds:
+      - bash scripts/check-repository-privacy.sh
+
   lint:
     desc: Run golangci-lint (pinned to the version CI uses)
     vars:
@@ -77,8 +82,9 @@ tasks:
       - go vet ./...
 
   check:
-    desc: Run fmt, tidy, vet, lint, test, and build
+    desc: Run privacy, fmt, tidy, vet, lint, test, and build
     cmds:
+      - task: privacy
       - task: fmt
       - task: tidy
       - task: vet

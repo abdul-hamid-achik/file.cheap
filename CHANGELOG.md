@@ -9,6 +9,15 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-07-24
+
+### Security
+
+- Replaced the remaining workplace-specific ticket and provenance examples
+  with neutral reserved fixtures.
+- Added one repository privacy gate for tracked paths and content, enforced by
+  local verification, CI, tagged releases, and the Production release gate.
+
 ## [0.31.0] - 2026-07-24
 
 ### Added
@@ -420,7 +429,8 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.31.0...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.31.1...HEAD
+[0.31.1]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.30.2...v0.31.0
 [0.30.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.28.0...v0.29.0

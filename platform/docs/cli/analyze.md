@@ -21,7 +21,7 @@ fcheap analyze <stash-id> [flags]
 fcheap analyze my_artifacts_20260622_115254
 
 # Index and search in one step
-fcheap analyze my_artifacts_20260622_115254 --query "Internal Migrant"
+fcheap analyze my_artifacts_20260622_115254 --query "checkout retry"
 ```
 
 ## What Happens
@@ -67,5 +67,5 @@ With `--query` (each hit names the matching file and its score):
 Search Results (3)
 
 logs/app.log: score 2.45
-  ...Internal Migrant conditions not showing...
+  ...checkout retry condition is not working...
 ```

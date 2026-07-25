@@ -31,11 +31,11 @@ Stash Info
   Source: /tmp/artifacts
   Tool: vidtrace
   Bundle: vidtrace
-  Video: /Downloads/OPG-15061.mp4 (124s, 30fps)
+  Video: /Downloads/EXAMPLE-1234.mp4 (124s, 30fps)
   Files: 805
   Size: 45.2 MB
   Content Hash: 52008249f8beedbfe99a598b346750524b0ec1c48987dca88320d73f4528f051
-  Tags: [OPG-15061]
+  Tags: [EXAMPLE-1234]
 ```
 
 For vidtrace bundles, the `Video` line shows the source video and (when present)

@@ -26,9 +26,9 @@ surfacing the file:line candidates most likely related to the bug.
 This is the connective tissue: stash a repro, then point it at the live repo.
 
 Examples:
-  fcheap connect OPG-15061 ~/projects/my-app
-  fcheap connect OPG-15061 ~/projects/my-app --index --limit 5
-  fcheap connect OPG-15061 ~/projects/my-app --query "login token refresh"`,
+  fcheap connect example_1234_20260622 ~/projects/my-app
+  fcheap connect example_1234_20260622 ~/projects/my-app --index --limit 5
+  fcheap connect example_1234_20260622 ~/projects/my-app --query "login token refresh"`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id, codebase := args[0], args[1]

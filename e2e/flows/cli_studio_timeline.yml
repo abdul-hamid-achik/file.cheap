@@ -36,7 +36,7 @@ preconditions:
       timeoutMs: 5000
     - run: |
         cat > /tmp/fcheap-e2e-tl-src/metadata.json <<'JSON'
-        {"schema_version":"1","source_video":"/Downloads/OPG.mp4","duration_seconds":2}
+        {"schema_version":"1","source_video":"/Downloads/EXAMPLE-1234.mp4","duration_seconds":2}
         JSON
       timeoutMs: 5000
     - run: |
@@ -47,13 +47,13 @@ preconditions:
         ]}
         JSON
       timeoutMs: 5000
-    - run: "FCHEAP_STASH_DIR=/tmp/fcheap-e2e-tl-store ./bin/fcheap save /tmp/fcheap-e2e-tl-src --name OPG-tl --tool vidtrace"
+    - run: "FCHEAP_STASH_DIR=/tmp/fcheap-e2e-tl-store ./bin/fcheap save /tmp/fcheap-e2e-tl-src --name example-timeline --tool vidtrace"
       timeoutMs: 15000
 
 steps:
   - wait:
       screen:
-        contains: "OPG-tl"
+        contains: "example-timeline"
       timeoutMs: 5000
   - press: "enter"
   - wait:
