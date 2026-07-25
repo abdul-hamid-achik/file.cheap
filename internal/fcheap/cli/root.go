@@ -126,6 +126,7 @@ func init() {
 	rootCmd.AddCommand(dropCmd)
 	rootCmd.AddCommand(infoCmd)
 	rootCmd.AddCommand(artifactRefCmd)
+	rootCmd.AddCommand(publishCmd)
 	rootCmd.AddCommand(compressCmd)
 	rootCmd.AddCommand(analyzeCmd)
 	rootCmd.AddCommand(searchCmd)
@@ -154,7 +155,7 @@ func commandNeedsConfig(cmd *cobra.Command) bool {
 		return true
 	}
 	switch cmd.Name() {
-	case "help", "version", "completion", "agent":
+	case "help", "version", "completion", "agent", "publish":
 		return false
 	}
 	for current := cmd; current != nil; current = current.Parent() {

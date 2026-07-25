@@ -10,11 +10,11 @@ Go core stores files locally on the user's machine and has no dependency on the
 optional hosted platform.
 
 The repository also contains `platform/`, the unified Next.js public website,
-VitePress documentation source, and recovery-protocol laboratory. The existing
-Vercel project `file-cheap` builds only this directory. The recovery lab and
-`/api/v1` are disabled by default in hosted environments, and the multi-customer
-remote vault is not shipped. The platform rules below apply only inside that
-directory.
+VitePress documentation source, and a private single-owner artifact service.
+The existing Vercel project `file-cheap` builds only this directory. The public
+website remains independent from private-service configuration; authenticated
+`/api/v1/artifacts` routes are for trusted product integrations only. The
+platform rules below apply only inside that directory.
 
 ### Key Layers
 
@@ -44,8 +44,8 @@ directory.
     `file.cheap/{guide,cli,mcp,...}` URLs. The `fcheap docs` CLI command serves,
     builds, lists, and reads doc pages.
 
-12. **Public Platform** (`platform/`) -- isolated Next.js website plus a gated,
-    single-workspace recovery laboratory. It is the sole public deployment and
+12. **Public Platform** (`platform/`) -- isolated Next.js website plus a private,
+    single-owner artifact control plane. It is the sole public deployment and
     remains a runtime dependency boundary. The only Go import allowed from this
     tree is the static `platform/docs` content package used by CLI and MCP
     embedding; the Go core must never import the Next.js application or cloud
@@ -132,20 +132,24 @@ its dependencies from the local-first Go core.
 - The Next.js root page is the public product website. The existing
   `file-cheap` Vercel project deploys `platform/`; code readiness does not
   authorize a production domain cutover.
-- The recovery lab and stateful `/api/v1` routes are a single-workspace
-  experiment. Keep them disabled on public deployments. `/api/v1/health` may
-  report that the public site is healthy without initializing storage.
-- A static bearer token is acceptable only for local development or a
-  controlled preview protected by Vercel access controls.
-- The lab is not a public remote vault. Do not send it customer data or use it
-  as the integration boundary for Chalupa, Cairntrace, or Glyphrun.
+- The public site and `/api/v1/health` must remain healthy without reading
+  storage or database credentials. Private artifact routes initialize their
+  dependencies lazily after scoped authentication.
+- The artifact service is single-owner infrastructure, not a public remote
+  vault. Prefer Vercel OIDC with exact issuer, audience, and subject allowlists
+  for Vercel-to-Vercel ingest. Keep the static ingest fallback explicit and
+  distinct from admin and cron credentials. Inject a producer-bound publisher
+  credential only into that producer's exact local process; never expose it to
+  browsers, artifacts, logs, child workloads, or public documentation.
+- Chalupa, Cairntrace, and Glyphrun integrate through credential-free
+  `ArtifactRefV1` values and short-lived signed transfers only.
 
 ### Technology and boundaries
 
 - Use Bun for installs and scripts. Do not add npm or Yarn lockfiles.
 - Use Next.js App Router, strict TypeScript, and Route Handlers under
   `platform/src/app/api/v1/`.
-- Keep `/` independent of storage credentials and recovery configuration.
+- Keep `/` independent of storage and database credentials.
 - Build VitePress locally into `platform/public/_docs` before every Next.js
   build. Never restore `FILECHEAP_DOCS_ORIGIN` or an external docs rewrite.
 - Keep `/_docs/*` as an internal build namespace. Public links and canonical
@@ -154,25 +158,26 @@ its dependencies from the local-first Go core.
   errors. Business rules belong in `platform/src/features/`.
 - Provider SDKs belong behind ports in `platform/src/platform/`. Only the
   Vercel Blob adapter may import `@vercel/blob`.
-- Local adapter data is disposable and lives under `platform/.data/`.
 - Archive objects are immutable and SHA-256 addressed. Never overwrite one
-  silently or bind one stash ID to two hashes.
-- Large archive bytes require direct signed transfers in a future production
-  design; do not proxy them through a Vercel Function.
+  silently or bind an artifact ID to two hashes.
+- Large archive bytes use direct signed transfers; never proxy them through a
+  Vercel Function. Private Blob presence, size, and ETag are not a server-side
+  SHA-256 verification claim.
+- Neon metadata is owned by Drizzle migrations. `DATABASE_URL` is pooled
+  runtime access; `MIGRATIONS_DATABASE_URL` is direct migration-only access and
+  must never be configured in Vercel.
 - API errors use `application/problem+json` and the RFC 9457 shape.
 
-### Recovery-lab constraints
+### Private artifact-service constraints
 
-- `PLATFORM_RECOVERY_LAB_ENABLED` must be false or absent on the public
-  deployment. An explicit `true` is only for a controlled, access-protected
-  preview.
-- Do not add auth providers, payments, email, teams, continuous sync, public
-  sharing, background deletion, or telemetry to the lab.
-- Blob is not a production multi-tenant catalog. Add a transactional database
-  before any external multi-customer beta.
-- Never infer remote safety from `HEAD` or ETag alone. The prototype never
-  evicts local content. A future encrypted client needs a complete
-  hydrate-and-hash check and recovery-key export before eviction is considered.
+- Do not add public sharing, teams, billing, browser-held tokens, or continuous
+  sync. A separate authenticated product boundary is required before any
+  multi-user offering.
+- Retention is server-side reconciliation: claim database state, delete the
+  exact private object, then mark metadata deleted. It must be idempotent.
+- Never infer a complete SHA-256 verification from Blob `HEAD` or ETag alone.
+  Consumers verify after download; local file.cheap never evicts source bytes
+  because of a cloud artifact.
 
 ### Platform verification
 
@@ -185,12 +190,12 @@ bun run build
 bun run audit:production
 ```
 
-The check performs linting, strict type checking, unit and contract tests, and
-an isolated recovery E2E. The separate build stages and verifies the VitePress
-site before producing the Next.js artifact. The audit must report no known
-production dependency vulnerabilities. Before a domain cutover, follow the root
-[`DEPLOYMENT.md`](DEPLOYMENT.md); preview, domain assignment, and rollback are
-separate release gates.
+The check performs linting, strict type checking, unit, contract, and isolated
+private-artifact lifecycle tests. The separate build stages and verifies the
+VitePress site before producing the Next.js artifact. The audit must report no
+known production dependency vulnerabilities. Before a domain cutover, follow
+the root [`DEPLOYMENT.md`](DEPLOYMENT.md); migration, preview, promotion, and
+rollback are separate release gates.
 
 ## Storage Layout
 

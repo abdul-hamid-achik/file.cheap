@@ -34,6 +34,10 @@ const PAGE_META: Record<string, PageMeta> = {
     title: 'fcheap artifact-ref — local stash references',
     description: 'Emit a versioned fcheap-local reference so agent tools can share metadata for an existing stash without copying its bytes.',
   },
+  'cli/publish.md': {
+    title: 'fcheap publish — private artifact publication',
+    description: 'Publish one bounded local file through the private artifact service without exposing transfer credentials.',
+  },
   'cli/cleanup.md': {
     title: 'fcheap cleanup — reclaim local stash space',
     description: 'Score, review, and safely remove expired, duplicate, orphaned, or regenerable local stashes.',
@@ -364,7 +368,8 @@ const sidebar = {
       items: [
         { text: 'Overview and global flags', link: '/cli/' },
         { text: 'save', link: '/cli/save' },
-        { text: 'artifact-ref', link: '/cli/artifact-ref' },
+          { text: 'artifact-ref', link: '/cli/artifact-ref' },
+          { text: 'publish', link: '/cli/publish' },
         { text: 'list', link: '/cli/list' },
         { text: 'info', link: '/cli/info' },
         { text: 'restore', link: '/cli/restore' },

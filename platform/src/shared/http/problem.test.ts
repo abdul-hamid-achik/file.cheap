@@ -52,7 +52,8 @@ describe("RFC 9457 problem responses", () => {
     const internalSchema = z.object({ secretCatalogField: z.string() });
     const internalError = captureError(() => internalSchema.parse({}));
     const originalConsoleError = console.error;
-    console.error = () => undefined;
+    const logged: unknown[] = [];
+    console.error = (...values: unknown[]) => { logged.push(...values); };
 
     try {
       const response = problemResponse(internalError, request);
@@ -65,6 +66,10 @@ describe("RFC 9457 problem responses", () => {
         requestId: "internal-schema-01",
       });
       expect(JSON.stringify(problem)).not.toContain("secretCatalogField");
+      expect(JSON.stringify(logged)).not.toContain("secretCatalogField");
+      expect(logged).toEqual([
+        { event: "platform_request_failed", errorName: "ZodError" },
+      ]);
     } finally {
       console.error = originalConsoleError;
     }
@@ -261,6 +266,22 @@ describe("RFC 9457 problem responses", () => {
     );
 
     expect(response.headers.get("retry-after")).toBe("7");
+  });
+
+  test("preserves an explicit retry delay on a transient conflict", () => {
+    const response = problemResponse(
+      new PlatformError({
+        code: "idempotency_reconciling",
+        detail: "Retry the same immutable plan.",
+        retryAfterSeconds: 2,
+        status: 409,
+        title: "Upload plan reconciling",
+      }),
+      new Request("https://file.cheap/api/v1/artifacts/plans"),
+    );
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get("retry-after")).toBe("2");
   });
 
   test("returns correlated problem details for unsupported API methods", async () => {

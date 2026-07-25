@@ -59,7 +59,7 @@ binary includes:
 
 The installed product does not provide cloud sync, accounts, an HTTP API,
 authentication, or billing. file.cheap also has a public product website and a
-gated recovery laboratory, but no hosted vault ships to users. Optional OpenAI
+private artifact service, but no hosted vault ships to users. Optional OpenAI
 and non-loopback Ollama embedders can receive text when you explicitly configure
 them; the stash payload itself remains in the local vault.
 

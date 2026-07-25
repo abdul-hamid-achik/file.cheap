@@ -1,159 +1,216 @@
-import { afterEach, describe, expect, test } from "bun:test";
-
+import { afterEach, expect, test } from "bun:test";
 import { getConfig, resetConfigForTests } from "@/shared/config/env";
 
-const managedKeys = [
-  "BLOB_READ_WRITE_TOKEN",
-  "PLATFORM_API_TOKEN",
-  "PLATFORM_BLOB_INTEGRITY",
-  "PLATFORM_DATA_DIR",
-  "PLATFORM_PUBLIC_URL",
-  "PLATFORM_SIGNING_SECRET",
-  "PLATFORM_STORAGE_DRIVER",
-  "NODE_ENV",
-  "VERCEL",
-] as const;
-
-const mutableEnvironment = process.env as Record<string, string | undefined>;
-
-const originalEnvironment = Object.fromEntries(
-  managedKeys.map((key) => [key, process.env[key]]),
-);
+const original = { ...process.env };
 
 afterEach(() => {
-  for (const key of managedKeys) {
-    const original = originalEnvironment[key];
-    if (original === undefined) {
-      delete mutableEnvironment[key];
-    } else {
-      mutableEnvironment[key] = original;
-    }
+  for (const key of Object.keys(process.env)) if (!(key in original)) delete process.env[key];
+  for (const [key, value] of Object.entries(original)) process.env[key] = value;
+  resetConfigForTests();
+});
+
+const publisherToken = "p".repeat(43);
+
+test("rejects a publisher-only configuration in Vercel", () => {
+  process.env.VERCEL = "1";
+  process.env.DATABASE_URL = "postgresql://runtime";
+  process.env.FILECHEAP_PUBLISHER_TOKENS = JSON.stringify({
+    chalupa: {
+      kinds: ["chalupa.log-chunk"],
+      nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+      tokens: [publisherToken],
+    },
+  });
+  process.env.FILECHEAP_ADMIN_TOKEN = "a".repeat(32);
+  process.env.CRON_SECRET = "c".repeat(32);
+  resetConfigForTests();
+  expect(() => getConfig()).toThrow("require FILECHEAP_OIDC_*");
+});
+
+test("accepts an exact OIDC configuration without an ingest token", () => {
+  process.env.VERCEL = "1";
+  process.env.DATABASE_URL = "postgresql://runtime";
+  process.env.FILECHEAP_ADMIN_TOKEN = "a".repeat(32);
+  process.env.CRON_SECRET = "c".repeat(32);
+  process.env.FILECHEAP_OIDC_ISSUER = "https://oidc.vercel.com/example";
+  process.env.FILECHEAP_OIDC_AUDIENCE = "https://vercel.com/example";
+  process.env.FILECHEAP_OIDC_SUBJECTS = "owner:example:project:chalupa:environment:production";
+  resetConfigForTests();
+  expect(getConfig().oidc?.subjects).toEqual(["owner:example:project:chalupa:environment:production"]);
+});
+
+test("accepts a bounded per-producer rotation keyring alongside Vercel OIDC", () => {
+  process.env.VERCEL = "1";
+  process.env.DATABASE_URL = "postgresql://runtime";
+  process.env.FILECHEAP_ADMIN_TOKEN = "a".repeat(32);
+  process.env.CRON_SECRET = "c".repeat(32);
+  process.env.FILECHEAP_OIDC_ISSUER = "https://oidc.vercel.com/example";
+  process.env.FILECHEAP_OIDC_AUDIENCE = "https://vercel.com/example";
+  process.env.FILECHEAP_OIDC_SUBJECTS = "owner:example:project:chalupa:environment:production";
+  process.env.FILECHEAP_PUBLISHER_TOKENS = JSON.stringify({
+    cairntrace: {
+      kinds: ["cairntrace.run"],
+      nativeSchemas: ["urn:cairntrace.dev:run:v1"],
+      tokens: ["r".repeat(43)],
+    },
+    chalupa: {
+      kinds: ["chalupa.log-chunk"],
+      nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+      tokens: [publisherToken, "n".repeat(43)],
+    },
+  });
+  resetConfigForTests();
+  expect(getConfig().publisherTokens).toEqual([
+    {
+      kinds: ["cairntrace.run"],
+      nativeSchemas: ["urn:cairntrace.dev:run:v1"],
+      producerTool: "cairntrace",
+      tokens: ["r".repeat(43)],
+    },
+    {
+      kinds: ["chalupa.log-chunk"],
+      nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+      producerTool: "chalupa",
+      tokens: [publisherToken, "n".repeat(43)],
+    },
+  ]);
+});
+
+test("binds a Vercel deployment to one OIDC subject in its exact environment", () => {
+  process.env.VERCEL = "1";
+  process.env.VERCEL_ENV = "production";
+  process.env.DATABASE_URL = "postgresql://runtime";
+  process.env.FILECHEAP_ADMIN_TOKEN = "a".repeat(32);
+  process.env.CRON_SECRET = "c".repeat(32);
+  process.env.FILECHEAP_OIDC_ISSUER = "https://oidc.vercel.com/example";
+  process.env.FILECHEAP_OIDC_AUDIENCE = "https://vercel.com/example";
+  process.env.FILECHEAP_OIDC_SUBJECTS = "owner:example:project:chalupa:environment:preview";
+  resetConfigForTests();
+  expect(() => getConfig()).toThrow("exact Chalupa subject for VERCEL_ENV");
+
+  process.env.FILECHEAP_OIDC_SUBJECTS = [
+    "owner:example:project:chalupa:environment:production",
+    "owner:example:project:chalupa:environment:preview",
+  ].join(",");
+  resetConfigForTests();
+  expect(() => getConfig()).toThrow("exact Chalupa subject for VERCEL_ENV");
+});
+
+test("rejects malformed, weak, duplicated, or cross-scope publisher tokens", () => {
+  delete process.env.VERCEL;
+  process.env.DATABASE_URL = "postgresql://runtime";
+  process.env.FILECHEAP_ADMIN_TOKEN = "a".repeat(43);
+  process.env.CRON_SECRET = "c".repeat(43);
+
+  for (const publisherTokens of [
+    "{",
+    JSON.stringify({}),
+    JSON.stringify({
+      chalupa: {
+        kinds: ["chalupa.log-chunk"],
+        nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+        tokens: ["short"],
+      },
+    }),
+    JSON.stringify({
+      chalupa: {
+        kinds: ["chalupa.log-chunk"],
+        nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+        tokens: [publisherToken, publisherToken],
+      },
+    }),
+    JSON.stringify({
+      cairntrace: {
+        kinds: ["cairntrace.run"],
+        nativeSchemas: ["urn:cairntrace.dev:run:v1"],
+        tokens: [publisherToken],
+      },
+      chalupa: {
+        kinds: ["chalupa.log-chunk"],
+        nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+        tokens: [publisherToken],
+      },
+    }),
+    JSON.stringify({
+      "not a producer": {
+        kinds: ["chalupa.log-chunk"],
+        nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+        tokens: [publisherToken],
+      },
+    }),
+    JSON.stringify({
+      chalupa: {
+        kinds: [],
+        nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+        tokens: [publisherToken],
+      },
+    }),
+    JSON.stringify({
+      chalupa: {
+        kinds: ["chalupa.log-chunk"],
+        nativeSchemas: ["https://user:password@example.test/schema"],
+        tokens: [publisherToken],
+      },
+    }),
+    JSON.stringify({
+      chalupa: {
+        kinds: ["chalupa.log-chunk"],
+        nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+        tokens: [publisherToken, "n".repeat(43), "o".repeat(43)],
+      },
+    }),
+  ]) {
+    process.env.FILECHEAP_PUBLISHER_TOKENS = publisherTokens;
+    resetConfigForTests();
+    expect(() => getConfig()).toThrow("FILECHEAP_PUBLISHER_TOKENS");
   }
+
+  process.env.FILECHEAP_PUBLISHER_TOKENS = JSON.stringify({
+    chalupa: {
+      kinds: ["chalupa.log-chunk"],
+      nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+      tokens: ["a".repeat(43)],
+    },
+  });
   resetConfigForTests();
+  expect(() => getConfig()).toThrow("credentials must be distinct");
 });
 
-describe("platform environment", () => {
-  test("keeps Vercel Blob disabled without the explicit experimental acknowledgement", () => {
-    prepareBlobEnvironment();
-
-    expect(() => getConfig()).toThrow(
-      "Vercel Blob direct uploads are presence-only",
-    );
-  });
-
-  test("allows a controlled Blob spike only with the exact acknowledgement", () => {
-    prepareBlobEnvironment();
-    process.env.PLATFORM_BLOB_INTEGRITY =
-      "presence-size-etag-experimental";
-
-    expect(getConfig()).toMatchObject({
-      blobReadWriteToken: "test-blob-token",
-      storageDriver: "vercel-blob",
-    });
-  });
-
-  test("rejects development credentials in every production environment", () => {
-    delete process.env.VERCEL;
-    mutableEnvironment.NODE_ENV = "production";
-    process.env.PLATFORM_STORAGE_DRIVER = "local";
-    delete process.env.PLATFORM_API_TOKEN;
-    delete process.env.PLATFORM_SIGNING_SECRET;
-    resetConfigForTests();
-
-    expect(() => getConfig()).toThrow(
-      "PLATFORM_API_TOKEN must be replaced in production",
-    );
-
-    process.env.PLATFORM_API_TOKEN = "production-api-token-long-enough";
-    resetConfigForTests();
-    expect(() => getConfig()).toThrow(
-      "PLATFORM_SIGNING_SECRET must be replaced in production",
-    );
-  });
-
-  test("allows explicit non-default credentials in self-hosted production", () => {
-    prepareLocalEnvironment();
-    mutableEnvironment.NODE_ENV = "production";
-    process.env.PLATFORM_API_TOKEN = "production-api-token-long-enough";
-    process.env.PLATFORM_SIGNING_SECRET =
-      "production-signing-secret-that-is-long-enough";
-    resetConfigForTests();
-
-    expect(getConfig()).toMatchObject({
-      apiToken: "production-api-token-long-enough",
-      storageDriver: "local",
-    });
-  });
-
-  test("keeps authentication and signing credentials independent", () => {
-    prepareLocalEnvironment();
-    process.env.PLATFORM_API_TOKEN = "shared-credential-that-is-long-enough";
-    process.env.PLATFORM_SIGNING_SECRET =
-      "shared-credential-that-is-long-enough";
-    resetConfigForTests();
-
-    expect(() => getConfig()).toThrow(
-      "PLATFORM_API_TOKEN and PLATFORM_SIGNING_SECRET must be different values",
-    );
-  });
-
-  test("requires https outside loopback in production", () => {
-    prepareLocalEnvironment();
-    mutableEnvironment.NODE_ENV = "production";
-    process.env.PLATFORM_API_TOKEN = "production-api-token-long-enough";
-    process.env.PLATFORM_SIGNING_SECRET =
-      "production-signing-secret-that-is-long-enough";
-    process.env.PLATFORM_PUBLIC_URL = "http://cloud.file.cheap";
-    resetConfigForTests();
-
-    expect(() => getConfig()).toThrow(
-      "PLATFORM_PUBLIC_URL must use https outside loopback in production",
-    );
-  });
-
-  test("normalizes an HTTP(S) public origin", () => {
-    prepareLocalEnvironment();
-    process.env.PLATFORM_PUBLIC_URL = "https://cloud.file.cheap///";
-    resetConfigForTests();
-
-    expect(getConfig().publicUrl).toBe("https://cloud.file.cheap");
-  });
-
-  test("rejects unsafe or ambiguous public URLs", () => {
-    for (const publicUrl of [
-      "ftp://cloud.file.cheap",
-      "https://user:password@cloud.file.cheap",
-      "https://cloud.file.cheap/base",
-      "https://cloud.file.cheap?token=secret",
-      "https://cloud.file.cheap#fragment",
-    ]) {
-      prepareLocalEnvironment();
-      process.env.PLATFORM_PUBLIC_URL = publicUrl;
-      resetConfigForTests();
-
-      expect(() => getConfig()).toThrow("PLATFORM_PUBLIC_URL");
-    }
-  });
+test("does not treat the legacy global ingest variable as server authentication", () => {
+  delete process.env.VERCEL;
+  process.env.DATABASE_URL = "postgresql://runtime";
+  process.env.FILECHEAP_ADMIN_TOKEN = "a".repeat(32);
+  process.env.CRON_SECRET = "c".repeat(32);
+  process.env.FILECHEAP_INGEST_TOKEN = publisherToken;
+  delete process.env.FILECHEAP_PUBLISHER_TOKENS;
+  resetConfigForTests();
+  expect(() => getConfig()).toThrow(
+    "FILECHEAP_PUBLISHER_TOKENS or FILECHEAP_OIDC_*",
+  );
 });
 
-function prepareBlobEnvironment(): void {
-  delete process.env.VERCEL;
-  process.env.BLOB_READ_WRITE_TOKEN = "test-blob-token";
-  process.env.PLATFORM_API_TOKEN = "test-api-token-long-enough";
-  process.env.PLATFORM_SIGNING_SECRET =
-    "test-signing-secret-that-is-long-enough";
-  process.env.PLATFORM_STORAGE_DRIVER = "vercel-blob";
-  delete process.env.PLATFORM_BLOB_INTEGRITY;
-  resetConfigForTests();
-}
+test("rejects non-Vercel issuers, ambiguous issuer URLs, and empty subject allowlists", () => {
+  process.env.VERCEL = "1";
+  process.env.DATABASE_URL = "postgresql://runtime";
+  process.env.FILECHEAP_ADMIN_TOKEN = "a".repeat(32);
+  process.env.CRON_SECRET = "c".repeat(32);
+  process.env.FILECHEAP_OIDC_AUDIENCE = "https://vercel.com/example";
+  process.env.FILECHEAP_OIDC_SUBJECTS = "owner:example:project:chalupa:environment:production";
 
-function prepareLocalEnvironment(): void {
-  delete process.env.VERCEL;
-  mutableEnvironment.NODE_ENV = "development";
-  process.env.PLATFORM_API_TOKEN = "test-api-token-long-enough";
-  process.env.PLATFORM_SIGNING_SECRET =
-    "test-signing-secret-that-is-long-enough";
-  process.env.PLATFORM_STORAGE_DRIVER = "local";
-  delete process.env.PLATFORM_PUBLIC_URL;
+  process.env.FILECHEAP_OIDC_ISSUER = "https://issuer.example/example";
   resetConfigForTests();
-}
+  expect(() => getConfig()).toThrow("exact global or team-scoped Vercel issuer");
+
+  process.env.FILECHEAP_OIDC_ISSUER = "https://oidc.vercel.com/example/";
+  resetConfigForTests();
+  expect(() => getConfig()).toThrow("exact global or team-scoped Vercel issuer");
+
+  process.env.FILECHEAP_OIDC_ISSUER = "https://oidc.vercel.com/example";
+  process.env.FILECHEAP_OIDC_SUBJECTS = " , ";
+  resetConfigForTests();
+  expect(() => getConfig()).toThrow("unique exact Chalupa Vercel deployment subjects");
+
+  process.env.FILECHEAP_OIDC_SUBJECTS = "owner:example:project:other:environment:production";
+  resetConfigForTests();
+  expect(() => getConfig()).toThrow("unique exact Chalupa Vercel deployment subjects");
+});

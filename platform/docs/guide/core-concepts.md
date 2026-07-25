@@ -149,7 +149,7 @@ protects a stash from sweep and cleanup application.
 
 The local vault avoids a hosted dependency and keeps normal reads off the
 network. It does not protect against loss of the machine or disk. The public
-file.cheap website does not change that storage model: its recovery laboratory
+file.cheap website does not change that storage model: its private artifact service
 is gated, and no hosted vault ships today. Independently design backup and key
 recovery for evidence that must survive local hardware failure.
 

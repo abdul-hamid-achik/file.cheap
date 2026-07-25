@@ -32,7 +32,7 @@ with `{"action":"guide"}`.
 - An artifact reference points another tool to a stash without copying its
   bytes. A local reference resolves only where the matching vault exists.
 - The installed product has no shipped cloud sync, account, or HTTP API. The
-  public website and its gated recovery laboratory are separate from these local
+  public website and its private artifact service are separate from these local
   agent tools; no hosted vault is available to users.
 
 ## Stay inside the user's scope

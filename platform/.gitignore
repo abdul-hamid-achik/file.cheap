@@ -3,7 +3,10 @@
 .vercel/
 node_modules/
 public/_docs/
+.env
+.env.*
 .env.local
+!.env.example
 *.tsbuildinfo
 coverage/
 playwright-report/

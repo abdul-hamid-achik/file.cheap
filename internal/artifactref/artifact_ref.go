@@ -82,6 +82,28 @@ type LocalOptions struct {
 	Producer Producer
 }
 
+// NewCloud constructs and validates a credential-free reference returned by the
+// private artifact service. Transfer URLs are deliberately not part of this
+// contract and must never be copied into an ArtifactRefV1.
+func NewCloud(vaultID, artifactID, kind string, producer Producer) (ArtifactRefV1, error) {
+	ref := ArtifactRefV1{
+		Schema:     SchemaURI,
+		Version:    Version,
+		Provider:   ProviderCloud,
+		URI:        "fcheap://cloud/vaults/" + vaultID + "/artifacts/" + artifactID,
+		ArtifactID: artifactID,
+		Kind:       kind,
+		Producer:   &producer,
+	}
+	if producer == (Producer{}) {
+		ref.Producer = nil
+	}
+	if err := ref.Validate(); err != nil {
+		return ArtifactRefV1{}, err
+	}
+	return ref, nil
+}
+
 // NewLocal constructs and validates a reference to an existing local stash.
 func NewLocal(artifactID, bundleType string, opts LocalOptions) (ArtifactRefV1, error) {
 	kind := opts.Kind

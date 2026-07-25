@@ -5,14 +5,12 @@ import {
   problemResponse,
 } from "@/shared/http/problem";
 import { jsonResponse } from "@/shared/http/response";
-import { requireRecoveryLabAccess } from "@/shared/config/recovery-lab-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export function GET(request: Request): Response {
   try {
-    requireRecoveryLabAccess();
     return jsonResponse(request, openApiDocument);
   } catch (error) {
     return problemResponse(error, request);

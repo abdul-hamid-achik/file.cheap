@@ -1,0 +1,222 @@
+import {
+  BlobNotFoundError,
+  BlobRequestAbortedError,
+  BlobServiceNotAvailable,
+  BlobServiceRateLimited,
+  del,
+  get,
+  head,
+  issueSignedToken,
+  presignUrl,
+} from "@vercel/blob";
+
+import { getConfig, type PlatformConfig } from "@/shared/config/env";
+import { PlatformError } from "@/shared/errors/platform-error";
+import {
+  assertSafeArtifactObjectKey,
+  type ArtifactObjectMetadata,
+  type ArtifactObjectStore,
+  type ArtifactTransferGrant,
+} from "@/platform/artifacts/object-store";
+
+export type ArtifactBlobSdk = {
+  del: typeof del;
+  get: typeof get;
+  head: typeof head;
+  issueSignedToken: typeof issueSignedToken;
+  presignUrl: typeof presignUrl;
+};
+
+const defaultBlobSdk: ArtifactBlobSdk = { del, get, head, issueSignedToken, presignUrl };
+const maximumVerifiedArtifactBytes = 2 * 1_024 * 1_024;
+
+export class VercelPrivateBlobArtifactStore implements ArtifactObjectStore {
+  readonly driver = "vercel-private-blob";
+
+  constructor(
+    private readonly config: PlatformConfig = getConfig(),
+    private readonly blob: ArtifactBlobSdk = defaultBlobSdk,
+  ) {}
+
+  async delete(key: string, signal?: AbortSignal): Promise<void> {
+    assertSafeArtifactObjectKey(key);
+    try {
+      await this.blob.del(key, this.options(signal));
+    } catch (error) {
+      if (error instanceof BlobNotFoundError) return;
+      throw normalizeBlobError(error, signal);
+    }
+  }
+
+  async inspect(key: string, signal?: AbortSignal): Promise<ArtifactObjectMetadata | null> {
+    assertSafeArtifactObjectKey(key);
+    try {
+      const blob = await this.blob.head(key, this.options(signal));
+      return { contentType: blob.contentType, etag: blob.etag, key: blob.pathname, sizeBytes: blob.size, uploadedAt: blob.uploadedAt.toISOString() };
+    } catch (error) {
+      if (error instanceof BlobNotFoundError) return null;
+      throw normalizeBlobError(error, signal);
+    }
+  }
+
+  async readBytes(key: string, signal?: AbortSignal): Promise<Uint8Array | null> {
+    assertSafeArtifactObjectKey(key);
+    try {
+      const result = await this.blob.get(key, { access: "private", ...this.options(signal), useCache: false });
+      if (!result) return null;
+      if (result.statusCode !== 200) throw new Error("Unexpected private Blob response");
+      if (result.blob.size > maximumVerifiedArtifactBytes) {
+        await result.stream.cancel();
+        throw new Error("Private artifact exceeds the verification limit");
+      }
+      return readBoundedStream(result.stream, maximumVerifiedArtifactBytes);
+    } catch (error) {
+      if (error instanceof BlobNotFoundError) return null;
+      throw normalizeBlobError(error, signal);
+    }
+  }
+
+  async issueUploadGrant(input: { contentType: string; key: string; sizeBytes: number; validUntil: Date }, signal?: AbortSignal): Promise<ArtifactTransferGrant> {
+    assertSafeArtifactObjectKey(input.key);
+    try {
+      const token = await this.blob.issueSignedToken({ ...this.options(signal), allowedContentTypes: [input.contentType], maximumSizeInBytes: input.sizeBytes, operations: ["put"], pathname: input.key, validUntil: input.validUntil.getTime() });
+      const { presignedUrl } = await this.blob.presignUrl(token, { access: "private", addRandomSuffix: false, allowedContentTypes: [input.contentType], allowOverwrite: false, maximumSizeInBytes: input.sizeBytes, operation: "put", pathname: input.key, validUntil: input.validUntil.getTime() });
+      return { expiresAt: input.validUntil.toISOString(), headers: { "content-type": input.contentType }, method: "PUT", url: requireExactPresignedUrl(presignedUrl, input.key, "put", token.delegationToken) };
+    } catch (error) {
+      throw normalizeBlobError(error, signal);
+    }
+  }
+
+  async issueDownloadGrant(input: { key: string; validUntil: Date }, signal?: AbortSignal): Promise<ArtifactTransferGrant> {
+    assertSafeArtifactObjectKey(input.key);
+    try {
+      const token = await this.blob.issueSignedToken({ ...this.options(signal), operations: ["get"], pathname: input.key, validUntil: input.validUntil.getTime() });
+      const { presignedUrl } = await this.blob.presignUrl(token, { access: "private", operation: "get", pathname: input.key, useCache: false, validUntil: input.validUntil.getTime() });
+      return { expiresAt: input.validUntil.toISOString(), headers: {}, method: "GET", url: requireExactPresignedUrl(presignedUrl, input.key, "get", token.delegationToken) };
+    } catch (error) {
+      throw normalizeBlobError(error, signal);
+    }
+  }
+
+  private options(signal?: AbortSignal): { abortSignal?: AbortSignal; token?: string } {
+    return { ...(signal ? { abortSignal: signal } : {}), ...(this.config.blobReadWriteToken ? { token: this.config.blobReadWriteToken } : {}) };
+  }
+}
+
+function requireExactPresignedUrl(
+  value: string,
+  key: string,
+  operation: "get" | "put",
+  delegationToken: string,
+): string {
+  if (value.length > 16_384) {
+    throw new Error("Vercel Blob returned an unsafe signed transfer URL");
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("Vercel Blob returned an unsafe signed transfer URL");
+  }
+  const exactPath =
+    operation === "get"
+      ? url.pathname === `/${key}`
+      : url.origin === "https://vercel.com" &&
+        url.pathname === "/api/blob/" &&
+        url.searchParams.getAll("pathname").length === 1 &&
+        url.searchParams.get("pathname") === key;
+  const exactHost =
+    operation === "get"
+      ? /^[A-Za-z0-9_][A-Za-z0-9_-]{0,127}\.private\.blob\.vercel-storage\.com$/u.test(
+          url.hostname,
+        )
+      : url.hostname === "vercel.com";
+  const allowedQueryKeys =
+    operation === "get"
+      ? new Set([
+          "cache",
+          "vercel-blob-delegation",
+          "vercel-blob-signature",
+          "vercel-blob-valid-until",
+        ])
+      : new Set([
+          "pathname",
+          "vercel-blob-add-random-suffix",
+          "vercel-blob-allow-overwrite",
+          "vercel-blob-allowed-content-types",
+          "vercel-blob-cache-control-max-age",
+          "vercel-blob-maximum-size-in-bytes",
+          "vercel-blob-signature",
+          "vercel-blob-delegation",
+          "vercel-blob-valid-until",
+        ]);
+  const exactQuery =
+    [...url.searchParams.keys()].every((name) =>
+      allowedQueryKeys.has(name),
+    ) &&
+    [...allowedQueryKeys].every(
+      (name) => url.searchParams.getAll(name).length <= 1,
+    ) &&
+    (operation !== "get" ||
+      (
+        url.searchParams.getAll("cache").length === 1 &&
+        url.searchParams.get("cache") === "0"
+      ));
+  if (
+    url.protocol !== "https:" ||
+    url.port ||
+    url.username ||
+    url.password ||
+    url.hash ||
+    !exactHost ||
+    !exactPath ||
+    !exactQuery ||
+    url.searchParams.getAll("vercel-blob-delegation").length !== 1 ||
+    url.searchParams.get("vercel-blob-delegation") !== delegationToken ||
+    url.searchParams.getAll("vercel-blob-signature").length !== 1 ||
+    !url.searchParams.get("vercel-blob-signature")
+  ) {
+    throw new Error("Vercel Blob returned an unsafe signed transfer URL");
+  }
+  return url.toString();
+}
+
+function normalizeBlobError(error: unknown, signal?: AbortSignal): unknown {
+  if (error instanceof BlobRequestAbortedError || (error instanceof Error && error.name === "AbortError") || signal?.aborted) {
+    return new PlatformError({ code: "request_aborted", detail: "The private storage request was canceled.", status: 408, title: "Storage request canceled" });
+  }
+  if (error instanceof BlobServiceRateLimited || error instanceof BlobServiceNotAvailable) {
+    return new PlatformError({ code: "storage_unavailable", detail: "Private artifact storage is temporarily unavailable. Retry this operation.", retryAfterSeconds: error instanceof BlobServiceRateLimited ? error.retryAfter || 1 : 1, status: 503, title: "Storage unavailable" });
+  }
+  return error;
+}
+
+async function readBoundedStream(
+  stream: ReadableStream<Uint8Array>,
+  limit: number,
+): Promise<Uint8Array> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > limit) {
+        await reader.cancel();
+        throw new Error("Private artifact exceeds the verification limit");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}

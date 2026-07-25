@@ -16,7 +16,7 @@ multi-step investigations from prompts.
 The installed vault and MCP server are local. OpenAI and non-loopback Ollama
 embedders are the exception: when explicitly configured, they receive text
 during semantic/hybrid indexing and search. The public file.cheap website and
-its gated recovery laboratory are separate; this MCP server exposes neither a
+its private artifact service are separate; this MCP server exposes neither a
 hosted HTTP API nor shipped cloud sync. A local MCP process also does not imply a
 local language model: the client may send tool and resource results to its
 configured model provider.

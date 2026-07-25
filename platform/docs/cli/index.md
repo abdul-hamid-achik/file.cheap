@@ -21,6 +21,7 @@ Run `fcheap agent` for the embedded agent operating guide.
 |---|---|
 | [`save`](/cli/save) | Snapshot a file or directory with provenance, hashes, and secret scanning |
 | [`artifact-ref`](/cli/artifact-ref) | Emit versioned metadata that points to an existing local stash |
+| [`publish`](/cli/publish) | Publish one bounded local file to the private artifact service |
 | [`list`](/cli/list) | Browse and filter stash summaries |
 | [`info`](/cli/info) | Read one complete stash manifest |
 | [`restore`](/cli/restore) | Materialize a stash and verify its hashes |
@@ -107,8 +108,9 @@ The vault, manifest database, and BM25 index stay on the machine. A configured
 OpenAI or non-loopback Ollama embedder receives text during semantic/hybrid
 indexing and search. `connect` executes the separately installed vecgrep binary.
 
-No command in this reference uploads stashes to a shipped file.cheap cloud
-service; cloud sync is not part of the current product.
+`publish` is opt-in and transfers one bounded local file to the private artifact
+service. It never uploads a local stash automatically and never evicts local
+source bytes.
 
 `artifact-ref` lets another tool store a pointer to a local stash. The pointer
 does not move bytes and resolves only where the referenced vault is available.

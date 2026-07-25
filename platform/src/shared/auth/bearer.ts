@@ -1,37 +1,180 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import { getConfig } from "@/shared/config/env";
-import { requireRecoveryLabAccess } from "@/shared/config/recovery-lab-access";
+import type { PublisherTokenSet } from "@/shared/config/env";
 import { PlatformError } from "@/shared/errors/platform-error";
 
-export function requireApiToken(
+export type ServiceScope = "admin" | "cron" | "ingest" | "read";
+export type IngestPolicy = Readonly<{
+  kinds: readonly string[];
+  nativeSchemas: readonly string[];
+  producerTool: string;
+}>;
+export type IngestPrincipal = Readonly<
+  IngestPolicy & {
+    authentication: "oidc" | "publisher-token";
+    subject?: string;
+  }
+>;
+export type ReadPrincipal =
+  | Readonly<{ authentication: "admin" }>
+  | Readonly<
+      IngestPolicy & {
+        authentication: "oidc";
+        subject: string;
+      }
+    >;
+
+const jwksByIssuer = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+const chalupaOidcPolicy: IngestPolicy = Object.freeze({
+  kinds: Object.freeze(["chalupa.log-chunk"]),
+  nativeSchemas: Object.freeze(["urn:chalupa:log-chunk:v1"]),
+  producerTool: "chalupa",
+});
+
+export function requireServiceToken(
   request: Request,
-  expectedToken?: string,
+  scope: "ingest",
+): Promise<IngestPrincipal>;
+export function requireServiceToken(
+  request: Request,
+  scope: "read",
+): Promise<ReadPrincipal>;
+export function requireServiceToken(
+  request: Request,
+  scope: "admin" | "cron",
+): Promise<void>;
+export async function requireServiceToken(
+  request: Request,
+  scope: ServiceScope,
+): Promise<IngestPrincipal | ReadPrincipal | void> {
+  const credential = bearerCredential(request);
+  if (!credential) throw unauthorized();
+  if (scope === "ingest") {
+    const config = getConfig();
+    const subject = config.oidc
+      ? await validOidcSubject(credential, config.oidc)
+      : undefined;
+    if (subject) {
+      return { ...chalupaOidcPolicy, authentication: "oidc", subject };
+    }
+    const publisher = publisherForCredential(
+      credential,
+      config.publisherTokens,
+    );
+    if (publisher) {
+      return {
+        authentication: "publisher-token",
+        kinds: publisher.kinds,
+        nativeSchemas: publisher.nativeSchemas,
+        producerTool: publisher.producerTool,
+      };
+    }
+    throw unauthorized();
+  }
+  if (scope === "read") {
+    const config = getConfig();
+    if (constantTimeEqual(credential, config.adminToken)) {
+      return { authentication: "admin" };
+    }
+    const subject = config.oidc
+      ? await validOidcSubject(credential, config.oidc)
+      : undefined;
+    if (subject) {
+      return { ...chalupaOidcPolicy, authentication: "oidc", subject };
+    }
+    throw unauthorized();
+  }
+  const configuredToken = tokenForScope(scope);
+  if (!constantTimeEqual(credential, configuredToken)) throw unauthorized();
+}
+
+export function requireAuthorizedArtifact(
+  principal: IngestPrincipal,
+  artifact: {
+    kind: string;
+    producer: { native_schema?: string; tool: string };
+  },
 ): void {
-  requireRecoveryLabAccess();
-  const configuredToken = expectedToken ?? getConfig().apiToken;
+  if (
+    !constantTimeEqual(artifact.producer.tool, principal.producerTool) ||
+    !principal.kinds.includes(artifact.kind) ||
+    !artifact.producer.native_schema ||
+    !principal.nativeSchemas.includes(artifact.producer.native_schema)
+  ) {
+    throw unauthorized();
+  }
+}
+
+export function ingestPolicyFor(principal: IngestPrincipal): IngestPolicy {
+  return {
+    kinds: principal.kinds,
+    nativeSchemas: principal.nativeSchemas,
+    producerTool: principal.producerTool,
+  };
+}
+
+export function readPolicyFor(
+  principal: ReadPrincipal,
+): IngestPolicy | undefined {
+  return principal.authentication === "admin"
+    ? undefined
+    : ingestPolicyFor(principal);
+}
+
+async function validOidcSubject(
+  token: string,
+  config: { audience: string; issuer: string; subjects: string[] },
+): Promise<string | undefined> {
+  try {
+    const jwks = jwksByIssuer.get(config.issuer) ?? createRemoteJWKSet(new URL(".well-known/jwks", `${config.issuer.replace(/\/$/u, "")}/`));
+    jwksByIssuer.set(config.issuer, jwks);
+    const { payload } = await jwtVerify(token, jwks, {
+      audience: config.audience,
+      issuer: config.issuer,
+      requiredClaims: ["sub", "iat", "nbf", "exp"],
+    });
+    return typeof payload.sub === "string" && config.subjects.includes(payload.sub)
+      ? payload.sub
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function tokenForScope(
+  scope: Exclude<ServiceScope, "ingest" | "read">,
+): string {
+  const config = getConfig();
+  return scope === "admin" ? config.adminToken : config.cronSecret;
+}
+
+function publisherForCredential(
+  credential: string,
+  publishers: ReturnType<typeof getConfig>["publisherTokens"],
+): PublisherTokenSet | undefined {
+  let match: PublisherTokenSet | undefined;
+  for (const publisher of publishers) {
+    for (const token of publisher.tokens) {
+      if (constantTimeEqual(credential, token)) {
+        match = publisher;
+      }
+    }
+  }
+  return match;
+}
+
+function bearerCredential(request: Request): string | undefined {
   const authorization = request.headers.get("authorization");
   const credential = authorization
     ? /^[\t ]*Bearer[\t ]+([^\t ]+)[\t ]*$/i.exec(authorization)?.[1]
     : undefined;
-
-  if (!credential || !constantTimeEqual(credential, configuredToken)) {
-    throw new PlatformError({
-      code: "unauthorized",
-      detail: "A valid bearer token is required.",
-      status: 401,
-      title: "Unauthorized",
-    });
-  }
+  return credential && credential.length <= 4_096 ? credential : undefined;
 }
-
 function constantTimeEqual(received: string, expected: string): boolean {
-  const receivedBytes = Buffer.from(received);
-  const expectedBytes = Buffer.from(expected);
-
-  if (receivedBytes.length !== expectedBytes.length) {
-    return false;
-  }
-
-  return timingSafeEqual(receivedBytes, expectedBytes);
+  const receivedDigest = createHash("sha256").update(received).digest();
+  const expectedDigest = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(receivedDigest, expectedDigest);
 }
+function unauthorized(): PlatformError { return new PlatformError({ code: "unauthorized", detail: "A valid private service credential is required.", status: 401, title: "Unauthorized" }); }

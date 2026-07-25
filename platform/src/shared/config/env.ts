@@ -1,32 +1,32 @@
-import { isAbsolute, join } from "node:path";
-
 import { z } from "zod";
 
-const developmentApiToken = "local-development-token";
-const developmentSigningSecret = "local-development-signing-secret-change-me";
-
 const environmentSchema = z.object({
-  PLATFORM_STORAGE_DRIVER: z.enum(["local", "vercel-blob"]).default("local"),
-  PLATFORM_BLOB_INTEGRITY: z
-    .literal("presence-size-etag-experimental")
-    .optional(),
-  PLATFORM_API_TOKEN: z.string().min(16).default(developmentApiToken),
-  PLATFORM_SIGNING_SECRET: z
-    .string()
-    .min(32)
-    .default(developmentSigningSecret),
-  PLATFORM_DATA_DIR: z.string().min(1).optional(),
+  DATABASE_URL: z.string().min(1).optional(),
+  FILECHEAP_ADMIN_TOKEN: z.string().min(32).max(256).optional(),
+  FILECHEAP_OIDC_AUDIENCE: z.string().url().optional(),
+  FILECHEAP_OIDC_ISSUER: z.string().url().optional(),
+  FILECHEAP_OIDC_SUBJECTS: z.string().min(1).optional(),
+  FILECHEAP_PUBLISHER_TOKENS: z.string().min(1).max(8_192).optional(),
+  CRON_SECRET: z.string().min(32).max(256).optional(),
   PLATFORM_PUBLIC_URL: z.url().default("http://127.0.0.1:3100"),
   BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
 });
 
+export type PublisherTokenSet = Readonly<{
+  kinds: readonly string[];
+  nativeSchemas: readonly string[];
+  producerTool: string;
+  tokens: readonly string[];
+}>;
+
 export type PlatformConfig = {
-  apiToken: string;
+  adminToken: string;
   blobReadWriteToken?: string;
-  dataDirectory: string;
+  cronSecret: string;
+  databaseUrl: string;
+  oidc?: { audience: string; issuer: string; subjects: string[] };
+  publisherTokens: readonly PublisherTokenSet[];
   publicUrl: string;
-  signingSecret: string;
-  storageDriver: "local" | "vercel-blob";
 };
 
 let cachedConfig: PlatformConfig | undefined;
@@ -37,41 +37,60 @@ export function getConfig(): PlatformConfig {
   }
 
   const parsed = environmentSchema.parse(process.env);
-  const productionEnvironment =
-    process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
-  if (parsed.PLATFORM_DATA_DIR && !isAbsolute(parsed.PLATFORM_DATA_DIR)) {
-    throw new Error("PLATFORM_DATA_DIR must be an absolute path when provided");
+  const missing = [
+    ["DATABASE_URL", parsed.DATABASE_URL],
+    ["FILECHEAP_ADMIN_TOKEN", parsed.FILECHEAP_ADMIN_TOKEN],
+    ["CRON_SECRET", parsed.CRON_SECRET],
+  ].filter(([, value]) => !value).map(([name]) => name);
+  const oidcConfigured = Boolean(parsed.FILECHEAP_OIDC_AUDIENCE || parsed.FILECHEAP_OIDC_ISSUER || parsed.FILECHEAP_OIDC_SUBJECTS);
+  if (oidcConfigured && !(parsed.FILECHEAP_OIDC_AUDIENCE && parsed.FILECHEAP_OIDC_ISSUER && parsed.FILECHEAP_OIDC_SUBJECTS)) {
+    throw new Error("FILECHEAP_OIDC_ISSUER, FILECHEAP_OIDC_AUDIENCE, and FILECHEAP_OIDC_SUBJECTS must be configured together");
   }
-  if (process.env.VERCEL && parsed.PLATFORM_STORAGE_DRIVER === "local") {
-    throw new Error(
-      "PLATFORM_STORAGE_DRIVER=local is intentionally disabled on Vercel; configure a private Blob store",
-    );
+  const oidcSubjects = parsed.FILECHEAP_OIDC_SUBJECTS?.split(",").map((value) => value.trim()).filter(Boolean) ?? [];
+  if (oidcConfigured) {
+    assertVercelOidcIssuer(parsed.FILECHEAP_OIDC_ISSUER!);
+    assertCredentialFreeUrl("FILECHEAP_OIDC_AUDIENCE", parsed.FILECHEAP_OIDC_AUDIENCE!);
+    if (
+      oidcSubjects.length === 0 ||
+      new Set(oidcSubjects).size !== oidcSubjects.length ||
+      oidcSubjects.some((subject) => !/^owner:[^:\s]+:project:chalupa:environment:(?:development|preview|production)$/u.test(subject))
+    ) {
+      throw new Error("FILECHEAP_OIDC_SUBJECTS must contain unique exact Chalupa Vercel deployment subjects");
+    }
+    const vercelEnvironment = process.env.VERCEL_ENV;
+    if (
+      process.env.VERCEL &&
+      /^(?:development|preview|production)$/u.test(vercelEnvironment ?? "") &&
+      (
+        oidcSubjects.length !== 1 ||
+        !oidcSubjects[0]?.endsWith(`:environment:${vercelEnvironment}`)
+      )
+    ) {
+      throw new Error("FILECHEAP_OIDC_SUBJECTS must contain only the exact Chalupa subject for VERCEL_ENV");
+    }
   }
-  if (productionEnvironment && parsed.PLATFORM_API_TOKEN === developmentApiToken) {
-    throw new Error("PLATFORM_API_TOKEN must be replaced in production");
+  const publisherTokens = parsePublisherTokens(parsed.FILECHEAP_PUBLISHER_TOKENS);
+  if (process.env.VERCEL && !oidcConfigured) {
+    throw new Error("Vercel private artifact routes require FILECHEAP_OIDC_*; publisher tokens are an external-producer fallback only");
+  }
+  if (publisherTokens.length === 0 && !oidcConfigured) {
+    missing.push("FILECHEAP_PUBLISHER_TOKENS or FILECHEAP_OIDC_*");
+  }
+  if (missing.length > 0) {
+    throw new Error(`Private artifact service is not configured: missing ${missing.join(", ")}`);
   }
   if (
-    productionEnvironment &&
-    parsed.PLATFORM_SIGNING_SECRET === developmentSigningSecret
+    parsed.FILECHEAP_ADMIN_TOKEN === parsed.CRON_SECRET ||
+    publisherTokens.some(({ tokens }) =>
+      tokens.includes(parsed.FILECHEAP_ADMIN_TOKEN!) ||
+      tokens.includes(parsed.CRON_SECRET!),
+    )
   ) {
-    throw new Error("PLATFORM_SIGNING_SECRET must be replaced in production");
-  }
-  if (parsed.PLATFORM_API_TOKEN === parsed.PLATFORM_SIGNING_SECRET) {
-    throw new Error(
-      "PLATFORM_API_TOKEN and PLATFORM_SIGNING_SECRET must be different values",
-    );
-  }
-  if (
-    parsed.PLATFORM_STORAGE_DRIVER === "vercel-blob" &&
-    parsed.PLATFORM_BLOB_INTEGRITY !== "presence-size-etag-experimental"
-  ) {
-    throw new Error(
-      "Vercel Blob direct uploads are presence-only until staging and repair exist; set PLATFORM_BLOB_INTEGRITY=presence-size-etag-experimental only for a controlled spike",
-    );
+    throw new Error("Private service credentials must be distinct");
   }
   const publicUrl = normalizePublicUrl(parsed.PLATFORM_PUBLIC_URL);
   if (
-    productionEnvironment &&
+    (process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL)) &&
     new URL(publicUrl).protocol !== "https:" &&
     !isLoopbackUrl(publicUrl)
   ) {
@@ -80,15 +99,150 @@ export function getConfig(): PlatformConfig {
     );
   }
   cachedConfig = {
-    apiToken: parsed.PLATFORM_API_TOKEN,
+    adminToken: parsed.FILECHEAP_ADMIN_TOKEN!,
     blobReadWriteToken: parsed.BLOB_READ_WRITE_TOKEN,
-    dataDirectory: parsed.PLATFORM_DATA_DIR ?? join(process.cwd(), ".data"),
+    cronSecret: parsed.CRON_SECRET!,
+    databaseUrl: parsed.DATABASE_URL!,
+    oidc: oidcConfigured ? { audience: parsed.FILECHEAP_OIDC_AUDIENCE!, issuer: parsed.FILECHEAP_OIDC_ISSUER!, subjects: oidcSubjects } : undefined,
+    publisherTokens,
     publicUrl,
-    signingSecret: parsed.PLATFORM_SIGNING_SECRET,
-    storageDriver: parsed.PLATFORM_STORAGE_DRIVER,
   };
 
   return cachedConfig;
+}
+
+function parsePublisherTokens(raw: string | undefined): readonly PublisherTokenSet[] {
+  if (!raw) {
+    return [];
+  }
+
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw invalidPublisherTokens();
+  }
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value)
+  ) {
+    throw invalidPublisherTokens();
+  }
+
+  const entries = Object.entries(value);
+  if (entries.length === 0 || entries.length > 16) {
+    throw invalidPublisherTokens();
+  }
+
+  const allTokens = new Set<string>();
+  const result: PublisherTokenSet[] = [];
+  for (const [producerTool, policy] of entries) {
+    if (
+      !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u.test(producerTool) ||
+      typeof policy !== "object" ||
+      policy === null ||
+      Array.isArray(policy) ||
+      Object.keys(policy).sort().join(",") !== "kinds,nativeSchemas,tokens"
+    ) {
+      throw invalidPublisherTokens();
+    }
+    const {
+      kinds,
+      nativeSchemas,
+      tokens,
+    } = policy as Record<string, unknown>;
+    if (
+      !Array.isArray(tokens) ||
+      tokens.length < 1 ||
+      tokens.length > 2 ||
+      tokens.some(
+        (token) =>
+          typeof token !== "string" ||
+          !/^[A-Za-z0-9_-]{43,128}$/u.test(token),
+      ) ||
+      new Set(tokens).size !== tokens.length ||
+      tokens.some((token) => allTokens.has(token)) ||
+      !Array.isArray(kinds) ||
+      kinds.length < 1 ||
+      kinds.length > 8 ||
+      kinds.some(
+        (kind) =>
+          typeof kind !== "string" ||
+          !/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/u.test(kind),
+      ) ||
+      new Set(kinds).size !== kinds.length ||
+      !Array.isArray(nativeSchemas) ||
+      nativeSchemas.length < 1 ||
+      nativeSchemas.length > 8 ||
+      nativeSchemas.some(
+        (nativeSchema) =>
+          typeof nativeSchema !== "string" ||
+          !isSafeNativeSchema(nativeSchema),
+      ) ||
+      new Set(nativeSchemas).size !== nativeSchemas.length
+    ) {
+      throw invalidPublisherTokens();
+    }
+    for (const token of tokens) {
+      allTokens.add(token);
+    }
+    result.push({
+      kinds: Object.freeze([...kinds]),
+      nativeSchemas: Object.freeze([...nativeSchemas]),
+      producerTool,
+      tokens: Object.freeze([...tokens]),
+    });
+  }
+  return Object.freeze(result);
+}
+
+function invalidPublisherTokens(): Error {
+  return new Error(
+    "FILECHEAP_PUBLISHER_TOKENS must define 1-16 exact producer policies with bounded kinds, nativeSchemas, and 1-2 unique 43-128 character base64url tokens",
+  );
+}
+
+function isSafeNativeSchema(value: string): boolean {
+  if (!/^[\x21-\x7e]+$/u.test(value) || value.includes("?")) {
+    return false;
+  }
+  if (value.startsWith("urn:")) {
+    return value.length > "urn:".length;
+  }
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      url.hostname.length > 0 &&
+      url.username === "" &&
+      url.password === "" &&
+      url.search === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
+function assertVercelOidcIssuer(value: string): void {
+  const url = new URL(value);
+  assertCredentialFreeUrl("FILECHEAP_OIDC_ISSUER", value);
+  if (
+    url.protocol !== "https:" ||
+    url.hostname !== "oidc.vercel.com" ||
+    url.port !== "" ||
+    !/^\/(?:[A-Za-z0-9_-]+)?$/u.test(url.pathname) ||
+    value !== (url.pathname === "/" ? url.origin : `${url.origin}${url.pathname}`)
+  ) {
+    throw new Error("FILECHEAP_OIDC_ISSUER must be the exact global or team-scoped Vercel issuer");
+  }
+}
+
+function assertCredentialFreeUrl(name: string, value: string): void {
+  const url = new URL(value);
+  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
+    throw new Error(`${name} must be HTTPS and must not contain credentials, a query, or a fragment`);
+  }
 }
 
 function isLoopbackUrl(value: string): boolean {

@@ -1,37 +1,18 @@
-import { getObjectStore } from "@/platform/storage/factory";
 import {
   methodNotAllowedResponse,
   problemResponse,
 } from "@/shared/http/problem";
 import { jsonResponse } from "@/shared/http/response";
-import { isRecoveryLabEnabled } from "@/shared/config/recovery-lab-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export function GET(request: Request): Response {
   try {
-    if (!isRecoveryLabEnabled()) {
-      return jsonResponse(request, {
-        database: "none",
-        deployment: "public-site",
-        recoveryLab: "disabled",
-        status: "ok",
-        storage: "disabled",
-        storageVerification: "not-applicable",
-        version: "filecheap-site/1",
-      });
-    }
-
-    const store = getObjectStore();
     return jsonResponse(request, {
-      database: "none",
-      deployment: "local-prototype",
-      recoveryLab: "enabled",
+      deployment: "public-site",
       status: "ok",
-      storage: store.driver,
-      storageVerification: store.verification,
-      version: "filecheap-sync/1",
+      version: "filecheap-site/2",
     });
   } catch (error) {
     return problemResponse(error, request);

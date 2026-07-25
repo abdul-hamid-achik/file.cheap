@@ -1,14 +1,17 @@
-# file.cheap public-site deployment
+# file.cheap platform deployment
 
-This runbook releases the landing page, public platform, and VitePress
-documentation as one deployment. It does not authorize or launch a hosted
-multi-customer vault.
+This runbook releases the landing page, VitePress documentation, and private
+single-owner artifact service as one platform deployment. It does not authorize
+or launch a public, hosted, multi-customer vault.
 
 Production actions require an explicit release decision. The Vercel project is
-connected to GitHub and `main` is its Production branch, so approval must happen
-before merging or pushing a release commit to `main`; that push starts the
-Production deployment automatically. Keep
-`PLATFORM_RECOVERY_LAB_ENABLED=false` in Production.
+connected to GitHub and `main` is its Production branch. A push starts both the
+Vercel build for that exact commit and an ordered GitHub Actions release that
+verifies the same SHA and migrates Neon. The GitHub job named
+`Production verification` and the job named `Production migration gate` must
+both be required Vercel Deployment Checks. Automatic Production aliasing then
+keeps the new build away from the public domains unless verification and the
+migration both succeed.
 
 The architectural decision behind this topology lives in the Obsidian vault at
 `projects/file.cheap/ADR-003-public-site-and-docs-zones.md`.
@@ -54,32 +57,76 @@ Configure Preview and Production independently:
 
 | Variable | Preview | Production |
 | --- | --- | --- |
-| `PLATFORM_PUBLIC_URL` | Preview origin when testing the lab; otherwise optional | `https://file.cheap` |
-| `PLATFORM_RECOVERY_LAB_ENABLED` | `false`; use `true` only for an access-protected lab review | Ignored and forced disabled; keep `false` or unset |
+| `PLATFORM_PUBLIC_URL` | Preview origin | `https://file.cheap` |
+| `DATABASE_URL` | Pooled Neon runtime URL for authenticated artifact routes | Pooled Neon runtime URL |
+| `FILECHEAP_OIDC_*` | Exact Chalupa Preview issuer, audience, and subject | Exact Chalupa Production issuer, audience, and subject |
+| `FILECHEAP_PUBLISHER_TOKENS` | Preview producer policies and credentials | Production producer policies and credentials |
+| `FILECHEAP_ADMIN_TOKEN` | Distinct private administrator credential | Distinct private administrator credential |
+| `CRON_SECRET` | Distinct Vercel Cron credential | Distinct Vercel Cron credential |
+| `BLOB_READ_WRITE_TOKEN` | Preview private Blob store credential | Production private Blob store credential |
 
-`VERCEL_ENV=production` is an unconditional deny boundary: Production keeps
-the lab, OpenAPI document, and stateful routes closed even if
-`PLATFORM_RECOVERY_LAB_ENABLED=true` is configured accidentally.
+The public site and documentation do not read Blob, Neon, or private-service
+credentials. The authenticated artifact service initializes them lazily.
+Chalupa's Vercel service uses OIDC. External producers receive one
+producer-bound credential as `FILECHEAP_INGEST_TOKEN`; the Vercel service keeps
+the complete policy keyring in `FILECHEAP_PUBLISHER_TOKENS`. The legacy global
+server-side `FILECHEAP_INGEST_TOKEN` is not accepted.
 
-The public site and documentation need no Blob token, API bearer token, signing
-secret, or database connection. Never add recovery credentials merely to make
-the website render.
+The same exact Chalupa OIDC identity may request a signed download only for one
+known committed `chalupa.log-chunk` produced by Chalupa with the allowlisted
+native schema. The administrator credential retains unrestricted single-owner
+operator access. Publisher credentials never authorize downloads, artifact
+listing, metadata reads, administration, or retention.
 
-### Provisioned but disconnected Blob store
+Download authorization and retention are separate gates. The service returns an
+expired committed artifact as not found even before the hourly reconciler has
+deleted its object, and caps every signed GET grant at the artifact's own
+`expiresAt`. The Vercel Blob adapter also rejects a presigned URL whose host,
+operation path, object identity, or signed query is inconsistent with the
+requested immutable artifact.
 
-A private Blob store exists but is intentionally disconnected and is not part
-of the public-site runtime. Its exact name, ID, region, and connection state
-belong in the private inventory. If a controlled Blob Preview is explicitly
-approved later, connect it only to the selected Preview environment. Keep
-Production disconnected while the lab remains prohibited for user traffic.
+`FILECHEAP_PUBLISHER_TOKENS` is a compact JSON object keyed by the exact
+`producer.tool`. Each value contains:
 
-### Provisioned but disconnected Neon project
+- `tokens`: one current 43-128 character base64url token, plus at most one next
+  token during rotation;
+- `kinds`: the exact artifact kinds that producer may plan and commit;
+- `nativeSchemas`: the exact credential-free native schemas it may use.
 
-A paid Neon project exists but is intentionally disconnected and is not part of
-the public-site runtime. Its organization, plan, project, branch, compute,
-region, scaling policy, and connection state belong in the private inventory.
-Do not inject its connection string until transactional catalog code consumes
-it and an access-protected Preview is explicitly approved.
+Keep the keyring bounded to configured producers only. Cairntrace currently
+uses `cairntrace.run` with `urn:cairntrace.dev:run:v1`; Glyphrun uses
+`glyphrun.evidence-pack` with `urn:glyphrun.dev:run:v1`. Add `fcheap` only when
+a concrete private publishing workflow and exact kind/schema have been
+approved. Do not create a wildcard producer, kind, or schema policy.
+
+Rotate one producer independently: add its next token, deploy the keyring,
+update only that producer's TinyVault secret, verify one complete
+plan/upload/commit, then remove the old token and deploy again. Never place the
+keyring in a producer, pass a token on a command line, or reuse a publisher
+token as the administrator or cron credential.
+
+The protected GitHub `production` Environment is restricted to `main` and
+requires a reviewer. It holds only `MIGRATIONS_DATABASE_URL` as an encrypted
+Environment secret. The release job validates that direct connection and
+migrates the exact pushed SHA after one approval. Vercel's Git integration
+builds that SHA. Its required `Production verification` and
+`Production migration gate` Deployment Checks block domain assignment unless
+both jobs succeed. GitHub Actions needs no Vercel token, organization ID, or
+project ID. Keep the direct database URL out of Vercel and pull-request jobs.
+
+### Private Blob store
+
+A private Blob store holds immutable artifact bytes. Its exact name, ID, region,
+and connection state belong in the private inventory. It is used only by the
+authenticated artifact service; public routes must never receive its credential.
+
+### Neon metadata
+
+A paid Neon project owns transactional artifact metadata. Its organization,
+plan, project, branch, compute, region, scaling policy, and connection state
+belong in the private inventory. Runtime uses `DATABASE_URL`; protected GitHub
+Actions migration jobs use `MIGRATIONS_DATABASE_URL`, which must never be placed
+in Vercel.
 
 ## 1. Local release gates
 
@@ -108,7 +155,7 @@ The pinned Glyphrun runner requires Go 1.26.5, so `GOTOOLCHAIN` isolates that
 one compatibility gate. file.cheap itself remains pinned to Go 1.25.12 by
 `go.mod`.
 
-The docs verifier must report 44 source pages plus 404. The integrated build
+The docs verifier must report 45 source pages plus 404. The integrated build
 must remove and regenerate `public/_docs`, serve both sitemaps, and preserve the
 historical clean routes.
 
@@ -132,10 +179,18 @@ vercel project inspect "$FILECHEAP_VERCEL_PROJECT" --scope "$FILECHEAP_VERCEL_SC
 Resolve both values from the private inventory. Confirm the returned project ID
 matches that inventory exactly. Do not create another project.
 
-The existing Vercel project Root Directory must remain `platform`. Automatic Git
-deployments are already enabled: a push to `main` creates a Production
-deployment and may move the public aliases after the build becomes READY.
-Changing project settings alone does not authorize a release.
+The existing Vercel project Root Directory must remain `platform`. Preview Git
+deployments and `main` Production builds remain enabled; `platform/vercel.json`
+does not override Git deployment behavior. In the Production environment
+settings, keep automatic aliasing enabled and add both GitHub jobs,
+`Production verification` and `Production migration gate`, as required
+Deployment Checks. Requiring both is important: if verification fails, the
+dependent migration job is skipped and the verification check still blocks the
+release. Vercel may build the pushed SHA while both gates run, but it must not
+assign the Production domains unless both checks succeed. These check names are
+a cross-system contract: if either workflow job is renamed, update the Vercel
+Deployment Checks before merging the rename. Changing project settings alone
+does not authorize a release.
 
 The root `.vercelignore` is an allowlist for `platform/`. Keep it in place for
 CLI deployments so Go binaries, release artifacts, local vault data, and other
@@ -144,7 +199,9 @@ source files and 1.2 MB before dependencies are installed remotely.
 
 ## 3. Create and verify a Preview
 
-Keep the lab disabled and deploy from the repository root:
+Use an isolated Preview database and Blob store. Apply its migration through a
+reviewed, direct database connection before exercising private routes, then
+deploy from the repository root:
 
 ```sh
 vercel --scope "$FILECHEAP_VERCEL_SCOPE" --yes
@@ -165,7 +222,6 @@ vercel curl /assets/<reviewed-hashed-asset> --deployment <preview-url>
 vercel curl /robots.txt --deployment <preview-url>
 vercel curl /sitemap.xml --deployment <preview-url>
 vercel curl /docs-sitemap.xml --deployment <preview-url>
-vercel curl /lab --deployment <preview-url>
 vercel curl /api/v1/health --deployment <preview-url>
 vercel curl /api/v1/openapi.json --deployment <preview-url>
 vercel logs --deployment <preview-url> --level error --limit 50
@@ -182,10 +238,17 @@ Expected results:
 - `/docs-sitemap.xml` contains docs routes and excludes the root.
 - Direct `/_docs/*` responses carry `X-Robots-Tag: noindex, nofollow`.
 - Hashed `/assets/*` responses are immutable.
-- `/lab`, OpenAPI, and stateful recovery routes return 404 while the switch is
-  false.
-- `/api/v1/health` reports the lab and storage disabled without reading recovery
+- `/api/v1/health` reports the public site healthy without reading private
+  storage or database credentials.
+- `/api/v1/openapi.json` exposes the versioned private artifact contract without
   credentials.
+- Private artifact routes reject missing or unapproved credentials. Exercise a
+  complete plan, direct upload, commit, and signed download only from an
+  explicitly allowlisted Preview OIDC subject; never paste a bearer credential
+  into shell history or deployment evidence.
+- Replay the exact committed plan and its original receipt. Both must recover
+  the same verified artifact; the plan replay returns `200` without a new
+  upload grant.
 - Security headers are present and browser/runtime error logs are empty.
 
 Test keyboard navigation, local search, mobile layout, a 404, and at least one
@@ -198,21 +261,28 @@ Do not run this section without explicit approval.
 
 Because the existing private project owns both public domains and `main` is its
 Production branch, the normal release action is to merge the fully verified
-commit to `main` and push it. Do not also run a manual Production deployment
-for the same commit.
+commit to `main` and push it. Vercel's Git integration builds that exact commit.
+The `Production release` workflow serializes verification and the direct Neon
+migration. Its `Production verification` and `Production migration gate` jobs
+are the required Deployment Checks that release Vercel's automatic Production
+alias only after both succeed. Do not run a second manual migration or
+Production deployment for the same commit.
 
 ```sh
 git switch main
 git merge --ff-only <verified-release-branch>
 git push origin main
+gh run watch --workflow "Production release"
 vercel inspect https://file.cheap --scope "$FILECHEAP_VERCEL_SCOPE"
 ```
 
-Wait for both GitHub CI and the Vercel deployment to complete. Immediately
-repeat the complete Preview matrix on `https://file.cheap` and
+Wait for GitHub CI, the ordered Production release, and Vercel's checked
+Production deployment to complete.
+Immediately repeat the complete Preview matrix on `https://file.cheap` and
 `https://www.file.cheap`. Verify TLS, both hosts, canonical and social metadata,
-both sitemaps, VitePress search, the disabled lab, and runtime error logs for at
-least 15 minutes.
+both sitemaps, VitePress search, private-route authentication, one approved
+artifact lifecycle, retention status, and runtime error logs for at least 15
+minutes.
 
 After that exact `main` commit is green, create the annotated release tag that
 triggers `.github/workflows/release.yml`:
@@ -233,6 +303,12 @@ result.
 
 Use `vercel --prod` only for an explicitly approved manual release or recovery
 that cannot follow the normal Git path. Record why it was necessary.
+
+Vercel's `Force Promote` action bypasses the required Deployment Checks,
+including the migration gate. Treat it as emergency break-glass only, never as
+a routine release path, and separately confirm schema compatibility before use.
+Record the operator, approver, reason, commit, and result in the private
+inventory.
 
 ## Rollback
 

@@ -7,8 +7,8 @@ Guidelines for Claude Code working on the file.cheap codebase.
 file.cheap is a local-first CLI tool + MCP server that saves, restores,
 compresses, analyzes, and diffs files and folders for agent workflows. The
 binary is called `fcheap`; its source of truth is local. The repository also
-contains an isolated public Next.js site and a disabled-by-default recovery
-laboratory under `platform/`.
+contains an isolated public Next.js site and a private artifact service under
+`platform/`.
 
 ## Architecture Quick Reference
 

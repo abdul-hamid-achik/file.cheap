@@ -6,7 +6,7 @@ provenance, search, explicit retention, and verified restore. They are different
 layers, not interchangeable brands of the same product.
 
 The shipped file.cheap product has no cloud-storage account service. Its public
-website includes a gated recovery laboratory, but the hosted remote vault is not
+website includes a private artifact service, but a hosted remote vault is not
 available to users. Everything in the local vault stays on the user's machine
 unless an optional embedder is configured to receive text. Use this comparison
 to decide whether local lifecycle tooling is enough or whether you also need an

@@ -1,8 +1,5 @@
-# Plans directory — never commit
-plans/
-# The hosted prototype uses `plans` as an API resource, not as a planning folder.
-!platform/src/app/api/v1/sync/plans/
-!platform/src/app/api/v1/sync/plans/route.ts
+# Root planning directory — never commit. API resources named `plans` remain tracked.
+/plans/
 
 # Build artifacts
 bin/
@@ -38,8 +35,10 @@ Thumbs.db
 
 # Environment files
 .env
+.env.*
 .env.local
 .env.*.local
+!.env.example
 
 # Test coverage
 *.out

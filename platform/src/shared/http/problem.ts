@@ -35,7 +35,10 @@ export function problemResponse(error: unknown, request: Request): Response {
   if (problem.code === "unauthorized") {
     headers.set("www-authenticate", 'Bearer realm="filecheap-platform"');
   }
-  if (problem.status === 503) {
+  if (
+    problem.status === 503 ||
+    (error instanceof PlatformError && error.retryAfterSeconds !== undefined)
+  ) {
     headers.set(
       "retry-after",
       String(
@@ -114,7 +117,10 @@ function toProblem(
     };
   }
 
-  console.error(error);
+  console.error({
+    event: "platform_request_failed",
+    errorName: error instanceof Error ? error.name : "UnknownError",
+  });
   return {
     code: "internal_error",
     detail: "The platform could not complete the request.",

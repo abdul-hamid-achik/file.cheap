@@ -9,6 +9,9 @@
   },
   "scripts": {
     "audit:production": "bun audit --production",
+    "db:check": "bunx drizzle-kit check",
+    "db:generate": "bunx drizzle-kit generate",
+    "db:migrate": "bunx drizzle-kit migrate",
     "dev": "bun run docs:stage && next dev --hostname 127.0.0.1 --port 3100",
     "build": "bun run docs:stage && next build",
     "docs:build": "bun run --cwd docs docs:build",
@@ -16,7 +19,7 @@
     "docs:preview": "bun run --cwd docs docs:preview",
     "docs:stage": "bun scripts/reset-docs-stage.mjs && bun run --cwd docs docs:build -- --outDir ../public/_docs",
     "docs:verify": "bun run --cwd docs docs:verify",
-    "e2e:local": "bun tests/local-protocol.e2e.ts",
+    "e2e:local": "bun test src/features/artifacts",
     "start": "next start --hostname 127.0.0.1 --port 3100",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
@@ -24,7 +27,10 @@
     "check": "bun run lint && bun run typecheck && bun test && bun run e2e:local"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "@vercel/blob": "2.6.1",
+    "drizzle-orm": "^0.45.2",
+    "jose": "^6.2.4",
     "next": "16.2.11",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -35,6 +41,7 @@
     "@types/node": "24.10.1",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
+    "drizzle-kit": "^0.31.10",
     "eslint": "9.39.2",
     "eslint-config-next": "16.2.11",
     "typescript": "5.9.3"

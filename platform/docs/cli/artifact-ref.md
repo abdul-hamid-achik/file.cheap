@@ -132,9 +132,11 @@ separate disclosure policy before sharing a reference.
 Other CLI and MCP responses may include user-provided stash names and tags.
 Save-time content scanning does not sanitize those metadata fields.
 
-The interchange schema also reserves strict `fcheap-cloud` and `link` variants
+The interchange schema also defines strict `fcheap-cloud` and `link` variants
 for other adapters. `artifact-ref` and `fcheap_artifact_ref` do not construct
-those variants, and the gated Recovery Lab is not a hosted provider.
+those variants. The private, single-owner artifact service and
+[`fcheap publish`](/cli/publish) emit `fcheap-cloud`; this does not make the
+service a public hosted vault.
 
 ## Validation and failures
 

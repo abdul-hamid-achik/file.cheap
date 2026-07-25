@@ -9,6 +9,38 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-07-24
+
+### Added
+- **Private artifact transport for trusted services.** Authenticated producers
+  can create immutable artifact grants, upload bytes directly to private Vercel
+  Blob storage, and commit verified metadata in Neon without exposing storage
+  credentials to workloads.
+- **Bounded CLI publication.** `fcheap publish` sends one regular file through
+  the private artifact protocol and emits a strict, credential-free
+  `ArtifactRefV1` receipt.
+- **Recoverable upload plans.** Exact idempotent plans can renew expired
+  transfer grants, commit bytes left by an ambiguous upload, and restart after
+  abandoned-plan cleanup. Retention now reclaims abandoned plans and stale
+  deletion leases as well as expired committed artifacts. Exact committed plan
+  replays and their original receipts recover the durable artifact without
+  issuing another transfer grant.
+
+### Changed
+- **Producer-bound private authentication.** External publisher credentials are
+  independently rotatable and bound to exact producer, kind, and native-schema
+  allowlists. Chalupa OIDC remains the preferred Vercel boundary and can request
+  a signed download only for its own retained log-chunk artifacts; publisher
+  credentials cannot read, administer, or run retention. Expired artifacts are
+  no longer downloadable before reconciliation, and signed GET grants cannot
+  outlive artifact retention.
+
+### Removed
+- Removed the experimental browser recovery service, its feature switch, local
+  object adapter, stateful routes, and archived interface styles. The public
+  site remains local-first; the hosted artifact API is a private service
+  boundary for explicitly trusted producers.
+
 ## [0.30.0] - 2026-07-23
 
 ### Added
@@ -21,8 +53,7 @@ Per-release binaries and notes are also on the
   `fcheap://agent-guide`, and the embedded documentation give clients one
   machine-readable operating contract for safe local vault workflows.
 - **Unified public product site.** The landing page and VitePress documentation
-  now ship from the existing `file-cheap` Vercel project at `file.cheap`, while
-  the recovery laboratory and stateful API remain disabled in Production.
+  now ship from the existing `file-cheap` Vercel project at `file.cheap`.
 
 ### Changed
 - The public guides now document the implemented Chalupa artifact sidecar,
@@ -34,9 +65,8 @@ Per-release binaries and notes are also on the
   empty native schema URNs, and HTTP(S) ports outside the supported range.
 - CLI and MCP artifact-reference producers verify an optional entrypoint
   against saved stash content before returning a usable reference.
-- Vercel Production now keeps the Recovery Lab closed even if its feature flag
-  is set accidentally, and canonical releases fail before publishing when the
-  Homebrew tap credential is absent.
+- Vercel Production excludes unfinished stateful browser routes, and canonical
+  releases fail before publishing when the Homebrew tap credential is absent.
 
 ## [0.29.0] - 2026-07-12
 
@@ -390,7 +420,8 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.31.0...HEAD
+[0.31.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.30.2...v0.31.0
 [0.30.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.27.0...v0.28.0

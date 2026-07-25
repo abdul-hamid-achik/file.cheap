@@ -30,8 +30,9 @@ file.cheap gives them:
 - explicit compression, TTL, sweep, cleanup, and deletion.
 
 It is not consumer backup or a replacement for Git. The shipped CLI stores its
-vault on your machine. The repository also contains a public website and a gated
-remote-vault laboratory, but no hosted vault is currently offered to users.
+vault on your machine. The repository also contains a public website and a
+private single-owner artifact service for trusted product integrations; it is
+not a hosted vault for end users.
 
 ## Repository surfaces
 
@@ -49,16 +50,11 @@ the landing page at `/` and maps the established `/guide`, `/cli`, `/mcp`,
 `/integrations`, `/learn`, `/compare`, and `/studio` routes to that local
 artifact. There is no second docs deployment or external docs origin.
 
-The public page does not need storage credentials. The `/lab` UI and stateful
-recovery endpoints stay hidden on hosted deployments unless a controlled,
-access-protected preview explicitly sets
-`PLATFORM_RECOVERY_LAB_ENABLED=true`. Vercel Production ignores that flag and
-keeps the laboratory closed.
-
-The lab is a single-workspace protocol experiment, not the integration surface
-for Chalupa, Cairntrace, or Glyphrun. Those tools should exchange stable local
-artifact references and keep file.cheap responsible for bytes, integrity, and
-restore.
+The public page does not need storage credentials. Authenticated private
+artifact routes initialize their Neon and Blob dependencies only after a
+trusted caller requests them. Chalupa, Cairntrace, and Glyphrun exchange stable
+credential-free artifact references while file.cheap owns immutable bytes and
+their retention lifecycle.
 
 `fcheap artifact-ref <stash-id> --json` and the `fcheap_artifact_ref` MCP tool
 emit the same strict `fcheap-local` envelope with credential-free transport
@@ -69,37 +65,38 @@ CLI and MCP operations. The command is available in `v0.30.0` and later. See the
 [local artifact handoff guide](https://file.cheap/integrations/local-artifact-references)
 for Cairntrace, Glyphrun, and Chalupa examples.
 
-### Recovery laboratory
+### Private artifact service
 
-When explicitly enabled, the laboratory separates a small JSON control plane
-from the archive data plane:
+`POST /api/v1/artifacts/plans` issues an exact short-lived private upload grant
+that never outlives the requested retention timestamp.
+After the direct upload, `POST /api/v1/artifacts/commits` records the immutable
+object in Neon and returns an `ArtifactRefV1`. Administrator-only list, detail,
+and download-plan routes never expose permanent storage credentials.
+An identical plan can renew an expired transfer grant with the same idempotency
+key, including after an ambiguous upload. Retention removes abandoned plans,
+expired committed artifacts, and stale deletion leases without deleting a plan
+that won a concurrent renewal. One failed object is isolated so the same
+bounded run can still reconcile healthy candidates before reporting failure.
+An exact replay of a committed plan returns its durable summary without another
+grant, and its original receipt remains idempotent after transfer expiry while
+the artifact is retained.
 
-1. `POST /api/v1/sync/plans` validates authorization, size, content type, hash,
-   and catalog state, then returns a constrained transfer grant.
-2. The client uploads one immutable
-   `application/vnd.filecheap.stash` archive through that grant.
-3. `POST /api/v1/sync/commits` records available adapter evidence and binds the
-   object to a stash ID.
-4. `POST /api/v1/sync/downloads` revalidates object presence and issues an exact
-   download grant; the client must download every byte and verify SHA-256.
+Vercel Private Blob is behind a provider port, so a future Spaces, R2, or S3
+adapter does not change the API or `ArtifactRefV1` contract. Direct Blob uploads
+use compressed chunks no larger than 2 MiB. The service reads each bounded
+chunk after upload and verifies its SHA-256 before commit. Consumers still
+verify complete downloads, and the local CLI never evicts a source stash because
+a remote artifact exists. A signed download is never issued for an artifact
+whose retention timestamp has passed, and no grant can outlive that timestamp.
 
-`GET /api/v1/stashes` exposes the current single-workspace catalog.
-`GET /api/v1/openapi.json` exposes the OpenAPI 3.1 contract only while the lab
-is enabled. `GET /api/v1/health` remains public so a deployment can report
-`recoveryLab: "disabled"` without initializing storage.
-
-Local development uses a disposable filesystem adapter under `platform/.data/`.
-The production-shaped adapter keeps Private Vercel Blob behind a replaceable
-port and lets archive bytes bypass Vercel Functions. Its direct upload can prove
-presence, size, and opaque ETag at commit time—not the caller-declared SHA-256.
-The Blob adapter therefore fails closed unless a controlled experiment
-explicitly acknowledges that limitation.
-
-Protocol v1 is capped at 64 MiB, uses one non-resumable transfer, and never
-deletes or evicts a local stash. It tests idempotent plan/commit behavior,
-conflict handling, portable recovery cards, and complete recovery drills. It
-does not establish accounts, tenant isolation, billing, transactional quotas,
-client-side encryption, continuous sync, or disaster recovery.
+Chalupa's Vercel service uses OIDC with an exact issuer, audience, and subject.
+That identity may publish Chalupa log chunks and request a signed download for
+one known committed `chalupa.log-chunk` that was produced by Chalupa with the
+allowlisted native schema. Other artifact kinds remain administrator-only.
+External publishers use independently rotated credentials bound to one exact
+producer tool, artifact-kind allowlist, and native-schema allowlist. Those
+credentials authorize only artifact plan and commit routes; they cannot list,
+download, administer, or run retention.
 
 ## Install
 

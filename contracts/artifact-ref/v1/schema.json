@@ -76,7 +76,7 @@
     },
     {
       "title": "Hosted file.cheap artifact reference",
-      "description": "Reserved for a future hosted vault. The current recovery laboratory is not an implementation of this provider.",
+      "description": "A private file.cheap artifact-service reference. It is credential-free and does not expose a transfer grant.",
       "required": [
         "artifact_id"
       ],

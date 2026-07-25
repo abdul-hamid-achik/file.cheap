@@ -1,0 +1,110 @@
+name: Production release
+
+# Vercel's Git integration builds the exact main commit independently. Configure
+# both named GitHub jobs below as required Vercel Deployment Checks so a failed
+# verification or migration cannot assign production domains.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A schema migration and its matching deployment are one ordered release.
+# Keep the active release running. GitHub retains only the newest pending run;
+# superseded commits remain blocked by their cancelled required check, while
+# the newest commit applies the cumulative migration graph.
+concurrency:
+  group: filecheap-production-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Production verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          cache: true
+          go-version-file: go.mod
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.11
+      - run: go test ./...
+      - run: go vet ./...
+      - run: CGO_ENABLED=0 go build ./cmd/fcheap
+      - run: bun install --frozen-lockfile
+        working-directory: platform
+      - run: bun install --frozen-lockfile
+        working-directory: platform/docs
+      - run: bun run check
+        working-directory: platform
+      - name: Check the migration graph without connecting
+        env:
+          MIGRATIONS_DATABASE_URL: postgresql://schema-check.invalid/filecheap
+        run: bun run db:check
+        working-directory: platform
+      - run: bun run build
+        working-directory: platform
+      - run: bun run audit:production
+        working-directory: platform
+      - run: bun audit
+        working-directory: platform/docs
+
+  release:
+    name: Production migration gate
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The canonical production environment is reviewer-gated and restricted
+    # to main. Its direct database URL never reaches Vercel or pull requests.
+    environment: production
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.11
+      - run: bun install --frozen-lockfile
+        working-directory: platform
+      - run: bun install --frozen-lockfile
+        working-directory: platform/docs
+      - name: Validate the direct migration connection
+        env:
+          MIGRATIONS_DATABASE_URL: ${{ secrets.MIGRATIONS_DATABASE_URL }}
+        working-directory: platform
+        run: |
+          set -euo pipefail
+          if [ -z "$MIGRATIONS_DATABASE_URL" ]; then
+            echo "::error::MIGRATIONS_DATABASE_URL is not configured for the production release." >&2
+            exit 1
+          fi
+          case "$MIGRATIONS_DATABASE_URL" in
+            postgres://*|postgresql://*) ;;
+            *)
+              echo "::error::MIGRATIONS_DATABASE_URL must be a direct Postgres URL." >&2
+              exit 1
+              ;;
+          esac
+          case "$MIGRATIONS_DATABASE_URL" in
+            *-pooler.*)
+              echo "::error::MIGRATIONS_DATABASE_URL must use the direct, non-pooled Neon host." >&2
+              exit 1
+              ;;
+          esac
+          echo "::add-mask::$MIGRATIONS_DATABASE_URL"
+      - name: Apply the direct-connection migration
+        env:
+          MIGRATIONS_DATABASE_URL: ${{ secrets.MIGRATIONS_DATABASE_URL }}
+        working-directory: platform
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$MIGRATIONS_DATABASE_URL"
+          bun run db:migrate

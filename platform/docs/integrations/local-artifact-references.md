@@ -59,22 +59,22 @@ fcheap artifact-ref <stash-id> --kind cairntrace.run --json
 See the [`artifact-ref` command reference](/cli/artifact-ref) for producer
 fields and the exact output.
 
-### Reserved provider variants
+### Other provider variants
 
 The interchange schema also defines strict `fcheap-cloud` and `link` variants
 so a consumer can validate one versioned envelope type. The current CLI and MCP
-constructors emit only `fcheap-local`.
+constructors for an existing local stash emit only `fcheap-local`.
 
-- `fcheap-cloud` is reserved for a future hosted vault. It uses a canonical
+- `fcheap-cloud` is emitted by the private, single-owner artifact service and
+  by [`fcheap publish`](/cli/publish). It uses a canonical
   `fcheap://cloud/vaults/<vault-id>/artifacts/<artifact-id>` identity and may
   include one stable HTTPS `web_url` without credentials, query string, or
-  fragment.
+  fragment. It is not a public hosted vault or multi-user account service.
 - `link` uses a stable HTTP(S) `uri` and omits `artifact_id` and `web_url`.
 
 No variant defines a dedicated secret field or permits query-bearing signed
 URLs or an `integrity` value copied from the legacy manifest content hash.
-Permitted identifiers and paths are not DLP-scanned. The Recovery Lab does not
-implement the `fcheap-cloud` provider.
+Permitted identifiers and paths are not DLP-scanned.
 
 ## Local resolution boundary
 
@@ -126,7 +126,7 @@ No product needs a foreign key into another product's database.
 | Cairntrace | Save the completed run directory with `fcheap save`; Cairntrace wrapper ID forwarding is pending |
 | Glyphrun | Save the completed `.glyphrun/runs/<run-id>` pack with `fcheap save` |
 | Chalupa | `task report REPORT=... ARTIFACTS=...` accepts an ArtifactRefV1 sidecar; its Production deployment is still pending |
-| Hosted file.cheap vault | Not available; `fcheap-cloud` remains a reserved provider |
+| Private artifact service | `fcheap publish` and approved service integrations emit verified `fcheap-cloud` references; this is single-owner infrastructure, not a public vault |
 
 Both current file.cheap constructors emit an `fcheap-local` reference. Chalupa
 can preserve and display that metadata without being able to restore the bytes
@@ -283,15 +283,19 @@ Changing the artifacts or other run facts for the same source run returns
 implemented in Chalupa but not yet deployed to Chalupa Production, so complete
 its database migration and release gate before relying on the hosted readback.
 
-## Recovery Lab is not this boundary
+## The private service is an optional, separate boundary
 
-The gated file.cheap Recovery Lab is a single-workspace protocol experiment. It
-is not a public vault and is not the integration endpoint for Chalupa,
-Cairntrace, or Glyphrun.
+The private file.cheap artifact service is a single-owner integration boundary,
+not a public vault. An approved producer can publish one bounded immutable
+artifact through its authenticated plan, direct upload, and verified commit
+protocol. The resulting `fcheap-cloud` reference remains credential-free; the
+signed transfer URL and receipt never belong in the reference.
 
-These integrations depend only on the shipped local CLI or MCP server and the
-versioned reference contract. They continue to work as metadata handoffs when
-the public website is offline and when the Recovery Lab is disabled.
+The local workflow documented on this page still depends only on the shipped
+CLI or MCP server and the versioned reference contract. It continues to work as
+a metadata handoff when the website is offline or private-service credentials
+are unavailable. Use [`fcheap publish`](/cli/publish) only when the approved
+single-owner remote-retention boundary is intentionally required.
 
 ## Consumer checklist
 
