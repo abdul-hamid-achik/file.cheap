@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"net/http"
 	"net/url"
@@ -25,13 +26,21 @@ import (
 )
 
 const (
-	MaxBytes        int64 = 2 * 1024 * 1024
+	// MaxBytes is the global file.cheap artifact ceiling. The service enforces
+	// the same value plus a smaller per-producer quota, so a publication can
+	// still be rejected with 413 below this bound.
+	MaxBytes        int64 = 64 * 1024 * 1024
 	maxControlBody        = 64 * 1024
 	maxTransferBody       = 8 * 1024
 	controlTimeout        = 15 * time.Second
-	transferTimeout       = 60 * time.Second
-	minRetention          = time.Minute
-	maxRetention          = 31 * 24 * time.Hour
+	// The direct PUT deadline scales with the artifact so a large upload on a
+	// slow uplink is not cut off, while staying bounded.
+	transferBaseTimeout       = 60 * time.Second
+	minTransferBytesPerSecond = 256 * 1024
+	maxTransferTimeout        = 15 * time.Minute
+	hashBufferBytes           = 256 * 1024
+	minRetention              = time.Minute
+	maxRetention              = 31 * 24 * time.Hour
 )
 
 var publisherTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{43,128}$`)
@@ -66,9 +75,10 @@ func NewClient(httpClient *http.Client) *Client {
 	return &Client{httpClient: httpClient, now: time.Now}
 }
 
-// Publish reads a regular file once into a bounded buffer, hashes those exact
-// bytes, and runs plan -> direct PUT -> commit. The plan can be retried once
-// with the same generated idempotency key; the PUT is never retried after an
+// Publish streams a regular file once to hash it, then runs
+// plan -> direct PUT -> commit while streaming the same bytes again. Memory
+// stays constant regardless of artifact size. The plan can be retried once with
+// the same generated idempotency key; the PUT is never retried after an
 // ambiguous response; the final commit can be retried with its opaque receipt.
 func (c *Client) Publish(ctx context.Context, filePath string, opts Options) (Receipt, error) {
 	if err := validateOptions(opts); err != nil {
@@ -78,36 +88,35 @@ func (c *Client) Publish(ctx context.Context, filePath string, opts Options) (Re
 	if opts.ExpiresIn != 0 {
 		expiresAt = c.now().UTC().Add(opts.ExpiresIn).Format(time.RFC3339Nano)
 	}
-	data, err := readBoundedRegularFile(filePath)
+	source, err := openBoundedRegularFile(filePath)
 	if err != nil {
 		return Receipt{}, err
 	}
-	digest := sha256.Sum256(data)
-	sha := hex.EncodeToString(digest[:])
+	defer source.close()
 
 	idempotencyKey, err := newUUID()
 	if err != nil {
 		return Receipt{}, err
 	}
-	plan, err := c.plan(ctx, opts, sha, int64(len(data)), idempotencyKey, expiresAt)
+	plan, err := c.plan(ctx, opts, source.sha, source.size, idempotencyKey, expiresAt)
 	if err != nil {
 		return Receipt{}, err
 	}
-	if err := c.upload(ctx, plan.Upload, data); err != nil {
+	if err := c.upload(ctx, plan.Upload, source); err != nil {
 		return Receipt{}, err
 	}
 	committed, err := c.commitWithRetry(ctx, opts, plan.Receipt)
 	if err != nil {
 		return Receipt{}, err
 	}
-	if err := validateCommitted(committed, sha, int64(len(data))); err != nil {
+	if err := validateCommitted(committed, source.sha, source.size); err != nil {
 		return Receipt{}, err
 	}
 	return Receipt{
 		Version:      "filecheap-publish/1",
 		ArtifactRef:  committed.ArtifactRef,
-		SHA256:       sha,
-		SizeBytes:    int64(len(data)),
+		SHA256:       source.sha,
+		SizeBytes:    source.size,
 		Verification: committed.Artifact.Verification,
 		PublishedAt:  c.now().UTC().Format(time.RFC3339),
 	}, nil
@@ -186,7 +195,7 @@ func newUUID() (string, error) {
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16]), nil
 }
 
-func (c *Client) upload(ctx context.Context, grant *transferGrant, data []byte) error {
+func (c *Client) upload(ctx context.Context, grant *transferGrant, source *publishSource) error {
 	if grant.Method != http.MethodPut || grant.URL == "" {
 		return errors.New("artifact service returned an invalid upload grant")
 	}
@@ -197,12 +206,19 @@ func (c *Client) upload(ctx context.Context, grant *transferGrant, data []byte) 
 	if _, err := time.Parse(time.RFC3339, grant.ExpiresAt); err != nil {
 		return errors.New("artifact service returned an invalid upload expiry")
 	}
-	reqCtx, cancel := context.WithTimeout(ctx, transferTimeout)
+	if _, err := source.file.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("rewind publish file: %w", err)
+	}
+	// Hash what is actually sent so a file replaced between the local digest
+	// and the transfer can never be committed under the planned SHA-256.
+	sent := &hashingReader{reader: io.LimitReader(source.file, source.size), digest: sha256.New()}
+	reqCtx, cancel := context.WithTimeout(ctx, transferTimeoutFor(source.size))
 	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPut, grant.URL, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPut, grant.URL, sent)
 	if err != nil {
 		return fmt.Errorf("create direct upload request: %w", err)
 	}
+	req.ContentLength = source.size
 	for name, value := range grant.Headers {
 		if !allowedTransferHeader(name) || value == "" {
 			return errors.New("artifact service returned an unsafe upload header")
@@ -217,14 +233,42 @@ func (c *Client) upload(ctx context.Context, grant *transferGrant, data []byte) 
 	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxTransferBody+1))
 	// A repeated plan with the same idempotency key can point at an immutable
 	// object already written before a lost response. Commit verifies its exact
-	// SHA-256, so a conflict is safe to advance without retrying the PUT.
+	// SHA-256, so a conflict is safe to advance without retrying the PUT. The
+	// body may not have been drained in that case, so the sent digest is only
+	// meaningful for an accepted transfer.
 	if response.StatusCode == http.StatusConflict {
 		return nil
 	}
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("direct upload returned unexpected status %d", response.StatusCode)
 	}
+	if sent.read != source.size || hex.EncodeToString(sent.digest.Sum(nil)) != source.sha {
+		return errors.New("publish file changed while it was being uploaded; the planned artifact was not committed")
+	}
 	return nil
+}
+
+type hashingReader struct {
+	reader io.Reader
+	digest hash.Hash
+	read   int64
+}
+
+func (r *hashingReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if n > 0 {
+		r.digest.Write(p[:n])
+		r.read += int64(n)
+	}
+	return n, err
+}
+
+func transferTimeoutFor(size int64) time.Duration {
+	timeout := transferBaseTimeout + time.Duration(size/minTransferBytesPerSecond)*time.Second
+	if timeout > maxTransferTimeout {
+		return maxTransferTimeout
+	}
+	return timeout
 }
 
 func (c *Client) commitWithRetry(ctx context.Context, opts Options, receipt string) (serviceResponse, error) {
@@ -325,8 +369,22 @@ func validateOptions(opts Options) error {
 	return nil
 }
 
-func readBoundedRegularFile(filePath string) ([]byte, error) {
-	return readBoundedRegularFileWithHooks(filePath, boundedFileReadHooks{})
+// publishSource is one bounded regular file, already hashed in a single
+// streaming pass and rewound so the direct PUT can stream the same bytes.
+type publishSource struct {
+	file *os.File
+	sha  string
+	size int64
+}
+
+func (s *publishSource) close() {
+	if s != nil && s.file != nil {
+		_ = s.file.Close()
+	}
+}
+
+func openBoundedRegularFile(filePath string) (*publishSource, error) {
+	return openBoundedRegularFileWithHooks(filePath, boundedFileReadHooks{})
 }
 
 type boundedFileReadHooks struct {
@@ -334,7 +392,7 @@ type boundedFileReadHooks struct {
 	beforeRead   func() error
 }
 
-func readBoundedRegularFileWithHooks(filePath string, hooks boundedFileReadHooks) ([]byte, error) {
+func openBoundedRegularFileWithHooks(filePath string, hooks boundedFileReadHooks) (source *publishSource, err error) {
 	info, err := os.Lstat(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("inspect publish file: %w", err)
@@ -354,7 +412,11 @@ func readBoundedRegularFileWithHooks(filePath string, hooks boundedFileReadHooks
 	if err != nil {
 		return nil, fmt.Errorf("open publish file without following links: %w", err)
 	}
-	defer func() { _ = file.Close() }()
+	defer func() {
+		if source == nil {
+			_ = file.Close()
+		}
+	}()
 
 	openedInfo, err := file.Stat()
 	if err != nil {
@@ -373,7 +435,10 @@ func readBoundedRegularFileWithHooks(filePath string, hooks boundedFileReadHooks
 			return nil, fmt.Errorf("prepare bounded publish file read: %w", err)
 		}
 	}
-	data, err := io.ReadAll(io.LimitReader(file, MaxBytes+1))
+	// Digest the file incrementally through a fixed buffer: memory stays
+	// constant no matter how close the artifact is to MaxBytes.
+	digest := sha256.New()
+	read, err := io.CopyBuffer(digest, io.LimitReader(file, MaxBytes+1), make([]byte, hashBufferBytes))
 	if err != nil {
 		return nil, fmt.Errorf("read publish file: %w", err)
 	}
@@ -381,13 +446,16 @@ func readBoundedRegularFileWithHooks(filePath string, hooks boundedFileReadHooks
 	if err != nil {
 		return nil, fmt.Errorf("inspect publish file after read: %w", err)
 	}
-	if int64(len(data)) != openedInfo.Size() ||
-		int64(len(data)) > MaxBytes ||
+	if read != openedInfo.Size() ||
+		read > MaxBytes ||
 		afterReadInfo.Size() != openedInfo.Size() ||
 		!afterReadInfo.ModTime().Equal(openedInfo.ModTime()) {
 		return nil, errors.New("publish file changed while it was being read")
 	}
-	return data, nil
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("rewind publish file: %w", err)
+	}
+	return &publishSource{file: file, sha: hex.EncodeToString(digest.Sum(nil)), size: read}, nil
 }
 
 func validatePlan(response serviceResponse, sha string, size int64) error {

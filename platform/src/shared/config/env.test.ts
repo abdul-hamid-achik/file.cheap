@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { getConfig, resetConfigForTests } from "@/shared/config/env";
+import { defaultProducerMaxSizeBytes, maximumArtifactBytes } from "@/shared/config/limits";
 
 const original = { ...process.env };
 
@@ -50,6 +51,7 @@ test("accepts a bounded per-producer rotation keyring alongside Vercel OIDC", ()
   process.env.FILECHEAP_PUBLISHER_TOKENS = JSON.stringify({
     cairntrace: {
       kinds: ["cairntrace.run"],
+      maxSizeBytes: 32 * 1024 * 1024,
       nativeSchemas: ["urn:cairntrace.dev:run:v1"],
       tokens: ["r".repeat(43)],
     },
@@ -63,17 +65,22 @@ test("accepts a bounded per-producer rotation keyring alongside Vercel OIDC", ()
   expect(getConfig().publisherTokens).toEqual([
     {
       kinds: ["cairntrace.run"],
+      maxSizeBytes: 32 * 1024 * 1024,
       nativeSchemas: ["urn:cairntrace.dev:run:v1"],
       producerTool: "cairntrace",
       tokens: ["r".repeat(43)],
     },
     {
+      // An undeclared quota falls back to the conservative default, never to
+      // the global ceiling.
       kinds: ["chalupa.log-chunk"],
+      maxSizeBytes: defaultProducerMaxSizeBytes,
       nativeSchemas: ["urn:chalupa:log-chunk:v1"],
       producerTool: "chalupa",
       tokens: [publisherToken, "n".repeat(43)],
     },
   ]);
+  expect(defaultProducerMaxSizeBytes).toBeLessThan(maximumArtifactBytes);
 });
 
 test("binds a Vercel deployment to one OIDC subject in its exact environment", () => {
@@ -157,6 +164,46 @@ test("rejects malformed, weak, duplicated, or cross-scope publisher tokens", () 
         kinds: ["chalupa.log-chunk"],
         nativeSchemas: ["urn:chalupa:log-chunk:v1"],
         tokens: [publisherToken, "n".repeat(43), "o".repeat(43)],
+      },
+    }),
+    JSON.stringify({
+      chalupa: {
+        kinds: ["chalupa.log-chunk"],
+        maxSizeBytes: maximumArtifactBytes + 1,
+        nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+        tokens: [publisherToken],
+      },
+    }),
+    JSON.stringify({
+      chalupa: {
+        kinds: ["chalupa.log-chunk"],
+        maxSizeBytes: 0,
+        nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+        tokens: [publisherToken],
+      },
+    }),
+    JSON.stringify({
+      chalupa: {
+        kinds: ["chalupa.log-chunk"],
+        maxSizeBytes: 1.5,
+        nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+        tokens: [publisherToken],
+      },
+    }),
+    JSON.stringify({
+      chalupa: {
+        kinds: ["chalupa.log-chunk"],
+        maxSizeBytes: "8388608",
+        nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+        tokens: [publisherToken],
+      },
+    }),
+    JSON.stringify({
+      chalupa: {
+        kinds: ["chalupa.log-chunk"],
+        nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+        tokens: [publisherToken],
+        unexpected: true,
       },
     }),
   ]) {

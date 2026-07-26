@@ -193,6 +193,77 @@ describe("ArtifactService", () => {
     expect((await expiringService.commit(expiringPlan.receipt)).artifact.state).toBe("committed");
   });
 
+  test("verifies large artifacts by streaming and rejects a tampered object", async () => {
+    const store = new InMemoryArtifactObjectStore();
+    const service = new ArtifactService(store, new InMemoryArtifactRepository());
+    // Comfortably past the retired 2 MiB buffer-everything bound.
+    const largeBytes = new Uint8Array(6 * 1024 * 1024);
+    for (let index = 0; index < largeBytes.byteLength; index += 1) {
+      largeBytes[index] = index % 251;
+    }
+    const largeSha256 = createHash("sha256").update(largeBytes).digest("hex");
+    const input = {
+      contentType: "application/zstd",
+      idempotencyKey: "123e4567-e89b-42d3-a456-426614174030",
+      kind: "chalupa.log-chunk",
+      producer: { tool: "chalupa" },
+      sha256: largeSha256,
+      sizeBytes: largeBytes.byteLength,
+    } as const;
+    const plan = requirePlanned(await service.plan(input));
+    const key = new URL(plan.upload.url).pathname.replace(/^\/upload\//, "");
+
+    const tampered = largeBytes.slice();
+    tampered[tampered.byteLength - 1] ^= 0xff;
+    store.seed({ bytes: tampered, contentType: input.contentType, key, sizeBytes: tampered.byteLength });
+    await expect(service.commit(plan.receipt)).rejects.toMatchObject({
+      code: "integrity_mismatch",
+      status: 422,
+    });
+
+    store.seed({ bytes: largeBytes, contentType: input.contentType, key, sizeBytes: largeBytes.byteLength });
+    const committed = await service.commit(plan.receipt);
+    expect(committed.artifact.state).toBe("committed");
+    expect(committed.artifact.verification).toBe("server-sha256");
+    expect(committed.artifact.sizeBytes).toBe(largeBytes.byteLength);
+  });
+
+  test("rejects a commit whose producer quota was tightened after the plan", async () => {
+    const store = new InMemoryArtifactObjectStore();
+    const service = new ArtifactService(store, new InMemoryArtifactRepository());
+    const plan = requirePlanned(await service.plan({
+      contentType: "application/zstd",
+      idempotencyKey: "123e4567-e89b-42d3-a456-426614174031",
+      kind: "chalupa.log-chunk",
+      producer: { native_schema: "urn:chalupa:log-chunk:v1", tool: "chalupa" },
+      sha256,
+      sizeBytes: bytes.byteLength,
+    }));
+    store.seed({
+      bytes,
+      contentType: "application/zstd",
+      key: new URL(plan.upload.url).pathname.replace(/^\/upload\//, ""),
+      sizeBytes: bytes.byteLength,
+    });
+
+    await expect(
+      service.commit(plan.receipt, undefined, {
+        kinds: ["chalupa.log-chunk"],
+        maxSizeBytes: bytes.byteLength - 1,
+        nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+        producerTool: "chalupa",
+      }),
+    ).rejects.toMatchObject({ code: "producer_quota_exceeded", status: 413 });
+
+    const committed = await service.commit(plan.receipt, undefined, {
+      kinds: ["chalupa.log-chunk"],
+      maxSizeBytes: bytes.byteLength,
+      nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+      producerTool: "chalupa",
+    });
+    expect(committed.artifact.state).toBe("committed");
+  });
+
   test("rejects a cross-producer commit before inspecting private storage", async () => {
     const store = new CountingInspectStore();
     const service = new ArtifactService(store, new InMemoryArtifactRepository());
@@ -211,6 +282,7 @@ describe("ArtifactService", () => {
     await expect(
       service.commit(plan.receipt, undefined, {
         kinds: ["cairntrace.run"],
+        maxSizeBytes: 32 * 1024 * 1024,
         nativeSchemas: ["urn:cairntrace.dev:run:v1"],
         producerTool: "cairntrace",
       }),
@@ -250,6 +322,7 @@ describe("ArtifactService", () => {
         undefined,
         {
           kinds: ["chalupa.log-chunk"],
+          maxSizeBytes: 8 * 1024 * 1024,
           nativeSchemas: ["urn:chalupa:log-chunk:v1"],
           producerTool: "chalupa",
         },

@@ -83,8 +83,10 @@ the artifact is retained.
 
 Vercel Private Blob is behind a provider port, so a future Spaces, R2, or S3
 adapter does not change the API or `ArtifactRefV1` contract. Direct Blob uploads
-use compressed chunks no larger than 2 MiB. The service reads each bounded
-chunk after upload and verifies its SHA-256 before commit. Consumers still
+use compressed chunks no larger than the 64 MiB platform ceiling, and each
+producer additionally has its own smaller `maxSizeBytes` quota in the publisher
+keyring. The service streams each bounded chunk after upload and recomputes its
+SHA-256 incrementally, at constant memory, before commit. Consumers still
 verify complete downloads, and the local CLI never evicts a source stash because
 a remote artifact exists. A signed download is never issued for an artifact
 whose retention timestamp has passed, and no grant can outlive that timestamp.

@@ -158,7 +158,7 @@ func TestReadBoundedRegularFileRejectsPathSwapToSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data, err := readBoundedRegularFileWithHooks(
+	source, err := openBoundedRegularFileWithHooks(
 		filePath,
 		boundedFileReadHooks{
 			afterInspect: func() error {
@@ -172,11 +172,12 @@ func TestReadBoundedRegularFileRejectsPathSwapToSymlink(t *testing.T) {
 			},
 		},
 	)
+	defer source.close()
 	if err == nil {
 		t.Fatal("expected a path replacement to be rejected")
 	}
-	if len(data) != 0 {
-		t.Fatalf("path replacement exposed %d bytes", len(data))
+	if source != nil {
+		t.Fatalf("path replacement returned an open publish source")
 	}
 }
 
@@ -187,7 +188,7 @@ func TestReadBoundedRegularFileCapsGrowthAfterOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data, err := readBoundedRegularFileWithHooks(
+	source, err := openBoundedRegularFileWithHooks(
 		filePath,
 		boundedFileReadHooks{
 			beforeRead: func() error {
@@ -195,10 +196,122 @@ func TestReadBoundedRegularFileCapsGrowthAfterOpen(t *testing.T) {
 			},
 		},
 	)
+	defer source.close()
 	if err == nil || !strings.Contains(err.Error(), "changed while it was being read") {
 		t.Fatalf("expected bounded growth rejection, got %v", err)
 	}
-	if len(data) != 0 {
-		t.Fatalf("oversized growth returned %d bytes", len(data))
+	if source != nil {
+		t.Fatalf("oversized growth returned an open publish source")
+	}
+}
+
+func TestOpenBoundedRegularFileStreamsLargeArtifactDigest(t *testing.T) {
+	t.Parallel()
+	// Comfortably past the retired 2 MiB read-everything bound.
+	contents := make([]byte, 5*1024*1024+7)
+	for index := range contents {
+		contents[index] = byte(index % 251)
+	}
+	filePath := filepath.Join(t.TempDir(), "artifact.bin")
+	if err := os.WriteFile(filePath, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	source, err := openBoundedRegularFile(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.close()
+
+	digest := sha256.Sum256(contents)
+	if source.sha != hex.EncodeToString(digest[:]) {
+		t.Fatalf("streamed digest does not match the file")
+	}
+	if source.size != int64(len(contents)) {
+		t.Fatalf("unexpected streamed size %d", source.size)
+	}
+	// The source must be rewound so the direct PUT streams the same bytes.
+	streamed, err := io.ReadAll(source.file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(streamed) != len(contents) {
+		t.Fatalf("publish source was not rewound: read %d bytes", len(streamed))
+	}
+}
+
+func TestPublishStreamsLargeArtifactWithoutBuffering(t *testing.T) {
+	t.Parallel()
+	contents := make([]byte, 3*1024*1024+11)
+	for index := range contents {
+		contents[index] = byte((index * 7) % 253)
+	}
+	digest := sha256.Sum256(contents)
+	sha := hex.EncodeToString(digest[:])
+	producer := artifactref.Producer{Tool: "cairntrace", NativeSchema: "urn:cairntrace.dev:run:v1"}
+	ref, err := artifactref.NewCloud("private", "art_abcdefghijklmnop", "cairntrace.run", producer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var server *httptest.Server
+	var uploadedSHA string
+	var uploadedBytes int64
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/artifacts/plans":
+			var got planRequest
+			if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+				t.Error(err)
+				return
+			}
+			if got.SizeBytes != int64(len(contents)) || got.SHA256 != sha {
+				t.Errorf("plan did not bind the streamed bytes")
+			}
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"artifact": map[string]any{"artifactId": ref.ArtifactID, "committedAt": nil, "contentType": "application/gzip", "expiresAt": nil, "kind": ref.Kind, "producer": ref.Producer, "sha256": sha, "sizeBytes": len(contents), "state": "planned", "verification": "server-sha256"}, "artifactRef": ref, "receipt": "123e4567-e89b-12d3-a456-426614174000", "upload": map[string]any{"expiresAt": "2030-01-01T00:00:00Z", "headers": map[string]string{"content-type": "application/gzip"}, "method": "PUT", "url": server.URL + "/direct"}})
+		case "/direct":
+			if r.ContentLength != int64(len(contents)) {
+				t.Errorf("direct upload did not declare an exact content length: %d", r.ContentLength)
+			}
+			streamed := sha256.New()
+			written, err := io.Copy(streamed, r.Body)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			uploadedBytes = written
+			uploadedSHA = hex.EncodeToString(streamed.Sum(nil))
+			w.WriteHeader(http.StatusOK)
+		case "/api/v1/artifacts/commits":
+			_ = json.NewEncoder(w).Encode(map[string]any{"artifact": map[string]any{"artifactId": ref.ArtifactID, "committedAt": "2026-07-24T12:00:01Z", "contentType": "application/gzip", "expiresAt": nil, "kind": ref.Kind, "producer": ref.Producer, "sha256": sha, "sizeBytes": len(contents), "state": "committed", "verification": "server-sha256"}, "artifactRef": ref})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	path := filepath.Join(t.TempDir(), "run.tar.gz")
+	if err := os.WriteFile(path, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := NewClient(server.Client()).Publish(context.Background(), path, Options{ContentType: "application/gzip", Kind: "cairntrace.run", Producer: producer, ServiceURL: server.URL, Token: testPublisherToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uploadedBytes != int64(len(contents)) || uploadedSHA != sha {
+		t.Fatalf("direct upload did not stream the exact hashed bytes")
+	}
+	if receipt.SizeBytes != int64(len(contents)) || receipt.SHA256 != sha {
+		t.Fatalf("unexpected receipt: %#v", receipt)
+	}
+}
+
+func TestMaxBytesMatchesThePlatformCeiling(t *testing.T) {
+	t.Parallel()
+	if MaxBytes != 64*1024*1024 {
+		t.Fatalf("MaxBytes must track the 64 MiB platform ceiling, got %d", MaxBytes)
+	}
+	if got := transferTimeoutFor(MaxBytes); got <= transferBaseTimeout || got > maxTransferTimeout {
+		t.Fatalf("transfer deadline for a ceiling-sized artifact is not bounded: %s", got)
 	}
 }

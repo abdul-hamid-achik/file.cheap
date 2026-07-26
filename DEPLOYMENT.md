@@ -94,7 +94,21 @@ requested immutable artifact.
 - `tokens`: one current 43-128 character base64url token, plus at most one next
   token during rotation;
 - `kinds`: the exact artifact kinds that producer may plan and commit;
-- `nativeSchemas`: the exact credential-free native schemas it may use.
+- `nativeSchemas`: the exact credential-free native schemas it may use;
+- `maxSizeBytes` (optional): that producer's byte quota, between 1 and the
+  67108864-byte global ceiling.
+
+A producer that omits `maxSizeBytes` gets the conservative 8388608-byte default,
+never the global ceiling; a larger quota is always an explicit decision. The
+quota is enforced at plan time and rechecked at commit, so lowering it in the
+keyring also stops an already-planned oversized upload. An over-quota request
+returns `413` with a detail naming the producer and its exact quota; a request
+above the global ceiling fails schema validation with `422`. The current
+allocation is Cairntrace 33554432, Glyphrun 8388608 (the default), and Chalupa's
+OIDC identity 8388608 (the default; it is not a keyring entry). Raising a quota
+is a configuration change, not a deployment: update
+`FILECHEAP_PUBLISHER_TOKENS` for that producer only, and raise the matching
+client-side constant in that producer's repository in the same release.
 
 Keep the keyring bounded to configured producers only. Cairntrace currently
 uses `cairntrace.run` with `urn:cairntrace.dev:run:v1`; Glyphrun uses

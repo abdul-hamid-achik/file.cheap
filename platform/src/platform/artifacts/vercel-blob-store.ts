@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   BlobNotFoundError,
   BlobRequestAbortedError,
@@ -28,7 +30,6 @@ export type ArtifactBlobSdk = {
 };
 
 const defaultBlobSdk: ArtifactBlobSdk = { del, get, head, issueSignedToken, presignUrl };
-const maximumVerifiedArtifactBytes = 2 * 1_024 * 1_024;
 
 export class VercelPrivateBlobArtifactStore implements ArtifactObjectStore {
   readonly driver = "vercel-private-blob";
@@ -59,19 +60,22 @@ export class VercelPrivateBlobArtifactStore implements ArtifactObjectStore {
     }
   }
 
-  async readBytes(key: string, signal?: AbortSignal): Promise<Uint8Array | null> {
+  // Verification digests the private object as it arrives. Memory stays O(1),
+  // so the accepted artifact size is bounded by the caller's plan and the
+  // platform ceiling rather than by the function's heap.
+  async verifySha256(key: string, expectedSha256: string, maxBytes: number, signal?: AbortSignal): Promise<boolean> {
     assertSafeArtifactObjectKey(key);
     try {
       const result = await this.blob.get(key, { access: "private", ...this.options(signal), useCache: false });
-      if (!result) return null;
+      if (!result) return false;
       if (result.statusCode !== 200) throw new Error("Unexpected private Blob response");
-      if (result.blob.size > maximumVerifiedArtifactBytes) {
+      if (result.blob.size > maxBytes) {
         await result.stream.cancel();
         throw new Error("Private artifact exceeds the verification limit");
       }
-      return readBoundedStream(result.stream, maximumVerifiedArtifactBytes);
+      return await streamSha256Matches(result.stream, expectedSha256, maxBytes);
     } catch (error) {
-      if (error instanceof BlobNotFoundError) return null;
+      if (error instanceof BlobNotFoundError) return false;
       throw normalizeBlobError(error, signal);
     }
   }
@@ -191,12 +195,13 @@ function normalizeBlobError(error: unknown, signal?: AbortSignal): unknown {
   return error;
 }
 
-async function readBoundedStream(
+async function streamSha256Matches(
   stream: ReadableStream<Uint8Array>,
+  expectedSha256: string,
   limit: number,
-): Promise<Uint8Array> {
+): Promise<boolean> {
   const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
+  const digest = createHash("sha256");
   let total = 0;
   try {
     while (true) {
@@ -207,16 +212,10 @@ async function readBoundedStream(
         await reader.cancel();
         throw new Error("Private artifact exceeds the verification limit");
       }
-      chunks.push(value);
+      digest.update(value);
     }
   } finally {
     reader.releaseLock();
   }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
+  return digest.digest("hex") === expectedSha256;
 }

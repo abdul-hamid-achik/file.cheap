@@ -15,6 +15,13 @@
       "when": 1784967921316,
       "tag": "0001_inbound_email_replay",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785056543319,
+      "tag": "0002_relax_artifact_size_ceiling",
+      "breakpoints": true
     }
   ]
 }

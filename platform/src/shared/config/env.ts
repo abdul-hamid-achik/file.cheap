@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  defaultProducerMaxSizeBytes,
+  maximumArtifactBytes,
+} from "@/shared/config/limits";
+
 const environmentSchema = z.object({
   DATABASE_URL: z.string().min(1).optional(),
   FILECHEAP_ADMIN_TOKEN: z.string().min(32).max(256).optional(),
@@ -14,6 +19,12 @@ const environmentSchema = z.object({
 
 export type PublisherTokenSet = Readonly<{
   kinds: readonly string[];
+  /**
+   * Per-producer byte quota. Always populated: an entry that omits
+   * `maxSizeBytes` falls back to the conservative default, never to the global
+   * ceiling.
+   */
+  maxSizeBytes: number;
   nativeSchemas: readonly string[];
   producerTool: string;
   tokens: readonly string[];
@@ -151,16 +162,22 @@ function parsePublisherTokens(raw: string | undefined): readonly PublisherTokenS
       typeof policy !== "object" ||
       policy === null ||
       Array.isArray(policy) ||
-      Object.keys(policy).sort().join(",") !== "kinds,nativeSchemas,tokens"
+      !hasExactPolicyKeys(Object.keys(policy))
     ) {
       throw invalidPublisherTokens();
     }
     const {
       kinds,
+      maxSizeBytes,
       nativeSchemas,
       tokens,
     } = policy as Record<string, unknown>;
     if (
+      (maxSizeBytes !== undefined &&
+        (typeof maxSizeBytes !== "number" ||
+          !Number.isSafeInteger(maxSizeBytes) ||
+          maxSizeBytes < 1 ||
+          maxSizeBytes > maximumArtifactBytes)) ||
       !Array.isArray(tokens) ||
       tokens.length < 1 ||
       tokens.length > 2 ||
@@ -197,6 +214,10 @@ function parsePublisherTokens(raw: string | undefined): readonly PublisherTokenS
     }
     result.push({
       kinds: Object.freeze([...kinds]),
+      maxSizeBytes:
+        typeof maxSizeBytes === "number"
+          ? maxSizeBytes
+          : defaultProducerMaxSizeBytes,
       nativeSchemas: Object.freeze([...nativeSchemas]),
       producerTool,
       tokens: Object.freeze([...tokens]),
@@ -205,9 +226,25 @@ function parsePublisherTokens(raw: string | undefined): readonly PublisherTokenS
   return Object.freeze(result);
 }
 
+const requiredPolicyKeys = ["kinds", "nativeSchemas", "tokens"] as const;
+const optionalPolicyKeys = ["maxSizeBytes"] as const;
+
+function hasExactPolicyKeys(keys: readonly string[]): boolean {
+  const unique = new Set(keys);
+  return (
+    unique.size === keys.length &&
+    requiredPolicyKeys.every((name) => unique.has(name)) &&
+    keys.every(
+      (name) =>
+        (requiredPolicyKeys as readonly string[]).includes(name) ||
+        (optionalPolicyKeys as readonly string[]).includes(name),
+    )
+  );
+}
+
 function invalidPublisherTokens(): Error {
   return new Error(
-    "FILECHEAP_PUBLISHER_TOKENS must define 1-16 exact producer policies with bounded kinds, nativeSchemas, and 1-2 unique 43-128 character base64url tokens",
+    `FILECHEAP_PUBLISHER_TOKENS must define 1-16 exact producer policies with bounded kinds, nativeSchemas, 1-2 unique 43-128 character base64url tokens, and an optional maxSizeBytes between 1 and ${maximumArtifactBytes}`,
   );
 }
 

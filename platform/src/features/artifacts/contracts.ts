@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { maximumArtifactBytes } from "@/shared/config/limits";
+
 export const artifactIdSchema = z.string().regex(/^art_[A-Za-z0-9_-]{16,96}$/);
 export const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 export const artifactKindSchema = z.string().max(128).regex(/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/);
@@ -47,7 +49,7 @@ export const artifactPlanInputSchema = z.object({
   kind: artifactKindSchema,
   producer: producerSchema,
   sha256: sha256Schema,
-  sizeBytes: z.number().int().positive().max(2 * 1024 * 1024),
+  sizeBytes: z.number().int().positive().max(maximumArtifactBytes),
 }).strict();
 
 export const artifactCommitInputSchema = z.object({

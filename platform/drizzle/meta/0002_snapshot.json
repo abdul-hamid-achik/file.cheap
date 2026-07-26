@@ -1,0 +1,475 @@
+{
+  "id": "a0161fe5-b9c7-484f-a653-071531661c6f",
+  "prevId": "32cbe1a8-3364-4e99-bc82-06396c11ca07",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.artifact_objects": {
+      "name": "artifact_objects",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "artifact_id": {
+          "name": "artifact_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ordinal": {
+          "name": "ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "etag": {
+          "name": "etag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "artifact_objects_key_unique": {
+          "name": "artifact_objects_key_unique",
+          "columns": [
+            {
+              "expression": "object_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "artifact_objects_artifact_ordinal_unique": {
+          "name": "artifact_objects_artifact_ordinal_unique",
+          "columns": [
+            {
+              "expression": "artifact_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ordinal",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "artifact_objects_artifact_id_artifacts_artifact_id_fk": {
+          "name": "artifact_objects_artifact_id_artifacts_artifact_id_fk",
+          "tableFrom": "artifact_objects",
+          "tableTo": "artifacts",
+          "columnsFrom": [
+            "artifact_id"
+          ],
+          "columnsTo": [
+            "artifact_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "artifact_objects_ordinal_check": {
+          "name": "artifact_objects_ordinal_check",
+          "value": "\"artifact_objects\".\"ordinal\" >= 0"
+        },
+        "artifact_objects_size_check": {
+          "name": "artifact_objects_size_check",
+          "value": "\"artifact_objects\".\"size_bytes\" > 0 and \"artifact_objects\".\"size_bytes\" <= 67108864"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.artifacts": {
+      "name": "artifacts",
+      "schema": "",
+      "columns": {
+        "artifact_id": {
+          "name": "artifact_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "producer": {
+          "name": "producer",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verification": {
+          "name": "verification",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_token": {
+          "name": "plan_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_expires_at": {
+          "name": "plan_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "committed_at": {
+          "name": "committed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleting_at": {
+          "name": "deleting_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "artifacts_plan_token_unique": {
+          "name": "artifacts_plan_token_unique",
+          "columns": [
+            {
+              "expression": "plan_token",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "artifacts_retention_index": {
+          "name": "artifacts_retention_index",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "artifacts_state_check": {
+          "name": "artifacts_state_check",
+          "value": "\"artifacts\".\"state\" in ('planned', 'committed', 'deleting', 'deleted')"
+        },
+        "artifacts_verification_check": {
+          "name": "artifacts_verification_check",
+          "value": "\"artifacts\".\"verification\" in ('server-sha256')"
+        },
+        "artifacts_sha256_check": {
+          "name": "artifacts_sha256_check",
+          "value": "\"artifacts\".\"sha256\" ~ '^[a-f0-9]{64}$'"
+        },
+        "artifacts_size_check": {
+          "name": "artifacts_size_check",
+          "value": "\"artifacts\".\"size_bytes\" > 0 and \"artifacts\".\"size_bytes\" <= 67108864"
+        },
+        "artifacts_expiry_check": {
+          "name": "artifacts_expiry_check",
+          "value": "\"artifacts\".\"expires_at\" is null or \"artifacts\".\"expires_at\" > \"artifacts\".\"created_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.inbound_email_replays": {
+      "name": "inbound_email_replays",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "svix_id_sha256": {
+          "name": "svix_id_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email_id_sha256": {
+          "name": "email_id_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lease_token": {
+          "name": "lease_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "processing_lease_expires_at": {
+          "name": "processing_lease_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "forwarded_at": {
+          "name": "forwarded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ambiguous_at": {
+          "name": "ambiguous_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "inbound_email_replays_svix_digest_unique": {
+          "name": "inbound_email_replays_svix_digest_unique",
+          "columns": [
+            {
+              "expression": "svix_id_sha256",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "inbound_email_replays_email_digest_unique": {
+          "name": "inbound_email_replays_email_digest_unique",
+          "columns": [
+            {
+              "expression": "email_id_sha256",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "inbound_email_replays_expiry_index": {
+          "name": "inbound_email_replays_expiry_index",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "inbound_email_replays_status_check": {
+          "name": "inbound_email_replays_status_check",
+          "value": "\"inbound_email_replays\".\"status\" in ('processing', 'forwarded', 'ignored', 'ambiguous', 'rejected')"
+        },
+        "inbound_email_replays_attempts_check": {
+          "name": "inbound_email_replays_attempts_check",
+          "value": "\"inbound_email_replays\".\"attempts\" > 0"
+        },
+        "inbound_email_replays_attempts_upper_bound_check": {
+          "name": "inbound_email_replays_attempts_upper_bound_check",
+          "value": "\"inbound_email_replays\".\"attempts\" <= 8"
+        },
+        "inbound_email_replays_svix_digest_check": {
+          "name": "inbound_email_replays_svix_digest_check",
+          "value": "\"inbound_email_replays\".\"svix_id_sha256\" ~ '^[a-f0-9]{64}$'"
+        },
+        "inbound_email_replays_email_digest_check": {
+          "name": "inbound_email_replays_email_digest_check",
+          "value": "\"inbound_email_replays\".\"email_id_sha256\" ~ '^[a-f0-9]{64}$'"
+        },
+        "inbound_email_replays_expiry_check": {
+          "name": "inbound_email_replays_expiry_check",
+          "value": "\"inbound_email_replays\".\"expires_at\" > \"inbound_email_replays\".\"created_at\""
+        },
+        "inbound_email_replays_processing_lease_check": {
+          "name": "inbound_email_replays_processing_lease_check",
+          "value": "(\"inbound_email_replays\".\"status\" = 'processing') = (\"inbound_email_replays\".\"lease_token\" is not null and \"inbound_email_replays\".\"processing_lease_expires_at\" is not null)"
+        },
+        "inbound_email_replays_forwarded_check": {
+          "name": "inbound_email_replays_forwarded_check",
+          "value": "(\"inbound_email_replays\".\"status\" = 'forwarded') = (\"inbound_email_replays\".\"forwarded_at\" is not null)"
+        },
+        "inbound_email_replays_ambiguous_check": {
+          "name": "inbound_email_replays_ambiguous_check",
+          "value": "(\"inbound_email_replays\".\"status\" = 'ambiguous') = (\"inbound_email_replays\".\"ambiguous_at\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
