@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import type { ArtifactDownloadInput, ArtifactDownloadResponse, ArtifactListQuery, ArtifactPlanInput, ArtifactPlanReplayResponse, ArtifactPlanResponse, ArtifactPlanResult, ArtifactSummary } from "@/features/artifacts/contracts";
 import type { ArtifactRecord, ArtifactRepository, RetainableArtifactState } from "@/platform/database/repository";
@@ -10,9 +10,29 @@ const deletionLeaseMilliseconds = 15 * 60 * 1000;
 
 type ArtifactIngestPolicy = Readonly<{
   kinds: readonly string[];
+  maxSizeBytes: number;
   nativeSchemas: readonly string[];
   producerTool: string;
 }>;
+
+/**
+ * Reject an artifact that exceeds the authenticated producer's own quota. The
+ * detail names the producer and its exact quota so an operator can act on the
+ * response without reading the keyring.
+ */
+export function assertProducerSizeQuota(
+  sizeBytes: number,
+  policy: Readonly<{ maxSizeBytes: number; producerTool: string }>,
+): void {
+  if (sizeBytes > policy.maxSizeBytes) {
+    throw new PlatformError({
+      code: "producer_quota_exceeded",
+      detail: `producer '${policy.producerTool}' allows up to ${policy.maxSizeBytes} bytes; this artifact declares ${sizeBytes} bytes.`,
+      status: 413,
+      title: "Artifact exceeds the producer quota",
+    });
+  }
+}
 
 export class ArtifactService {
   constructor(private readonly store: ArtifactObjectStore, private readonly repository: ArtifactRepository, private readonly now: () => Date = () => new Date()) {}
@@ -87,6 +107,9 @@ export class ArtifactService {
       throw invalidReceipt();
     }
     if (record.state === "deleted" || record.state === "deleting") throw invalidReceipt();
+    // Re-check the quota here as well as at plan time: a keyring that was
+    // tightened after the plan was issued must not be able to commit.
+    if (ingestPolicy) assertProducerSizeQuota(record.sizeBytes, ingestPolicy);
     const now = this.now();
     if (
       (record.state === "planned" && record.planExpiresAt <= now) ||
@@ -97,8 +120,10 @@ export class ArtifactService {
     const object = await this.store.inspect(record.objectKey, signal);
     if (!object) throw new PlatformError({ code: "upload_incomplete", detail: "The direct upload is not present.", status: 409, title: "Upload incomplete" });
     if (object.sizeBytes !== record.sizeBytes || object.contentType !== record.contentType) throw new PlatformError({ code: "integrity_mismatch", detail: "The stored object does not match the planned size or content type.", status: 422, title: "Artifact mismatch" });
-    const bytes = await this.store.readBytes(record.objectKey, signal);
-    if (!bytes || createHash("sha256").update(bytes).digest("hex") !== record.sha256) throw new PlatformError({ code: "integrity_mismatch", detail: "The stored object does not match the declared SHA-256.", status: 422, title: "Artifact mismatch" });
+    // The HEAD above already bound size and content type, so the streamed
+    // digest is bounded by the planned size and never buffers the object.
+    const verified = await this.store.verifySha256(record.objectKey, record.sha256, record.sizeBytes, signal);
+    if (!verified) throw new PlatformError({ code: "integrity_mismatch", detail: "The stored object does not match the declared SHA-256.", status: 422, title: "Artifact mismatch" });
     const committed = await this.repository.markCommitted(record.artifactId, object.etag, this.now());
     if (!committed) {
       throw new PlatformError({ code: "commit_conflict", detail: "The upload plan expired or entered retention before it could be committed. Retry the plan request with the same idempotency key.", status: 409, title: "Commit conflict" });

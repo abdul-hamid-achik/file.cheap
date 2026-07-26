@@ -30,9 +30,13 @@ export const artifacts = pgTable("artifacts", {
     "artifacts_sha256_check",
     sql`${table.sha256} ~ '^[a-f0-9]{64}$'`,
   ),
+  // Global platform ceiling. Keep the literal in sync with
+  // `maximumArtifactBytes` in src/shared/config/limits.ts; the migration-graph
+  // test asserts the two agree. Per-producer quotas are enforced at runtime and
+  // are always at or below this value.
   check(
     "artifacts_size_check",
-    sql`${table.sizeBytes} > 0 and ${table.sizeBytes} <= 2097152`,
+    sql`${table.sizeBytes} > 0 and ${table.sizeBytes} <= 67108864`,
   ),
   check(
     "artifacts_expiry_check",
@@ -56,7 +60,7 @@ export const artifactObjects = pgTable("artifact_objects", {
   check("artifact_objects_ordinal_check", sql`${table.ordinal} >= 0`),
   check(
     "artifact_objects_size_check",
-    sql`${table.sizeBytes} > 0 and ${table.sizeBytes} <= 2097152`,
+    sql`${table.sizeBytes} > 0 and ${table.sizeBytes} <= 67108864`,
   ),
   uniqueIndex("artifact_objects_key_unique").on(table.objectKey),
   uniqueIndex("artifact_objects_artifact_ordinal_unique").on(

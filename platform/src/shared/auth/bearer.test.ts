@@ -6,6 +6,7 @@ import {
   requireServiceToken,
 } from "@/shared/auth/bearer";
 import { resetConfigForTests } from "@/shared/config/env";
+import { defaultProducerMaxSizeBytes } from "@/shared/config/limits";
 
 const originalEnvironment = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -27,6 +28,7 @@ describe("private service bearer authentication", () => {
       FILECHEAP_PUBLISHER_TOKENS: JSON.stringify({
         cairntrace: {
           kinds: ["cairntrace.run"],
+          maxSizeBytes: 32 * 1024 * 1024,
           nativeSchemas: ["urn:cairntrace.dev:run:v1"],
           tokens: [cairntraceToken],
         },
@@ -45,18 +47,21 @@ describe("private service bearer authentication", () => {
     await expect(requireServiceToken(request(`Bearer ${chalupaToken}`), "ingest")).resolves.toEqual({
       authentication: "publisher-token",
       kinds: ["chalupa.log-chunk"],
+      maxSizeBytes: defaultProducerMaxSizeBytes,
       nativeSchemas: ["urn:chalupa:log-chunk:v1"],
       producerTool: "chalupa",
     });
     await expect(requireServiceToken(request(`Bearer ${nextChalupaToken}`), "ingest")).resolves.toEqual({
       authentication: "publisher-token",
       kinds: ["chalupa.log-chunk"],
+      maxSizeBytes: defaultProducerMaxSizeBytes,
       nativeSchemas: ["urn:chalupa:log-chunk:v1"],
       producerTool: "chalupa",
     });
     await expect(requireServiceToken(request(`Bearer ${cairntraceToken}`), "ingest")).resolves.toEqual({
       authentication: "publisher-token",
       kinds: ["cairntrace.run"],
+      maxSizeBytes: 32 * 1024 * 1024,
       nativeSchemas: ["urn:cairntrace.dev:run:v1"],
       producerTool: "cairntrace",
     });
@@ -119,6 +124,7 @@ describe("private service bearer authentication", () => {
     expect(oidcPrincipal).toEqual({
       authentication: "oidc",
       kinds: ["chalupa.log-chunk"],
+      maxSizeBytes: defaultProducerMaxSizeBytes,
       nativeSchemas: ["urn:chalupa:log-chunk:v1"],
       producerTool: "chalupa",
       subject,
@@ -140,6 +146,7 @@ describe("private service bearer authentication", () => {
     await expect(request(chalupaToken)).resolves.toEqual({
       authentication: "publisher-token",
       kinds: ["chalupa.log-chunk"],
+      maxSizeBytes: defaultProducerMaxSizeBytes,
       nativeSchemas: ["urn:chalupa:log-chunk:v1"],
       producerTool: "chalupa",
     });
@@ -152,12 +159,14 @@ describe("private service bearer authentication", () => {
     expect(readPrincipal).toEqual({
       authentication: "oidc",
       kinds: ["chalupa.log-chunk"],
+      maxSizeBytes: defaultProducerMaxSizeBytes,
       nativeSchemas: ["urn:chalupa:log-chunk:v1"],
       producerTool: "chalupa",
       subject,
     });
     expect(readPolicyFor(readPrincipal)).toEqual({
       kinds: ["chalupa.log-chunk"],
+      maxSizeBytes: defaultProducerMaxSizeBytes,
       nativeSchemas: ["urn:chalupa:log-chunk:v1"],
       producerTool: "chalupa",
     });

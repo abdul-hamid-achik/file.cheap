@@ -4,9 +4,11 @@
 file.cheap artifact service. It does not save a stash, delete the input, or
 accept Vercel, Blob, Neon, or administrator credentials.
 
-The command reads one regular file of at most 2 MiB, hashes those exact bytes,
-plans an upload, sends the bytes directly to the signed storage URL, and commits
-only after the service reports `server-sha256` verification. Its JSON result is
+The command streams one regular file of at most 64 MiB to hash it, plans an
+upload, streams the same bytes directly to the signed storage URL, and commits
+only after the service reports `server-sha256` verification. 64 MiB is the
+global platform ceiling; each producer also has its own smaller server-side
+quota, and a file above it is rejected with `413` naming that quota. Its JSON result is
 a strict `filecheap-publish/1` receipt containing a credential-free
 `fcheap-cloud` `ArtifactRefV1`.
 

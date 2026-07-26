@@ -3,11 +3,13 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import { getConfig } from "@/shared/config/env";
 import type { PublisherTokenSet } from "@/shared/config/env";
+import { defaultProducerMaxSizeBytes } from "@/shared/config/limits";
 import { PlatformError } from "@/shared/errors/platform-error";
 
 export type ServiceScope = "admin" | "cron" | "ingest" | "read";
 export type IngestPolicy = Readonly<{
   kinds: readonly string[];
+  maxSizeBytes: number;
   nativeSchemas: readonly string[];
   producerTool: string;
 }>;
@@ -29,6 +31,9 @@ export type ReadPrincipal =
 const jwksByIssuer = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 const chalupaOidcPolicy: IngestPolicy = Object.freeze({
   kinds: Object.freeze(["chalupa.log-chunk"]),
+  // Chalupa's OIDC identity is not part of the publisher keyring, so it keeps
+  // the same conservative default quota an undeclared producer would get.
+  maxSizeBytes: defaultProducerMaxSizeBytes,
   nativeSchemas: Object.freeze(["urn:chalupa:log-chunk:v1"]),
   producerTool: "chalupa",
 });
@@ -67,6 +72,7 @@ export async function requireServiceToken(
       return {
         authentication: "publisher-token",
         kinds: publisher.kinds,
+        maxSizeBytes: publisher.maxSizeBytes,
         nativeSchemas: publisher.nativeSchemas,
         producerTool: publisher.producerTool,
       };
@@ -110,6 +116,7 @@ export function requireAuthorizedArtifact(
 export function ingestPolicyFor(principal: IngestPrincipal): IngestPolicy {
   return {
     kinds: principal.kinds,
+    maxSizeBytes: principal.maxSizeBytes,
     nativeSchemas: principal.nativeSchemas,
     producerTool: principal.producerTool,
   };

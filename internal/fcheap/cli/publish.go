@@ -29,8 +29,8 @@ var publishCmd = &cobra.Command{
 	Short: "Publish one bounded file to the private artifact service",
 	Long: `Publish one regular file through the private file.cheap artifact service.
 
-	The command hashes an in-memory bounded copy, requests a direct upload grant,
-uploads the exact bytes, and commits a server-verified ArtifactRefV1. It never
+	The command streams the file once to hash it, requests a direct upload grant,
+streams the exact same bytes, and commits a server-verified ArtifactRefV1. It never
 saves, deletes, or changes the local input. It accepts only FILECHEAP_INGEST_TOKEN
 for non-Vercel callers; the kind, producer tool, and native schema must match
 that credential's server-side policy. Vercel, Blob, and database credentials

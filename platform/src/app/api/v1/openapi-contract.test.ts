@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 
 import document from "../../../../openapi.json";
 import { artifactListQuerySchema, artifactPlanInputSchema, artifactPlanReplayResponseSchema, artifactPlanResponseSchema, artifactSummarySchema } from "@/features/artifacts/contracts";
+import { defaultProducerMaxSizeBytes, maximumArtifactBytes } from "@/shared/config/limits";
 
 const routes = {
   "/api/v1/health": "src/app/api/v1/health/route.ts",
@@ -20,6 +21,7 @@ const routes = {
 
 const artifactRef = { $schema: "urn:filecheap.dev:artifact-ref:v1", artifact_id: "art_abcdefghijklmnop", kind: "chalupa.log-chunk", producer: { native_schema: "urn:chalupa.dev:log:v1", tool: "chalupa" }, provider: "fcheap-cloud", uri: "fcheap://cloud/vaults/private/artifacts/art_abcdefghijklmnop", version: 1 };
 const artifact = { artifactId: "art_abcdefghijklmnop", committedAt: "2026-07-24T00:00:00.000Z", contentType: "application/zstd", expiresAt: null, kind: "chalupa.log-chunk", producer: artifactRef.producer, sha256: "a".repeat(64), sizeBytes: 1024, state: "committed", verification: "server-sha256" as const };
+const planCeilingBase = { contentType: "application/zstd", idempotencyKey: "123e4567-e89b-42d3-a456-426614174098", kind: "chalupa.log-chunk", producer: artifactRef.producer, sha256: artifact.sha256 };
 
 describe("private artifact OpenAPI contract", () => {
   test("documents exactly the implemented route set and methods", async () => {
@@ -46,7 +48,15 @@ describe("private artifact OpenAPI contract", () => {
   test("documents strict idempotency, bounded bytes, verified states, RFC9457, and retry metadata", () => {
     const schemas = document.components.schemas;
     expect(schemas.ArtifactPlanInput.properties.idempotencyKey.format).toBe("uuid");
-    expect(schemas.ArtifactPlanInput.properties.sizeBytes.maximum).toBe(2 * 1024 * 1024);
+    expect(maximumArtifactBytes).toBe(64 * 1024 * 1024);
+    expect(defaultProducerMaxSizeBytes).toBeLessThan(maximumArtifactBytes);
+    expect(schemas.ArtifactPlanInput.properties.sizeBytes.maximum).toBe(maximumArtifactBytes);
+    expect(schemas.Artifact.properties.sizeBytes.maximum).toBe(maximumArtifactBytes);
+    expect(artifactPlanInputSchema.safeParse({ ...planCeilingBase, sizeBytes: maximumArtifactBytes }).success).toBe(true);
+    expect(artifactPlanInputSchema.safeParse({ ...planCeilingBase, sizeBytes: maximumArtifactBytes + 1 }).success).toBe(false);
+    expect(document.paths["/api/v1/artifacts/plans"].post.responses["413"].$ref).toBe("#/components/responses/PayloadTooLarge");
+    expect(document.paths["/api/v1/artifacts/commits"].post.responses["413"].$ref).toBe("#/components/responses/PayloadTooLarge");
+    expect(document.components.responses.PayloadTooLarge.description).toContain("maxSizeBytes quota");
     expect(schemas.Artifact.properties.verification.const).toBe("server-sha256");
     expect(schemas.Artifact.properties.state.enum).toEqual(["planned", "committed", "deleting", "deleted"]);
     expect(schemas.Problem.required).toContain("requestId");

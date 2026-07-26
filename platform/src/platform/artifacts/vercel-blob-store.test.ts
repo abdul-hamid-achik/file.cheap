@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { expect, test } from "bun:test";
 
 import { VercelPrivateBlobArtifactStore, type ArtifactBlobSdk } from "@/platform/artifacts/vercel-blob-store";
@@ -94,20 +96,70 @@ test("Vercel private Blob rejects host, query, or delegation drift", async () =>
   }
 });
 
-test("Vercel private Blob verification cancels an object that exceeds the hard read bound", async () => {
+const verifiedKey = "v1/private/artifacts/art_abcdefghijklmnop/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+test("Vercel private Blob verification cancels an object that exceeds the caller's read bound", async () => {
   let canceled = false;
   const stream = new ReadableStream<Uint8Array>({
     cancel() { canceled = true; },
   });
   const blob = {
     get: async () => ({
-      blob: { size: 2 * 1024 * 1024 + 1 },
+      blob: { size: 4 * 1024 * 1024 + 1 },
       statusCode: 200,
       stream,
     }),
   } as unknown as ArtifactBlobSdk;
   const store = new VercelPrivateBlobArtifactStore(config, blob);
 
-  await expect(store.readBytes("v1/private/artifacts/art_abcdefghijklmnop/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")).rejects.toThrow("exceeds the verification limit");
+  await expect(store.verifySha256(verifiedKey, "a".repeat(64), 4 * 1024 * 1024)).rejects.toThrow("exceeds the verification limit");
+  expect(canceled).toBe(true);
+});
+
+test("Vercel private Blob verification digests a multi-chunk stream at constant memory", async () => {
+  const chunkCount = 96;
+  const chunk = new Uint8Array(1024).fill(7);
+  const expected = createHash("sha256");
+  for (let index = 0; index < chunkCount; index += 1) expected.update(chunk);
+  const totalBytes = chunkCount * chunk.byteLength;
+
+  const newStream = () => {
+    let emitted = 0;
+    return new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (emitted === chunkCount) {
+          controller.close();
+          return;
+        }
+        emitted += 1;
+        controller.enqueue(chunk);
+      },
+    });
+  };
+  const blobFor = (stream: ReadableStream<Uint8Array>) => ({
+    get: async () => ({ blob: { size: totalBytes }, statusCode: 200, stream }),
+  }) as unknown as ArtifactBlobSdk;
+
+  const matching = new VercelPrivateBlobArtifactStore(config, blobFor(newStream()));
+  expect(await matching.verifySha256(verifiedKey, expected.digest("hex"), totalBytes)).toBe(true);
+
+  const mismatched = new VercelPrivateBlobArtifactStore(config, blobFor(newStream()));
+  expect(await mismatched.verifySha256(verifiedKey, "b".repeat(64), totalBytes)).toBe(false);
+});
+
+test("Vercel private Blob verification cancels a stream that grows past the plan", async () => {
+  let canceled = false;
+  const chunk = new Uint8Array(1024);
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) { controller.enqueue(chunk); },
+    cancel() { canceled = true; },
+  });
+  const blob = {
+    // A HEAD-consistent size that the body then exceeds must still be bounded.
+    get: async () => ({ blob: { size: 2048 }, statusCode: 200, stream }),
+  } as unknown as ArtifactBlobSdk;
+  const store = new VercelPrivateBlobArtifactStore(config, blob);
+
+  await expect(store.verifySha256(verifiedKey, "a".repeat(64), 2048)).rejects.toThrow("exceeds the verification limit");
   expect(canceled).toBe(true);
 });

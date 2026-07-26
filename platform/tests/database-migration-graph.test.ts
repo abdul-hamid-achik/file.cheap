@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 
+import { maximumArtifactBytes } from "@/shared/config/limits";
+
 type MigrationJournal = {
   entries: Array<{ idx: number; tag: string }>;
 };
@@ -9,7 +11,7 @@ type MigrationSnapshot = {
   tables: Record<
     string,
     {
-      checkConstraints: Record<string, { name: string }>;
+      checkConstraints: Record<string, { name: string; value: string }>;
     }
   >;
 };
@@ -74,5 +76,17 @@ describe("database migration graph", () => {
       "artifact_objects_ordinal_check",
       "artifact_objects_size_check",
     ]);
+
+    // The Postgres ceiling is a literal in schema.ts because drizzle-kit reads
+    // that file outside the Next.js path aliases. Assert it here so the SQL and
+    // the runtime contract cannot drift apart.
+    for (const [table, constraint] of [
+      ["public.artifacts", "artifacts_size_check"],
+      ["public.artifact_objects", "artifact_objects_size_check"],
+    ] as const) {
+      expect(
+        snapshot.tables[table]?.checkConstraints?.[constraint]?.value,
+      ).toContain(`<= ${maximumArtifactBytes}`);
+    }
   });
 });

@@ -9,6 +9,7 @@ import { InMemoryArtifactRepository } from "@/features/artifacts/repository";
 import { InMemoryArtifactObjectStore } from "@/platform/artifacts/in-memory-object-store";
 import { setArtifactServiceForTests } from "@/features/artifacts/factory";
 import { resetConfigForTests } from "@/shared/config/env";
+import { defaultProducerMaxSizeBytes, maximumArtifactBytes } from "@/shared/config/limits";
 
 const original = { ...process.env };
 const ingest = "i".repeat(43);
@@ -31,6 +32,7 @@ describe("private artifact routes", () => {
     process.env.FILECHEAP_PUBLISHER_TOKENS = JSON.stringify({
       cairntrace: {
         kinds: ["cairntrace.run"],
+        maxSizeBytes: 32 * 1024 * 1024,
         nativeSchemas: ["urn:cairntrace.dev:run:v1"],
         tokens: [cairntraceIngest],
       },
@@ -54,6 +56,13 @@ describe("private artifact routes", () => {
     expect(wrongProducer.status).toBe(401);
     const wrongKind = await plan(new Request("https://file.cheap/api/v1/artifacts/plans", { method: "POST", headers: { authorization: `Bearer ${ingest}`, "content-type": "application/json" }, body: JSON.stringify({ ...planInput, kind: "chalupa.report" }) }));
     expect(wrongKind.status).toBe(401);
+    const overQuota = await plan(new Request("https://file.cheap/api/v1/artifacts/plans", { method: "POST", headers: { authorization: `Bearer ${ingest}`, "content-type": "application/json" }, body: JSON.stringify({ ...planInput, sizeBytes: defaultProducerMaxSizeBytes + 1 }) }));
+    expect(overQuota.status).toBe(413);
+    const overQuotaBody = await overQuota.json();
+    expect(overQuotaBody.code).toBe("producer_quota_exceeded");
+    expect(overQuotaBody.detail).toContain(`producer 'chalupa' allows up to ${defaultProducerMaxSizeBytes} bytes`);
+    const overCeiling = await plan(new Request("https://file.cheap/api/v1/artifacts/plans", { method: "POST", headers: { authorization: `Bearer ${cairntraceIngest}`, "content-type": "application/json" }, body: JSON.stringify({ ...planInput, kind: "cairntrace.run", producer: { native_schema: "urn:cairntrace.dev:run:v1", tool: "cairntrace" }, sizeBytes: maximumArtifactBytes + 1 }) }));
+    expect(overCeiling.status).toBe(422);
     const response = await plan(new Request("https://file.cheap/api/v1/artifacts/plans", { method: "POST", headers: { authorization: `Bearer ${ingest}`, "content-type": "application/json" }, body: JSON.stringify(planInput) }));
     expect(response.status).toBe(201);
     const planned = await response.json() as { receipt: string; upload: { url: string } };
