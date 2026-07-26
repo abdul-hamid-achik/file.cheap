@@ -173,6 +173,12 @@ belong in the private inventory. Runtime uses `DATABASE_URL`; protected GitHub
 Actions migration jobs use `MIGRATIONS_DATABASE_URL`, which must never be placed
 in Vercel.
 
+For the current low-traffic Launch baseline, keep both the project defaults and
+the production endpoint at 0.25–1 CU with a 300-second autosuspend. Setting only
+the existing endpoint is insufficient because a future branch or replacement
+compute can inherit the project defaults. Increase those limits only from
+observed latency, queueing, or compute-utilization evidence.
+
 ## 1. Local release gates
 
 From the repository root:

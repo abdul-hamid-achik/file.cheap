@@ -18,7 +18,7 @@ function receivedEvent(overrides: Record<string, unknown> = {}) {
     data: {
       email_id: "received-email-1",
       from: "Sender <sender@example.test>",
-      received_for: ["hello@file.cheap"],
+      to: ["hello@file.cheap"],
       ...overrides,
     },
   };
@@ -186,7 +186,7 @@ describe("inbound email policy", () => {
     });
     const replay = new InMemoryInboundReplayRepository();
     await expect(processInboundEmail(
-      receivedEvent({ received_for: ["other@file.cheap"] }),
+      receivedEvent({ to: ["other@file.cheap"] }),
       input(failIfCalled, replay),
     )).resolves.toEqual({ action: "ignored", reason: "recipient" });
     await expect(processInboundEmail(
@@ -198,13 +198,64 @@ describe("inbound email policy", () => {
 
   test("ignores unrelated team-global events before reading forwarding configuration", async () => {
     await expect(processInboundEmail(
-      receivedEvent({ received_for: ["other@file.cheap"] }),
+      receivedEvent({ to: ["other@file.cheap"] }),
       {
         client: client(),
         forwardTo: "not-an-email",
         replay: new InMemoryInboundReplayRepository(),
         svixId: "msg_unrelated",
       },
+    )).resolves.toEqual({ action: "ignored", reason: "recipient" });
+  });
+
+  test("rejects conflicting optional envelope recipients before provider access", async () => {
+    let calls = 0;
+    await expect(processInboundEmail(
+      receivedEvent({ received_for: ["other@file.cheap"] }),
+      input(client({
+        getMetadata: async () => {
+          calls += 1;
+          throw new Error("must not fetch");
+        },
+      })),
+    )).resolves.toEqual({ action: "ignored", reason: "recipient" });
+    expect(calls).toBe(0);
+  });
+
+  test("rejects mixed signed recipients and missing canonical recipients", async () => {
+    let calls = 0;
+    const guardedClient = client({
+      getMetadata: async () => {
+        calls += 1;
+        throw new Error("must not fetch");
+      },
+    });
+    await expect(processInboundEmail(
+      receivedEvent({ to: ["hello@file.cheap", "other@file.cheap"] }),
+      input(guardedClient),
+    )).resolves.toEqual({ action: "ignored", reason: "recipient" });
+    await expect(processInboundEmail(
+      receivedEvent({ to: undefined }),
+      input(guardedClient),
+    )).rejects.toMatchObject({ code: "invalid_inbound_email_event" });
+    expect(calls).toBe(0);
+  });
+
+  test("rejects conflicting authenticated recipient metadata", async () => {
+    await expect(processInboundEmail(
+      receivedEvent(),
+      input(client({
+        getMetadata: async (id) => ({
+          attachmentsPresent: false,
+          from: "sender@example.test",
+          id,
+          receivedFor: ["other@file.cheap"],
+          replyTo: [],
+          subject: "Fixture",
+          text: "Fixture body",
+          to: ["hello@file.cheap"],
+        }),
+      })),
     )).resolves.toEqual({ action: "ignored", reason: "recipient" });
   });
 

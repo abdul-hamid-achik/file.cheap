@@ -17,7 +17,6 @@ function metadata(overrides: Record<string, unknown> = {}) {
     id: "received-email-1",
     message_id: "<fixture@example.test>",
     object: "email",
-    received_for: ["hello@file.cheap"],
     reply_to: ["reply@example.test"],
     subject: "Fixture",
     text: "hello",
@@ -35,6 +34,7 @@ describe("Resend receiving client", () => {
     });
     await expect(client.getMetadata("received-email-1")).resolves.toMatchObject({
       id: "received-email-1",
+      receivedFor: ["hello@file.cheap"],
       replyTo: ["reply@example.test"],
     });
     expect(request).toMatchObject({ redirect: "error" });

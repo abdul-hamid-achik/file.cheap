@@ -42,7 +42,7 @@ function dependencies(
       data: {
         email_id: "received-email-1",
         from: "sender@example.test",
-        received_for: ["hello@file.cheap"],
+        to: ["hello@file.cheap"],
       },
     }),
     webhookSecret: `whsec_${"b".repeat(40)}`,
@@ -76,7 +76,7 @@ describe("Resend webhook route", () => {
             data: {
               email_id: "received-email-1",
               from: "sender@example.test",
-              received_for: ["hello@file.cheap"],
+              to: ["hello@file.cheap"],
             },
           };
         },
@@ -94,7 +94,7 @@ describe("Resend webhook route", () => {
       data: {
         email_id: "received-email-1",
         from: "sender@example.test",
-        received_for: ["hello@file.cheap"],
+        to: ["hello@file.cheap"],
       },
     });
     const id = "msg_fixture_real_signature";
@@ -195,7 +195,7 @@ describe("Resend webhook route", () => {
         data: {
           email_id: "received-email-1",
           from: "sender@example.test",
-          received_for: ["hello@file.cheap"],
+          to: ["hello@file.cheap"],
         },
       }),
     }));

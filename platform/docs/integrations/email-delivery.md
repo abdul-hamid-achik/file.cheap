@@ -6,10 +6,12 @@ separate from the local-first CLI and MCP server; saving, searching, and
 restoring stashes never requires email or a network connection.
 
 `POST /api/webhooks/resend` is a private provider callback exception outside
-the public `/api/v1` API. Signed `email.received` events are filtered to the
-exact `hello@file.cheap` recipient before file.cheap records replay state or
-fetches message metadata. The route uses a fixed sender, preserves a validated
-original Reply-To, and blocks loops.
+the public `/api/v1` API. Signed `email.received` events must contain only
+`hello@file.cheap` in `data.to`; optional envelope-recipient metadata is
+cross-checked when present. Only after that signed-event filter does file.cheap
+claim a replay lease and fetch authenticated Receiving API metadata; it
+revalidates the exact recipient there before forwarding content. The route
+uses a fixed sender, preserves a validated original Reply-To, and blocks loops.
 
 Mail content is untrusted input. file.cheap does not log or store message
 content, private destinations, or provider IDs. It retains only 90-day,

@@ -9,6 +9,15 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+## [0.32.1] - 2026-07-25
+
+### Fixed
+
+- Accepted Resend's documented `email.received` payload, which routes by
+  `data.to` without guaranteeing `received_for`, while retaining exact
+  recipient checks at both the signed webhook and authenticated Receiving API
+  boundaries.
+
 ## [0.32.0] - 2026-07-25
 
 ### Added
@@ -443,7 +452,8 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.32.0...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.32.1...HEAD
+[0.32.1]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.32.0...v0.32.1
 [0.32.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.31.1...v0.32.0
 [0.31.1]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.30.2...v0.31.0

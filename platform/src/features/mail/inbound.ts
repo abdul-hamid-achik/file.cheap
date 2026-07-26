@@ -22,7 +22,8 @@ const receivedEventSchema = z.object({
   data: z.object({
     email_id: z.string().min(1).max(MAX_EMAIL_ID_LENGTH).regex(/^[A-Za-z0-9_-]+$/u),
     from: z.string().min(3).max(512),
-    received_for: z.array(z.string().min(3).max(320)).min(1).max(64),
+    received_for: z.array(z.string().min(3).max(320)).min(1).max(64).optional(),
+    to: z.array(z.string().min(3).max(320)).max(64),
   }),
   type: z.literal("email.received"),
 });
@@ -122,10 +123,15 @@ export async function processInboundEmail(
   const parsedEvent = receivedEventSchema.safeParse(event);
   if (!parsedEvent.success) throw invalidEvent();
 
-  const eventRecipients = parsedEvent.data.data.received_for.map(normalizeAddress);
+  const eventTo = parsedEvent.data.data.to.map(normalizeAddress);
+  const eventRecipients = (
+    parsedEvent.data.data.received_for ?? parsedEvent.data.data.to
+  ).map(normalizeAddress);
   if (
     eventRecipients.length !== 1 ||
-    eventRecipients[0] !== FILECHEAP_INBOUND_EMAIL
+    eventRecipients[0] !== FILECHEAP_INBOUND_EMAIL ||
+    eventTo.length !== 1 ||
+    eventTo[0] !== FILECHEAP_INBOUND_EMAIL
   ) {
     return { action: "ignored", reason: "recipient" };
   }
