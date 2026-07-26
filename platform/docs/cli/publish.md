@@ -22,6 +22,8 @@ fcheap publish ./run.tar.gz \
   --kind cairntrace.run \
   --producer-tool cairntrace \
   --native-schema urn:cairntrace.dev:run:v1 \
+  --native-id run-123 \
+  --run-index ./run-index.json \
   --json
 ```
 
@@ -32,6 +34,14 @@ producer's server-side policy; a token for Cairntrace cannot publish a Glyphrun
 or Chalupa artifact. The command rejects a Vercel runtime or OIDC credential
 environment. Vercel-to-Vercel producers use OIDC directly with the service
 rather than invoking this local command.
+
+For a Cairntrace or Glyphrun archive, `--run-index` can attach an explicit
+metadata-only `RunIndexV1` sidecar. The CLI accepts only a small regular JSON
+file with the exact top-level contract and verifies that its detector and
+native run ID match the producer flags. It never opens or extracts the archive
+to infer metadata. The platform performs the complete strict validation and
+binds the sidecar digest to the immutable upload plan. See
+[Run indexes](/integrations/run-index) for the safe field boundary.
 
 Load the token from TinyVault into only the publisher process. Do not put it in
 the command line, logs, artifact metadata, a receipt, or a child process. Token

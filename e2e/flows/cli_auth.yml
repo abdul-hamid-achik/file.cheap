@@ -1,0 +1,77 @@
+version: 1
+name: cli_auth
+
+metadata:
+  feature: cli
+  owner: platform
+  priority: high
+  tags:
+    - smoke
+    - security
+
+intent: |
+  Verify that console authentication fails closed before network access, does
+  not require a local vault configuration, and never creates a credential for
+  an invalid or non-interactive login attempt.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - |
+      export XDG_CONFIG_HOME=/tmp/fcheap-e2e-auth-config
+      rm -rf /tmp/fcheap-e2e-auth-config
+      if ./bin/fcheap auth status 2>&1; then
+        exit 1
+      fi
+      echo "Missing session rejected"
+      if ./bin/fcheap auth login --json --service-url https://file.cheap 2>&1; then
+        exit 1
+      fi
+      echo "Non-interactive secret output rejected"
+      if ./bin/fcheap auth login --service-url http://example.com 2>&1; then
+        exit 1
+      fi
+      echo "Insecure remote origin rejected"
+      test ! -e /tmp/fcheap-e2e-auth-config/fcheap/credentials.json
+  cwd: "."
+  timeoutMs: 30000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "CGO_ENABLED=0 go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: every negative auth case is rejected and the harness exits cleanly
+    verify:
+      process:
+        exitCode: 0
+  - id: missing_session
+    description: auth status does not invent a local session
+    verify:
+      screen:
+        contains: "Missing session rejected"
+  - id: no_secret_json
+    description: interactive login refuses JSON and quiet modes that cannot safely display pairing state
+    verify:
+      screen:
+        contains: "Non-interactive secret output rejected"
+  - id: https_only
+    description: a remote HTTP origin is rejected before sending a request
+    verify:
+      screen:
+        contains: "Insecure remote origin rejected"

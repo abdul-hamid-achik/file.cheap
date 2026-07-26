@@ -34,6 +34,10 @@ const PAGE_META: Record<string, PageMeta> = {
     title: 'fcheap artifact-ref — local stash references',
     description: 'Emit a versioned fcheap-local reference so agent tools can share metadata for an existing stash without copying its bytes.',
   },
+  'cli/auth.md': {
+    title: 'fcheap auth — private console login',
+    description: 'Authorize a local CLI through an owner-email device flow without placing a reusable token in command arguments or output.',
+  },
   'cli/publish.md': {
     title: 'fcheap publish — private artifact publication',
     description: 'Publish one bounded local file through the private artifact service without exposing transfer credentials.',
@@ -167,6 +171,10 @@ const PAGE_META: Record<string, PageMeta> = {
   'integrations/local-artifact-references.md': {
     title: 'Local artifact references for agent tools',
     description: 'Connect Chalupa, Cairntrace, and Glyphrun with versioned local stash references while file.cheap keeps ownership of bytes and restore.',
+  },
+  'integrations/run-index.md': {
+    title: 'Metadata-only run indexes',
+    description: 'Index Cairntrace and Glyphrun execution metadata for the private console without opening archives or exposing evidence bytes.',
   },
   'integrations/email-delivery.md': {
     title: 'Email delivery and inbound forwarding',
@@ -375,6 +383,7 @@ const sidebar = {
         { text: 'save', link: '/cli/save' },
           { text: 'artifact-ref', link: '/cli/artifact-ref' },
           { text: 'publish', link: '/cli/publish' },
+          { text: 'auth', link: '/cli/auth' },
         { text: 'list', link: '/cli/list' },
         { text: 'info', link: '/cli/info' },
         { text: 'restore', link: '/cli/restore' },
@@ -432,6 +441,7 @@ const sidebar = {
       text: 'Agent integrations',
       items: [
         { text: 'Share local artifact references', link: '/integrations/local-artifact-references' },
+        { text: 'Metadata-only run indexes', link: '/integrations/run-index' },
         { text: 'Connect MCP clients', link: '/integrations/mcp-clients' },
         { text: 'Email delivery', link: '/integrations/email-delivery' },
         { text: 'Agent operating guide', link: '/guide/agent-guide' },

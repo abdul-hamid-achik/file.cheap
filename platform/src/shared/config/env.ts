@@ -11,6 +11,7 @@ const environmentSchema = z.object({
   FILECHEAP_OIDC_AUDIENCE: z.string().url().optional(),
   FILECHEAP_OIDC_ISSUER: z.string().url().optional(),
   FILECHEAP_OIDC_SUBJECTS: z.string().min(1).optional(),
+  FILECHEAP_OWNER_ACCOUNT_ID: z.string().regex(/^acc_[A-Za-z0-9_-]{8,64}$/u),
   FILECHEAP_PUBLISHER_TOKENS: z.string().min(1).max(8_192).optional(),
   CRON_SECRET: z.string().min(32).max(256).optional(),
   PLATFORM_PUBLIC_URL: z.url().default("http://127.0.0.1:3100"),
@@ -36,6 +37,7 @@ export type PlatformConfig = {
   cronSecret: string;
   databaseUrl: string;
   oidc?: { audience: string; issuer: string; subjects: string[] };
+  ownerAccountId: string;
   publisherTokens: readonly PublisherTokenSet[];
   publicUrl: string;
 };
@@ -59,6 +61,7 @@ export function getConfig(): PlatformConfig {
   const missing = [
     ["DATABASE_URL", parsed.DATABASE_URL],
     ["FILECHEAP_ADMIN_TOKEN", parsed.FILECHEAP_ADMIN_TOKEN],
+    ["FILECHEAP_OWNER_ACCOUNT_ID", parsed.FILECHEAP_OWNER_ACCOUNT_ID],
     ["CRON_SECRET", parsed.CRON_SECRET],
   ].filter(([, value]) => !value).map(([name]) => name);
   const oidcConfigured = Boolean(parsed.FILECHEAP_OIDC_AUDIENCE || parsed.FILECHEAP_OIDC_ISSUER || parsed.FILECHEAP_OIDC_SUBJECTS);
@@ -123,6 +126,7 @@ export function getConfig(): PlatformConfig {
     cronSecret: parsed.CRON_SECRET!,
     databaseUrl: getDatabaseUrl(),
     oidc: oidcConfigured ? { audience: parsed.FILECHEAP_OIDC_AUDIENCE!, issuer: parsed.FILECHEAP_OIDC_ISSUER!, subjects: oidcSubjects } : undefined,
+    ownerAccountId: parsed.FILECHEAP_OWNER_ACCOUNT_ID,
     publisherTokens,
     publicUrl,
   };

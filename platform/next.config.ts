@@ -70,6 +70,10 @@ const nextConfig: NextConfig = {
         source: "/_docs/:path*",
       },
       {
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+        source: "/console/:path*",
+      },
+      {
         headers: [
           {
             key: "Cache-Control",

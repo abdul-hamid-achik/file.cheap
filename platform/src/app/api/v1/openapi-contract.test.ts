@@ -51,6 +51,10 @@ describe("private artifact OpenAPI contract", () => {
     expect(maximumArtifactBytes).toBe(64 * 1024 * 1024);
     expect(defaultProducerMaxSizeBytes).toBeLessThan(maximumArtifactBytes);
     expect(schemas.ArtifactPlanInput.properties.sizeBytes.maximum).toBe(maximumArtifactBytes);
+    expect(schemas.ArtifactPlanInput.properties.runIndex.$ref).toBe("#/components/schemas/RunIndexV1");
+    expect(schemas.RunIndexV1.properties.evidence.maxItems).toBe(200);
+    expect(schemas.RunIndexV1.properties.outcomes.maxItems).toBe(100);
+    expect(schemas.RunIndexV1.properties.evidence.items.properties.inspectability.const).toBe("metadata-only");
     expect(schemas.Artifact.properties.sizeBytes.maximum).toBe(maximumArtifactBytes);
     expect(artifactPlanInputSchema.safeParse({ ...planCeilingBase, sizeBytes: maximumArtifactBytes }).success).toBe(true);
     expect(artifactPlanInputSchema.safeParse({ ...planCeilingBase, sizeBytes: maximumArtifactBytes + 1 }).success).toBe(false);

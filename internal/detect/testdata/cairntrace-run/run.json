@@ -1,0 +1,24 @@
+{
+  "$schema": "urn:cairntrace.dev:run:v1",
+  "version": "1",
+  "runId": "2026-07-01T12-00-00Z_checkout_alpha",
+  "spec": {
+    "name": "checkout_alpha",
+    "path": "/synthetic/specs/checkout.yml",
+    "contractHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "status": "failed",
+  "startedAt": "2026-07-01T12:00:00Z",
+  "endedAt": "2026-07-01T12:00:02Z",
+  "durationMs": 2000,
+  "environment": "test",
+  "backend": "agent-browser",
+  "exitCode": 1,
+  "summary": "DO_NOT_INDEX_SUMMARY_PAYLOAD",
+  "failure": {
+    "message": "DO_NOT_INDEX_FAILURE_DETAIL"
+  },
+  "steps": [{"name": "DO_NOT_INDEX_STEP_DETAIL"}],
+  "outcomes": [{"id": "synthetic-outcome", "evidence": "DO_NOT_INDEX_OUTCOME_EVIDENCE"}],
+  "artifacts": {"manifest": "artifact-manifest.json"}
+}

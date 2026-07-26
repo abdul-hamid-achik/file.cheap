@@ -33,7 +33,7 @@ describe("platform security headers", () => {
     expect(nextConfig.headers).toBeFunction();
     const rules = await nextConfig.headers!();
 
-    expect(rules).toHaveLength(3);
+    expect(rules).toHaveLength(4);
     expect(rules[0]).toEqual({
       headers: [...platformSecurityHeaders],
       source: "/:path*",
@@ -43,6 +43,10 @@ describe("platform security headers", () => {
       source: "/_docs/:path*",
     });
     expect(rules[2]).toEqual({
+      headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      source: "/console/:path*",
+    });
+    expect(rules[3]).toEqual({
       headers: [
         {
           key: "Cache-Control",

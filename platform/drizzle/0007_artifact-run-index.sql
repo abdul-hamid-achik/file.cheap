@@ -1,0 +1,52 @@
+CREATE TABLE "artifact_runs" (
+	"artifact_id" text PRIMARY KEY NOT NULL,
+	"owner_account_id" text NOT NULL,
+	"schema_version" integer NOT NULL,
+	"run_index_sha256" text NOT NULL,
+	"source_sha256" text NOT NULL,
+	"detector_name" text NOT NULL,
+	"detector_version" text NOT NULL,
+	"producer_tool" text NOT NULL,
+	"native_schema" text NOT NULL,
+	"native_run_id" text NOT NULL,
+	"series_key" text NOT NULL,
+	"spec_name" text,
+	"status" text NOT NULL,
+	"health" text NOT NULL,
+	"started_at" timestamp with time zone,
+	"ended_at" timestamp with time zone,
+	"duration_ms" integer,
+	"environment" text,
+	"backend" text,
+	"exit_code" integer,
+	"error_kind" text,
+	"step_count" integer NOT NULL,
+	"outcome_count" integer NOT NULL,
+	"artifact_count" integer NOT NULL,
+	"health_declared" integer NOT NULL,
+	"health_present" integer NOT NULL,
+	"health_empty" integer NOT NULL,
+	"health_missing" integer NOT NULL,
+	"health_changed" integer NOT NULL,
+	"health_reasons" jsonb NOT NULL,
+	"outcomes" jsonb NOT NULL,
+	"evidence" jsonb NOT NULL,
+	"created_at" timestamp with time zone NOT NULL,
+	"updated_at" timestamp with time zone NOT NULL,
+	CONSTRAINT "artifact_runs_schema_version_check" CHECK ("artifact_runs"."schema_version" = 1),
+	CONSTRAINT "artifact_runs_index_digest_check" CHECK ("artifact_runs"."run_index_sha256" ~ '^[a-f0-9]{64}$'),
+	CONSTRAINT "artifact_runs_source_digest_check" CHECK ("artifact_runs"."source_sha256" ~ '^[a-f0-9]{64}$'),
+	CONSTRAINT "artifact_runs_detector_check" CHECK ("artifact_runs"."detector_name" in ('cairntrace-run', 'glyphrun-run')),
+	CONSTRAINT "artifact_runs_status_check" CHECK ("artifact_runs"."status" in ('queued', 'running', 'passed', 'failed', 'errored', 'cancelled', 'incomplete', 'unknown')),
+	CONSTRAINT "artifact_runs_health_check" CHECK ("artifact_runs"."health" in ('ok', 'degraded', 'incomplete', 'unknown')),
+	CONSTRAINT "artifact_runs_duration_check" CHECK ("artifact_runs"."duration_ms" is null or "artifact_runs"."duration_ms" >= 0),
+	CONSTRAINT "artifact_runs_time_check" CHECK ("artifact_runs"."started_at" is null or "artifact_runs"."ended_at" is null or "artifact_runs"."ended_at" >= "artifact_runs"."started_at"),
+	CONSTRAINT "artifact_runs_counts_check" CHECK ("artifact_runs"."step_count" >= 0 and "artifact_runs"."outcome_count" >= 0 and "artifact_runs"."artifact_count" >= 0),
+	CONSTRAINT "artifact_runs_health_counts_check" CHECK ("artifact_runs"."health_declared" >= 0 and "artifact_runs"."health_present" >= 0 and "artifact_runs"."health_empty" >= 0 and "artifact_runs"."health_missing" >= 0 and "artifact_runs"."health_changed" >= 0)
+);
+--> statement-breakpoint
+ALTER TABLE "artifact_runs" ADD CONSTRAINT "artifact_runs_artifact_id_artifacts_artifact_id_fk" FOREIGN KEY ("artifact_id") REFERENCES "public"."artifacts"("artifact_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "artifact_runs_owner_started_index" ON "artifact_runs" USING btree ("owner_account_id","started_at","artifact_id");--> statement-breakpoint
+CREATE INDEX "artifact_runs_owner_producer_status_index" ON "artifact_runs" USING btree ("owner_account_id","producer_tool","status");--> statement-breakpoint
+CREATE INDEX "artifact_runs_owner_health_index" ON "artifact_runs" USING btree ("owner_account_id","health");--> statement-breakpoint
+CREATE INDEX "artifact_runs_owner_series_index" ON "artifact_runs" USING btree ("owner_account_id","series_key","started_at","artifact_id");

@@ -1,0 +1,4 @@
+[
+  {"relativePath": "run.json", "kind": "json", "bytes": 100, "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
+  {"relativePath": "raw/pty.raw.log", "kind": "text", "bytes": 20, "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}
+]

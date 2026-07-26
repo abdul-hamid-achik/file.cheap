@@ -14,8 +14,10 @@ import (
 type BundleType string
 
 const (
-	TypeVidtrace BundleType = "vidtrace"
-	TypeGeneric  BundleType = "generic"
+	TypeCairntraceRun BundleType = "cairntrace-run"
+	TypeGlyphrunRun   BundleType = "glyphrun-run"
+	TypeVidtrace      BundleType = "vidtrace"
+	TypeGeneric       BundleType = "generic"
 
 	// maxSearchableTextBytes caps the synthesized SearchableText so detecting a
 	// large stash can't accumulate an unbounded string (OOM / O(n^2) churn).
@@ -88,6 +90,33 @@ type Result struct {
 	SearchableFiles []string       // paths to text-readable files
 	Units           []TextUnit     // structured indexable units (e.g. per-frame evidence)
 	Metadata        map[string]any // bundle-specific metadata
+	Run             *NativeRunMetadata
+}
+
+// NativeRunMetadata is the bounded, metadata-only projection exposed by the
+// Cairntrace and Glyphrun detectors. It never contains intent, summaries,
+// diagnostics, artifact paths, logs, terminal captures, or network payloads.
+type NativeRunMetadata struct {
+	Schema            string
+	RunID             string
+	SpecName          string
+	Status            string
+	StartedAt         string
+	EndedAt           string
+	Environment       string
+	Backend           string
+	ErrorKind         string
+	DurationMS        *int64
+	ExitCode          *int64
+	StepCount         int
+	OutcomeCount      int
+	ArtifactCount     int
+	ManifestAvailable bool
+	SchemaDrift       bool
+	PresentCount      int
+	EmptyCount        int
+	MissingCount      int
+	ChangedCount      int
 }
 
 // TextUnit is a structured, individually-searchable chunk of text that does not
@@ -110,6 +139,12 @@ type TimelineEntry struct {
 // BundleTypeOf cheaply classifies a directory by structure alone (no content
 // read), suitable for the save path where a full Detect would be wasteful.
 func BundleTypeOf(dir string) BundleType {
+	if regularFileExists(dir, "artifact-manifest.json") {
+		return TypeCairntraceRun
+	}
+	if regularFileExists(dir, "run.json") && regularFileExists(dir, "manifest.json") {
+		return TypeGlyphrunRun
+	}
 	if regularFileExists(dir, "metadata.json") && regularFileExists(dir, "timeline.json") {
 		return TypeVidtrace
 	}
@@ -176,6 +211,8 @@ type Detector interface {
 }
 
 var detectors = []Detector{
+	&cairntraceRunDetector{},
+	&glyphrunRunDetector{},
 	&vidtraceDetector{},
 	&genericDetector{},
 }

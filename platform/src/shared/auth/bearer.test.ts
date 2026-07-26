@@ -39,6 +39,7 @@ describe("private service bearer authentication", () => {
         },
       }),
       FILECHEAP_ADMIN_TOKEN: "a".repeat(32),
+      FILECHEAP_OWNER_ACCOUNT_ID: "acc_owner123",
       CRON_SECRET: "z".repeat(32),
     });
     delete process.env.VERCEL;
@@ -94,6 +95,7 @@ describe("private service bearer authentication", () => {
       VERCEL: "1",
       DATABASE_URL: "postgresql://runtime",
       FILECHEAP_ADMIN_TOKEN: "a".repeat(32),
+      FILECHEAP_OWNER_ACCOUNT_ID: "acc_owner123",
       CRON_SECRET: "c".repeat(32),
       FILECHEAP_PUBLISHER_TOKENS: JSON.stringify({
         chalupa: {

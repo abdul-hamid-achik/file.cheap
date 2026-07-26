@@ -5,7 +5,7 @@ import { expect, test } from "bun:test";
 import { VercelPrivateBlobArtifactStore, type ArtifactBlobSdk } from "@/platform/artifacts/vercel-blob-store";
 import type { PlatformConfig } from "@/shared/config/env";
 
-const config: PlatformConfig = { adminToken: "a".repeat(32), cronSecret: "c".repeat(32), databaseUrl: "postgresql://runtime", publisherTokens: [], publicUrl: "https://file.cheap" };
+const config: PlatformConfig = { adminToken: "a".repeat(32), cronSecret: "c".repeat(32), databaseUrl: "postgresql://runtime", ownerAccountId: "acc_owner123", publisherTokens: [], publicUrl: "https://file.cheap" };
 
 test("Vercel private Blob upload grants are exact, bounded, and non-overwrite", async () => {
   const calls: unknown[] = [];

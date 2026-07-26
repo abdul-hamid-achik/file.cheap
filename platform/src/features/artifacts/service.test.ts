@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import type { ArtifactPlanResponse, ArtifactPlanResult } from "@/features/artifacts/contracts";
+import { artifactPlanInputSchema } from "@/features/artifacts/contracts";
 import { ArtifactService } from "@/features/artifacts/service";
 import { InMemoryArtifactRepository } from "@/features/artifacts/repository";
 import { InMemoryArtifactObjectStore } from "@/platform/artifacts/in-memory-object-store";
@@ -9,6 +10,38 @@ const bytes = new TextEncoder().encode("artifact-test");
 const sha256 = createHash("sha256").update(bytes).digest("hex");
 
 describe("ArtifactService", () => {
+  test("binds a metadata-only run index to the immutable artifact plan", async () => {
+    const service = new ArtifactService(new InMemoryArtifactObjectStore(), new InMemoryArtifactRepository());
+    const input = artifactPlanInputSchema.parse({
+      contentType: "application/json",
+      idempotencyKey: "00000000-0000-4000-8000-000000000098",
+      kind: "glyphrun.evidence-pack",
+      producer: { native_id: "native-run-1", native_schema: "urn:glyphrun.dev:run:v1", tool: "glyphrun" },
+      runIndex: {
+        $schema: "urn:filecheap.dev:run-index:v1",
+        counts: { artifacts: 1, outcomes: 1, steps: 4 },
+        detector: { name: "glyphrun-run", version: "1" },
+        evidence: [{ inspectability: "metadata-only", integrity: "declared", medium: "structured-text", path: "run.json", presence: "present", role: "run-overview", sensitivity: "metadata-safe" }],
+        health: { changed: 0, declared: 1, empty: 0, missing: 0, present: 1, reasons: [], state: "ok" },
+        outcomes: [{ id: "clean-exit", status: "passed" }],
+        run: { nativeId: "native-run-1", seriesKey: "series_123456789", status: "passed" },
+        version: 1,
+      },
+      sha256,
+      sizeBytes: bytes.byteLength,
+    });
+    const first = requirePlanned(await service.plan(input, undefined, "acc_owner123"));
+    expect(first.artifact.state).toBe("planned");
+    await expect(service.plan({
+      ...input,
+      runIndex: { ...input.runIndex!, health: { ...input.runIndex!.health, state: "degraded" } },
+    }, undefined, "acc_owner123")).rejects.toMatchObject({ code: "idempotency_conflict" });
+    expect(() => artifactPlanInputSchema.parse({
+      ...input,
+      producer: { ...input.producer, native_id: "different-run" },
+    })).toThrow();
+  });
+
   test("plans, commits, downloads, and emits a credential-free ArtifactRefV1", async () => {
     const store = new InMemoryArtifactObjectStore();
     const service = new ArtifactService(store, new InMemoryArtifactRepository());

@@ -1,0 +1,20 @@
+{
+  "$schema": "urn:glyphrun.dev:run:v1",
+  "schemaVersion": 1,
+  "runId": "2026-07-03T12-00-00Z-project_open",
+  "specName": "project_open",
+  "specPath": "/synthetic/specs/project_open.yml",
+  "status": "errored",
+  "startedAt": "2026-07-03T12:00:00Z",
+  "endedAt": "2026-07-03T12:00:03Z",
+  "durationMs": 3000,
+  "exitCode": 3,
+  "errorKind": "timeout",
+  "diagnostic": {"message": "DO_NOT_INDEX_DIAGNOSTIC_PAYLOAD"},
+  "nextActions": ["DO_NOT_INDEX_NEXT_ACTION"],
+  "target": {"command": "DO_NOT_INDEX_TARGET_COMMAND"},
+  "terminal": {"profile": "xterm", "rows": 24, "cols": 80},
+  "steps": [{"action": "DO_NOT_INDEX_STEP_ACTION"}],
+  "outcomes": [],
+  "artifacts": {"failureDiagnostic": "diagnostics/failure.md"}
+}

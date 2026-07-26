@@ -22,6 +22,7 @@ var (
 	publishNativeSchema    string
 	publishNativeID        string
 	publishEntrypoint      string
+	publishRunIndexPath    string
 )
 
 var publishCmd = &cobra.Command{
@@ -61,11 +62,19 @@ are rejected.`,
 			NativeID:     publishNativeID,
 			Entrypoint:   publishEntrypoint,
 		}
+		var runIndex []byte
+		if publishRunIndexPath != "" {
+			runIndex, err = publish.LoadRunIndex(publishRunIndexPath)
+			if err != nil {
+				return err
+			}
+		}
 		receipt, err := publish.NewClient(nil).Publish(GetContext(), filePath, publish.Options{
 			ContentType: publishContentType,
 			ExpiresIn:   publishExpiresIn,
 			Kind:        kind,
 			Producer:    producer,
+			RunIndex:    runIndex,
 			ServiceURL:  serviceURL,
 			Token:       token,
 		})
@@ -95,6 +104,7 @@ func init() {
 	publishCmd.Flags().StringVar(&publishNativeSchema, "native-schema", "", "Absolute schema URI for the native artifact")
 	publishCmd.Flags().StringVar(&publishNativeID, "native-id", "", "Producer-native artifact ID")
 	publishCmd.Flags().StringVar(&publishEntrypoint, "entrypoint", "", "Safe relative descriptor path inside the artifact")
+	publishCmd.Flags().StringVar(&publishRunIndexPath, "run-index", "", "Metadata-only RunIndexV1 JSON sidecar for Cairntrace or Glyphrun")
 	publishCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		if strings.TrimSpace(os.Getenv("FILECHEAP_INGEST_TOKEN")) == "" {
 			return fmt.Errorf("FILECHEAP_INGEST_TOKEN is required for fcheap publish")

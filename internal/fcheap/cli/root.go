@@ -50,6 +50,10 @@ For agents and integrations:
   fcheap mcp serve
   fcheap docs show mcp/overview
 
+Pair with the private artifact console:
+  fcheap auth login
+  fcheap auth status
+
 Explore interactively:
   fcheap studio
   fcheap doctor`,
@@ -143,6 +147,7 @@ func init() {
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(docsCmd)
 	rootCmd.AddCommand(agentCmd)
+	rootCmd.AddCommand(authCmd)
 	rootCmd.AddCommand(completionCmd)
 	rootCmd.AddCommand(versionCmd)
 }
@@ -155,7 +160,7 @@ func commandNeedsConfig(cmd *cobra.Command) bool {
 		return true
 	}
 	switch cmd.Name() {
-	case "help", "version", "completion", "agent", "publish":
+	case "help", "version", "completion", "agent", "auth", "login", "status", "refresh", "logout", "publish":
 		return false
 	}
 	for current := cmd; current != nil; current = current.Parent() {

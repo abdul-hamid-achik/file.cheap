@@ -1,6 +1,7 @@
 package publish
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -248,7 +249,8 @@ func TestPublishStreamsLargeArtifactWithoutBuffering(t *testing.T) {
 	}
 	digest := sha256.Sum256(contents)
 	sha := hex.EncodeToString(digest[:])
-	producer := artifactref.Producer{Tool: "cairntrace", NativeSchema: "urn:cairntrace.dev:run:v1"}
+	producer := artifactref.Producer{Tool: "cairntrace", NativeSchema: "urn:cairntrace.dev:run:v1", NativeID: "run-123"}
+	runIndex := json.RawMessage(`{"$schema":"urn:filecheap.dev:run-index:v1","version":1,"detector":{"name":"cairntrace-run","version":"1"},"run":{"nativeId":"run-123","seriesKey":"series_key_123456","status":"passed"},"health":{"state":"ok","reasons":[],"declared":0,"present":0,"empty":0,"missing":0,"changed":0},"counts":{"steps":0,"outcomes":0,"artifacts":0},"outcomes":[],"evidence":[]}`)
 	ref, err := artifactref.NewCloud("private", "art_abcdefghijklmnop", "cairntrace.run", producer)
 	if err != nil {
 		t.Fatal(err)
@@ -264,7 +266,7 @@ func TestPublishStreamsLargeArtifactWithoutBuffering(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			if got.SizeBytes != int64(len(contents)) || got.SHA256 != sha {
+			if got.SizeBytes != int64(len(contents)) || got.SHA256 != sha || !bytes.Equal(got.RunIndex, runIndex) {
 				t.Errorf("plan did not bind the streamed bytes")
 			}
 			w.WriteHeader(http.StatusCreated)
@@ -294,7 +296,7 @@ func TestPublishStreamsLargeArtifactWithoutBuffering(t *testing.T) {
 	if err := os.WriteFile(path, contents, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := NewClient(server.Client()).Publish(context.Background(), path, Options{ContentType: "application/gzip", Kind: "cairntrace.run", Producer: producer, ServiceURL: server.URL, Token: testPublisherToken})
+	receipt, err := NewClient(server.Client()).Publish(context.Background(), path, Options{ContentType: "application/gzip", Kind: "cairntrace.run", Producer: producer, RunIndex: runIndex, ServiceURL: server.URL, Token: testPublisherToken})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,6 +305,18 @@ func TestPublishStreamsLargeArtifactWithoutBuffering(t *testing.T) {
 	}
 	if receipt.SizeBytes != int64(len(contents)) || receipt.SHA256 != sha {
 		t.Fatalf("unexpected receipt: %#v", receipt)
+	}
+}
+
+func TestLoadRunIndexRejectsUnknownTopLevelFields(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "run-index.json")
+	data := []byte(`{"$schema":"urn:filecheap.dev:run-index:v1","version":1,"detector":{},"run":{},"health":{},"counts":{},"outcomes":[],"evidence":[],"rawLog":"secret"}`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadRunIndex(path); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("expected a strict sidecar error, got %v", err)
 	}
 }
 

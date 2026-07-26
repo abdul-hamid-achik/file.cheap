@@ -1,0 +1,3 @@
+ALTER TABLE "artifacts" ALTER COLUMN "owner_account_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "artifact_runs" ADD CONSTRAINT "artifact_runs_owner_account_id_console_users_id_fk" FOREIGN KEY ("owner_account_id") REFERENCES "public"."console_users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "artifacts" ADD CONSTRAINT "artifacts_owner_account_id_console_users_id_fk" FOREIGN KEY ("owner_account_id") REFERENCES "public"."console_users"("id") ON DELETE restrict ON UPDATE no action;

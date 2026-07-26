@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "artifacts": [
+    {"path": "reports/run.json", "kind": "json", "bytes": 100, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+    {"path": "raw/private.log", "kind": "log", "bytes": 200, "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}
+  ]
+}

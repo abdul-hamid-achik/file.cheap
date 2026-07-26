@@ -10,6 +10,7 @@
   "scripts": {
     "audit:production": "bun audit --production",
     "db:check": "bunx drizzle-kit check",
+    "db:backfill-console-owner": "bun scripts/backfill-console-owner.ts",
     "db:generate": "bunx drizzle-kit generate",
     "db:migrate": "bunx drizzle-kit migrate",
     "dev": "bun run docs:stage && next dev --hostname 127.0.0.1 --port 3100",

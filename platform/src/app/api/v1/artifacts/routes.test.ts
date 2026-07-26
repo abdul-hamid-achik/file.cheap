@@ -43,6 +43,7 @@ describe("private artifact routes", () => {
       },
     });
     process.env.FILECHEAP_ADMIN_TOKEN = "a".repeat(32);
+    process.env.FILECHEAP_OWNER_ACCOUNT_ID = "acc_owner123";
     process.env.CRON_SECRET = "z".repeat(32);
     resetConfigForTests();
     const bytes = new TextEncoder().encode("route artifact");

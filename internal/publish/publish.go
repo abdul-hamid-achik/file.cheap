@@ -50,6 +50,7 @@ type Options struct {
 	ExpiresIn   time.Duration
 	Kind        string
 	Producer    artifactref.Producer
+	RunIndex    json.RawMessage
 	ServiceURL  string
 	Token       string
 }
@@ -128,6 +129,7 @@ type planRequest struct {
 	IdempotencyKey string               `json:"idempotencyKey"`
 	Kind           string               `json:"kind"`
 	Producer       artifactref.Producer `json:"producer"`
+	RunIndex       json.RawMessage      `json:"runIndex,omitempty"`
 	SHA256         string               `json:"sha256"`
 	SizeBytes      int64                `json:"sizeBytes"`
 }
@@ -160,7 +162,7 @@ type serviceResponse struct {
 }
 
 func (c *Client) plan(ctx context.Context, opts Options, sha string, size int64, idempotencyKey, expiresAt string) (serviceResponse, error) {
-	body, err := json.Marshal(planRequest{ContentType: opts.ContentType, ExpiresAt: expiresAt, IdempotencyKey: idempotencyKey, Kind: opts.Kind, Producer: opts.Producer, SHA256: sha, SizeBytes: size})
+	body, err := json.Marshal(planRequest{ContentType: opts.ContentType, ExpiresAt: expiresAt, IdempotencyKey: idempotencyKey, Kind: opts.Kind, Producer: opts.Producer, RunIndex: opts.RunIndex, SHA256: sha, SizeBytes: size})
 	if err != nil {
 		return serviceResponse{}, fmt.Errorf("encode publish plan: %w", err)
 	}
@@ -365,6 +367,9 @@ func validateOptions(opts Options) error {
 		opts.Producer,
 	); err != nil {
 		return fmt.Errorf("validate publish routing metadata: %w", err)
+	}
+	if err := validateRunIndex(opts.RunIndex, opts.Producer); err != nil {
+		return err
 	}
 	return nil
 }

@@ -9,6 +9,31 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-07-26
+
+### Added
+
+- Added owner-email device authorization for the private console and the
+  `fcheap auth login`, `status`, `refresh`, and `logout` workflow. Device
+  sessions use short-lived access tokens, rotating refresh tokens, bounded
+  idle and absolute lifetimes, and family revocation on token reuse.
+- Added an owner-scoped artifact dashboard with search, grouping, verified
+  direct downloads, and idempotent deletion, plus a metadata-only Cairntrace
+  and Glyphrun run explorer with status, evidence health, outcomes, and
+  provenance.
+- Added safe Cairntrace and Glyphrun bundle detection and optional
+  `fcheap publish --run-index <file>` support. RunIndexV1 sidecars are strict,
+  bounded projections tied to the immutable artifact plan; the publisher and
+  hosted service never unpack archives to manufacture run metadata.
+
+### Changed
+
+- Bound every hosted artifact and run record to the explicit console owner,
+  backfilled legacy metadata, and enforced ownership with database `NOT NULL`
+  and foreign-key constraints.
+- Kept browser sessions, device credentials, trusted producer credentials,
+  administrator credentials, and retention credentials as separate scopes.
+
 ## [0.32.1] - 2026-07-25
 
 ### Fixed

@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { getConfig, resetConfigForTests } from "@/shared/config/env";
 import { defaultProducerMaxSizeBytes, maximumArtifactBytes } from "@/shared/config/limits";
 
@@ -11,6 +11,10 @@ afterEach(() => {
 });
 
 const publisherToken = "p".repeat(43);
+
+beforeEach(() => {
+  process.env.FILECHEAP_OWNER_ACCOUNT_ID = "acc_owner123";
+});
 
 test("rejects a publisher-only configuration in Vercel", () => {
   process.env.VERCEL = "1";

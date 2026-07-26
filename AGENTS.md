@@ -253,3 +253,4 @@ The current decisions are:
 - `projects/file.cheap/ADR-001-blob-first-recovery-prototype.md`
 - `projects/file.cheap/ADR-002-stripe-billing-boundary.md`
 - `projects/file.cheap/ADR-003-public-site-and-docs-zones.md`
+- `projects/file.cheap/ADR-004-metadata-only-run-index-console.md`

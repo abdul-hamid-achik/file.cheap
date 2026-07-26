@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-07-02T12-00-00Z-studio_smoke",
+  "specName": "studio_smoke",
+  "intent": "DO_NOT_INDEX_INTENT_PAYLOAD",
+  "status": "passed",
+  "startedAt": "2026-07-02T12:00:00Z",
+  "endedAt": "2026-07-02T12:00:01Z",
+  "durationMs": 1000,
+  "exitCode": 0,
+  "target": {"command": "DO_NOT_INDEX_TARGET_COMMAND"},
+  "terminal": {"profile": "xterm", "rows": 24, "cols": 80},
+  "steps": [{"action": "DO_NOT_INDEX_STEP_ACTION"}],
+  "outcomes": [{"id": "clean-exit", "status": "passed"}],
+  "artifacts": {"rawPtyLog": "raw/pty.raw.log"},
+  "manifest": [
+    {"relativePath": "raw/pty.raw.log", "kind": "text", "bytes": 20, "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}
+  ]
+}

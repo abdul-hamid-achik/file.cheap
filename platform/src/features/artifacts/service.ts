@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { ArtifactDownloadInput, ArtifactDownloadResponse, ArtifactListQuery, ArtifactPlanInput, ArtifactPlanReplayResponse, ArtifactPlanResponse, ArtifactPlanResult, ArtifactSummary } from "@/features/artifacts/contracts";
 import type { ArtifactRecord, ArtifactRepository, RetainableArtifactState } from "@/platform/database/repository";
@@ -37,7 +37,7 @@ export function assertProducerSizeQuota(
 export class ArtifactService {
   constructor(private readonly store: ArtifactObjectStore, private readonly repository: ArtifactRepository, private readonly now: () => Date = () => new Date()) {}
 
-  async plan(input: ArtifactPlanInput, signal?: AbortSignal): Promise<ArtifactPlanResult> {
+  async plan(input: ArtifactPlanInput, signal?: AbortSignal, ownerAccountId?: string): Promise<ArtifactPlanResult> {
     const now = this.now();
     const artifactId = `art_${input.idempotencyKey.replaceAll("-", "")}`;
     const retentionExpiresAt = input.expiresAt
@@ -52,8 +52,9 @@ export class ArtifactService {
         retentionExpiresAt?.getTime() ?? Number.POSITIVE_INFINITY,
       ),
     );
+    const runIndexSha256 = input.runIndex ? digestRunIndex(input.runIndex) : null;
     let record = await this.repository.find(artifactId);
-    if (record && !samePlan(record, input)) {
+    if (record && !samePlan(record, input, ownerAccountId)) {
       throw new PlatformError({ code: "idempotency_conflict", detail: "The idempotency key is already bound to different artifact metadata or content.", status: 409, title: "Idempotency conflict" });
     }
     if (record?.state === "committed") {
@@ -69,14 +70,14 @@ export class ArtifactService {
       throw new PlatformError({ code: "idempotency_unavailable", detail: "The idempotency key identifies an artifact under retention or already deleted.", status: 409, title: "Artifact unavailable" });
     }
     if (!record) {
-      record = await this.repository.createPlan(input, { artifactId, objectKey: objectKey(artifactId, input.sha256), planExpiresAt, planToken: randomUUID(), now });
+      record = await this.repository.createPlan(input, { artifactId, objectKey: objectKey(artifactId, input.sha256), ownerAccountId, planExpiresAt, planToken: randomUUID(), runIndexSha256, now });
     } else if (record.planExpiresAt <= now) {
       record = await this.repository.renewPlan(artifactId, record.planToken, { now, planExpiresAt });
     }
     if (!record) {
       throw new PlatformError({ code: "idempotency_reconciling", detail: "The upload plan could not be loaded safely. Retry the same request.", retryAfterSeconds: 2, status: 409, title: "Upload plan reconciling" });
     }
-    if (!samePlan(record, input)) {
+    if (!samePlan(record, input, ownerAccountId)) {
       throw new PlatformError({ code: "idempotency_conflict", detail: "The idempotency key is already bound to different artifact metadata or content.", status: 409, title: "Idempotency conflict" });
     }
     if (record.state === "committed") {
@@ -135,9 +136,10 @@ export class ArtifactService {
     input: ArtifactDownloadInput,
     signal?: AbortSignal,
     accessPolicy?: ArtifactIngestPolicy,
+    ownerAccountId?: string,
   ): Promise<ArtifactDownloadResponse> {
     const now = this.now();
-    const record = await this.requireCommitted(input.artifactId);
+    const record = await this.requireCommitted(input.artifactId, ownerAccountId);
     if (
       (record.expiresAt !== null && record.expiresAt <= now) ||
       (accessPolicy && !matchesArtifactPolicy(record, accessPolicy))
@@ -148,7 +150,7 @@ export class ArtifactService {
     if (!object) throw new PlatformError({ code: "artifact_object_missing", detail: "The committed artifact object is unavailable.", status: 409, title: "Artifact unavailable" });
     const grantExpiresAt = new Date(
       Math.min(
-        now.getTime() + grantLifetimeMilliseconds,
+        now.getTime() + (ownerAccountId ? 60 * 1_000 : grantLifetimeMilliseconds),
         record.expiresAt?.getTime() ?? Number.POSITIVE_INFINITY,
       ),
     );
@@ -156,11 +158,31 @@ export class ArtifactService {
     return { ...summary(record), download: { ...grant, method: "GET" } };
   }
 
-  async get(artifactId: string): Promise<ArtifactSummary> { return summary(await this.requireCommitted(artifactId)); }
-  async list(query: ArtifactListQuery): Promise<{ artifacts: ArtifactSummary[]; nextCursor: string | null }> {
-    const records = await this.repository.list(query.limit + 1, query.after);
+  async get(artifactId: string, ownerAccountId?: string): Promise<ArtifactSummary> { return summary(await this.requireCommitted(artifactId, ownerAccountId)); }
+  async list(query: ArtifactListQuery, ownerAccountId?: string): Promise<{ artifacts: ArtifactSummary[]; nextCursor: string | null }> {
+    const records = await this.repository.list(query.limit + 1, query.after, ownerAccountId);
     const page = records.slice(0, query.limit).map(summary);
     return { artifacts: page, nextCursor: records.length > query.limit ? page.at(-1)?.artifact.artifactId ?? null : null };
+  }
+  async delete(artifactId: string, ownerAccountId: string): Promise<{ artifactId: string; state: "deleted" }> {
+    const record = await this.repository.find(artifactId);
+    if (!record || record.ownerAccountId !== ownerAccountId) throw artifactNotFound();
+    if (record.state === "deleted") return { artifactId, state: "deleted" };
+    if (record.state !== "committed") throw artifactNotFound();
+    const claimed = await this.repository.claimForManualDeletion(artifactId, ownerAccountId, this.now());
+    if (!claimed) throw artifactNotFound();
+    let objectDeleted = false;
+    try {
+      await this.store.delete(record.objectKey);
+      objectDeleted = true;
+      await this.repository.markDeleted(record.artifactId, this.now());
+      return { artifactId, state: "deleted" };
+    } catch (error) {
+      if (!objectDeleted) {
+        await this.repository.restoreAfterDeletionFailure(record.artifactId, "committed");
+      }
+      throw error;
+    }
   }
   async reconcile(): Promise<{ deleted: number }> {
     let deleted = 0;
@@ -209,9 +231,9 @@ export class ArtifactService {
     return { deleted };
   }
 
-  private async requireCommitted(artifactId: string) {
+  private async requireCommitted(artifactId: string, ownerAccountId?: string) {
     const record = await this.repository.find(artifactId);
-    if (!record || record.state !== "committed") throw artifactNotFound();
+    if (!record || record.state !== "committed" || (ownerAccountId && record.ownerAccountId !== ownerAccountId)) throw artifactNotFound();
     return record;
   }
 }
@@ -279,8 +301,9 @@ function matchesArtifactPolicy(
   );
 }
 
-function samePlan(record: ArtifactRecord, input: ArtifactPlanInput): boolean {
+function samePlan(record: ArtifactRecord, input: ArtifactPlanInput, ownerAccountId?: string): boolean {
   return (
+    record.ownerAccountId === (ownerAccountId ?? null) &&
     record.sha256 === input.sha256 &&
     record.objectKey === objectKey(record.artifactId, input.sha256) &&
     record.objectSha256 === input.sha256 &&
@@ -294,7 +317,12 @@ function samePlan(record: ArtifactRecord, input: ArtifactPlanInput): boolean {
     record.producer.native_schema === input.producer.native_schema &&
     record.producer.native_id === input.producer.native_id &&
     record.producer.entrypoint === input.producer.entrypoint &&
+    record.runIndexSha256 === (input.runIndex ? digestRunIndex(input.runIndex) : null) &&
     (record.expiresAt?.getTime() ?? null) ===
       (input.expiresAt ? new Date(input.expiresAt).getTime() : null)
   );
+}
+
+function digestRunIndex(value: NonNullable<ArtifactPlanInput["runIndex"]>): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }

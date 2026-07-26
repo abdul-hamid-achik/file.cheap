@@ -62,11 +62,16 @@ Configure Preview and Production independently:
 | `FILECHEAP_OIDC_*` | Exact Chalupa Preview issuer, audience, and subject | Exact Chalupa Production issuer, audience, and subject |
 | `FILECHEAP_PUBLISHER_TOKENS` | Preview producer policies and credentials | Production producer policies and credentials |
 | `FILECHEAP_ADMIN_TOKEN` | Distinct private administrator credential | Distinct private administrator credential |
+| `FILECHEAP_OWNER_ACCOUNT_ID` | Opaque Preview owner ID | Stable opaque Production owner ID |
+| `FILECHEAP_OWNER_EMAIL` | Allowlisted Preview owner email | Exact single-owner email |
+| `FILECHEAP_AUTH_SECRET` | Distinct 32+ byte Preview HMAC secret | Distinct 32+ byte Production HMAC secret |
 | `CRON_SECRET` | Distinct Vercel Cron credential | Distinct Vercel Cron credential |
 | `BLOB_READ_WRITE_TOKEN` | Preview private Blob store credential | Production private Blob store credential |
 | `RESEND_RECEIVE_API_KEY` | Not configured | Full-access key read only by current signed-webhook code |
 | `RESEND_WEBHOOK_SECRET` | Not configured | Endpoint-specific Svix signing secret |
 | `RESEND_FORWARD_TO` | Not configured | One private forwarding destination |
+| `RESEND_AUTH_SEND_API_KEY` | Dedicated Preview key only while testing auth | Dedicated send-only console auth key |
+| `RESEND_AUTH_FROM` | Verified Preview sender | Verified Production auth sender |
 
 The public site and documentation do not read Blob, Neon, or private-service
 credentials. The authenticated artifact service initializes them lazily.
@@ -143,8 +148,10 @@ attachments, and never stores or logs content, provider IDs, or the private
 destination. This lowers duplicate risk but does not make an exactly-once
 delivery promise.
 
-Use a separate domain-scoped `RESEND_SEND_API_KEY` for trusted outbound mail.
-The platform does not need that key. The receiving-forward API requires a
+Console authentication uses a dedicated `RESEND_AUTH_SEND_API_KEY` and
+`RESEND_AUTH_FROM`; it never reuses the inbound receiving credential. Resend
+idempotency keys bind retries to the exact authorization and send attempt. The
+receiving-forward API requires a
 team-wide full-access `RESEND_RECEIVE_API_KEY`; Resend cannot scope it to one
 domain. Isolate it per product and keep all three runtime values Sensitive and
 Production-only; current code reads them only in the signed webhook path.
@@ -220,7 +227,7 @@ The pinned Glyphrun runner requires Go 1.26.5, so `GOTOOLCHAIN` isolates that
 one compatibility gate. file.cheap itself remains pinned to Go 1.25.12 by
 `go.mod`.
 
-The docs verifier must report 46 source pages plus 404. The integrated build
+The docs verifier must report 48 source pages plus 404. The integrated build
 must remove and regenerate `public/_docs`, serve both sitemaps, and preserve the
 historical clean routes.
 
@@ -269,8 +276,24 @@ reviewed, direct database connection before exercising private routes, then
 deploy from the repository root:
 
 ```sh
+cd platform
+MIGRATIONS_DATABASE_URL=<direct-preview-url> bun run db:migrate
+FILECHEAP_OWNER_ACCOUNT_ID=acc_<preview-owner> \
+FILECHEAP_OWNER_EMAIL=<preview-owner-email> \
+MIGRATIONS_DATABASE_URL=<direct-preview-url> \
+bun run db:backfill-console-owner
+cd ..
+
 vercel --scope "$FILECHEAP_VERCEL_SCOPE" --yes
 ```
+
+The historical upgrade gate for a database with legacy artifacts is: apply
+`0003` through `0007`, run the owner backfill, verify zero null owners, then
+apply `0008`. Migration `0008` makes ownership `NOT NULL` and adds foreign keys,
+so it intentionally fails against an unbackfilled legacy database. A new empty
+Preview can apply the complete graph before the idempotent backfill shown above.
+Console queries never expose null-owner rows. Do not enable additional owner
+accounts in this release.
 
 After the Preview is READY, record its deployment ID, commit SHA, and automatic
 URL. Exercise:

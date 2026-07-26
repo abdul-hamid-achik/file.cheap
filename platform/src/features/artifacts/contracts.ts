@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { maximumArtifactBytes } from "@/shared/config/limits";
+import { runIndexSchema } from "@/features/runs/index-contract";
 
 export const artifactIdSchema = z.string().regex(/^art_[A-Za-z0-9_-]{16,96}$/);
 export const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -48,9 +49,26 @@ export const artifactPlanInputSchema = z.object({
   idempotencyKey: z.string().uuid().transform((value) => value.toLowerCase()),
   kind: artifactKindSchema,
   producer: producerSchema,
+  runIndex: runIndexSchema.optional(),
   sha256: sha256Schema,
   sizeBytes: z.number().int().positive().max(maximumArtifactBytes),
-}).strict();
+}).strict().superRefine((value, context) => {
+  if (!value.runIndex) return;
+  if (!value.producer.native_schema) {
+    context.addIssue({ code: "custom", message: "is required for an indexed run", path: ["producer", "native_schema"] });
+  }
+  if (value.producer.native_id !== value.runIndex.run.nativeId) {
+    context.addIssue({ code: "custom", message: "must match runIndex.run.nativeId", path: ["producer", "native_id"] });
+  }
+  const expectedDetector = value.producer.tool === "cairntrace"
+    ? "cairntrace-run"
+    : value.producer.tool === "glyphrun"
+      ? "glyphrun-run"
+      : null;
+  if (!expectedDetector || value.runIndex.detector.name !== expectedDetector) {
+    context.addIssue({ code: "custom", message: "must match the authenticated producer detector", path: ["runIndex", "detector", "name"] });
+  }
+});
 
 export const artifactCommitInputSchema = z.object({
   receipt: z.string().uuid(),
