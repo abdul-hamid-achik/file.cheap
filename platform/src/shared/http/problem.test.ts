@@ -72,7 +72,7 @@ describe("RFC 9457 problem responses", () => {
       // requestId ties the line to the response the caller already holds, so
       // an operator can find the one failure they were told about. It is not
       // new information — it is the same id the body carries.
-      expect(logged).toEqual([
+      expect(logged).toMatchObject([
         {
           event: "platform_request_failed",
           errorName: "ZodError",
@@ -108,7 +108,11 @@ describe("RFC 9457 problem responses", () => {
     try {
       const response = problemResponse(new GrantShapeStub(), request);
       expect(response.status).toBe(500);
-      expect(logged).toEqual([
+      // toMatchObject, not toEqual: `origin` also travels now, and pinning the
+      // exact key set here would fight every future diagnostic addition. The
+      // assertions that matter are below — what must be present, and what must
+      // never be.
+      expect(logged).toMatchObject([
         {
           event: "platform_request_failed",
           errorName: "BlobGrantShapeError",
@@ -121,6 +125,37 @@ describe("RFC 9457 problem responses", () => {
       expect(JSON.stringify(logged)).not.toContain("SUPERSECRETSIG");
       expect(JSON.stringify(logged)).not.toContain("vercel.com/api/blob");
       expect(JSON.stringify(await response.json())).not.toContain("SUPERSECRETSIG");
+    } finally {
+      console.error = originalConsoleError;
+    }
+  });
+
+  test("names where a bare Error was thrown, and still never its message", async () => {
+    // Three hypotheses about a production 500 were eliminated one deploy at a
+    // time because every bare `Error` in a request looks identical in the log.
+    // A code location is this repository's own file and line; it is not user
+    // data, and it is the one thing that tells these throws apart.
+    const secret = "https://vercel.com/api/blob/?vercel-blob-signature=SUPERSECRET";
+    const request = new Request("https://file.cheap/api/v1/artifacts/plans", {
+      headers: { "x-request-id": "origin-01" },
+      method: "POST",
+    });
+    const originalConsoleError = console.error;
+    const logged: unknown[] = [];
+    console.error = (...values: unknown[]) => { logged.push(...values); };
+
+    try {
+      problemResponse(new Error(secret), request);
+      const entry = logged[0] as { origin?: string[] };
+      expect(Array.isArray(entry.origin)).toBe(true);
+      expect(entry.origin!.length).toBeGreaterThan(0);
+      // Every frame is a code location, never a message fragment.
+      for (const frame of entry.origin!) {
+        expect(frame).toMatch(/:\d+:\d+$/);
+      }
+      // The stack's first line is "Error: <message>" and is dropped, not parsed.
+      expect(JSON.stringify(logged)).not.toContain("SUPERSECRET");
+      expect(JSON.stringify(logged)).not.toContain("vercel-blob-signature");
     } finally {
       console.error = originalConsoleError;
     }

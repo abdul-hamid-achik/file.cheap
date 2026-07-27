@@ -135,12 +135,14 @@ function toProblem(
         .slice(0, 8)
         .map((value) => value.slice(0, 64))
     : undefined;
+  const origin = stackOrigin(error);
   console.error({
     event: "platform_request_failed",
     errorName: error instanceof Error ? error.name : "UnknownError",
     requestId,
     ...(reason ? { reason } : {}),
     ...(details && details.length > 0 ? { unexpectedQueryKeys: details } : {}),
+    ...(origin.length > 0 ? { origin } : {}),
   });
   return {
     code: "internal_error",
@@ -247,4 +249,28 @@ function payloadTooLargeError(): PlatformError {
     status: 413,
     title: "Payload too large",
   });
+}
+
+/**
+ * Where a throw came from, and nothing else.
+ *
+ * A bare `Error` is indistinguishable from every other bare `Error` in the
+ * same request, and the message cannot be logged because it may carry a
+ * signed URL, a delegation token or a connection string. Code locations carry
+ * neither: they are this repository's own file names and line numbers.
+ *
+ * The first line of a stack is `Name: message`, so it is dropped rather than
+ * parsed. Only frames matching the exact `at fn (file:line:col)` shape are
+ * kept, so anything unusual in a stack is discarded instead of forwarded.
+ */
+function stackOrigin(error: unknown): string[] {
+  if (!(error instanceof Error) || typeof error.stack !== "string") return [];
+  return error.stack
+    .split("\n")
+    .slice(1)
+    .map((line) => line.trim())
+    .map((line) => /^at\s+(?:[^\s(]+\s+)?\(?([^\s()]+:\d+:\d+)\)?$/.exec(line)?.[1])
+    .filter((frame): frame is string => typeof frame === "string")
+    .map((frame) => frame.slice(-120))
+    .slice(0, 3);
 }
