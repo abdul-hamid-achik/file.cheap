@@ -421,6 +421,98 @@ describe("ArtifactService", () => {
     expect(store.inspectCalls).toBe(0);
   });
 
+  test("enforces exact OIDC kind and schema bindings on commit and download", async () => {
+    const store = new CountingInspectStore();
+    const service = newTestArtifactService(
+      store,
+      new InMemoryArtifactRepository(),
+    );
+    const policy = {
+      kindSchemaBindings: [
+        {
+          kind: "chalupa.ci-artifact",
+          nativeSchema: "urn:chalupa:ci-artifact:v1",
+        },
+        {
+          kind: "chalupa.ci-manifest",
+          nativeSchema: "urn:chalupa:ci-manifest:v1",
+        },
+      ],
+      kinds: ["chalupa.ci-artifact", "chalupa.ci-manifest"],
+      maxSizeBytes: 8 * 1024 * 1024,
+      nativeSchemas: [
+        "urn:chalupa:ci-artifact:v1",
+        "urn:chalupa:ci-manifest:v1",
+      ],
+      producerTool: "chalupa",
+    } as const;
+    const mismatched = requirePlanned(await service.plan({
+      contentType: "application/zstd",
+      idempotencyKey: "123e4567-e89b-42d3-a456-426614174034",
+      kind: "chalupa.ci-artifact",
+      producer: {
+        native_schema: "urn:chalupa:ci-manifest:v1",
+        tool: "chalupa",
+      },
+      sha256,
+      sizeBytes: bytes.byteLength,
+    }));
+    store.seed({
+      bytes,
+      contentType: "application/zstd",
+      key: new URL(mismatched.upload.url).pathname.replace(/^\/upload\//, ""),
+      sizeBytes: bytes.byteLength,
+    });
+
+    await expect(
+      service.commit(mismatched.receipt, undefined, policy),
+    ).rejects.toMatchObject({ code: "invalid_receipt", status: 400 });
+    expect(store.inspectCalls).toBe(0);
+
+    const committedMismatch = await service.commit(mismatched.receipt);
+    const callsAfterCommit = store.inspectCalls;
+    await expect(
+      service.download(
+        { artifactId: committedMismatch.artifact.artifactId },
+        undefined,
+        policy,
+      ),
+    ).rejects.toMatchObject({ code: "artifact_not_found", status: 404 });
+    expect(store.inspectCalls).toBe(callsAfterCommit);
+
+    const matching = requirePlanned(await service.plan({
+      contentType: "application/zstd",
+      idempotencyKey: "123e4567-e89b-42d3-a456-426614174035",
+      kind: "chalupa.ci-artifact",
+      producer: {
+        native_schema: "urn:chalupa:ci-artifact:v1",
+        tool: "chalupa",
+      },
+      sha256,
+      sizeBytes: bytes.byteLength,
+    }));
+    store.seed({
+      bytes,
+      contentType: "application/zstd",
+      key: new URL(matching.upload.url).pathname.replace(/^\/upload\//, ""),
+      sizeBytes: bytes.byteLength,
+    });
+    const committedMatch = await service.commit(
+      matching.receipt,
+      undefined,
+      policy,
+    );
+    await expect(
+      service.download(
+        { artifactId: committedMatch.artifact.artifactId },
+        undefined,
+        policy,
+      ),
+    ).resolves.toMatchObject({
+      artifact: { artifactId: committedMatch.artifact.artifactId },
+    });
+  });
+
   test("restricts OIDC downloads before inspecting private storage", async () => {
     const store = new CountingInspectStore();
     const service = newTestArtifactService(

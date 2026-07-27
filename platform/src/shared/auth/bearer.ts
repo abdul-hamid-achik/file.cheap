@@ -7,7 +7,12 @@ import { defaultProducerMaxSizeBytes } from "@/shared/config/limits";
 import { PlatformError } from "@/shared/errors/platform-error";
 
 export type ServiceScope = "admin" | "cron" | "ingest" | "read";
+export type ArtifactKindSchemaBinding = Readonly<{
+  kind: string;
+  nativeSchema: string;
+}>;
 export type IngestPolicy = Readonly<{
+  kindSchemaBindings?: readonly ArtifactKindSchemaBinding[];
   kinds: readonly string[];
   maxSizeBytes: number;
   nativeSchemas: readonly string[];
@@ -29,12 +34,30 @@ export type ReadPrincipal =
     >;
 
 const jwksByIssuer = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+const chalupaOidcBindings: readonly ArtifactKindSchemaBinding[] = Object.freeze([
+  Object.freeze({
+    kind: "chalupa.log-chunk",
+    nativeSchema: "urn:chalupa:log-chunk:v1",
+  }),
+  Object.freeze({
+    kind: "chalupa.ci-artifact",
+    nativeSchema: "urn:chalupa:ci-artifact:v1",
+  }),
+  Object.freeze({
+    kind: "chalupa.ci-manifest",
+    nativeSchema: "urn:chalupa:ci-manifest:v1",
+  }),
+]);
 const chalupaOidcPolicy: IngestPolicy = Object.freeze({
-  kinds: Object.freeze(["chalupa.log-chunk"]),
+  kindSchemaBindings: chalupaOidcBindings,
+  kinds: Object.freeze(chalupaOidcBindings.map((binding) => binding.kind)),
   // Chalupa's OIDC identity is not part of the publisher keyring, so it keeps
   // the same conservative default quota an undeclared producer would get.
+  // That default comfortably covers the largest authorized CI artifact part.
   maxSizeBytes: defaultProducerMaxSizeBytes,
-  nativeSchemas: Object.freeze(["urn:chalupa:log-chunk:v1"]),
+  nativeSchemas: Object.freeze(
+    chalupaOidcBindings.map((binding) => binding.nativeSchema),
+  ),
   producerTool: "chalupa",
 });
 
@@ -105,9 +128,12 @@ export function requireAuthorizedArtifact(
 ): void {
   if (
     !constantTimeEqual(artifact.producer.tool, principal.producerTool) ||
-    !principal.kinds.includes(artifact.kind) ||
     !artifact.producer.native_schema ||
-    !principal.nativeSchemas.includes(artifact.producer.native_schema)
+    !matchesKindAndSchema(
+      principal,
+      artifact.kind,
+      artifact.producer.native_schema,
+    )
   ) {
     throw unauthorized();
   }
@@ -115,11 +141,30 @@ export function requireAuthorizedArtifact(
 
 export function ingestPolicyFor(principal: IngestPrincipal): IngestPolicy {
   return {
+    ...(principal.kindSchemaBindings
+      ? { kindSchemaBindings: principal.kindSchemaBindings }
+      : {}),
     kinds: principal.kinds,
     maxSizeBytes: principal.maxSizeBytes,
     nativeSchemas: principal.nativeSchemas,
     producerTool: principal.producerTool,
   };
+}
+
+function matchesKindAndSchema(
+  policy: IngestPolicy,
+  kind: string,
+  nativeSchema: string,
+): boolean {
+  if (policy.kindSchemaBindings) {
+    return policy.kindSchemaBindings.some(
+      (binding) =>
+        binding.kind === kind && binding.nativeSchema === nativeSchema,
+    );
+  }
+  return (
+    policy.kinds.includes(kind) && policy.nativeSchemas.includes(nativeSchema)
+  );
 }
 
 export function readPolicyFor(

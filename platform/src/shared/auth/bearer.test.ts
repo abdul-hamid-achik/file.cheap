@@ -122,22 +122,57 @@ describe("private service bearer authentication", () => {
     };
     const request = async (credential: string) => requireServiceToken(new Request("https://file.cheap/api/v1/artifacts/plans", { headers: { authorization: `Bearer ${credential}` } }), "ingest");
 
+    const chalupaKindSchemaBindings = [
+      {
+        kind: "chalupa.log-chunk",
+        nativeSchema: "urn:chalupa:log-chunk:v1",
+      },
+      {
+        kind: "chalupa.ci-artifact",
+        nativeSchema: "urn:chalupa:ci-artifact:v1",
+      },
+      {
+        kind: "chalupa.ci-manifest",
+        nativeSchema: "urn:chalupa:ci-manifest:v1",
+      },
+    ];
+    const chalupaKinds = chalupaKindSchemaBindings.map(({ kind }) => kind);
+    const chalupaNativeSchemas = chalupaKindSchemaBindings.map(
+      ({ nativeSchema }) => nativeSchema,
+    );
     const oidcPrincipal = await request(await token());
     expect(oidcPrincipal).toEqual({
       authentication: "oidc",
-      kinds: ["chalupa.log-chunk"],
+      kindSchemaBindings: chalupaKindSchemaBindings,
+      kinds: chalupaKinds,
       maxSizeBytes: defaultProducerMaxSizeBytes,
-      nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+      nativeSchemas: chalupaNativeSchemas,
       producerTool: "chalupa",
       subject,
     });
-    expect(() => requireAuthorizedArtifact(oidcPrincipal, {
-      kind: "chalupa.log-chunk",
-      producer: {
-        native_schema: "urn:chalupa:log-chunk:v1",
-        tool: "chalupa",
-      },
-    })).not.toThrow();
+    for (const binding of chalupaKindSchemaBindings) {
+      expect(() =>
+        requireAuthorizedArtifact(oidcPrincipal, {
+          kind: binding.kind,
+          producer: {
+            native_schema: binding.nativeSchema,
+            tool: "chalupa",
+          },
+        }),
+      ).not.toThrow();
+      for (const other of chalupaKindSchemaBindings) {
+        if (other.nativeSchema === binding.nativeSchema) continue;
+        expect(() =>
+          requireAuthorizedArtifact(oidcPrincipal, {
+            kind: binding.kind,
+            producer: {
+              native_schema: other.nativeSchema,
+              tool: "chalupa",
+            },
+          }),
+        ).toThrow("valid private service credential");
+      }
+    }
     expect(() => requireAuthorizedArtifact(oidcPrincipal, {
       kind: "cairntrace.run",
       producer: {
@@ -160,16 +195,18 @@ describe("private service bearer authentication", () => {
     );
     expect(readPrincipal).toEqual({
       authentication: "oidc",
-      kinds: ["chalupa.log-chunk"],
+      kindSchemaBindings: chalupaKindSchemaBindings,
+      kinds: chalupaKinds,
       maxSizeBytes: defaultProducerMaxSizeBytes,
-      nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+      nativeSchemas: chalupaNativeSchemas,
       producerTool: "chalupa",
       subject,
     });
     expect(readPolicyFor(readPrincipal)).toEqual({
-      kinds: ["chalupa.log-chunk"],
+      kindSchemaBindings: chalupaKindSchemaBindings,
+      kinds: chalupaKinds,
       maxSizeBytes: defaultProducerMaxSizeBytes,
-      nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+      nativeSchemas: chalupaNativeSchemas,
       producerTool: "chalupa",
     });
     await expect(

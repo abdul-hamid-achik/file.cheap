@@ -20,6 +20,10 @@ const grantLifetimeMilliseconds = 15 * 60 * 1000;
 export const artifactDeletionLeaseMilliseconds = 15 * 60 * 1000;
 
 type ArtifactIngestPolicy = Readonly<{
+  kindSchemaBindings?: readonly Readonly<{
+    kind: string;
+    nativeSchema: string;
+  }>[];
   kinds: readonly string[];
   maxSizeBytes: number;
   nativeSchemas: readonly string[];
@@ -376,11 +380,18 @@ function matchesArtifactPolicy(
   record: ArtifactRecord,
   policy: ArtifactIngestPolicy,
 ): boolean {
+  const nativeSchema = record.producer.native_schema;
   return (
     record.producer.tool === policy.producerTool &&
-    policy.kinds.includes(record.kind) &&
-    Boolean(record.producer.native_schema) &&
-    policy.nativeSchemas.includes(record.producer.native_schema!)
+    Boolean(nativeSchema) &&
+    (policy.kindSchemaBindings
+      ? policy.kindSchemaBindings.some(
+          (binding) =>
+            binding.kind === record.kind &&
+            binding.nativeSchema === nativeSchema,
+        )
+      : policy.kinds.includes(record.kind) &&
+        policy.nativeSchemas.includes(nativeSchema!))
   );
 }
 
