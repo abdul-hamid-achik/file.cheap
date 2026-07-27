@@ -14,15 +14,27 @@ import { DrizzleRetentionRunRepository } from "@/platform/database/retention-rep
 
 let service: RetentionRunService | undefined;
 
-export function getRetentionRunService(): RetentionRunService {
-  if (service) return service;
-  const db = getDatabase();
-  const artifacts = getArtifactService();
+/**
+ * Build the isolated retention stages, one per cleanup area. The artifacts
+ * stage resolves `getArtifactService()` lazily inside its own `execute()`
+ * rather than at construction time: that service depends on the plan-receipt
+ * keyring, which can throw on misconfiguration, and a synchronous throw here
+ * would previously abort building every other stage before
+ * `RetentionRunService` even existed. Deferring the resolution lets a broken
+ * keyring fail only the "artifacts" stage through the normal
+ * failedAreas/partial isolation instead of the whole retention run. Once
+ * `getArtifactService()` succeeds it memoizes itself, so later runs reuse the
+ * same instance instead of rebuilding it.
+ */
+export function buildRetentionStages(
+  db: ReturnType<typeof getDatabase>,
+): RetentionStage[] {
   const replay = new DrizzleInboundReplayRepository(db);
-  const stages: RetentionStage[] = [
+  return [
     {
       async execute(_now, signal) {
         signal.throwIfAborted();
+        const artifacts = getArtifactService();
         const report = await artifacts.reconcile(signal);
         return {
           counters: {
@@ -42,10 +54,15 @@ export function getRetentionRunService(): RetentionRunService {
     cleanupStage("console_device_families", "consoleDeviceFamilyRecordsDeleted", (now) => cleanupConsoleDeviceFamilies(now, db)),
     cleanupStage("console_rate_limits", "consoleRateLimitRecordsDeleted", (now) => cleanupConsoleRateLimits(now, db)),
   ];
+}
+
+export function getRetentionRunService(): RetentionRunService {
+  if (service) return service;
+  const db = getDatabase();
   service = new RetentionRunService(
     new DrizzleRetentionRunRepository(db),
     new DrizzleRetentionBacklogProbe(db),
-    stages,
+    buildRetentionStages(db),
   );
   return service;
 }

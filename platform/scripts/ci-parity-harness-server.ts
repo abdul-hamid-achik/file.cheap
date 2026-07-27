@@ -10,9 +10,22 @@
  * Postgres is needed. The object store is a thin fake: `issueUploadGrant`
  * fabricates a URL shaped exactly like a real Vercel Blob upload grant (so a
  * caller's own response schema, which checks the shape of that URL, is
- * satisfied) but nothing is ever actually PUT there and bytes are never
- * verified. That is the only thing this harness stubs; the authorization
- * decision that chalupa's production incident depended on runs for real.
+ * satisfied) but nothing is ever actually PUT there. That is the only thing
+ * this harness stubs; the authorization decision that chalupa's production
+ * incident depended on runs for real.
+ *
+ * Committing a plan is a real integrity check inside file.cheap's own
+ * `ArtifactService.commit` (`inspect` the object, recompute its SHA-256,
+ * compare against what was declared at plan time), and there is no real
+ * Vercel Blob behind the fabricated upload URL for that check to inspect.
+ * `POST /_test/seed-upload` is the one test-only extension this harness
+ * makes: it lets a caller register what a direct PUT to a given object key
+ * "would have" delivered, so `verifySha256` still recomputes a real digest
+ * over real bytes rather than being stubbed to a fixed answer. Nothing else
+ * about `HarnessArtifactObjectStore` changed -- a plan-only test that never
+ * calls `/_test/seed-upload` sees exactly the previous behavior
+ * (`inspect`/`verifySha256` refusing everything, because nothing was ever
+ * seeded).
  *
  * Consumed by chalupa's `cloud/tests/ci-artifact-engine-parity.e2e.test.ts`,
  * which spawns this script as a subprocess (the sibling checkout's own
@@ -28,6 +41,8 @@
  * The process stays alive until it receives SIGTERM/SIGINT (the parent kills
  * it directly, the same way the Python engine driver's subprocess is reaped).
  */
+import { createHash } from "node:crypto";
+
 import { POST as commitsPost } from "@/app/api/v1/artifacts/commits/route";
 import { POST as plansPost } from "@/app/api/v1/artifacts/plans/route";
 import { InMemoryArtifactRepository } from "@/features/artifacts/repository";
@@ -111,12 +126,35 @@ globalThis.fetch = (async (input, init) => {
  */
 class HarnessArtifactObjectStore implements ArtifactObjectStore {
   readonly driver = "ci-parity-harness";
-  async delete(): Promise<void> {}
-  async inspect(): Promise<ArtifactObjectMetadata | null> {
-    return null;
+  private readonly seeded = new Map<
+    string,
+    { bytes: Uint8Array; contentType: string }
+  >();
+
+  /** Test-only: record what a direct PUT to `key` "would have" delivered. */
+  seedUpload(key: string, bytes: Uint8Array, contentType: string): void {
+    this.seeded.set(key, { bytes, contentType });
   }
-  async verifySha256(): Promise<boolean> {
-    return false;
+
+  async delete(): Promise<void> {}
+  async inspect(key: string): Promise<ArtifactObjectMetadata | null> {
+    const object = this.seeded.get(key);
+    if (!object) return null;
+    return {
+      contentType: object.contentType,
+      etag: "ci-parity-harness-etag",
+      key,
+      sizeBytes: object.bytes.byteLength,
+      uploadedAt: new Date().toISOString(),
+    };
+  }
+  async verifySha256(key: string, expectedSha256: string): Promise<boolean> {
+    const object = this.seeded.get(key);
+    if (!object) return false;
+    return (
+      createHash("sha256").update(object.bytes).digest("hex") ===
+      expectedSha256
+    );
   }
   async issueDownloadGrant(input: {
     key: string;
@@ -158,9 +196,11 @@ function fakeVercelBlobUrl(objectKey: string, sizeBytes: number): string {
   return url.toString();
 }
 
+const objectStore = new HarnessArtifactObjectStore();
+
 setArtifactServiceForTests(
   new ArtifactService(
-    new HarnessArtifactObjectStore(),
+    objectStore,
     new InMemoryArtifactRepository(),
     testPlanReceiptKeyring,
   ),
@@ -173,6 +213,19 @@ const server = Bun.serve({
     const pathname = new URL(request.url).pathname;
     if (pathname === "/api/v1/artifacts/plans") return plansPost(request);
     if (pathname === "/api/v1/artifacts/commits") return commitsPost(request);
+    if (pathname === "/_test/seed-upload" && request.method === "POST") {
+      const body = (await request.json()) as {
+        key: string;
+        bytesBase64: string;
+        contentType: string;
+      };
+      objectStore.seedUpload(
+        body.key,
+        new Uint8Array(Buffer.from(body.bytesBase64, "base64")),
+        body.contentType,
+      );
+      return new Response(null, { status: 204 });
+    }
     return new Response("not found", { status: 404 });
   },
 });

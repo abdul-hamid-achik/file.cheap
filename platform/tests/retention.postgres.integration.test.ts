@@ -1,10 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 
+import { handleRetentionHealthRequest } from "@/app/api/internal/retention/health/route";
+import { setArtifactServiceForTests } from "@/features/artifacts/factory";
 import { emptyRetentionCounters } from "@/features/retention/contracts";
+import { buildRetentionStages } from "@/features/retention/factory";
 import type { RetentionStage } from "@/features/retention/repository";
 import { RetentionRunService } from "@/features/retention/service";
 import { DrizzlePrivateActivityLedgerRepository } from "@/platform/database/activity-repository";
-import { getDatabase } from "@/platform/database/client";
+import { getDatabase, resetDatabaseForTests } from "@/platform/database/client";
 import {
   cleanupConsoleAuthorizations,
   cleanupConsoleDeviceFamilies,
@@ -24,6 +27,7 @@ import {
   consoleUsers,
   inboundEmailReplays,
 } from "@/platform/database/schema";
+import { resetConfigForTests } from "@/shared/config/env";
 import {
   openPostgresTestDatabase,
   truncatePostgresTestData,
@@ -161,6 +165,97 @@ describe.skipIf(!databaseUrl)("retention PostgreSQL workflow", () => {
       ORDER BY id
     `);
     expect(terminal.rows.map((row) => row.status)).toEqual(["partial", "failed"]);
+  });
+
+  test("isolates a broken plan-receipt keyring to the artifacts stage so the other five stages still finish", async () => {
+    await seedBacklog();
+    const savedEnvironment = { ...process.env };
+    // A realistic, otherwise-valid private artifact configuration, but with
+    // the plan-receipt keyring variables deliberately missing. This is the
+    // exact misconfiguration that used to make getArtifactService() throw
+    // eagerly inside getRetentionRunService(), aborting every retention stage
+    // before RetentionRunService even existed.
+    delete process.env.VERCEL;
+    process.env.DATABASE_URL = "postgresql://placeholder-config-only@localhost/unused";
+    process.env.FILECHEAP_ADMIN_TOKEN = "a".repeat(32);
+    process.env.FILECHEAP_OWNER_ACCOUNT_ID = "acc_retention_keyring_test";
+    process.env.CRON_SECRET = "z".repeat(32);
+    process.env.FILECHEAP_PUBLISHER_TOKENS = JSON.stringify({
+      chalupa: {
+        kinds: ["chalupa.log-chunk"],
+        nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+        tokens: ["i".repeat(43)],
+      },
+    });
+    delete process.env.FILECHEAP_PLAN_RECEIPT_ACTIVE_KID;
+    delete process.env.FILECHEAP_PLAN_RECEIPT_SIGNING_KEYS;
+    delete process.env.FILECHEAP_PLAN_RECEIPT_LOOKUP_KEYS;
+    resetConfigForTests();
+    setArtifactServiceForTests(undefined);
+
+    try {
+      const db = harness.database as unknown as ReturnType<typeof getDatabase>;
+      const repository = retentionRepository(80);
+      const id = runId(80);
+      const service = new RetentionRunService(
+        repository,
+        new DrizzleRetentionBacklogProbe(db),
+        buildRetentionStages(db),
+        () => baseTime,
+        () => id,
+      );
+
+      // Building the stages and constructing the service must not throw even
+      // though the keyring is broken: only executing the artifacts stage may
+      // fail.
+      await expect(service.run()).rejects.toMatchObject({
+        code: "retention_incomplete",
+        status: 503,
+      });
+
+      const row = await harness.pool.query<{ failed_areas: string[]; status: string }>(
+        "SELECT status, failed_areas FROM private_retention_runs WHERE id = $1",
+        [id],
+      );
+      expect(row.rows[0]).toMatchObject({
+        failed_areas: ["artifacts"],
+        status: "partial",
+      });
+
+      const health = await repository.health(null);
+      expect(health).toMatchObject({
+        activeRunCount: 0,
+        counters: {
+          consoleAuthorizationRecordsDeleted: 1,
+          consoleDeviceFamilyRecordsDeleted: 1,
+          consoleRateLimitRecordsDeleted: consoleCleanupBatchSize,
+          consoleSessionRecordsDeleted: 1,
+          inboundReplayRecordsDeleted: 1,
+          stagesAttempted: 6,
+          stagesFailed: 1,
+          stagesSucceeded: 5,
+        },
+        status: "partial",
+      });
+
+      const healthResponse = await handleRetentionHealthRequest(
+        new Request("https://file.cheap/api/internal/retention/health"),
+        {
+          authorize: async () => undefined,
+          health: async () => service.health(),
+        },
+      );
+      expect(healthResponse.status).toBe(200);
+      expect(await healthResponse.json()).toMatchObject({
+        lastRunId: id,
+        status: "partial",
+      });
+    } finally {
+      process.env = savedEnvironment;
+      resetConfigForTests();
+      setArtifactServiceForTests(undefined);
+      resetDatabaseForTests();
+    }
   });
 
   test("enforces strict activity details and append-only rows in PostgreSQL", async () => {
