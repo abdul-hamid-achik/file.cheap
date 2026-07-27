@@ -25,16 +25,22 @@ func TestGuideContract(t *testing.T) {
 			t.Fatalf("duplicate or empty capability ID %q", capability.ID)
 		}
 		seenIDs[capability.ID] = true
-		if capability.MCPTool == "" || seenTools[capability.MCPTool] {
-			t.Fatalf("duplicate or empty MCP tool %q", capability.MCPTool)
-		}
-		seenTools[capability.MCPTool] = true
 		if strings.Contains(capability.Effect, "deletes") && capability.Confirmation != "explicit" {
 			t.Fatalf("destructive capability lacks explicit confirmation: %+v", capability)
 		}
+		if capability.MCPTool == "" {
+			continue
+		}
+		if seenTools[capability.MCPTool] {
+			t.Fatalf("duplicate MCP tool %q", capability.MCPTool)
+		}
+		seenTools[capability.MCPTool] = true
 	}
 	if len(seenTools) != 15 {
 		t.Fatalf("MCP tool count = %d, want 15", len(seenTools))
+	}
+	if len(seenIDs) != 17 {
+		t.Fatalf("capability count = %d, want 17", len(seenIDs))
 	}
 
 	data, err := json.Marshal(guide)

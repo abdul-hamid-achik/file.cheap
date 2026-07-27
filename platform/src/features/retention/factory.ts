@@ -1,0 +1,77 @@
+import { getArtifactService } from "@/features/artifacts/factory";
+import type { RetentionStage } from "@/features/retention/repository";
+import { RetentionRunService } from "@/features/retention/service";
+import { getDatabase } from "@/platform/database/client";
+import {
+  cleanupConsoleAuthorizations,
+  cleanupConsoleDeviceFamilies,
+  cleanupConsoleRateLimits,
+  cleanupConsoleSessions,
+} from "@/platform/database/console-cleanup";
+import { DrizzleInboundReplayRepository } from "@/platform/database/inbound-email-replay-repository";
+import { DrizzleRetentionBacklogProbe } from "@/platform/database/retention-backlog";
+import { DrizzleRetentionRunRepository } from "@/platform/database/retention-repository";
+
+let service: RetentionRunService | undefined;
+
+export function getRetentionRunService(): RetentionRunService {
+  if (service) return service;
+  const db = getDatabase();
+  const artifacts = getArtifactService();
+  const replay = new DrizzleInboundReplayRepository(db);
+  const stages: RetentionStage[] = [
+    {
+      async execute(_now, signal) {
+        signal.throwIfAborted();
+        const report = await artifacts.reconcile(signal);
+        return {
+          counters: {
+            artifactCandidates: report.candidates,
+            artifactFailures: report.failures,
+            artifactsDeleted: report.deleted,
+          },
+          outcome: report.failures > 0 ? "partial" as const : "succeeded" as const,
+        };
+      },
+      name: "artifacts",
+    },
+    cleanupStage("inbound_email_replays", "inboundReplayRecordsDeleted", (now) => replay.cleanup(now)),
+    cleanupStage("console_authorizations", "consoleAuthorizationRecordsDeleted", (now) => cleanupConsoleAuthorizations(now, db)),
+    // Count sessions before an expired family cascade can remove them.
+    cleanupStage("console_sessions", "consoleSessionRecordsDeleted", (now) => cleanupConsoleSessions(now, db)),
+    cleanupStage("console_device_families", "consoleDeviceFamilyRecordsDeleted", (now) => cleanupConsoleDeviceFamilies(now, db)),
+    cleanupStage("console_rate_limits", "consoleRateLimitRecordsDeleted", (now) => cleanupConsoleRateLimits(now, db)),
+  ];
+  service = new RetentionRunService(
+    new DrizzleRetentionRunRepository(db),
+    new DrizzleRetentionBacklogProbe(db),
+    stages,
+  );
+  return service;
+}
+
+export function setRetentionRunServiceForTests(
+  value?: RetentionRunService,
+): void {
+  service = value;
+}
+
+function cleanupStage(
+  name: Exclude<RetentionStage["name"], "artifacts">,
+  counter: "consoleAuthorizationRecordsDeleted" |
+    "consoleDeviceFamilyRecordsDeleted" |
+    "consoleRateLimitRecordsDeleted" |
+    "consoleSessionRecordsDeleted" |
+    "inboundReplayRecordsDeleted",
+  cleanup: (now: Date) => Promise<number>,
+): RetentionStage {
+  return {
+    async execute(now, signal) {
+      signal.throwIfAborted();
+      const deleted = await cleanup(now);
+      signal.throwIfAborted();
+      return { counters: { [counter]: deleted } };
+    },
+    name,
+  };
+}

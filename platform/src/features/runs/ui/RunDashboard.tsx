@@ -1,27 +1,40 @@
-import type { RunSummary } from "@/features/runs/contracts";
+import type {
+  ConsoleRunListQuery,
+  ConsoleRunListResponse,
+} from "@/features/console/catalog/contracts";
 
 import { RunBrowser } from "./RunBrowser";
-import { deriveRunDashboardMetrics } from "./run-presentation";
 import styles from "./runs.module.css";
 
 interface RunDashboardProps {
-  runs: readonly RunSummary[];
+  catalog: ConsoleRunListResponse;
+  page: number;
+  query: ConsoleRunListQuery;
 }
 
-/** Server component that derives dashboard totals from the owner-scoped run list. */
-export function RunDashboard({ runs }: RunDashboardProps) {
-  const metrics = deriveRunDashboardMetrics(runs);
+/** Server component backed by exact owner-scoped catalog aggregates. */
+export function RunDashboard({ catalog, page, query }: RunDashboardProps) {
+  const metrics = catalog.overview;
 
   return (
     <div className={styles.dashboard}>
       <dl aria-label="Run summary" className={styles.metrics}>
-        <Metric label="Recorded runs" value={String(metrics.totalCount)} />
+        <Metric label="Recorded runs" value={String(metrics.recordedCount)} />
         <Metric label="Active runs" tone={metrics.activeCount > 0 ? "attention" : "quiet"} value={String(metrics.activeCount)} />
         <Metric label="Passed" value={String(metrics.passedCount)} />
         <Metric label="Healthy evidence" value={String(metrics.healthyCount)} />
-        <Metric label="Indexed evidence" value={String(metrics.evidenceCount)} />
+        <Metric label="Indexed evidence" value={String(metrics.indexedEvidenceCount)} />
       </dl>
-      <RunBrowser runs={runs} />
+      <RunBrowser
+        facets={catalog.facets}
+        filteredTotal={catalog.filteredTotal}
+        initialQuery={query}
+        key={JSON.stringify([query.cursor, query.direction, query.from, query.health, query.limit, query.producer, query.q, query.status, query.to])}
+        page={page}
+        pageInfo={catalog.pageInfo}
+        recordedTotal={catalog.overview.recordedCount}
+        runs={catalog.runs}
+      />
     </div>
   );
 }

@@ -42,7 +42,7 @@ export async function enforceConsoleRateLimit(input: {
   if (rows.length === 0 || rows[0]!.count > input.limit) {
     throw new PlatformError({
       code: "rate_limited",
-      detail: "Too many console authentication attempts. Retry after the current window.",
+      detail: "Too many requests for this console action. Retry after the current window.",
       retryAfterSeconds: Math.max(1, Math.ceil((windowStartedAt.getTime() + windowMs - now.getTime()) / 1_000)),
       status: 429,
       title: "Too many requests",

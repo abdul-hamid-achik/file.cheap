@@ -55,13 +55,17 @@ binary includes:
 - comparison against a corresponding live directory;
 - optional vecgrep integration for connecting evidence to likely source code;
 - retention, cleanup planning, and a Studio terminal interface;
+- explicit producer-scoped publication and paired owner recovery for the
+  private artifact service;
 - embedded documentation and an operating guide for agents.
 
-The installed product does not provide cloud sync, accounts, an HTTP API,
-authentication, or billing. file.cheap also has a public product website and a
-private artifact service, but no hosted vault ships to users. Optional OpenAI
-and non-loopback Ollama embedders can receive text when you explicitly configure
-them; the stash payload itself remains in the local vault.
+The installed product does not provide continuous cloud sync, a public hosted
+vault, teams, or billing. Its private artifact service is single-owner and
+opt-in: `publish` transfers one bounded file and `pull` recovers one verified
+object to a new path. The local vault and its normal operations remain
+independent of that service. Optional OpenAI and non-loopback Ollama embedders
+can receive text when you explicitly configure them; the stash payload itself
+remains in the local vault unless you explicitly publish a file.
 
 ## Next step
 

@@ -1,12 +1,23 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import type { ArtifactDownloadInput, ArtifactDownloadResponse, ArtifactListQuery, ArtifactPlanInput, ArtifactPlanReplayResponse, ArtifactPlanResponse, ArtifactPlanResult, ArtifactSummary } from "@/features/artifacts/contracts";
-import type { ArtifactRecord, ArtifactRepository, RetainableArtifactState } from "@/platform/database/repository";
+import {
+  derivePlanReceiptLookupCandidates,
+  issuePlanReceipt,
+  legacyPlanReceiptLookupSchemeV1,
+  planReceiptSchemeV1,
+  reconstructPlanReceipt,
+  verifyPlanReceipt,
+  verifyPlanReceiptLookup,
+  type PlanReceiptKeyring,
+  type PlanReceiptLookupCandidate,
+} from "@/features/artifacts/plan-receipts";
+import type { ArtifactPlanReceiptMatch, ArtifactRecord, ArtifactRepository, RetainableArtifactState } from "@/platform/database/repository";
 import type { ArtifactObjectStore } from "@/platform/artifacts/object-store";
 import { PlatformError } from "@/shared/errors/platform-error";
 
 const grantLifetimeMilliseconds = 15 * 60 * 1000;
-const deletionLeaseMilliseconds = 15 * 60 * 1000;
+export const artifactDeletionLeaseMilliseconds = 15 * 60 * 1000;
 
 type ArtifactIngestPolicy = Readonly<{
   kinds: readonly string[];
@@ -35,7 +46,7 @@ export function assertProducerSizeQuota(
 }
 
 export class ArtifactService {
-  constructor(private readonly store: ArtifactObjectStore, private readonly repository: ArtifactRepository, private readonly now: () => Date = () => new Date()) {}
+  constructor(private readonly store: ArtifactObjectStore, private readonly repository: ArtifactRepository, private readonly receiptKeyring: PlanReceiptKeyring, private readonly now: () => Date = () => new Date()) {}
 
   async plan(input: ArtifactPlanInput, signal?: AbortSignal, ownerAccountId?: string): Promise<ArtifactPlanResult> {
     const now = this.now();
@@ -61,7 +72,11 @@ export class ArtifactService {
       return committedPlanResult(record);
     }
     if (record?.state === "deleted" && record.committedAt === null) {
-      record = await this.repository.restartDeletedPlan(artifactId, { now, planExpiresAt, planToken: randomUUID() });
+      record = await this.repository.restartDeletedPlan(artifactId, {
+        now,
+        planExpiresAt,
+        receipt: issuePlanReceipt(this.receiptKeyring, artifactId),
+      });
     }
     if (record?.state === "deleting") {
       throw new PlatformError({ code: "idempotency_reconciling", detail: "The expired upload plan is being reconciled. Retry the same request.", retryAfterSeconds: 2, status: 409, title: "Upload plan reconciling" });
@@ -70,9 +85,9 @@ export class ArtifactService {
       throw new PlatformError({ code: "idempotency_unavailable", detail: "The idempotency key identifies an artifact under retention or already deleted.", status: 409, title: "Artifact unavailable" });
     }
     if (!record) {
-      record = await this.repository.createPlan(input, { artifactId, objectKey: objectKey(artifactId, input.sha256), ownerAccountId, planExpiresAt, planToken: randomUUID(), runIndexSha256, now });
+      record = await this.repository.createPlan(input, { artifactId, objectKey: objectKey(artifactId, input.sha256), ownerAccountId, planExpiresAt, receipt: issuePlanReceipt(this.receiptKeyring, artifactId), runIndexSha256, now });
     } else if (record.planExpiresAt <= now) {
-      record = await this.repository.renewPlan(artifactId, record.planToken, { now, planExpiresAt });
+      record = await this.repository.renewPlan(artifactId, receiptMatch(record), { now, planExpiresAt });
     }
     if (!record) {
       throw new PlatformError({ code: "idempotency_reconciling", detail: "The upload plan could not be loaded safely. Retry the same request.", retryAfterSeconds: 2, status: 409, title: "Upload plan reconciling" });
@@ -90,8 +105,9 @@ export class ArtifactService {
     if (record.state !== "planned" || record.planExpiresAt <= grantNow) {
       throw new PlatformError({ code: "idempotency_reconciling", detail: "The upload plan could not be renewed safely. Retry the same request.", retryAfterSeconds: 2, status: 409, title: "Upload plan reconciling" });
     }
+    const receipt = receiptForRecord(this.receiptKeyring, record);
     const upload = await this.store.issueUploadGrant({ contentType: record.contentType, key: record.objectKey, sizeBytes: record.sizeBytes, validUntil: record.planExpiresAt }, signal);
-    return plannedPlanResult(record, { ...upload, method: "PUT" });
+    return plannedPlanResult(record, receipt, { ...upload, method: "PUT" });
   }
 
   async commit(
@@ -99,7 +115,7 @@ export class ArtifactService {
     signal?: AbortSignal,
     ingestPolicy?: ArtifactIngestPolicy,
   ): Promise<ArtifactSummary> {
-    const record = await this.repository.findByPlanToken(receipt);
+    const record = await this.findByReceipt(receipt);
     if (!record) throw invalidReceipt();
     if (
       ingestPolicy &&
@@ -113,7 +129,7 @@ export class ArtifactService {
     if (ingestPolicy) assertProducerSizeQuota(record.sizeBytes, ingestPolicy);
     const now = this.now();
     if (
-      (record.state === "planned" && record.planExpiresAt <= now) ||
+      record.planExpiresAt <= now ||
       (record.expiresAt !== null && record.expiresAt <= now)
     ) {
       throw invalidReceipt();
@@ -184,12 +200,18 @@ export class ArtifactService {
       throw error;
     }
   }
-  async reconcile(): Promise<{ deleted: number }> {
+  async reconcile(signal?: AbortSignal): Promise<{
+    candidates: number;
+    deleted: number;
+    failures: number;
+  }> {
     let deleted = 0;
-    const failures: unknown[] = [];
+    let failures = 0;
     const now = this.now();
-    const staleBefore = new Date(now.getTime() - deletionLeaseMilliseconds);
-    for (const record of await this.repository.retentionCandidates(now, staleBefore)) {
+    const staleBefore = new Date(now.getTime() - artifactDeletionLeaseMilliseconds);
+    const candidates = await this.repository.retentionCandidates(now, staleBefore);
+    for (const record of candidates) {
+      signal?.throwIfAborted();
       const originalState = retainableState(record);
       const claimed = record.state === "deleting"
         ? await this.repository.reclaimDeletion(record.artifactId, staleBefore, now)
@@ -197,44 +219,63 @@ export class ArtifactService {
       if (!claimed) continue;
       let objectDeleted = false;
       try {
-        await this.store.delete(record.objectKey);
+        await this.store.delete(record.objectKey, signal);
         objectDeleted = true;
+        signal?.throwIfAborted();
         await this.repository.markDeleted(record.artifactId, this.now());
       } catch (error) {
+        if (signal?.aborted) throw error;
         if (!objectDeleted && originalState !== null) {
           try {
             await this.repository.restoreAfterDeletionFailure(record.artifactId, originalState);
-          } catch (restoreError) {
-            failures.push(
-              new AggregateError(
-                [error, restoreError],
-                "Artifact retention recovery failed",
-              ),
-            );
+          } catch {
+            failures += 1;
             continue;
           }
         }
-        failures.push(error);
+        failures += 1;
         continue;
       }
       deleted += 1;
     }
-    if (failures.length === 1) {
-      throw failures[0];
-    }
-    if (failures.length > 1) {
-      throw new AggregateError(
-        failures,
-        `Artifact retention failed for ${failures.length} candidates after deleting ${deleted}`,
-      );
-    }
-    return { deleted };
+    return { candidates: candidates.length, deleted, failures };
   }
 
   private async requireCommitted(artifactId: string, ownerAccountId?: string) {
     const record = await this.repository.find(artifactId);
     if (!record || record.state !== "committed" || (ownerAccountId && record.ownerAccountId !== ownerAccountId)) throw artifactNotFound();
     return record;
+  }
+
+  private async findByReceipt(receipt: string): Promise<ArtifactRecord | null> {
+    let candidates: readonly PlanReceiptLookupCandidate[];
+    try {
+      candidates = derivePlanReceiptLookupCandidates(
+        this.receiptKeyring,
+        receipt,
+      );
+    } catch {
+      return null;
+    }
+    const record = await this.repository.findByPlanReceipt(candidates);
+    if (record) {
+      const material = record.planReceipt;
+      if (material === null) return null;
+      const verified = material.scheme === planReceiptSchemeV1
+        ? verifyPlanReceipt(this.receiptKeyring, receipt, {
+            artifactId: record.artifactId,
+            receiptKid: material.kid,
+            receiptLookup: material.lookup,
+            receiptNonce: material.nonce,
+          })
+        : material.scheme === legacyPlanReceiptLookupSchemeV1 &&
+          verifyPlanReceiptLookup(this.receiptKeyring, receipt, {
+            receiptKid: material.kid,
+            receiptLookup: material.lookup,
+          });
+      return verified ? record : null;
+    }
+    return this.repository.findLegacyByPlanToken(receipt);
   }
 }
 
@@ -267,6 +308,7 @@ function committedPlanResult(record: ArtifactRecord): ArtifactPlanReplayResponse
 
 function plannedPlanResult(
   record: ArtifactRecord,
+  receipt: string,
   upload: ArtifactPlanResponse["upload"],
 ): ArtifactPlanResponse {
   if (record.state !== "planned" || record.committedAt !== null) {
@@ -280,9 +322,50 @@ function plannedPlanResult(
       state: "planned",
     },
     artifactRef: value.artifactRef,
-    receipt: record.planToken,
+    receipt,
     upload,
   };
+}
+
+function receiptMatch(record: ArtifactRecord): ArtifactPlanReceiptMatch {
+  return record.planReceipt === null
+    ? { mode: "legacy", planToken: record.planToken }
+    : {
+        kid: record.planReceipt.kid,
+        lookup: record.planReceipt.lookup,
+        mode: "lookup",
+      };
+}
+
+function receiptForRecord(
+  keyring: PlanReceiptKeyring,
+  record: ArtifactRecord,
+): string {
+  const material = record.planReceipt;
+  if (material === null) return record.planToken;
+  if (material.scheme === legacyPlanReceiptLookupSchemeV1) {
+    if (!verifyPlanReceiptLookup(keyring, record.planToken, {
+      receiptKid: material.kid,
+      receiptLookup: material.lookup,
+    })) {
+      throw new Error("Artifact plan receipt metadata is inconsistent");
+    }
+    return record.planToken;
+  }
+  const receipt = reconstructPlanReceipt(keyring, {
+    artifactId: record.artifactId,
+    receiptKid: material.kid,
+    receiptNonce: material.nonce,
+  });
+  if (!verifyPlanReceipt(keyring, receipt, {
+    artifactId: record.artifactId,
+    receiptKid: material.kid,
+    receiptLookup: material.lookup,
+    receiptNonce: material.nonce,
+  })) {
+    throw new Error("Artifact plan receipt metadata is inconsistent");
+  }
+  return receipt;
 }
 
 function invalidReceipt(): PlatformError { return new PlatformError({ code: "invalid_receipt", detail: "The upload receipt is invalid or expired.", status: 400, title: "Invalid receipt" }); }

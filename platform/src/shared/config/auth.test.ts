@@ -23,7 +23,25 @@ test("loads the single-owner console boundary independently", () => {
     allowedEmails: ["owner@example.com"],
     ownerAccountId: "acc_owner123",
     publicUrl: "http://127.0.0.1:3100",
+    verificationDeliveryLeaseMs: 120_000,
   });
+});
+
+test("loads a bounded verification delivery lease", () => {
+  delete process.env.VERCEL;
+  Object.assign(process.env, { NODE_ENV: "test" });
+  process.env.FILECHEAP_AUTH_SECRET = "s".repeat(32);
+  process.env.FILECHEAP_OWNER_ACCOUNT_ID = "acc_owner123";
+  process.env.FILECHEAP_OWNER_EMAIL = "owner@example.com";
+  process.env.FILECHEAP_VERIFICATION_DELIVERY_LEASE_SECONDS = "45";
+  process.env.PLATFORM_PUBLIC_URL = "http://127.0.0.1:3100";
+  process.env.RESEND_AUTH_FROM = "file.cheap <auth@example.com>";
+  process.env.RESEND_AUTH_SEND_API_KEY = "re_test";
+  expect(getAuthConfig().verificationDeliveryLeaseMs).toBe(45_000);
+
+  resetAuthConfigForTests();
+  process.env.FILECHEAP_VERIFICATION_DELIVERY_LEASE_SECONDS = "10";
+  expect(() => getAuthConfig()).toThrow();
 });
 
 test("fails closed without an owner, strong secret, sender, or production HTTPS", () => {

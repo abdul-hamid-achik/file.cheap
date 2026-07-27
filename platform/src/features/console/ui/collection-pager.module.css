@@ -1,0 +1,100 @@
+.pager {
+  display: flex;
+  min-height: 58px;
+  gap: 18px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 14px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  color: var(--ink-muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.summary {
+  margin: 0 auto 0 0;
+}
+
+.summary strong {
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.pageSize {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pageSize select {
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: var(--page-deep);
+  color: var(--ink);
+  font: inherit;
+}
+
+.controls {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.controls button {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.controls button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.controls button:active:not(:disabled) {
+  transform: scale(.98);
+}
+
+.controls button:disabled {
+  cursor: not-allowed;
+  opacity: .38;
+}
+
+.controls button:focus-visible,
+.pageSize select:focus-visible {
+  outline: 2px solid var(--paper);
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .pager {
+    display: grid;
+    grid-template-columns: 1fr auto;
+  }
+
+  .summary {
+    margin: 0;
+  }
+
+  .controls {
+    grid-column: 1 / -1;
+    justify-content: space-between;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .controls button:active:not(:disabled) {
+    transform: none;
+  }
+}

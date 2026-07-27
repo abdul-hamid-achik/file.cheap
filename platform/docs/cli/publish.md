@@ -52,9 +52,9 @@ the previous credential.
 ## Retry behavior
 
 The plan request may be retried once with one client-generated idempotency key;
-the final commit may be retried with the same opaque service receipt. Direct PUT
-is never retried automatically because its result can be ambiguous and a signed
-URL must never appear in output. If the immutable object already exists, a
+the final commit may be retried with the same opaque service receipt only until
+that plan's `plan_expires_at`. Direct PUT is never retried automatically because
+its result can be ambiguous and a signed URL must never appear in output. If the immutable object already exists, a
 non-overwrite conflict is safe to advance to commit because the service reads
 the bounded private bytes and verifies their SHA-256 before committing. The
 local source remains unchanged in every failure case.
@@ -74,8 +74,9 @@ recompute a rolling retention date on retry. Persist the opaque receipt only in
 the producer's protected delivery state, never in `ArtifactRefV1`, logs, or
 user-facing output. If the exact artifact already committed, a repeated plan
 returns `200` with its committed summary and no upload grant. Repeating the
-original receipt also returns the verified committed summary after the former
-transfer grant expires, until artifact retention begins.
+original receipt also returns the verified committed summary only before
+`plan_expires_at`; afterward the idempotency-keyed plan request remains the
+recovery mechanism for the retained artifact.
 
 ## JSON receipt
 

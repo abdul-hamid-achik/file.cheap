@@ -5,6 +5,7 @@ export const inboundProcessingLeaseMilliseconds = 2 * 60 * 1_000;
 // Resend can deliver a webhook up to eight times, so retain a lease for each
 // provider attempt before terminally suppressing further retries.
 export const maxInboundReplayAttempts = 8;
+export const inboundReplayCleanupBatchSize = 100;
 
 export type InboundReplayClaim =
   | { leaseToken: string; state: "claimed" }
@@ -22,7 +23,7 @@ export interface InboundReplayRepository {
   markAmbiguous(emailIdSha256: string, leaseToken: string, now: Date): Promise<boolean>;
   markRejected(emailIdSha256: string, leaseToken: string, now: Date): Promise<boolean>;
   release(emailIdSha256: string, leaseToken: string, now: Date): Promise<void>;
-  cleanup(now: Date): Promise<void>;
+  cleanup(now: Date): Promise<number>;
 }
 
 export function replayDigest(value: string): string {
@@ -112,12 +113,23 @@ export class InMemoryInboundReplayRepository implements InboundReplayRepository 
     }
   }
 
-  async cleanup(now: Date): Promise<void> {
-    for (const record of this.byEmail.values()) {
-      if (record.expiresAt > now) continue;
+  async cleanup(now: Date): Promise<number> {
+    let deleted = 0;
+    const candidates = [...this.byEmail.values()]
+      .filter((record) => record.expiresAt <= now)
+      .sort((left, right) => {
+        const time = left.expiresAt.getTime() - right.expiresAt.getTime();
+        return time === 0
+          ? left.emailIdSha256.localeCompare(right.emailIdSha256)
+          : time;
+      })
+      .slice(0, inboundReplayCleanupBatchSize);
+    for (const record of candidates) {
       this.byEmail.delete(record.emailIdSha256);
       this.bySvix.delete(record.svixIdSha256);
+      deleted += 1;
     }
+    return deleted;
   }
 
   private complete(

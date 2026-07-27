@@ -1,3 +1,4 @@
+import { getPlanReceiptKeyring } from "@/features/artifacts/plan-receipt-config";
 import { ArtifactService } from "@/features/artifacts/service";
 import { getArtifactObjectStore } from "@/platform/artifacts/factory";
 import { DrizzleArtifactRepository, type ArtifactRepository } from "@/platform/database/repository";
@@ -5,7 +6,11 @@ import { DrizzleArtifactRepository, type ArtifactRepository } from "@/platform/d
 let service: ArtifactService | undefined;
 
 export function getArtifactService(): ArtifactService {
-  service ??= new ArtifactService(getArtifactObjectStore(), new DrizzleArtifactRepository());
+  service ??= new ArtifactService(
+    getArtifactObjectStore(),
+    new DrizzleArtifactRepository(),
+    getPlanReceiptKeyring(),
+  );
   return service;
 }
 

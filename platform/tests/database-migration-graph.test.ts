@@ -63,6 +63,7 @@ describe("database migration graph", () => {
       ).sort(),
     ).toEqual([
       "artifacts_expiry_check",
+      "artifacts_plan_receipt_shape_check",
       "artifacts_sha256_check",
       "artifacts_size_check",
       "artifacts_state_check",
@@ -88,5 +89,45 @@ describe("database migration graph", () => {
         snapshot.tables[table]?.checkConstraints?.[constraint]?.value,
       ).toContain(`<= ${maximumArtifactBytes}`);
     }
+  });
+
+  test("records the private retention and append-only activity invariants", () => {
+    const latest = [...journal.entries].sort(
+      (left, right) => left.idx - right.idx,
+    ).at(-1);
+    if (!latest) throw new Error("Expected a retention migration");
+    const snapshot = JSON.parse(
+      readFileSync(
+        `${metadataDirectory}/${String(latest.idx).padStart(4, "0")}_snapshot.json`,
+        "utf8",
+      ),
+    ) as MigrationSnapshot;
+
+    expect(Object.keys(
+      snapshot.tables["public.private_retention_runs"]?.checkConstraints ?? {},
+    ).sort()).toEqual([
+      "private_retention_runs_counters_check",
+      "private_retention_runs_failed_areas_check",
+      "private_retention_runs_id_check",
+      "private_retention_runs_outcome_check",
+      "private_retention_runs_status_check",
+      "private_retention_runs_terminal_check",
+      "private_retention_runs_time_check",
+    ]);
+    expect(Object.keys(
+      snapshot.tables["public.private_activity_events"]?.checkConstraints ?? {},
+    ).sort()).toEqual([
+      "private_activity_events_actor_check",
+      "private_activity_events_details_check",
+      "private_activity_events_id_check",
+      "private_activity_events_name_check",
+      "private_activity_events_subject_check",
+    ]);
+    const migration = readFileSync(
+      `${drizzleDirectory}/0012_private_retention_observability.sql`,
+      "utf8",
+    );
+    expect(migration).toContain("private_retention_runs_one_running_unique");
+    expect(migration).toContain("private_activity_events_append_only");
   });
 });

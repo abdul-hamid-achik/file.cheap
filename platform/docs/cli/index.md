@@ -22,6 +22,7 @@ Run `fcheap agent` for the embedded agent operating guide.
 | [`save`](/cli/save) | Snapshot a file or directory with provenance, hashes, and secret scanning |
 | [`artifact-ref`](/cli/artifact-ref) | Emit versioned metadata that points to an existing local stash |
 | [`publish`](/cli/publish) | Publish one bounded local file to the private artifact service |
+| [`pull`](/cli/pull) | Download one private cloud artifact and verify its recorded SHA-256 |
 | [`list`](/cli/list) | Browse and filter stash summaries |
 | [`info`](/cli/info) | Read one complete stash manifest |
 | [`restore`](/cli/restore) | Materialize a stash and verify its hashes |
@@ -54,6 +55,7 @@ Run `fcheap agent` for the embedded agent operating guide.
 | [`config`](/cli/config) | Inspect and update configuration |
 | [`doctor`](/cli/doctor) | Check paths, indexes, and optional dependencies |
 | [`studio`](/cli/studio) | Open the interactive terminal interface |
+| [`auth`](/cli/auth) | Pair, inspect, refresh, or remove the private console device session |
 | [`mcp`](/cli/mcp) | Start the stdio MCP server |
 | [`docs`](/cli/docs) | Read embedded documentation or manage the docs site from a checkout |
 | `agent` | Print the version-matched agent operating guide; add `--json` for its structured form |
@@ -111,6 +113,10 @@ indexing and search. `connect` executes the separately installed vecgrep binary.
 `publish` is opt-in and transfers one bounded local file to the private artifact
 service. It never uploads a local stash automatically and never evicts local
 source bytes.
+
+`pull` is also opt-in. It uses the paired device credential to request a
+short-lived direct transfer, verifies the recorded size and SHA-256, and refuses
+to overwrite or extract the destination.
 
 `artifact-ref` lets another tool store a pointer to a local stash. The pointer
 does not move bytes and resolves only where the referenced vault is available.

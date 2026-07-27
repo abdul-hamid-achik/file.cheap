@@ -1,14 +1,18 @@
 import { randomUUID } from "node:crypto";
 
-import { and, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 
 import type {
   AuthRepository,
   AuthorizationRecord,
   DeviceFamilyIssueInput,
+  DeviceFamilyListInput,
+  DeviceFamilyListPage,
+  DeviceFamilyRecord,
   RefreshRotationInput,
   RefreshRotationResult,
   UserRecord,
+  VerificationDeliveryClaim,
 } from "@/features/auth/repository";
 import { getDatabase } from "@/platform/database/client";
 import {
@@ -17,10 +21,33 @@ import {
   consoleRefreshTokens,
   consoleSessions,
   consoleUsers,
+  consoleVerificationDeliveries,
 } from "@/platform/database/schema";
 
+type AuthDatabase = ReturnType<typeof getDatabase>;
+type TimestampValue = Date | string;
+
+type DeviceFamilySnapshotRow = {
+  absoluteExpiresAt: TimestampValue | null;
+  active: unknown;
+  clientName: string | null;
+  createdAt: TimestampValue | null;
+  expiring: unknown;
+  hasNextPage: boolean;
+  id: string | null;
+  idleExpiresAt: TimestampValue | null;
+  inactive: unknown;
+  lastUsedAt: TimestampValue | null;
+  revokeReason: string | null;
+  revokedAt: TimestampValue | null;
+  status: string | null;
+  total: unknown;
+  updatedAt: TimestampValue | null;
+  userId: string | null;
+};
+
 export class DrizzleAuthRepository implements AuthRepository {
-  private readonly db = getDatabase();
+  constructor(private readonly db: AuthDatabase = getDatabase()) {}
 
   async createAuthorization(record: AuthorizationRecord): Promise<void> {
     await this.db.insert(consoleAuthorizations).values(record);
@@ -38,19 +65,144 @@ export class DrizzleAuthRepository implements AuthRepository {
     return row ? mapAuthorization(row) : null;
   }
 
-  async markEmailSent(input: { email: string; id: string; now: Date; otpHash: string }) {
-    const row = (await this.db.update(consoleAuthorizations).set({
-      email: input.email,
-      emailSendCount: sql`${consoleAuthorizations.emailSendCount} + 1`,
-      otpHash: input.otpHash,
-      status: "email_sent",
+  async claimVerificationDelivery(input: {
+    eligible: boolean;
+    email: string;
+    leaseExpiresAt: Date;
+    leaseToken: string;
+    maxEmailSends: number;
+    now: Date;
+    userCode: string;
+  }): Promise<VerificationDeliveryClaim | null> {
+    // INSERT .. ON CONFLICT performs creation, expired-lease recovery and
+    // same-ordinal coalescing as one PostgreSQL statement. Concurrent callers
+    // cannot both receive a live claim.
+    const result = await this.db.execute(sql`
+      WITH candidate AS MATERIALIZED (
+        SELECT authz.id, authz.client_name,
+          authz.user_code, authz.email_send_count
+        FROM ${consoleAuthorizations} AS authz
+        WHERE authz.user_code = ${input.userCode}
+          AND authz.status IN ('pending', 'email_sent')
+          AND authz.expires_at > ${input.now.toISOString()}::timestamptz
+          AND authz.email_send_count < ${input.maxEmailSends}
+        FOR UPDATE OF authz
+      ), eligible AS MATERIALIZED (
+        SELECT * FROM candidate WHERE ${input.eligible}
+      ), claimed AS (
+        INSERT INTO ${consoleVerificationDeliveries} AS delivery (
+          authorization_id, delivery_number, email, status, lease_token,
+          lease_expires_at, created_at, updated_at
+        )
+        SELECT eligible.id, eligible.email_send_count + 1, ${input.email},
+          'sending', ${input.leaseToken},
+          ${input.leaseExpiresAt.toISOString()}::timestamptz,
+          ${input.now.toISOString()}::timestamptz,
+          ${input.now.toISOString()}::timestamptz
+        FROM eligible
+        ON CONFLICT (authorization_id, delivery_number) DO UPDATE
+        SET status = 'sending',
+          lease_token = EXCLUDED.lease_token,
+          lease_expires_at = EXCLUDED.lease_expires_at,
+          updated_at = EXCLUDED.updated_at
+        WHERE delivery.email = EXCLUDED.email
+          AND (
+            delivery.status = 'pending'
+            OR (
+              delivery.status = 'sending'
+              AND delivery.lease_expires_at <= ${input.now.toISOString()}::timestamptz
+            )
+          )
+        RETURNING authorization_id, delivery_number, email, lease_token
+      )
+      SELECT claimed.authorization_id, eligible.client_name,
+        claimed.delivery_number, claimed.email, claimed.lease_token,
+        eligible.user_code
+      FROM claimed
+      INNER JOIN eligible ON eligible.id = claimed.authorization_id
+    `);
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return {
+      authorizationId: stringValue(row.authorization_id, "verification authorization ID"),
+      clientName: stringValue(row.client_name, "verification client name"),
+      deliveryNumber: integerValue(row.delivery_number, "verification delivery number"),
+      email: stringValue(row.email, "verification email"),
+      leaseToken: stringValue(row.lease_token, "verification lease token"),
+      userCode: stringValue(row.user_code, "verification user code"),
+    };
+  }
+
+  async acceptVerificationDelivery(input: {
+    authorizationId: string;
+    deliveryNumber: number;
+    email: string;
+    leaseToken: string;
+    now: Date;
+    otpHash: string;
+  }): Promise<boolean> {
+    // Provider acceptance activates the new proof and advances the accepted
+    // send counter in the same statement that seals the delivery.
+    const result = await this.db.execute(sql`
+      WITH locked_authorization AS MATERIALIZED (
+        SELECT authz.id
+        FROM ${consoleAuthorizations} AS authz
+        WHERE authz.id = ${input.authorizationId}
+          AND authz.status IN ('pending', 'email_sent')
+          AND authz.expires_at > ${input.now.toISOString()}::timestamptz
+          AND authz.email_send_count = ${input.deliveryNumber - 1}
+        FOR UPDATE OF authz
+      ), locked_delivery AS MATERIALIZED (
+        SELECT delivery.authorization_id
+        FROM ${consoleVerificationDeliveries} AS delivery
+        INNER JOIN locked_authorization
+          ON locked_authorization.id = delivery.authorization_id
+        WHERE delivery.delivery_number = ${input.deliveryNumber}
+          AND delivery.email = ${input.email}
+          AND delivery.status = 'sending'
+          AND delivery.lease_token = ${input.leaseToken}
+        FOR UPDATE OF delivery
+      ), activated AS (
+        UPDATE ${consoleAuthorizations} AS authz
+        SET email = ${input.email}, otp_hash = ${input.otpHash},
+          email_send_count = ${input.deliveryNumber}, status = 'email_sent',
+          updated_at = ${input.now.toISOString()}::timestamptz
+        FROM locked_delivery
+        WHERE authz.id = locked_delivery.authorization_id
+        RETURNING authz.id
+      )
+      UPDATE ${consoleVerificationDeliveries} AS delivery
+      SET status = 'accepted', lease_token = NULL, lease_expires_at = NULL,
+        accepted_at = ${input.now.toISOString()}::timestamptz,
+        updated_at = ${input.now.toISOString()}::timestamptz
+      FROM activated
+      WHERE delivery.authorization_id = activated.id
+        AND delivery.delivery_number = ${input.deliveryNumber}
+        AND delivery.email = ${input.email}
+        AND delivery.status = 'sending'
+        AND delivery.lease_token = ${input.leaseToken}
+      RETURNING delivery.authorization_id
+    `);
+    return result.rows.length === 1;
+  }
+
+  async releaseVerificationDelivery(input: {
+    authorizationId: string;
+    deliveryNumber: number;
+    leaseToken: string;
+    now: Date;
+  }): Promise<void> {
+    await this.db.update(consoleVerificationDeliveries).set({
+      leaseExpiresAt: null,
+      leaseToken: null,
+      status: "pending",
       updatedAt: input.now,
     }).where(and(
-      eq(consoleAuthorizations.id, input.id),
-      inArray(consoleAuthorizations.status, ["pending", "email_sent"]),
-      lt(consoleAuthorizations.emailSendCount, 3),
-    )).returning())[0];
-    return row ? mapAuthorization(row) : null;
+      eq(consoleVerificationDeliveries.authorizationId, input.authorizationId),
+      eq(consoleVerificationDeliveries.deliveryNumber, input.deliveryNumber),
+      eq(consoleVerificationDeliveries.status, "sending"),
+      eq(consoleVerificationDeliveries.leaseToken, input.leaseToken),
+    ));
   }
 
   async recordOtpFailure(id: string, now: Date): Promise<void> {
@@ -118,12 +270,11 @@ export class DrizzleAuthRepository implements AuthRepository {
       ), inserted_family AS (
         INSERT INTO ${consoleDeviceFamilies} (
           id, user_id, client_name, status, absolute_expires_at,
-          idle_expires_at, last_used_at, created_at, updated_at
+          idle_expires_at, created_at, updated_at
         )
         SELECT ${input.family.id}, approved_user_id, ${input.family.clientName},
           'active', ${input.family.absoluteExpiresAt.toISOString()}::timestamptz,
           ${input.family.idleExpiresAt.toISOString()}::timestamptz,
-          ${input.now.toISOString()}::timestamptz,
           ${input.now.toISOString()}::timestamptz,
           ${input.now.toISOString()}::timestamptz
         FROM claimed
@@ -334,6 +485,129 @@ export class DrizzleAuthRepository implements AuthRepository {
     return row.user;
   }
 
+  async listDeviceFamilies(input: DeviceFamilyListInput): Promise<DeviceFamilyListPage> {
+    const cursorPredicate = input.cursor
+      ? or(
+          lt(consoleDeviceFamilies.createdAt, input.cursor.createdAt),
+          and(
+            eq(consoleDeviceFamilies.createdAt, input.cursor.createdAt),
+            lt(consoleDeviceFamilies.id, input.cursor.id),
+          ),
+        )
+      : undefined;
+    const result = await this.db.execute<DeviceFamilySnapshotRow>(sql`
+      WITH page_candidates AS (
+        SELECT *
+        FROM ${consoleDeviceFamilies}
+        WHERE ${and(
+          eq(consoleDeviceFamilies.userId, input.userId),
+          cursorPredicate,
+        ) ?? sql`true`}
+        ORDER BY ${consoleDeviceFamilies.createdAt} DESC,
+          ${consoleDeviceFamilies.id} DESC
+        LIMIT ${input.limit + 1}
+      ), overview AS (
+        SELECT
+          count(*) FILTER (
+            WHERE ${consoleDeviceFamilies.revokedAt} IS NULL
+              AND ${consoleDeviceFamilies.idleExpiresAt} > ${input.now}
+              AND ${consoleDeviceFamilies.absoluteExpiresAt} > ${input.now}
+          ) AS active,
+          count(*) FILTER (
+            WHERE ${consoleDeviceFamilies.revokedAt} IS NULL
+              AND ${consoleDeviceFamilies.idleExpiresAt} > ${input.now}
+              AND ${consoleDeviceFamilies.absoluteExpiresAt} > ${input.now}
+              AND least(
+                ${consoleDeviceFamilies.idleExpiresAt},
+                ${consoleDeviceFamilies.absoluteExpiresAt}
+              ) <= ${input.expiringBefore}
+          ) AS expiring,
+          count(*) FILTER (
+            WHERE ${consoleDeviceFamilies.revokedAt} IS NOT NULL
+              OR ${consoleDeviceFamilies.idleExpiresAt} <= ${input.now}
+              OR ${consoleDeviceFamilies.absoluteExpiresAt} <= ${input.now}
+          ) AS inactive,
+          count(*) AS total
+        FROM ${consoleDeviceFamilies}
+        WHERE ${consoleDeviceFamilies.userId} = ${input.userId}
+      )
+      SELECT
+        page_candidates.id AS "id",
+        page_candidates.user_id AS "userId",
+        page_candidates.client_name AS "clientName",
+        page_candidates.status AS "status",
+        page_candidates.absolute_expires_at AS "absoluteExpiresAt",
+        page_candidates.idle_expires_at AS "idleExpiresAt",
+        page_candidates.last_used_at AS "lastUsedAt",
+        page_candidates.revoked_at AS "revokedAt",
+        page_candidates.revoke_reason AS "revokeReason",
+        page_candidates.created_at AS "createdAt",
+        page_candidates.updated_at AS "updatedAt",
+        overview.active AS "active",
+        overview.expiring AS "expiring",
+        overview.inactive AS "inactive",
+        overview.total AS "total",
+        ((SELECT count(*) FROM page_candidates) > ${input.limit})
+          AS "hasNextPage"
+      FROM overview
+      LEFT JOIN page_candidates ON true
+      ORDER BY page_candidates.created_at DESC NULLS LAST,
+        page_candidates.id DESC NULLS LAST
+    `);
+    const snapshot = result.rows[0];
+    if (!snapshot) throw new Error("Device family snapshot did not return a row");
+    const families = result.rows
+      .flatMap((row) => {
+        const family = mapDeviceFamilySnapshot(row);
+        return family ? [family] : [];
+      })
+      .slice(0, input.limit);
+    return {
+      families,
+      hasNextPage: snapshot.hasNextPage,
+      overview: {
+        active: integerValue(snapshot.active, "active device family total"),
+        expiring: integerValue(snapshot.expiring, "expiring device family total"),
+        inactive: integerValue(snapshot.inactive, "inactive device family total"),
+        total: integerValue(snapshot.total, "device family total"),
+      },
+    };
+  }
+
+  async revokeDeviceFamily(input: {
+    familyId: string;
+    now: Date;
+    reason: "owner";
+    userId: string;
+  }): Promise<boolean> {
+    const result = await this.db.execute(sql`
+      WITH owned_family AS (
+        SELECT id
+        FROM ${consoleDeviceFamilies}
+        WHERE id = ${input.familyId} AND user_id = ${input.userId}
+      ), revoked_family AS (
+        UPDATE ${consoleDeviceFamilies} family
+        SET status = 'revoked',
+          revoked_at = COALESCE(family.revoked_at, ${input.now.toISOString()}::timestamptz),
+          revoke_reason = COALESCE(family.revoke_reason, ${input.reason}),
+          updated_at = ${input.now.toISOString()}::timestamptz
+        FROM owned_family
+        WHERE family.id = owned_family.id
+        RETURNING family.id
+      ), revoked_sessions AS (
+        UPDATE ${consoleSessions} session
+        SET revoked_at = COALESCE(session.revoked_at, ${input.now.toISOString()}::timestamptz),
+          updated_at = ${input.now.toISOString()}::timestamptz
+        FROM revoked_family
+        WHERE session.refresh_family_id = revoked_family.id
+          AND session.revoked_at IS NULL
+        RETURNING session.id
+      )
+      SELECT id FROM revoked_family
+    `);
+    return result.rows.length === 1;
+  }
+
   async revokeSession(tokenHash: string, now: Date): Promise<void> {
     const family = await this.db.execute(sql`
       WITH target_family AS (
@@ -409,4 +683,70 @@ function rotationResult(row: Record<string, unknown>): Exclude<RefreshRotationRe
     throw new Error("Refresh rotation returned invalid expiry timestamps");
   }
   return { accessExpiresAt, refreshExpiresAt };
+}
+
+function integerValue(value: unknown, label: string): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error(`${label} is invalid`);
+  }
+  return parsed;
+}
+
+function stringValue(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${label} is invalid`);
+  }
+  return value;
+}
+
+function mapDeviceFamilySnapshot(
+  row: DeviceFamilySnapshotRow,
+): DeviceFamilyRecord | null {
+  if (row.id === null) return null;
+  if (
+    row.userId === null ||
+    row.clientName === null ||
+    row.status === null ||
+    row.absoluteExpiresAt === null ||
+    row.idleExpiresAt === null ||
+    row.createdAt === null ||
+    row.updatedAt === null
+  ) {
+    throw new Error("Device family snapshot is incomplete");
+  }
+  if (row.status !== "active" && row.status !== "revoked") {
+    throw new Error("Device family snapshot has an invalid status");
+  }
+  return {
+    absoluteExpiresAt: timestampValue(
+      row.absoluteExpiresAt,
+      "device family absolute expiry",
+    ),
+    clientName: row.clientName,
+    createdAt: timestampValue(row.createdAt, "device family creation time"),
+    id: row.id,
+    idleExpiresAt: timestampValue(
+      row.idleExpiresAt,
+      "device family idle expiry",
+    ),
+    lastUsedAt: row.lastUsedAt
+      ? timestampValue(row.lastUsedAt, "device family last use")
+      : null,
+    revokeReason: row.revokeReason,
+    revokedAt: row.revokedAt
+      ? timestampValue(row.revokedAt, "device family revocation time")
+      : null,
+    status: row.status,
+    updatedAt: timestampValue(row.updatedAt, "device family update time"),
+    userId: row.userId,
+  };
+}
+
+function timestampValue(value: TimestampValue, label: string): Date {
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`${label} is invalid`);
+  }
+  return parsed;
 }

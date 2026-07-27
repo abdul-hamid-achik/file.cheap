@@ -148,10 +148,11 @@ protects a stash from sweep and cleanup application.
 ## Local-first is not the same as backed up
 
 The local vault avoids a hosted dependency and keeps normal reads off the
-network. It does not protect against loss of the machine or disk. The public
-file.cheap website does not change that storage model: its private artifact service
-is gated, and no hosted vault ships today. Independently design backup and key
-recovery for evidence that must survive local hardware failure.
+network. It does not protect against loss of the machine or disk. The private,
+single-owner artifact service is a separate opt-in recovery path: only files
+explicitly published there can later be pulled. It is not continuous sync and
+does not back up local stashes automatically. Independently design backup and
+key recovery for evidence that must survive local hardware failure.
 
 Continue with [Workflow examples](/guide/workflows), or use the
 [CLI overview](/cli/) to choose a command.

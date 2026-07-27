@@ -1,0 +1,70 @@
+version: 1
+name: cli_pull
+
+metadata:
+  feature: cli
+  owner: platform
+  priority: high
+  tags:
+    - smoke
+    - security
+
+intent: |
+  Verify that pull is discoverable without a vault and fails closed before it
+  can create output when no paired device credential exists.
+
+target:
+  cmd:
+    - "/bin/sh"
+    - "-c"
+    - |
+      export XDG_CONFIG_HOME=/tmp/fcheap-e2e-pull-config
+      rm -rf /tmp/fcheap-e2e-pull-config
+      rm -f /tmp/fcheap-e2e-pull-output
+      help_output="$(./bin/fcheap pull --help)"
+      printf '%s\n' "$help_output"
+      printf '%s\n' "$help_output" | grep -F \
+        "Download and verify one private cloud artifact" >/dev/null
+      if ./bin/fcheap pull art_abcdefghijklmnop \
+        --output /tmp/fcheap-e2e-pull-output 2>&1; then
+        exit 1
+      fi
+      test ! -e /tmp/fcheap-e2e-pull-output
+      echo "Download and verify one private cloud artifact help verified"
+      echo "Missing device session rejected without output"
+  cwd: "."
+  timeoutMs: 30000
+
+terminal:
+  cols: 120
+  rows: 40
+  profile: xterm-256color
+  alternateScreen: forbid
+
+preconditions:
+  commands:
+    - run: "CGO_ENABLED=0 go build -o ./bin/fcheap ./cmd/fcheap"
+      timeoutMs: 120000
+
+imports:
+  - ../actions/wait_clean_exit.yml
+
+steps:
+  - use: wait_clean_exit
+
+outcomes:
+  - id: clean_exit
+    description: the negative pull flow exits cleanly
+    verify:
+      process:
+        exitCode: 0
+  - id: help_boundary
+    description: help explains that pull verifies and never overwrites bytes
+    verify:
+      screen:
+        contains: "Download and verify one private cloud artifact"
+  - id: missing_session
+    description: no credential means no transfer and no destination file
+    verify:
+      screen:
+        contains: "Missing device session rejected without output"

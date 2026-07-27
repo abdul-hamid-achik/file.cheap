@@ -23,6 +23,20 @@ jobs:
     name: Production verification
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: filecheap_test
+          POSTGRES_PASSWORD: filecheap-postgres-test-only
+          POSTGRES_USER: filecheap_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U filecheap_test -d filecheap_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -44,6 +58,11 @@ jobs:
         working-directory: platform
       - run: bun install --frozen-lockfile
         working-directory: platform/docs
+      - name: Apply migrations from zero on PostgreSQL
+        env:
+          FILECHEAP_POSTGRES_TEST_URL: postgresql://filecheap_test:filecheap-postgres-test-only@127.0.0.1:5432/filecheap_test?sslmode=disable
+        run: bun run test:postgres
+        working-directory: platform
       - run: bun run check
         working-directory: platform
       - name: Check the migration graph without connecting

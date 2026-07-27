@@ -126,11 +126,12 @@ No product needs a foreign key into another product's database.
 | Cairntrace | Save the completed run directory with `fcheap save`; Cairntrace wrapper ID forwarding is pending |
 | Glyphrun | Save the completed `.glyphrun/runs/<run-id>` pack with `fcheap save` |
 | Chalupa | `task report REPORT=... ARTIFACTS=...` accepts an ArtifactRefV1 sidecar; its Production deployment is still pending |
-| Private artifact service | `fcheap publish` and approved service integrations emit verified `fcheap-cloud` references; this is single-owner infrastructure, not a public vault |
+| Private artifact service | `fcheap publish` and approved service integrations emit verified `fcheap-cloud` references; `fcheap pull` recovers their verified bytes for the paired owner; this is single-owner infrastructure, not a public vault |
 
-Both current file.cheap constructors emit an `fcheap-local` reference. Chalupa
-can preserve and display that metadata without being able to restore the bytes
-from its server.
+The `artifact-ref` CLI and MCP constructors emit `fcheap-local`. Chalupa can
+preserve and display that metadata without being able to restore the bytes from
+its server. Private service responses use `fcheap-cloud` and keep all transfer
+credentials outside the reference.
 
 Artifact references are available in file.cheap `v0.30.0` and later. Confirm the
 installed release with `fcheap version` and inspect the copyable command

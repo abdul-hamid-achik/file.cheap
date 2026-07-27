@@ -7,6 +7,7 @@ import {
   deriveRunDashboardMetrics,
   filterRuns,
   formatRunDuration,
+  getNextRunDetailTab,
   runEvidenceCountLabel,
 } from "./run-presentation";
 
@@ -76,7 +77,8 @@ describe("run dashboard presentation", () => {
     };
 
     expect(filterRuns([baseRun, healthy], defaultRunFilters)).toHaveLength(2);
-    expect(filterRuns([baseRun, healthy], { health: "ok", producer: "glyphrun", status: "passed" })).toEqual([healthy]);
+    expect(filterRuns([baseRun, healthy], { health: "ok", producer: "glyphrun", query: "sign in", status: "passed" })).toEqual([healthy]);
+    expect(filterRuns([baseRun], { ...defaultRunFilters, query: "job:one" })).toEqual([baseRun]);
     expect(baseRun.health.state).toBe("degraded");
   });
 
@@ -84,5 +86,13 @@ describe("run dashboard presentation", () => {
     expect(runEvidenceCountLabel(baseRun)).toBe("1 indexed of 2 declared");
     expect(formatRunDuration(undefined)).toBe("Not recorded");
     expect(formatRunDuration(12_300)).toBe("12 s");
+  });
+
+  test("moves run detail tabs with the standard horizontal keyboard pattern", () => {
+    expect(getNextRunDetailTab("summary", "ArrowLeft")).toBe("provenance");
+    expect(getNextRunDetailTab("summary", "ArrowRight")).toBe("outcomes");
+    expect(getNextRunDetailTab("evidence", "Home")).toBe("summary");
+    expect(getNextRunDetailTab("outcomes", "End")).toBe("provenance");
+    expect(getNextRunDetailTab("summary", "Enter")).toBeNull();
   });
 });

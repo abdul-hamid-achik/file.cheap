@@ -1,30 +1,60 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, desc, eq, gt, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, lt, lte, or, sql, type SQL } from "drizzle-orm";
 
 import type { ArtifactPlanInput } from "@/features/artifacts/contracts";
+import {
+  legacyPlanReceiptLookupSchemeV1,
+  planReceiptSchemeV1,
+  type IssuedPlanReceipt,
+  type PlanReceiptLookupCandidate,
+} from "@/features/artifacts/plan-receipts";
 import type { RunIndexV1 } from "@/features/runs/index-contract";
 import { getDatabase } from "@/platform/database/client";
 import { artifactObjects, artifactRuns, artifacts } from "@/platform/database/schema";
 
 export type ArtifactState = "planned" | "committed" | "deleting" | "deleted";
 export type RetainableArtifactState = Extract<ArtifactState, "planned" | "committed">;
+export type ArtifactPlanReceipt =
+  | Readonly<{
+      kid: string;
+      lookup: string;
+      nonce: string;
+      scheme: typeof planReceiptSchemeV1;
+    }>
+  | Readonly<{
+      kid: string;
+      lookup: string;
+      nonce: null;
+      scheme: typeof legacyPlanReceiptLookupSchemeV1;
+    }>;
+export type ArtifactPlanReceiptMatch =
+  | Readonly<{
+      kid: string;
+      lookup: string;
+      mode: "lookup";
+    }>
+  | Readonly<{
+      mode: "legacy";
+      planToken: string;
+    }>;
 export type ArtifactRecord = {
   artifactId: string; ownerAccountId: string | null; contentType: string; committedAt: Date | null; expiresAt: Date | null;
   deletingAt: Date | null; kind: string; objectContentType: string; objectEtag: string | null; objectKey: string;
-  objectSha256: string; objectSizeBytes: number; planExpiresAt: Date; planToken: string;
+  objectSha256: string; objectSizeBytes: number; planExpiresAt: Date; planReceipt: ArtifactPlanReceipt | null; planToken: string;
   producer: ArtifactPlanInput["producer"]; runIndex: RunIndexV1 | null; runIndexSha256: string | null;
   sha256: string; sizeBytes: number; state: ArtifactState;
 };
 
 export interface ArtifactRepository {
-  createPlan(input: ArtifactPlanInput, values: { artifactId: string; objectKey: string; ownerAccountId?: string; planExpiresAt: Date; planToken: string; runIndexSha256: string | null; now: Date }): Promise<ArtifactRecord>;
+  createPlan(input: ArtifactPlanInput, values: { artifactId: string; objectKey: string; ownerAccountId?: string; planExpiresAt: Date; receipt: IssuedPlanReceipt; runIndexSha256: string | null; now: Date }): Promise<ArtifactRecord>;
   find(artifactId: string): Promise<ArtifactRecord | null>;
-  findByPlanToken(planToken: string): Promise<ArtifactRecord | null>;
+  findByPlanReceipt(candidates: readonly PlanReceiptLookupCandidate[]): Promise<ArtifactRecord | null>;
+  findLegacyByPlanToken(planToken: string): Promise<ArtifactRecord | null>;
   list(limit: number, after?: string, ownerAccountId?: string): Promise<ArtifactRecord[]>;
   markCommitted(artifactId: string, etag: string, now: Date): Promise<ArtifactRecord | null>;
-  renewPlan(artifactId: string, planToken: string, values: { now: Date; planExpiresAt: Date }): Promise<ArtifactRecord | null>;
-  restartDeletedPlan(artifactId: string, values: { now: Date; planExpiresAt: Date; planToken: string }): Promise<ArtifactRecord | null>;
+  renewPlan(artifactId: string, expectedReceipt: ArtifactPlanReceiptMatch, values: { now: Date; planExpiresAt: Date }): Promise<ArtifactRecord | null>;
+  restartDeletedPlan(artifactId: string, values: { now: Date; planExpiresAt: Date; receipt: IssuedPlanReceipt }): Promise<ArtifactRecord | null>;
   claimForDeletion(artifactId: string, expectedState: RetainableArtifactState, now: Date): Promise<boolean>;
   claimForManualDeletion(artifactId: string, ownerAccountId: string, now: Date): Promise<boolean>;
   reclaimDeletion(artifactId: string, staleBefore: Date, now: Date): Promise<boolean>;
@@ -34,18 +64,23 @@ export interface ArtifactRepository {
 }
 
 export class DrizzleArtifactRepository implements ArtifactRepository {
-  private readonly db = getDatabase();
-  async createPlan(input: ArtifactPlanInput, values: { artifactId: string; objectKey: string; ownerAccountId?: string; planExpiresAt: Date; planToken: string; runIndexSha256: string | null; now: Date }): Promise<ArtifactRecord> {
+  constructor(private readonly db: ReturnType<typeof getDatabase> = getDatabase()) {}
+
+  async createPlan(input: ArtifactPlanInput, values: { artifactId: string; objectKey: string; ownerAccountId?: string; planExpiresAt: Date; receipt: IssuedPlanReceipt; runIndexSha256: string | null; now: Date }): Promise<ArtifactRecord> {
     await this.db.execute(sql`
       WITH inserted_artifact AS (
         INSERT INTO ${artifacts} (
           artifact_id, owner_account_id, kind, producer, sha256, size_bytes, content_type,
-          state, verification, plan_token, plan_expires_at, expires_at, created_at
+          state, verification, plan_token, plan_receipt_scheme,
+          plan_receipt_kid, plan_receipt_nonce, plan_receipt_lookup,
+          plan_expires_at, expires_at, created_at
         )
         VALUES (
           ${values.artifactId}, ${values.ownerAccountId ?? null}, ${input.kind}, ${JSON.stringify(input.producer)}::jsonb,
           ${input.sha256}, ${input.sizeBytes}, ${input.contentType},
-          'planned', 'server-sha256', ${values.planToken},
+          'planned', 'server-sha256', ${values.receipt.receipt},
+          ${values.receipt.receiptScheme}, ${values.receipt.receiptKid},
+          ${values.receipt.receiptNonce}, ${values.receipt.receiptLookup},
           ${values.planExpiresAt.toISOString()}::timestamptz,
           ${input.expiresAt ?? null}::timestamptz,
           ${values.now.toISOString()}::timestamptz
@@ -103,7 +138,36 @@ export class DrizzleArtifactRepository implements ArtifactRepository {
     return record;
   }
   async find(artifactId: string): Promise<ArtifactRecord | null> { const row = (await this.db.select({ artifact: artifacts, object: artifactObjects, run: artifactRuns }).from(artifacts).innerJoin(artifactObjects, eq(artifactObjects.artifactId, artifacts.artifactId)).leftJoin(artifactRuns, eq(artifactRuns.artifactId, artifacts.artifactId)).where(eq(artifacts.artifactId, artifactId)).limit(1))[0]; return row ? mapRow(row.artifact, row.object, row.run) : null; }
-  async findByPlanToken(planToken: string): Promise<ArtifactRecord | null> { const row = (await this.db.select({ artifact: artifacts, object: artifactObjects, run: artifactRuns }).from(artifacts).innerJoin(artifactObjects, eq(artifactObjects.artifactId, artifacts.artifactId)).leftJoin(artifactRuns, eq(artifactRuns.artifactId, artifacts.artifactId)).where(eq(artifacts.planToken, planToken)).limit(1))[0]; return row ? mapRow(row.artifact, row.object, row.run) : null; }
+  async findByPlanReceipt(candidates: readonly PlanReceiptLookupCandidate[]): Promise<ArtifactRecord | null> {
+    if (candidates.length === 0) return null;
+    const row = (await this.db
+      .select({ artifact: artifacts, object: artifactObjects, run: artifactRuns })
+      .from(artifacts)
+      .innerJoin(artifactObjects, eq(artifactObjects.artifactId, artifacts.artifactId))
+      .leftJoin(artifactRuns, eq(artifactRuns.artifactId, artifacts.artifactId))
+      .where(or(...candidates.map((candidate) => and(
+        eq(artifacts.planReceiptKid, candidate.receiptKid),
+        eq(artifacts.planReceiptLookup, candidate.receiptLookup),
+      ))))
+      .limit(1))[0];
+    return row ? mapRow(row.artifact, row.object, row.run) : null;
+  }
+  async findLegacyByPlanToken(planToken: string): Promise<ArtifactRecord | null> {
+    const row = (await this.db
+      .select({ artifact: artifacts, object: artifactObjects, run: artifactRuns })
+      .from(artifacts)
+      .innerJoin(artifactObjects, eq(artifactObjects.artifactId, artifacts.artifactId))
+      .leftJoin(artifactRuns, eq(artifactRuns.artifactId, artifacts.artifactId))
+      .where(and(
+        eq(artifacts.planToken, planToken),
+        isNull(artifacts.planReceiptScheme),
+        isNull(artifacts.planReceiptKid),
+        isNull(artifacts.planReceiptNonce),
+        isNull(artifacts.planReceiptLookup),
+      ))
+      .limit(1))[0];
+    return row ? mapRow(row.artifact, row.object, row.run) : null;
+  }
   async list(limit: number, after?: string, ownerAccountId?: string): Promise<ArtifactRecord[]> { const rows = await this.db.select({ artifact: artifacts, object: artifactObjects, run: artifactRuns }).from(artifacts).innerJoin(artifactObjects, eq(artifactObjects.artifactId, artifacts.artifactId)).leftJoin(artifactRuns, eq(artifactRuns.artifactId, artifacts.artifactId)).where(and(eq(artifacts.state, "committed"), ...(ownerAccountId ? [eq(artifacts.ownerAccountId, ownerAccountId)] : []), ...(after ? [lt(artifacts.artifactId, after)] : []))).orderBy(desc(artifacts.artifactId)).limit(limit); return rows.map((row) => mapRow(row.artifact, row.object, row.run)); }
   async markCommitted(artifactId: string, etag: string, now: Date): Promise<ArtifactRecord | null> {
     const retained = or(isNull(artifacts.expiresAt), gt(artifacts.expiresAt, now));
@@ -111,6 +175,7 @@ export class DrizzleArtifactRepository implements ArtifactRepository {
     if (result.length === 0) {
       const current = await this.find(artifactId);
       return current?.state === "committed" &&
+        current.planExpiresAt > now &&
         (current.expiresAt === null || current.expiresAt > now)
         ? current
         : null;
@@ -119,12 +184,22 @@ export class DrizzleArtifactRepository implements ArtifactRepository {
     const current = await this.find(artifactId);
     return current?.state === "committed" ? current : null;
   }
-  async renewPlan(artifactId: string, planToken: string, values: { now: Date; planExpiresAt: Date }): Promise<ArtifactRecord | null> {
-    await this.db.update(artifacts).set({ planExpiresAt: values.planExpiresAt }).where(and(eq(artifacts.artifactId, artifactId), eq(artifacts.state, "planned"), eq(artifacts.planToken, planToken), lte(artifacts.planExpiresAt, values.now), or(isNull(artifacts.expiresAt), gt(artifacts.expiresAt, values.now))));
+  async renewPlan(artifactId: string, expectedReceipt: ArtifactPlanReceiptMatch, values: { now: Date; planExpiresAt: Date }): Promise<ArtifactRecord | null> {
+    await this.db.update(artifacts).set({ planExpiresAt: values.planExpiresAt }).where(and(eq(artifacts.artifactId, artifactId), eq(artifacts.state, "planned"), receiptMatchCondition(expectedReceipt), lte(artifacts.planExpiresAt, values.now), or(isNull(artifacts.expiresAt), gt(artifacts.expiresAt, values.now))));
     return this.find(artifactId);
   }
-  async restartDeletedPlan(artifactId: string, values: { now: Date; planExpiresAt: Date; planToken: string }): Promise<ArtifactRecord | null> {
-    await this.db.update(artifacts).set({ state: "planned", planExpiresAt: values.planExpiresAt, planToken: values.planToken, deletingAt: null, deletedAt: null }).where(and(eq(artifacts.artifactId, artifactId), eq(artifacts.state, "deleted"), isNull(artifacts.committedAt)));
+  async restartDeletedPlan(artifactId: string, values: { now: Date; planExpiresAt: Date; receipt: IssuedPlanReceipt }): Promise<ArtifactRecord | null> {
+    await this.db.update(artifacts).set({
+      state: "planned",
+      planExpiresAt: values.planExpiresAt,
+      planToken: values.receipt.receipt,
+      planReceiptScheme: values.receipt.receiptScheme,
+      planReceiptKid: values.receipt.receiptKid,
+      planReceiptNonce: values.receipt.receiptNonce,
+      planReceiptLookup: values.receipt.receiptLookup,
+      deletingAt: null,
+      deletedAt: null,
+    }).where(and(eq(artifacts.artifactId, artifactId), eq(artifacts.state, "deleted"), isNull(artifacts.committedAt)));
     return this.find(artifactId);
   }
   async claimForDeletion(artifactId: string, expectedState: RetainableArtifactState, now: Date): Promise<boolean> {
@@ -152,7 +227,49 @@ export class DrizzleArtifactRepository implements ArtifactRepository {
   }
 }
 
-function mapRow(artifact: typeof artifacts.$inferSelect, object: typeof artifactObjects.$inferSelect, run: typeof artifactRuns.$inferSelect | null): ArtifactRecord { return { artifactId: artifact.artifactId, ownerAccountId: artifact.ownerAccountId, contentType: artifact.contentType, committedAt: artifact.committedAt, deletingAt: artifact.deletingAt, expiresAt: artifact.expiresAt, kind: artifact.kind, objectContentType: object.contentType, objectEtag: object.etag, objectKey: object.objectKey, objectSha256: object.sha256, objectSizeBytes: object.sizeBytes, planExpiresAt: artifact.planExpiresAt, planToken: artifact.planToken, producer: artifact.producer as ArtifactPlanInput["producer"], runIndex: run ? mapRunIndex(run) : null, runIndexSha256: run?.runIndexSha256 ?? null, sha256: artifact.sha256, sizeBytes: artifact.sizeBytes, state: artifact.state as ArtifactState }; }
+function mapRow(artifact: typeof artifacts.$inferSelect, object: typeof artifactObjects.$inferSelect, run: typeof artifactRuns.$inferSelect | null): ArtifactRecord { return { artifactId: artifact.artifactId, ownerAccountId: artifact.ownerAccountId, contentType: artifact.contentType, committedAt: artifact.committedAt, deletingAt: artifact.deletingAt, expiresAt: artifact.expiresAt, kind: artifact.kind, objectContentType: object.contentType, objectEtag: object.etag, objectKey: object.objectKey, objectSha256: object.sha256, objectSizeBytes: object.sizeBytes, planExpiresAt: artifact.planExpiresAt, planReceipt: mapPlanReceipt(artifact), planToken: artifact.planToken, producer: artifact.producer as ArtifactPlanInput["producer"], runIndex: run ? mapRunIndex(run) : null, runIndexSha256: run?.runIndexSha256 ?? null, sha256: artifact.sha256, sizeBytes: artifact.sizeBytes, state: artifact.state as ArtifactState }; }
+
+function mapPlanReceipt(artifact: typeof artifacts.$inferSelect): ArtifactPlanReceipt | null {
+  if (
+    artifact.planReceiptScheme === null &&
+    artifact.planReceiptKid === null &&
+    artifact.planReceiptNonce === null &&
+    artifact.planReceiptLookup === null
+  ) return null;
+  if (
+    artifact.planReceiptScheme === planReceiptSchemeV1 &&
+    artifact.planReceiptKid !== null &&
+    artifact.planReceiptNonce !== null &&
+    artifact.planReceiptLookup !== null
+  ) {
+    return { kid: artifact.planReceiptKid, lookup: artifact.planReceiptLookup, nonce: artifact.planReceiptNonce, scheme: planReceiptSchemeV1 };
+  }
+  if (
+    artifact.planReceiptScheme === legacyPlanReceiptLookupSchemeV1 &&
+    artifact.planReceiptKid !== null &&
+    artifact.planReceiptNonce === null &&
+    artifact.planReceiptLookup !== null
+  ) {
+    return { kid: artifact.planReceiptKid, lookup: artifact.planReceiptLookup, nonce: null, scheme: legacyPlanReceiptLookupSchemeV1 };
+  }
+  throw new Error("Artifact plan receipt metadata is inconsistent");
+}
+
+function receiptMatchCondition(match: ArtifactPlanReceiptMatch): SQL {
+  if (match.mode === "lookup") {
+    return and(
+      eq(artifacts.planReceiptKid, match.kid),
+      eq(artifacts.planReceiptLookup, match.lookup),
+    )!;
+  }
+  return and(
+    eq(artifacts.planToken, match.planToken),
+    isNull(artifacts.planReceiptScheme),
+    isNull(artifacts.planReceiptKid),
+    isNull(artifacts.planReceiptNonce),
+    isNull(artifacts.planReceiptLookup),
+  )!;
+}
 
 function mapRunIndex(run: typeof artifactRuns.$inferSelect): RunIndexV1 {
   return {

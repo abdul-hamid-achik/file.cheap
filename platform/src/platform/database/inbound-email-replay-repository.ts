@@ -2,6 +2,7 @@ import { and, eq, lte, sql } from "drizzle-orm";
 
 import {
   inboundProcessingLeaseMilliseconds,
+  inboundReplayCleanupBatchSize,
   inboundReplayRetentionMilliseconds,
   maxInboundReplayAttempts,
   newReplayId,
@@ -12,7 +13,7 @@ import { getDatabase } from "@/platform/database/client";
 import { inboundEmailReplays } from "@/platform/database/schema";
 
 export class DrizzleInboundReplayRepository implements InboundReplayRepository {
-  private readonly db = getDatabase();
+  constructor(private readonly db: ReturnType<typeof getDatabase> = getDatabase()) {}
 
   async claim(input: {
     emailIdSha256: string;
@@ -104,17 +105,17 @@ export class DrizzleInboundReplayRepository implements InboundReplayRepository {
     ));
   }
 
-  async cleanup(now: Date): Promise<void> {
-    await this.db.execute(sql`
-      DELETE FROM ${inboundEmailReplays}
-      WHERE ${inboundEmailReplays.id} IN (
-        SELECT ${inboundEmailReplays.id}
-        FROM ${inboundEmailReplays}
-        WHERE ${inboundEmailReplays.expiresAt} <= ${now.toISOString()}::timestamptz
-        ORDER BY ${inboundEmailReplays.expiresAt} ASC
-        LIMIT 100
+  async cleanup(now: Date): Promise<number> {
+    const deleted = await this.db.delete(inboundEmailReplays).where(sql`
+      ${inboundEmailReplays.id} IN (
+        SELECT candidate.id
+        FROM ${inboundEmailReplays} candidate
+        WHERE candidate.expires_at <= ${now.toISOString()}::timestamptz
+        ORDER BY candidate.expires_at ASC, candidate.id ASC
+        LIMIT ${inboundReplayCleanupBatchSize}
       )
-    `);
+    `).returning({ id: inboundEmailReplays.id });
+    return deleted.length;
   }
 
   private async complete(

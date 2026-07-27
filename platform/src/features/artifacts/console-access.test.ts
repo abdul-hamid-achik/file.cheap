@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 
 import type { ArtifactPlanResponse, ArtifactPlanResult } from "@/features/artifacts/contracts";
+import { testPlanReceiptKeyring } from "@/features/artifacts/plan-receipts.test-helper";
 import { InMemoryArtifactRepository } from "@/features/artifacts/repository";
 import { ArtifactService } from "@/features/artifacts/service";
 import { InMemoryArtifactObjectStore } from "@/platform/artifacts/in-memory-object-store";
@@ -12,7 +13,7 @@ const sha256 = createHash("sha256").update(bytes).digest("hex");
 describe("console artifact access", () => {
   test("scopes list, detail, download, and deletion to the authenticated owner", async () => {
     const store = new InMemoryArtifactObjectStore();
-    const service = new ArtifactService(store, new InMemoryArtifactRepository());
+    const service = new ArtifactService(store, new InMemoryArtifactRepository(), testPlanReceiptKeyring);
     const input = {
       contentType: "application/json",
       idempotencyKey: "00000000-0000-4000-8000-000000000099",

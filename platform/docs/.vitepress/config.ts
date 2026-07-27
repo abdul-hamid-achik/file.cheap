@@ -42,6 +42,10 @@ const PAGE_META: Record<string, PageMeta> = {
     title: 'fcheap publish — private artifact publication',
     description: 'Publish one bounded local file through the private artifact service without exposing transfer credentials.',
   },
+  'cli/pull.md': {
+    title: 'fcheap pull — verified artifact recovery',
+    description: 'Download one owner-scoped cloud artifact through a short-lived direct transfer and verify its size and SHA-256 locally.',
+  },
   'cli/cleanup.md': {
     title: 'fcheap cleanup — reclaim local stash space',
     description: 'Score, review, and safely remove expired, duplicate, orphaned, or regenerable local stashes.',
@@ -381,9 +385,10 @@ const sidebar = {
       items: [
         { text: 'Overview and global flags', link: '/cli/' },
         { text: 'save', link: '/cli/save' },
-          { text: 'artifact-ref', link: '/cli/artifact-ref' },
-          { text: 'publish', link: '/cli/publish' },
-          { text: 'auth', link: '/cli/auth' },
+        { text: 'artifact-ref', link: '/cli/artifact-ref' },
+        { text: 'publish', link: '/cli/publish' },
+        { text: 'pull', link: '/cli/pull' },
+        { text: 'auth', link: '/cli/auth' },
         { text: 'list', link: '/cli/list' },
         { text: 'info', link: '/cli/info' },
         { text: 'restore', link: '/cli/restore' },

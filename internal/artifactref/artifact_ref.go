@@ -21,7 +21,7 @@ const (
 	Version = 1
 	// ProviderLocal identifies a stash in the local file.cheap vault.
 	ProviderLocal = "fcheap-local"
-	// ProviderCloud identifies an artifact in the future hosted file.cheap vault.
+	// ProviderCloud identifies an artifact in file.cheap's private service.
 	ProviderCloud = "fcheap-cloud"
 	// ProviderLink identifies a stable external HTTP(S) artifact.
 	ProviderLink = "link"

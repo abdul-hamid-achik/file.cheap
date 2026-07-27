@@ -24,7 +24,11 @@ export class ResendAuthMailer implements AuthMailer {
       ].join("\n\n"),
       to: input.email,
     }, { idempotencyKey: input.idempotencyKey });
-    if (result.error) throw new Error(`Resend verification email failed: ${result.error.name}`);
+    if (result.error || !result.data?.id) {
+      // A resolved SDK call without a provider message id is not sufficient
+      // evidence of acceptance and must not activate the OTP.
+      throw new Error("Resend did not accept the verification email");
+    }
   }
 }
 

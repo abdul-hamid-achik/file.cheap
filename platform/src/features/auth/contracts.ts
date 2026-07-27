@@ -35,6 +35,45 @@ export const deviceRefreshInputSchema = z.object({
   { message: "The replacement refresh token must be new", path: ["nextRefreshToken"] },
 );
 
+export const deviceFamilyIdSchema = z.string().uuid();
+
+export const accessDeviceListQuerySchema = z.object({
+  cursor: z.string().min(1).max(512).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+}).strict();
+
+export const accessDeviceSchema = z.object({
+  absoluteExpiresAt: z.string().datetime(),
+  clientName: z.string().min(1).max(80),
+  createdAt: z.string().datetime(),
+  id: deviceFamilyIdSchema,
+  idleExpiresAt: z.string().datetime(),
+  lastRefreshedAt: z.string().datetime().nullable(),
+  revokedAt: z.string().datetime().nullable(),
+  status: z.enum(["active", "expired", "revoked"]),
+}).strict();
+
+export const accessDeviceListResponseSchema = z.object({
+  devices: z.array(accessDeviceSchema).max(50),
+  overview: z.object({
+    active: z.number().int().nonnegative(),
+    expiring: z.number().int().nonnegative(),
+    inactive: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+  }).strict(),
+  pageInfo: z.object({
+    endCursor: z.string().min(1).max(512).nullable(),
+    hasNextPage: z.boolean(),
+    limit: z.number().int().min(1).max(50),
+  }).strict(),
+  version: z.literal("filecheap-access/1"),
+}).strict();
+
+export const accessDeviceRevokeResponseSchema = z.object({
+  id: deviceFamilyIdSchema,
+  status: z.literal("revoked"),
+}).strict();
+
 export type DeviceAuthorizationInput = z.infer<
   typeof deviceAuthorizationInputSchema
 >;
@@ -45,6 +84,14 @@ export type AuthorizationDecisionInput = z.infer<
   typeof authorizationDecisionInputSchema
 >;
 export type DeviceRefreshInput = z.infer<typeof deviceRefreshInputSchema>;
+export type AccessDevice = z.infer<typeof accessDeviceSchema>;
+export type AccessDeviceListQuery = z.infer<
+  typeof accessDeviceListQuerySchema
+>;
+export type AccessDeviceListResponse = z.infer<
+  typeof accessDeviceListResponseSchema
+>;
+export type AccessDeviceOverview = AccessDeviceListResponse["overview"];
 
 export type DeviceAuthorizationResponse = {
   deviceCode: string;

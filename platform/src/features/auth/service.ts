@@ -1,6 +1,11 @@
+import { Buffer } from "node:buffer";
 import { createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 
+import { deviceFamilyIdSchema } from "@/features/auth/contracts";
 import type {
+  AccessDevice,
+  AccessDeviceListQuery,
+  AccessDeviceListResponse,
   AuthorizationDecisionInput,
   DeviceAuthorizationInput,
   DeviceAuthorizationResponse,
@@ -8,7 +13,13 @@ import type {
   DeviceTokenResponse,
   VerificationEmailInput,
 } from "@/features/auth/contracts";
-import type { AuthRepository, AuthorizationRecord } from "@/features/auth/repository";
+import type {
+  AuthRepository,
+  AuthorizationRecord,
+  DeviceFamilyListCursor,
+  DeviceFamilyRecord,
+  VerificationDeliveryClaim,
+} from "@/features/auth/repository";
 import { PlatformError } from "@/shared/errors/platform-error";
 
 const authorizationLifetimeMs = 10 * 60 * 1_000;
@@ -19,9 +30,12 @@ const webSessionLifetimeMs = 8 * 60 * 60 * 1_000;
 const pollIntervalSeconds = 5;
 const maxOtpAttempts = 8;
 const maxEmailSends = 3;
+const defaultVerificationDeliveryLeaseMs = 2 * 60 * 1_000;
 const codeAlphabet = "BCDFGHJKLMNPQRSTVWXYZ23456789";
+const accessExpiringSoonMs = 7 * 24 * 60 * 60 * 1_000;
 
 export interface AuthMailer {
+  // Resolve only when the provider has returned an accepted message id.
   sendVerification(input: {
     clientName: string;
     email: string;
@@ -37,7 +51,24 @@ export type AuthServiceOptions = {
   ownerAccountId?: string;
   publicUrl: string;
   secret: string;
+  verificationDeliveryLeaseMs?: number;
 };
+
+const preparedVerificationState: unique symbol = Symbol(
+  "prepared-verification-delivery",
+);
+
+type PreparedVerificationState = Readonly<{
+  claim: VerificationDeliveryClaim;
+  email: string;
+  otp: string;
+}>;
+
+// The route can retain and pass this value to deferred work, but cannot inspect
+// or serialize the OTP, email, lease token, or provider idempotency material.
+export type PreparedVerificationDelivery = Readonly<{
+  [preparedVerificationState]: PreparedVerificationState;
+}>;
 
 export class AuthService {
   private readonly allowedEmails: ReadonlySet<string>;
@@ -84,36 +115,95 @@ export class AuthService {
     };
   }
 
-  async sendVerification(input: VerificationEmailInput): Promise<void> {
+  async prepareVerification(
+    input: VerificationEmailInput,
+  ): Promise<PreparedVerificationDelivery | null> {
     const now = this.now();
     const userCode = normalizeUserCode(input.userCode);
     const email = normalizeEmail(input.email);
-    const record = await this.repository.findAuthorizationByUserCode(userCode);
-    if (!this.canVerify(record, now) || !this.allowedEmails.has(email)) {
-      return;
-    }
-    if (record.emailSendCount >= maxEmailSends) {
-      throw rateLimited("Too many verification emails were requested for this code.");
-    }
-    const otp = String(randomInt(0, 1_000_000)).padStart(6, "0");
-    const updated = await this.repository.markEmailSent({
+
+    const leaseToken = randomUUID();
+    const claim = await this.repository.claimVerificationDelivery({
+      eligible: this.allowedEmails.has(email),
       email,
-      id: record.id,
+      leaseExpiresAt: new Date(
+        now.getTime() +
+          (this.options.verificationDeliveryLeaseMs ??
+            defaultVerificationDeliveryLeaseMs),
+      ),
+      leaseToken,
+      maxEmailSends,
       now,
-      otpHash: this.otpDigest(record.id, email, otp),
-    });
-    if (!updated) return;
-    await this.mailer.sendVerification({
-      clientName: record.clientName,
-      email,
-      idempotencyKey: `device-verification/${record.id}/${updated.emailSendCount}`,
-      otp,
       userCode,
-      verificationUri: `${this.options.publicUrl}/console/activate`,
     });
+    if (!claim) return null;
+
+    return {
+      [preparedVerificationState]: {
+        claim,
+        email,
+        otp: this.deliveryOtp(claim),
+      },
+    };
   }
 
-  async decide(input: AuthorizationDecisionInput): Promise<{ sessionToken: string; userId: string } | null> {
+  async dispatchVerification(
+    prepared: PreparedVerificationDelivery,
+  ): Promise<void> {
+    const { claim, email, otp } = prepared[preparedVerificationState];
+    try {
+      await this.mailer.sendVerification({
+        clientName: claim.clientName,
+        email,
+        idempotencyKey: this.deliveryIdempotencyKey(claim),
+        otp,
+        userCode: claim.userCode,
+        verificationUri: `${this.options.publicUrl}/console/activate`,
+      });
+    } catch {
+      // Provider rejection/timeout is deliberately private. Releasing the
+      // lease preserves the previous accepted OTP and lets a later request
+      // retry this exact delivery with the same OTP and idempotency key.
+      await this.repository.releaseVerificationDelivery({
+        authorizationId: claim.authorizationId,
+        deliveryNumber: claim.deliveryNumber,
+        leaseToken: claim.leaseToken,
+        now: this.now(),
+      });
+      return;
+    }
+
+    const acceptedAt = this.now();
+    const accepted = await this.repository.acceptVerificationDelivery({
+      authorizationId: claim.authorizationId,
+      deliveryNumber: claim.deliveryNumber,
+      email,
+      leaseToken: claim.leaseToken,
+      now: acceptedAt,
+      otpHash: this.otpDigest(claim.authorizationId, email, otp),
+    });
+    if (!accepted) {
+      // A lease recovery or authorization expiry may fence a provider response.
+      // Explicitly release only this worker's lease; a newer lease is untouched.
+      await this.repository.releaseVerificationDelivery({
+        authorizationId: claim.authorizationId,
+        deliveryNumber: claim.deliveryNumber,
+        leaseToken: claim.leaseToken,
+        now: this.now(),
+      });
+    }
+  }
+
+  async sendVerification(input: VerificationEmailInput): Promise<void> {
+    const prepared = await this.prepareVerification(input);
+    if (prepared) await this.dispatchVerification(prepared);
+  }
+
+  async decide(input: AuthorizationDecisionInput): Promise<{
+    browserSession: boolean;
+    sessionToken: string | null;
+    userId: string;
+  } | null> {
     const now = this.now();
     const userCode = normalizeUserCode(input.userCode);
     const email = normalizeEmail(input.email);
@@ -135,15 +225,16 @@ export class AuthService {
     const user = await this.repository.upsertUser(email, now, this.options.ownerAccountId);
     const approved = await this.repository.approve({ email, id: record.id, now, otpHash: received, userId: user.id });
     if (!approved) throw invalidVerification();
-    const sessionToken = await this.issueWebSession(user.id);
-    if (record.clientType === "browser") {
-      const consumed = await this.repository.consumeBrowser(record.id, now, user.id);
-      if (!consumed) {
-        await this.logout(sessionToken);
-        throw invalidVerification();
-      }
+    if (record.clientType !== "browser") {
+      return { browserSession: false, sessionToken: null, userId: user.id };
     }
-    return { sessionToken, userId: user.id };
+    const sessionToken = await this.issueWebSession(user.id);
+    const consumed = await this.repository.consumeBrowser(record.id, now, user.id);
+    if (!consumed) {
+      await this.logout(sessionToken);
+      throw invalidVerification();
+    }
+    return { browserSession: true, sessionToken, userId: user.id };
   }
 
   async poll(deviceCode: string): Promise<DeviceTokenResponse> {
@@ -209,6 +300,53 @@ export class AuthService {
       refreshToken: input.nextRefreshToken,
       tokenType: "Bearer",
     };
+  }
+
+  async listAccessDevices(
+    userId: string,
+    query: AccessDeviceListQuery,
+  ): Promise<Omit<AccessDeviceListResponse, "version">> {
+    const now = this.now();
+    const page = await this.repository.listDeviceFamilies({
+      cursor: query.cursor
+        ? this.decodeAccessDeviceCursor(query.cursor, userId)
+        : undefined,
+      expiringBefore: new Date(now.getTime() + accessExpiringSoonMs),
+      limit: query.limit,
+      now,
+      userId,
+    });
+    const devices = page.families.map((family) => mapAccessDevice(family, now));
+    const last = page.families.at(-1);
+    return {
+      devices,
+      overview: page.overview,
+      pageInfo: {
+        endCursor: last
+          ? this.encodeAccessDeviceCursor(last, userId)
+          : null,
+        hasNextPage: page.hasNextPage,
+        limit: query.limit,
+      },
+    };
+  }
+
+  async revokeAccessDevice(familyId: string, userId: string): Promise<{ id: string; status: "revoked" }> {
+    const revoked = await this.repository.revokeDeviceFamily({
+      familyId,
+      now: this.now(),
+      reason: "owner",
+      userId,
+    });
+    if (!revoked) {
+      throw new PlatformError({
+        code: "access_device_not_found",
+        detail: "The device session does not exist or is not available to this console owner.",
+        status: 404,
+        title: "Device not found",
+      });
+    }
+    return { id: familyId, status: "revoked" };
   }
 
   async authenticate(token: string, expectedKind?: "web" | "device"): Promise<{ email: string; userId: string }> {
@@ -293,6 +431,24 @@ export class AuthService {
       .digest("hex");
   }
 
+  private deliveryOtp(claim: VerificationDeliveryClaim): string {
+    const bytes = createHmac("sha256", this.options.secret)
+      .update(
+        `verification-delivery-otp-v1\n${claim.authorizationId}\n${claim.deliveryNumber}\n${claim.email}`,
+      )
+      .digest();
+    return String(bytes.readUInt32BE(0) % 1_000_000).padStart(6, "0");
+  }
+
+  private deliveryIdempotencyKey(claim: VerificationDeliveryClaim): string {
+    const digest = createHmac("sha256", this.options.secret)
+      .update(
+        `verification-delivery-idempotency-v1\n${claim.authorizationId}\n${claim.deliveryNumber}`,
+      )
+      .digest("base64url");
+    return `device-verification/${digest}`;
+  }
+
   private tokenDigest(value: string): string {
     return createHmac("sha256", this.options.secret)
       .update(`session\n${value}`)
@@ -305,6 +461,66 @@ export class AuthService {
       .digest("hex");
   }
 
+  private encodeAccessDeviceCursor(
+    family: Pick<DeviceFamilyRecord, "createdAt" | "id">,
+    userId: string,
+  ): string {
+    const payload = Buffer.from(
+      JSON.stringify([1, family.createdAt.toISOString(), family.id]),
+      "utf8",
+    ).toString("base64url");
+    return `${payload}.${this.accessDeviceCursorSignature(payload, userId)}`;
+  }
+
+  private decodeAccessDeviceCursor(
+    encoded: string,
+    userId: string,
+  ): DeviceFamilyListCursor {
+    try {
+      if (encoded.length < 1 || encoded.length > 512) throw new Error("invalid length");
+      const parts = encoded.split(".");
+      if (
+        parts.length !== 2 ||
+        !parts[0] ||
+        !parts[1] ||
+        !/^[A-Za-z0-9_-]+$/u.test(parts[0]) ||
+        !/^[A-Za-z0-9_-]{43}$/u.test(parts[1]) ||
+        !safeEqual(this.accessDeviceCursorSignature(parts[0], userId), parts[1])
+      ) {
+        throw new Error("invalid signature");
+      }
+      const value = JSON.parse(
+        Buffer.from(parts[0], "base64url").toString("utf8"),
+      ) as unknown;
+      if (
+        !Array.isArray(value) ||
+        value.length !== 3 ||
+        value[0] !== 1 ||
+        typeof value[1] !== "string" ||
+        typeof value[2] !== "string"
+      ) {
+        throw new Error("invalid payload");
+      }
+      const createdAt = new Date(value[1]);
+      if (
+        Number.isNaN(createdAt.getTime()) ||
+        createdAt.toISOString() !== value[1]
+      ) {
+        throw new Error("invalid timestamp");
+      }
+      deviceFamilyIdSchema.parse(value[2]);
+      return { createdAt, id: value[2] };
+    } catch {
+      throw invalidAccessDeviceCursor();
+    }
+  }
+
+  private accessDeviceCursorSignature(payload: string, userId: string): string {
+    return createHmac("sha256", this.options.secret)
+      .update(`access-device-cursor\n${userId}\n${payload}`)
+      .digest("base64url");
+  }
+
   private async uniqueUserCode(): Promise<string> {
     for (let attempt = 0; attempt < 8; attempt += 1) {
       const value = `${randomCode(4)}-${randomCode(4)}`;
@@ -312,6 +528,23 @@ export class AuthService {
     }
     throw new Error("Could not allocate a unique device user code");
   }
+}
+
+function mapAccessDevice(family: DeviceFamilyRecord, now: Date): AccessDevice {
+  return {
+    absoluteExpiresAt: family.absoluteExpiresAt.toISOString(),
+    clientName: family.clientName,
+    createdAt: family.createdAt.toISOString(),
+    id: family.id,
+    idleExpiresAt: family.idleExpiresAt.toISOString(),
+    lastRefreshedAt: family.lastUsedAt?.toISOString() ?? null,
+    revokedAt: family.revokedAt?.toISOString() ?? null,
+    status: family.revokedAt
+      ? "revoked"
+      : family.idleExpiresAt <= now || family.absoluteExpiresAt <= now
+        ? "expired"
+        : "active",
+  };
 }
 
 function randomCode(length: number): string {
@@ -367,6 +600,15 @@ function invalidRefreshToken(): PlatformError {
     detail: "The refresh token is invalid, expired, or belongs to a revoked device session.",
     status: 401,
     title: "Invalid refresh token",
+  });
+}
+
+function invalidAccessDeviceCursor(): PlatformError {
+  return new PlatformError({
+    code: "invalid_cursor",
+    detail: "The access device cursor is invalid.",
+    status: 422,
+    title: "Invalid cursor",
   });
 }
 

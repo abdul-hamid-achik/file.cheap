@@ -51,14 +51,22 @@ export function AuthFlow({ initialUserCode = "", mode }: AuthFlowProps) {
     setBusy(true);
     setMessage("");
     try {
-      await postJson("/api/console/auth/decisions", {
+      const result = await postJson<{ browserSession: boolean }>("/api/console/auth/decisions", {
         decision: "approve",
         email,
         otp,
         userCode,
       });
       setStep("done");
-      window.location.assign("/console");
+      setOtp("");
+      setEmail("");
+      setUserCode("");
+      if (result.browserSession) {
+        window.location.assign("/console");
+        return;
+      }
+      setBusy(false);
+      setMessage("Device approved. Return to the device to finish signing in; you can close this page.");
     } catch (error) {
       setMessage(messageFor(error));
       setBusy(false);
@@ -81,6 +89,9 @@ export function AuthFlow({ initialUserCode = "", mode }: AuthFlowProps) {
       });
       setStep("done");
       setBusy(false);
+      setOtp("");
+      setEmail("");
+      setUserCode("");
       setMessage("Device access was denied. You can close this page.");
     } catch (error) {
       setMessage(messageFor(error));
@@ -112,7 +123,7 @@ export function AuthFlow({ initialUserCode = "", mode }: AuthFlowProps) {
             </label>
             <button disabled={busy} type="submit">{busy ? "Requesting…" : "Email verification code"}</button>
           </form>
-        ) : (
+        ) : step === "verify" ? (
           <form className={styles.form} onSubmit={approve}>
             <div className={styles.deviceReceipt}>
               <span>Pairing code</span><strong>{userCode}</strong>
@@ -121,12 +132,18 @@ export function AuthFlow({ initialUserCode = "", mode }: AuthFlowProps) {
             <label>Six-digit email code
               <input autoComplete="one-time-code" inputMode="numeric" maxLength={6} onChange={(event) => setOtp(event.target.value.replace(/\D/gu, ""))} pattern="[0-9]{6}" required value={otp} />
             </label>
-            <button disabled={busy || step === "done"} type="submit">{busy ? "Approving…" : "Approve and continue"}</button>
-            <button className={styles.secondary} disabled={busy || step === "done"} onClick={deny} type="button">{mode === "login" ? "Cancel login" : "Deny device"}</button>
+            <button disabled={busy} type="submit">{busy ? "Approving…" : mode === "login" ? "Approve and continue" : "Approve device"}</button>
+            <button className={styles.secondary} disabled={busy} onClick={deny} type="button">{mode === "login" ? "Cancel login" : "Deny device"}</button>
             <button className={styles.secondary} disabled={busy} onClick={() => { setStep("identify"); setBusy(false); setOtp(""); }} type="button">Start over</button>
           </form>
+        ) : (
+          <div aria-live="polite" className={styles.done}>
+            <span aria-hidden="true">✓</span>
+            <h2>Request complete</h2>
+            <p>{message}</p>
+          </div>
         )}
-        <p aria-live="polite" className={styles.message}>{message}</p>
+        {step !== "done" ? <p aria-live="polite" className={styles.message}>{message}</p> : null}
         <p className={styles.boundary}>Opening an email never approves a device. Codes expire after ten minutes and can be used once.</p>
       </section>
     </main>

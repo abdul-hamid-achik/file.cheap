@@ -17,6 +17,7 @@ const routes = {
   "/api/v1/artifacts/commits": "src/app/api/v1/artifacts/commits/route.ts",
   "/api/v1/artifacts/downloads": "src/app/api/v1/artifacts/downloads/route.ts",
   "/api/internal/retention": "src/app/api/internal/retention/route.ts",
+  "/api/internal/retention/health": "src/app/api/internal/retention/health/route.ts",
 } as const;
 
 const artifactRef = { $schema: "urn:filecheap.dev:artifact-ref:v1", artifact_id: "art_abcdefghijklmnop", kind: "chalupa.log-chunk", producer: { native_schema: "urn:chalupa.dev:log:v1", tool: "chalupa" }, provider: "fcheap-cloud", uri: "fcheap://cloud/vaults/private/artifacts/art_abcdefghijklmnop", version: 1 };
@@ -31,6 +32,7 @@ describe("private artifact OpenAPI contract", () => {
     expect(Object.keys(document.paths["/api/v1/artifacts/plans"])).toEqual(["post"]);
     expect(Object.keys(document.paths["/api/v1/artifacts"])).toEqual(["get"]);
     expect(Object.keys(document.paths["/api/internal/retention"])).toEqual(["get"]);
+    expect(Object.keys(document.paths["/api/internal/retention/health"])).toEqual(["get"]);
   });
 
   test("keeps plan, artifact, and pagination examples inside runtime Zod contracts", () => {
@@ -80,8 +82,11 @@ describe("private artifact OpenAPI contract", () => {
       { chalupaOidc: [] },
     ]);
     expect(document.paths["/api/v1/artifacts/downloads"].post.description).toContain("Publisher credentials are rejected");
-    expect(document.paths["/api/internal/retention"].get.description).toContain("abandoned upload plans");
-    expect(document.paths["/api/internal/retention"].get.description).toContain("continues with the remaining candidates");
+    expect(document.paths["/api/internal/retention"].get.description).toContain("database-fenced run");
+    expect(document.paths["/api/internal/retention"].get.description).toContain("terminally persisted");
+    expect(document.paths["/api/internal/retention/health"].get.security).toEqual([{ cronBearer: [] }]);
+    expect(schemas.RetentionRunReport.additionalProperties).toBe(false);
+    expect(schemas.RetentionHealthReport.additionalProperties).toBe(false);
     expect(schemas.ArtifactPlanResponse.additionalProperties).toBe(false);
     expect(schemas.UploadGrant.properties.method.const).toBe("PUT");
     expect(schemas.DownloadGrant.properties.method.const).toBe("GET");

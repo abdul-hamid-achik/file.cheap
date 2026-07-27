@@ -78,8 +78,9 @@ expired committed artifacts, and stale deletion leases without deleting a plan
 that won a concurrent renewal. One failed object is isolated so the same
 bounded run can still reconcile healthy candidates before reporting failure.
 An exact replay of a committed plan returns its durable summary without another
-grant, and its original receipt remains idempotent after transfer expiry while
-the artifact is retained.
+grant. The original commit receipt is idempotent only through the exact
+`plan_expires_at` returned for that short-lived transfer; after that boundary,
+the idempotency-keyed plan remains the durable recovery path.
 
 Vercel Private Blob is behind a provider port, so a future Spaces, R2, or S3
 adapter does not change the API or `ArtifactRefV1` contract. Direct Blob uploads

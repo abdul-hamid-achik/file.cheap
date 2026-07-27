@@ -12,6 +12,14 @@ export async function POST(request: Request): Promise<Response> {
     const principal = await requireConsolePrincipal(request);
     const input = parseRequest(artifactDownloadInputSchema, await parseJson(request));
     await enforceConsoleRateLimit({
+      action: "artifact-download-owner",
+      includeAddress: false,
+      key: principal.userId,
+      limit: 200,
+      request,
+      windowSeconds: 60 * 60,
+    });
+    await enforceConsoleRateLimit({
       action: "artifact-download",
       key: `${principal.userId}\n${input.artifactId}`,
       limit: 30,

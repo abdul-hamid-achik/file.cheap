@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import type { ArtifactPlanResponse, ArtifactPlanResult } from "@/features/artifacts/contracts";
 import { artifactPlanInputSchema } from "@/features/artifacts/contracts";
+import { PlanReceiptKeyring } from "@/features/artifacts/plan-receipts";
+import { testPlanReceiptKeyring } from "@/features/artifacts/plan-receipts.test-helper";
 import { ArtifactService } from "@/features/artifacts/service";
 import { InMemoryArtifactRepository } from "@/features/artifacts/repository";
 import { InMemoryArtifactObjectStore } from "@/platform/artifacts/in-memory-object-store";
@@ -11,7 +13,7 @@ const sha256 = createHash("sha256").update(bytes).digest("hex");
 
 describe("ArtifactService", () => {
   test("binds a metadata-only run index to the immutable artifact plan", async () => {
-    const service = new ArtifactService(new InMemoryArtifactObjectStore(), new InMemoryArtifactRepository());
+    const service = newTestArtifactService(new InMemoryArtifactObjectStore(), new InMemoryArtifactRepository());
     const input = artifactPlanInputSchema.parse({
       contentType: "application/json",
       idempotencyKey: "00000000-0000-4000-8000-000000000098",
@@ -44,7 +46,7 @@ describe("ArtifactService", () => {
 
   test("plans, commits, downloads, and emits a credential-free ArtifactRefV1", async () => {
     const store = new InMemoryArtifactObjectStore();
-    const service = new ArtifactService(store, new InMemoryArtifactRepository());
+    const service = newTestArtifactService(store, new InMemoryArtifactRepository());
     const plan = requirePlanned(await service.plan({ contentType: "application/zstd", idempotencyKey: "123e4567-e89b-42d3-a456-426614174000", kind: "chalupa.log-bundle", producer: { tool: "chalupa", version: "1.0.0" }, sha256, sizeBytes: bytes.byteLength }));
     expect(plan.artifactRef).toMatchObject({ $schema: "urn:filecheap.dev:artifact-ref:v1", provider: "fcheap-cloud" });
     expect(plan.artifactRef.uri).not.toContain("?");
@@ -60,19 +62,19 @@ describe("ArtifactService", () => {
   test("reconciles expired objects exactly once", async () => {
     const store = new InMemoryArtifactObjectStore();
     let now = new Date("2026-07-24T00:00:00.000Z");
-    const service = new ArtifactService(store, new InMemoryArtifactRepository(), () => now);
+    const service = newTestArtifactService(store, new InMemoryArtifactRepository(), () => now);
     const plan = requirePlanned(await service.plan({ contentType: "application/zstd", expiresAt: "2026-07-24T00:05:00.000Z", idempotencyKey: "123e4567-e89b-42d3-a456-426614174001", kind: "chalupa.log-bundle", producer: { tool: "chalupa" }, sha256, sizeBytes: bytes.byteLength }));
     store.seed({ bytes, contentType: "application/zstd", key: new URL(plan.upload.url).pathname.replace(/^\/upload\//, ""), sizeBytes: bytes.byteLength });
     await service.commit(plan.receipt);
     now = new Date("2026-07-24T00:05:00.000Z");
-    expect(await service.reconcile()).toEqual({ deleted: 1 });
-    expect(await service.reconcile()).toEqual({ deleted: 0 });
+    expect(await service.reconcile()).toEqual({ candidates: 1, deleted: 1, failures: 0 });
+    expect(await service.reconcile()).toEqual({ candidates: 0, deleted: 0, failures: 0 });
   });
 
   test("binds idempotency to the complete plan and its original expiry", async () => {
     const store = new InMemoryArtifactObjectStore();
     let now = new Date("2026-07-24T00:00:00.000Z");
-    const service = new ArtifactService(
+    const service = newTestArtifactService(
       store,
       new InMemoryArtifactRepository(),
       () => now,
@@ -108,7 +110,7 @@ describe("ArtifactService", () => {
   test("renews an expired identical plan and commits bytes from an ambiguous earlier upload", async () => {
     const store = new InMemoryArtifactObjectStore();
     let now = new Date("2026-07-24T00:00:00.000Z");
-    const service = new ArtifactService(store, new InMemoryArtifactRepository(), () => now);
+    const service = newTestArtifactService(store, new InMemoryArtifactRepository(), () => now);
     const input = {
       contentType: "application/zstd",
       idempotencyKey: "123e4567-e89b-42d3-a456-426614174013",
@@ -129,7 +131,7 @@ describe("ArtifactService", () => {
   });
 
   test("collapses concurrent identical plans and rejects a concurrent conflicting binding", async () => {
-    const service = new ArtifactService(
+    const service = newTestArtifactService(
       new InMemoryArtifactObjectStore(),
       new InMemoryArtifactRepository(),
       () => new Date("2026-07-24T00:00:00.000Z"),
@@ -148,7 +150,7 @@ describe("ArtifactService", () => {
     expect(right.receipt).toBe(left.receipt);
     expect(right.artifact.artifactId).toBe(left.artifact.artifactId);
 
-    const conflictingService = new ArtifactService(
+    const conflictingService = newTestArtifactService(
       new InMemoryArtifactObjectStore(),
       new InMemoryArtifactRepository(),
       () => new Date("2026-07-24T00:00:00.000Z"),
@@ -162,11 +164,100 @@ describe("ArtifactService", () => {
     expect(rejected).toMatchObject({ reason: { code: "idempotency_conflict", status: 409 } });
   });
 
+  test("keeps an old receipt valid across an overlapping key rotation", async () => {
+    const store = new InMemoryArtifactObjectStore();
+    const repository = new InMemoryArtifactRepository();
+    const oldKeyring = receiptKeyring("old", [["old", 1, 2]]);
+    const rotatedKeyring = receiptKeyring("current", [
+      ["current", 3, 4],
+      ["old", 1, 2],
+    ]);
+    const oldService = new ArtifactService(store, repository, oldKeyring);
+    const rotatedService = new ArtifactService(store, repository, rotatedKeyring);
+    const input = {
+      contentType: "application/zstd",
+      idempotencyKey: "123e4567-e89b-42d3-a456-426614174030",
+      kind: "chalupa.log-chunk",
+      producer: { tool: "chalupa" },
+      sha256,
+      sizeBytes: bytes.byteLength,
+    } as const;
+
+    const issued = requirePlanned(await oldService.plan(input));
+    const replay = requirePlanned(await rotatedService.plan(input));
+    expect(replay.receipt).toBe(issued.receipt);
+    expect((await repository.find(issued.artifact.artifactId))?.planReceipt)
+      .toMatchObject({ kid: "old", scheme: "hmac-sha256-v1" });
+
+    store.seed({
+      bytes,
+      contentType: input.contentType,
+      key: new URL(issued.upload.url).pathname.replace(/^\/upload\//u, ""),
+      sizeBytes: bytes.byteLength,
+    });
+    expect((await rotatedService.commit(issued.receipt)).artifact.state)
+      .toBe("committed");
+  });
+
+  test("never downgrades a new receipt to the dual-written raw token", async () => {
+    const store = new CountingInspectStore();
+    const repository = new InMemoryArtifactRepository();
+    const service = newTestArtifactService(store, repository);
+    const plan = requirePlanned(await service.plan({
+      contentType: "application/zstd",
+      idempotencyKey: "123e4567-e89b-42d3-a456-426614174031",
+      kind: "chalupa.log-chunk",
+      producer: { tool: "chalupa" },
+      sha256,
+      sizeBytes: bytes.byteLength,
+    }));
+    const record = await repository.find(plan.artifact.artifactId);
+    if (!record?.planReceipt || record.planReceipt.nonce === null) {
+      throw new Error("Expected a deterministic receipt record");
+    }
+    record.planReceipt = {
+      ...record.planReceipt,
+      lookup: Buffer.alloc(32, 0x7f).toString("base64url"),
+    };
+
+    await expect(service.commit(plan.receipt)).rejects.toMatchObject({
+      code: "invalid_receipt",
+      status: 400,
+    });
+    expect(record.planToken).toBe(plan.receipt);
+    expect(store.inspectCalls).toBe(0);
+  });
+
+  test("accepts raw fallback only for a totally legacy row", async () => {
+    const store = new InMemoryArtifactObjectStore();
+    const repository = new InMemoryArtifactRepository();
+    const service = newTestArtifactService(store, repository);
+    const plan = requirePlanned(await service.plan({
+      contentType: "application/zstd",
+      idempotencyKey: "123e4567-e89b-42d3-a456-426614174032",
+      kind: "chalupa.log-chunk",
+      producer: { tool: "chalupa" },
+      sha256,
+      sizeBytes: bytes.byteLength,
+    }));
+    const record = await repository.find(plan.artifact.artifactId);
+    if (!record) throw new Error("Expected a legacy test record");
+    record.planReceipt = null;
+    store.seed({
+      bytes,
+      contentType: record.contentType,
+      key: record.objectKey,
+      sizeBytes: bytes.byteLength,
+    });
+
+    expect((await service.commit(plan.receipt)).artifact.state).toBe("committed");
+  });
+
   test("reclaims abandoned plans and permits the same exact plan after cleanup", async () => {
     const store = new InMemoryArtifactObjectStore();
     const repository = new InMemoryArtifactRepository();
     let now = new Date("2026-07-24T00:00:00.000Z");
-    const service = new ArtifactService(store, repository, () => now);
+    const service = newTestArtifactService(store, repository, () => now);
     const input = {
       contentType: "application/zstd",
       idempotencyKey: "123e4567-e89b-42d3-a456-426614174014",
@@ -180,7 +271,7 @@ describe("ArtifactService", () => {
     store.seed({ bytes, contentType: input.contentType, key, sizeBytes: bytes.byteLength });
 
     now = new Date("2026-07-24T00:16:00.000Z");
-    expect(await service.reconcile()).toEqual({ deleted: 1 });
+    expect(await service.reconcile()).toEqual({ candidates: 1, deleted: 1, failures: 0 });
     expect(await store.inspect(key)).toBeNull();
 
     const restarted = requirePlanned(await service.plan(input));
@@ -190,7 +281,7 @@ describe("ArtifactService", () => {
 
   test("returns a completed exact plan without issuing another upload grant", async () => {
     const store = new InMemoryArtifactObjectStore();
-    const service = new ArtifactService(store, new InMemoryArtifactRepository());
+    const service = newTestArtifactService(store, new InMemoryArtifactRepository());
     const input = {
       contentType: "application/zstd",
       idempotencyKey: "123e4567-e89b-42d3-a456-426614174011",
@@ -213,7 +304,7 @@ describe("ArtifactService", () => {
     expect("upload" in recovered).toBe(false);
 
     let now = new Date("2026-07-24T00:16:00.000Z");
-    const expiringService = new ArtifactService(store, new InMemoryArtifactRepository(), () => now);
+    const expiringService = newTestArtifactService(store, new InMemoryArtifactRepository(), () => now);
     const expiringPlan = requirePlanned(await expiringService.plan({ ...input, idempotencyKey: "123e4567-e89b-42d3-a456-426614174017" }));
     store.seed({
       bytes,
@@ -223,12 +314,19 @@ describe("ArtifactService", () => {
     });
     await expiringService.commit(expiringPlan.receipt);
     now = new Date("2026-07-24T00:32:00.000Z");
-    expect((await expiringService.commit(expiringPlan.receipt)).artifact.state).toBe("committed");
+    await expect(expiringService.commit(expiringPlan.receipt)).rejects.toMatchObject({
+      code: "invalid_receipt",
+      status: 400,
+    });
+    expect((await expiringService.plan({
+      ...input,
+      idempotencyKey: "123e4567-e89b-42d3-a456-426614174017",
+    })).artifact.state).toBe("committed");
   });
 
   test("verifies large artifacts by streaming and rejects a tampered object", async () => {
     const store = new InMemoryArtifactObjectStore();
-    const service = new ArtifactService(store, new InMemoryArtifactRepository());
+    const service = newTestArtifactService(store, new InMemoryArtifactRepository());
     // Comfortably past the retired 2 MiB buffer-everything bound.
     const largeBytes = new Uint8Array(6 * 1024 * 1024);
     for (let index = 0; index < largeBytes.byteLength; index += 1) {
@@ -263,7 +361,7 @@ describe("ArtifactService", () => {
 
   test("rejects a commit whose producer quota was tightened after the plan", async () => {
     const store = new InMemoryArtifactObjectStore();
-    const service = new ArtifactService(store, new InMemoryArtifactRepository());
+    const service = newTestArtifactService(store, new InMemoryArtifactRepository());
     const plan = requirePlanned(await service.plan({
       contentType: "application/zstd",
       idempotencyKey: "123e4567-e89b-42d3-a456-426614174031",
@@ -299,7 +397,7 @@ describe("ArtifactService", () => {
 
   test("rejects a cross-producer commit before inspecting private storage", async () => {
     const store = new CountingInspectStore();
-    const service = new ArtifactService(store, new InMemoryArtifactRepository());
+    const service = newTestArtifactService(store, new InMemoryArtifactRepository());
     const plan = requirePlanned(await service.plan({
       contentType: "application/zstd",
       idempotencyKey: "123e4567-e89b-42d3-a456-426614174018",
@@ -325,7 +423,7 @@ describe("ArtifactService", () => {
 
   test("restricts OIDC downloads before inspecting private storage", async () => {
     const store = new CountingInspectStore();
-    const service = new ArtifactService(
+    const service = newTestArtifactService(
       store,
       new InMemoryArtifactRepository(),
     );
@@ -367,7 +465,7 @@ describe("ArtifactService", () => {
   test("does not grant expired artifacts before retention reconciliation", async () => {
     const store = new CountingInspectStore();
     let now = new Date("2026-07-24T00:00:00.000Z");
-    const service = new ArtifactService(
+    const service = newTestArtifactService(
       store,
       new InMemoryArtifactRepository(),
       () => now,
@@ -403,7 +501,7 @@ describe("ArtifactService", () => {
   test("caps a download grant at the artifact retention boundary", async () => {
     const store = new InMemoryArtifactObjectStore();
     let now = new Date("2026-07-24T00:00:00.000Z");
-    const service = new ArtifactService(
+    const service = newTestArtifactService(
       store,
       new InMemoryArtifactRepository(),
       () => now,
@@ -439,7 +537,7 @@ describe("ArtifactService", () => {
   test("caps the upload plan and grant at the artifact retention boundary", async () => {
     const repository = new InMemoryArtifactRepository();
     const now = new Date("2026-07-24T00:00:00.000Z");
-    const service = new ArtifactService(
+    const service = newTestArtifactService(
       new InMemoryArtifactObjectStore(),
       repository,
       () => now,
@@ -465,7 +563,7 @@ describe("ArtifactService", () => {
     const store = new CountingInspectStore();
     const repository = new InMemoryArtifactRepository();
     let now = new Date("2026-07-24T00:00:00.000Z");
-    const service = new ArtifactService(store, repository, () => now);
+    const service = newTestArtifactService(store, repository, () => now);
     const input = {
       contentType: "application/zstd",
       expiresAt: "2026-07-24T00:05:00.000Z",
@@ -502,7 +600,7 @@ describe("ArtifactService", () => {
       now = expiresAt;
     });
     const repository = new InMemoryArtifactRepository();
-    const service = new ArtifactService(store, repository, () => now);
+    const service = newTestArtifactService(store, repository, () => now);
     const plan = requirePlanned(await service.plan({
       contentType: "application/zstd",
       expiresAt: expiresAt.toISOString(),
@@ -530,7 +628,7 @@ describe("ArtifactService", () => {
     const store = new CountingInspectStore();
     let now = new Date("2026-07-24T00:00:00.000Z");
     const expiresAt = "2026-07-24T00:05:00.000Z";
-    const service = new ArtifactService(
+    const service = newTestArtifactService(
       store,
       new InMemoryArtifactRepository(),
       () => now,
@@ -565,7 +663,7 @@ describe("ArtifactService", () => {
     const store = new InMemoryArtifactObjectStore();
     const repository = new FailsOnceMarkDeletedRepository();
     let now = new Date("2026-07-24T00:00:00.000Z");
-    const service = new ArtifactService(store, repository, () => now);
+    const service = newTestArtifactService(store, repository, () => now);
     const plan = requirePlanned(await service.plan({
       contentType: "application/zstd",
       expiresAt: "2026-07-24T00:05:00.000Z",
@@ -584,19 +682,17 @@ describe("ArtifactService", () => {
     const committed = await service.commit(plan.receipt);
 
     now = new Date("2026-07-24T00:05:00.000Z");
-    await expect(service.reconcile()).rejects.toThrow(
-      "synthetic metadata failure",
-    );
+    expect(await service.reconcile()).toEqual({ candidates: 1, deleted: 0, failures: 1 });
     expect((await repository.find(committed.artifact.artifactId))?.state).toBe("deleting");
     now = new Date("2026-07-24T00:21:00.000Z");
-    expect(await service.reconcile()).toEqual({ deleted: 1 });
+    expect(await service.reconcile()).toEqual({ candidates: 1, deleted: 1, failures: 0 });
   });
 
   test("restores the original state when private object deletion fails", async () => {
     const store = new FailsOnceDeleteStore();
     const repository = new InMemoryArtifactRepository();
     let now = new Date("2026-07-24T00:00:00.000Z");
-    const service = new ArtifactService(store, repository, () => now);
+    const service = newTestArtifactService(store, repository, () => now);
     const plan = requirePlanned(await service.plan({
       contentType: "application/zstd",
       expiresAt: "2026-07-24T00:05:00.000Z",
@@ -615,16 +711,16 @@ describe("ArtifactService", () => {
     const committed = await service.commit(plan.receipt);
 
     now = new Date("2026-07-24T00:05:00.000Z");
-    await expect(service.reconcile()).rejects.toThrow("synthetic storage failure");
+    expect(await service.reconcile()).toEqual({ candidates: 1, deleted: 0, failures: 1 });
     expect((await repository.find(committed.artifact.artifactId))?.state).toBe("committed");
-    expect(await service.reconcile()).toEqual({ deleted: 1 });
+    expect(await service.reconcile()).toEqual({ candidates: 1, deleted: 1, failures: 0 });
   });
 
   test("continues a deterministic retention batch after one candidate fails", async () => {
     const store = new FailsForKeyDeleteStore();
     const repository = new InMemoryArtifactRepository();
     let now = new Date("2026-07-24T00:00:00.000Z");
-    const service = new ArtifactService(store, repository, () => now);
+    const service = newTestArtifactService(store, repository, () => now);
     const input = {
       contentType: "application/zstd",
       expiresAt: "2026-07-24T00:05:00.000Z",
@@ -660,9 +756,7 @@ describe("ArtifactService", () => {
     store.failedKey = poisonKey;
     now = new Date(input.expiresAt);
 
-    await expect(service.reconcile()).rejects.toThrow(
-      "synthetic permanent storage failure",
-    );
+    expect(await service.reconcile()).toEqual({ candidates: 2, deleted: 1, failures: 1 });
 
     expect(store.deleteAttempts).toEqual([poisonKey, healthyKey]);
     expect((await repository.find(poison.artifact.artifactId))?.state).toBe("committed");
@@ -677,6 +771,28 @@ function requirePlanned(result: ArtifactPlanResult): ArtifactPlanResponse {
     throw new Error("Expected a planned artifact response");
   }
   return result;
+}
+
+function newTestArtifactService(
+  store: ConstructorParameters<typeof ArtifactService>[0],
+  repository: ConstructorParameters<typeof ArtifactService>[1],
+  now?: ConstructorParameters<typeof ArtifactService>[3],
+): ArtifactService {
+  return new ArtifactService(store, repository, testPlanReceiptKeyring, now);
+}
+
+function receiptKeyring(
+  activeKid: string,
+  keys: readonly (readonly [string, number, number])[],
+): PlanReceiptKeyring {
+  return new PlanReceiptKeyring({
+    activeKid,
+    keys: keys.map(([kid, signingByte, lookupByte]) => ({
+      kid,
+      lookupKey: Buffer.alloc(32, lookupByte),
+      signingKey: Buffer.alloc(32, signingByte),
+    })),
+  });
 }
 
 class FailsOnceMarkDeletedRepository extends InMemoryArtifactRepository {

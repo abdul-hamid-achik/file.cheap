@@ -53,6 +53,7 @@ For agents and integrations:
 Pair with the private artifact console:
   fcheap auth login
   fcheap auth status
+  fcheap pull <artifact-id> --output ./artifact.tar.zst
 
 Explore interactively:
   fcheap studio
@@ -131,6 +132,7 @@ func init() {
 	rootCmd.AddCommand(infoCmd)
 	rootCmd.AddCommand(artifactRefCmd)
 	rootCmd.AddCommand(publishCmd)
+	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(compressCmd)
 	rootCmd.AddCommand(analyzeCmd)
 	rootCmd.AddCommand(searchCmd)
@@ -160,7 +162,7 @@ func commandNeedsConfig(cmd *cobra.Command) bool {
 		return true
 	}
 	switch cmd.Name() {
-	case "help", "version", "completion", "agent", "auth", "login", "status", "refresh", "logout", "publish":
+	case "help", "version", "completion", "agent", "auth", "login", "status", "refresh", "logout", "publish", "pull":
 		return false
 	}
 	for current := cmd; current != nil; current = current.Parent() {

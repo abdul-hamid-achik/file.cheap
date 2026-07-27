@@ -59,12 +59,16 @@ Configure Preview and Production independently:
 | --- | --- | --- |
 | `PLATFORM_PUBLIC_URL` | Preview origin | `https://file.cheap` |
 | `DATABASE_URL` | Pooled Neon runtime URL for authenticated artifact routes | Pooled Neon runtime URL |
+| `FILECHEAP_PLAN_RECEIPT_ACTIVE_KID` | Active Preview receipt key ID | Active Production receipt key ID |
+| `FILECHEAP_PLAN_RECEIPT_SIGNING_KEYS` | Preview kid-to-base64url signing key map | Production kid-to-base64url signing key map |
+| `FILECHEAP_PLAN_RECEIPT_LOOKUP_KEYS` | Preview kid-to-base64url lookup key map | Production kid-to-base64url lookup key map |
 | `FILECHEAP_OIDC_*` | Exact Chalupa Preview issuer, audience, and subject | Exact Chalupa Production issuer, audience, and subject |
 | `FILECHEAP_PUBLISHER_TOKENS` | Preview producer policies and credentials | Production producer policies and credentials |
 | `FILECHEAP_ADMIN_TOKEN` | Distinct private administrator credential | Distinct private administrator credential |
 | `FILECHEAP_OWNER_ACCOUNT_ID` | Opaque Preview owner ID | Stable opaque Production owner ID |
 | `FILECHEAP_OWNER_EMAIL` | Allowlisted Preview owner email | Exact single-owner email |
 | `FILECHEAP_AUTH_SECRET` | Distinct 32+ byte Preview HMAC secret | Distinct 32+ byte Production HMAC secret |
+| `FILECHEAP_VERIFICATION_DELIVERY_LEASE_SECONDS` | Optional 30–300 second delivery lease | Optional 30–300 second delivery lease |
 | `CRON_SECRET` | Distinct Vercel Cron credential | Distinct Vercel Cron credential |
 | `BLOB_READ_WRITE_TOKEN` | Preview private Blob store credential | Production private Blob store credential |
 | `RESEND_RECEIVE_API_KEY` | Not configured | Full-access key read only by current signed-webhook code |
@@ -79,6 +83,23 @@ Chalupa's Vercel service uses OIDC. External producers receive one
 producer-bound credential as `FILECHEAP_INGEST_TOKEN`; the Vercel service keeps
 the complete policy keyring in `FILECHEAP_PUBLISHER_TOKENS`. The legacy global
 server-side `FILECHEAP_INGEST_TOKEN` is not accepted.
+
+Receipt signing and lookup keys are separate JSON maps with exactly the same
+1-16 safe key IDs. Every value is canonical unpadded base64url for 32-64 random
+bytes, and no signing or lookup value may be reused anywhere in the keyring.
+`FILECHEAP_PLAN_RECEIPT_ACTIVE_KID` selects the writer; readers try every loaded
+key in a bounded set. To rotate, load the new distinct pair alongside the old
+pair, deploy, and switch the active kid. Remove the old pair only after no
+`planned` row still names that kid and every committed row for it has passed
+`plan_expires_at`; an expired pending plan can renew until retention cleanup
+claims it. There is no development or production fallback key.
+
+Migration `0011_plan_receipt_hmac` is deliberately an expansion release. New
+plans store the keyed receipt envelope and temporarily dual-write the original
+UUID into `plan_token` so an older deployment can roll back safely. It does not
+yet remove raw receipt storage. A later separately verified contraction may
+null and eventually drop that column only after old instances and legacy rows
+have been drained or keyed-backfilled.
 
 The same exact Chalupa OIDC identity may request a signed download only for one
 known committed `chalupa.log-chunk` produced by Chalupa with the allowlisted
@@ -151,7 +172,15 @@ delivery promise.
 Console authentication uses a dedicated `RESEND_AUTH_SEND_API_KEY` and
 `RESEND_AUTH_FROM`; it never reuses the inbound receiving credential. Resend
 idempotency keys bind retries to the exact authorization and send attempt. The
-receiving-forward API requires a
+verification endpoint persists a fenced delivery claim before returning
+`202`, then asks Next.js `after()` to dispatch it. That response confirms only
+the durable claim, not provider acceptance. There is no autonomous outbox
+consumer in this release: if deferred execution is lost, repeat the same
+verification request after its 30–300 second lease expires. The regenerated OTP
+and Resend idempotency key are identical, and an older worker cannot activate a
+delivery after a newer worker reclaims it.
+
+The receiving-forward API requires a
 team-wide full-access `RESEND_RECEIVE_API_KEY`; Resend cannot scope it to one
 domain. Isolate it per product and keep all three runtime values Sensitive and
 Production-only; current code reads them only in the signed webhook path.
@@ -194,6 +223,25 @@ belong in the private inventory. Runtime uses `DATABASE_URL`; protected GitHub
 Actions migration jobs use `MIGRATIONS_DATABASE_URL`, which must never be placed
 in Vercel.
 
+Before the first authenticated console test, after an owner-email recovery, and
+before promoting changed owner configuration, run the read-only owner preflight
+from `platform/` with the stable account ID, normalized owner email, and direct
+migration connection:
+
+```sh
+FILECHEAP_OWNER_ACCOUNT_ID=acc_... \
+FILECHEAP_OWNER_EMAIL=owner@example.com \
+MIGRATIONS_DATABASE_URL=<direct-database-url> \
+bun run db:check-console-owner
+```
+
+The command fails unless those values identify exactly one `console_users` row.
+If migration credentials are unavailable, use a dedicated read-only
+`CONSOLE_OWNER_CHECK_DATABASE_URL` instead; never configure either operational
+connection in Vercel. Keep the account ID stable during email rotation, perform
+the database change through the reviewed backfill procedure, and rerun this
+preflight before promotion.
+
 For the current low-traffic Launch baseline, keep both the project defaults and
 the production endpoint at 0.25–1 CU with a 300-second autosuspend. Setting only
 the existing endpoint is insufficient because a future branch or replacement
@@ -210,6 +258,8 @@ go vet ./...
 CGO_ENABLED=0 go build ./cmd/fcheap
 GOTOOLCHAIN=go1.26.5 go run github.com/abdul-hamid-achik/glyphrun/cmd/glyph@v0.15.0 \
   run e2e/flows/cli_artifact_ref.yml --format md
+GOTOOLCHAIN=go1.26.5 go run github.com/abdul-hamid-achik/glyphrun/cmd/glyph@v0.15.0 \
+  run e2e/flows/cli_pull.yml --format md
 
 cd platform/docs
 bun ci
@@ -218,7 +268,9 @@ bun audit
 
 cd ..
 bun ci
+bun run test:postgres
 bun run check
+bun run db:check
 bun run build
 bun run audit:production
 ```
@@ -334,9 +386,10 @@ Expected results:
   complete plan, direct upload, commit, and signed download only from an
   explicitly allowlisted Preview OIDC subject; never paste a bearer credential
   into shell history or deployment evidence.
-- Replay the exact committed plan and its original receipt. Both must recover
-  the same verified artifact; the plan replay returns `200` without a new
-  upload grant.
+- Replay the exact committed plan and its original receipt before the receipt's
+  `plan_expires_at`. Both recover the same verified artifact; after that bound,
+  the plan replay still returns `200` without a new upload grant while the
+  commit receipt returns `invalid_receipt`.
 - Security headers are present and browser/runtime error logs are empty.
 
 Test keyboard navigation, local search, mobile layout, a 404, and at least one

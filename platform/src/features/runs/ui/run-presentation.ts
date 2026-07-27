@@ -1,5 +1,9 @@
 import type { RunHealth, RunStatus, RunSummary } from "@/features/runs/contracts";
 
+export const runDetailTabOrder = ["summary", "outcomes", "evidence", "provenance"] as const;
+
+export type RunDetailTab = (typeof runDetailTabOrder)[number];
+
 export interface RunDashboardMetrics {
   activeCount: number;
   evidenceCount: number;
@@ -11,14 +15,27 @@ export interface RunDashboardMetrics {
 export interface RunFilters {
   health: RunHealth | "all";
   producer: string | "all";
+  query: string;
   status: RunStatus | "all";
 }
 
 export const defaultRunFilters: RunFilters = {
   health: "all",
   producer: "all",
+  query: "",
   status: "all",
 };
+
+export function getNextRunDetailTab(current: RunDetailTab, key: string): RunDetailTab | null {
+  if (key === "Home") return runDetailTabOrder[0];
+  if (key === "End") return runDetailTabOrder.at(-1) ?? null;
+  if (key !== "ArrowLeft" && key !== "ArrowRight") return null;
+
+  const currentIndex = runDetailTabOrder.indexOf(current);
+  const offset = key === "ArrowRight" ? 1 : -1;
+  const nextIndex = (currentIndex + offset + runDetailTabOrder.length) % runDetailTabOrder.length;
+  return runDetailTabOrder[nextIndex] ?? null;
+}
 
 export function deriveRunDashboardMetrics(runs: readonly RunSummary[]): RunDashboardMetrics {
   let activeCount = 0;
@@ -37,11 +54,23 @@ export function deriveRunDashboardMetrics(runs: readonly RunSummary[]): RunDashb
 }
 
 export function filterRuns(runs: readonly RunSummary[], filters: RunFilters): RunSummary[] {
-  return runs.filter((run) =>
-    (filters.status === "all" || run.run.status === filters.status) &&
-    (filters.producer === "all" || run.producer.tool === filters.producer) &&
-    (filters.health === "all" || run.health.state === filters.health),
-  );
+  const needle = filters.query.trim().toLocaleLowerCase();
+  return runs.filter((run) => {
+    const matchesQuery = needle === "" || [
+      run.artifactId,
+      run.producer.tool,
+      run.producer.native_id,
+      run.run.environment,
+      run.run.nativeId,
+      run.run.specName,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .some((value) => value.toLocaleLowerCase().includes(needle));
+    return matchesQuery &&
+      (filters.status === "all" || run.run.status === filters.status) &&
+      (filters.producer === "all" || run.producer.tool === filters.producer) &&
+      (filters.health === "all" || run.health.state === filters.health);
+  });
 }
 
 export function runStatusLabel(status: RunStatus): string {

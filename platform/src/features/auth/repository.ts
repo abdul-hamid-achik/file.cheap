@@ -29,6 +29,67 @@ export type UserRecord = {
   id: string;
 };
 
+export type VerificationDeliveryClaim = {
+  authorizationId: string;
+  clientName: string;
+  deliveryNumber: number;
+  email: string;
+  leaseToken: string;
+  userCode: string;
+};
+
+export type VerificationDeliveryRecord = {
+  acceptedAt: Date | null;
+  authorizationId: string;
+  createdAt: Date;
+  deliveryNumber: number;
+  email: string;
+  leaseExpiresAt: Date | null;
+  leaseToken: string | null;
+  status: "pending" | "sending" | "accepted";
+  updatedAt: Date;
+};
+
+export type DeviceFamilyRecord = {
+  absoluteExpiresAt: Date;
+  clientName: string;
+  createdAt: Date;
+  id: string;
+  idleExpiresAt: Date;
+  lastUsedAt: Date | null;
+  revokeReason: string | null;
+  revokedAt: Date | null;
+  status: "active" | "revoked";
+  updatedAt: Date;
+  userId: string;
+};
+
+export type DeviceFamilyListCursor = Readonly<{
+  createdAt: Date;
+  id: string;
+}>;
+
+export type DeviceFamilyOverview = Readonly<{
+  active: number;
+  expiring: number;
+  inactive: number;
+  total: number;
+}>;
+
+export type DeviceFamilyListPage = Readonly<{
+  families: DeviceFamilyRecord[];
+  hasNextPage: boolean;
+  overview: DeviceFamilyOverview;
+}>;
+
+export type DeviceFamilyListInput = Readonly<{
+  cursor?: DeviceFamilyListCursor;
+  expiringBefore: Date;
+  limit: number;
+  now: Date;
+  userId: string;
+}>;
+
 export type DeviceFamilyIssueInput = {
   access: {
     expiresAt: Date;
@@ -84,12 +145,29 @@ export interface AuthRepository {
   findAuthorizationByUserCode(
     userCode: string,
   ): Promise<AuthorizationRecord | null>;
-  markEmailSent(input: {
+  claimVerificationDelivery(input: {
+    eligible: boolean;
     email: string;
-    id: string;
+    leaseExpiresAt: Date;
+    leaseToken: string;
+    maxEmailSends: number;
+    now: Date;
+    userCode: string;
+  }): Promise<VerificationDeliveryClaim | null>;
+  acceptVerificationDelivery(input: {
+    authorizationId: string;
+    deliveryNumber: number;
+    email: string;
+    leaseToken: string;
     now: Date;
     otpHash: string;
-  }): Promise<AuthorizationRecord | null>;
+  }): Promise<boolean>;
+  releaseVerificationDelivery(input: {
+    authorizationId: string;
+    deliveryNumber: number;
+    leaseToken: string;
+    now: Date;
+  }): Promise<void>;
   recordOtpFailure(id: string, now: Date): Promise<void>;
   approve(input: {
     email: string;
@@ -112,18 +190,21 @@ export interface AuthRepository {
   }): Promise<void>;
   notePoll(id: string, now: Date): Promise<void>;
   findActiveSession(tokenHash: string, now: Date, kind?: "web" | "device"): Promise<UserRecord | null>;
+  listDeviceFamilies(input: DeviceFamilyListInput): Promise<DeviceFamilyListPage>;
+  revokeDeviceFamily(input: {
+    familyId: string;
+    now: Date;
+    reason: "owner";
+    userId: string;
+  }): Promise<boolean>;
   revokeSession(tokenHash: string, now: Date): Promise<void>;
   upsertUser(email: string, now: Date, preferredId?: string): Promise<UserRecord>;
 }
 
 export class InMemoryAuthRepository implements AuthRepository {
   readonly authorizations = new Map<string, AuthorizationRecord>();
-  readonly deviceFamilies = new Map<string, {
-    absoluteExpiresAt: Date;
-    idleExpiresAt: Date;
-    revokedAt: Date | null;
-    userId: string;
-  }>();
+  readonly verificationDeliveries = new Map<string, VerificationDeliveryRecord>();
+  readonly deviceFamilies = new Map<string, DeviceFamilyRecord>();
   readonly refreshTokens = new Map<string, {
     expiresAt: Date;
     familyId: string;
@@ -155,15 +236,123 @@ export class InMemoryAuthRepository implements AuthRepository {
     ) ?? null;
   }
 
-  async markEmailSent(input: { email: string; id: string; now: Date; otpHash: string }) {
-    const record = this.authorizations.get(input.id);
-    if (!record || !["pending", "email_sent"].includes(record.status)) return null;
-    record.email = input.email;
-    record.emailSendCount += 1;
-    record.otpHash = input.otpHash;
-    record.status = "email_sent";
-    record.updatedAt = input.now;
-    return { ...record };
+  async claimVerificationDelivery(input: {
+    eligible: boolean;
+    email: string;
+    leaseExpiresAt: Date;
+    leaseToken: string;
+    maxEmailSends: number;
+    now: Date;
+    userCode: string;
+  }): Promise<VerificationDeliveryClaim | null> {
+    const authorization = [...this.authorizations.values()].find(
+      (record) => record.userCode === input.userCode,
+    );
+    if (
+      !input.eligible ||
+      !authorization ||
+      !["pending", "email_sent"].includes(authorization.status) ||
+      authorization.expiresAt <= input.now ||
+      authorization.emailSendCount >= input.maxEmailSends
+    ) {
+      return null;
+    }
+
+    const deliveryNumber = authorization.emailSendCount + 1;
+    const key = verificationDeliveryKey(authorization.id, deliveryNumber);
+    let delivery = this.verificationDeliveries.get(key);
+    if (!delivery) {
+      delivery = {
+        acceptedAt: null,
+        authorizationId: authorization.id,
+        createdAt: input.now,
+        deliveryNumber,
+        email: input.email,
+        leaseExpiresAt: null,
+        leaseToken: null,
+        status: "pending",
+        updatedAt: input.now,
+      };
+      this.verificationDeliveries.set(key, delivery);
+    }
+    if (
+      delivery.email !== input.email ||
+      delivery.status === "accepted" ||
+      (delivery.status === "sending" &&
+        delivery.leaseExpiresAt !== null &&
+        delivery.leaseExpiresAt > input.now)
+    ) {
+      return null;
+    }
+
+    delivery.status = "sending";
+    delivery.leaseToken = input.leaseToken;
+    delivery.leaseExpiresAt = input.leaseExpiresAt;
+    delivery.updatedAt = input.now;
+    return {
+      authorizationId: authorization.id,
+      clientName: authorization.clientName,
+      deliveryNumber,
+      email: delivery.email,
+      leaseToken: input.leaseToken,
+      userCode: authorization.userCode,
+    };
+  }
+
+  async acceptVerificationDelivery(input: {
+    authorizationId: string;
+    deliveryNumber: number;
+    email: string;
+    leaseToken: string;
+    now: Date;
+    otpHash: string;
+  }): Promise<boolean> {
+    const authorization = this.authorizations.get(input.authorizationId);
+    const delivery = this.verificationDeliveries.get(
+      verificationDeliveryKey(input.authorizationId, input.deliveryNumber),
+    );
+    if (
+      !authorization ||
+      !delivery ||
+      !["pending", "email_sent"].includes(authorization.status) ||
+      authorization.expiresAt <= input.now ||
+      authorization.emailSendCount !== input.deliveryNumber - 1 ||
+      delivery.status !== "sending" ||
+      delivery.email !== input.email ||
+      delivery.leaseToken !== input.leaseToken
+    ) {
+      return false;
+    }
+
+    authorization.email = input.email;
+    authorization.emailSendCount = input.deliveryNumber;
+    authorization.otpHash = input.otpHash;
+    authorization.status = "email_sent";
+    authorization.updatedAt = input.now;
+    delivery.acceptedAt = input.now;
+    delivery.leaseExpiresAt = null;
+    delivery.leaseToken = null;
+    delivery.status = "accepted";
+    delivery.updatedAt = input.now;
+    return true;
+  }
+
+  async releaseVerificationDelivery(input: {
+    authorizationId: string;
+    deliveryNumber: number;
+    leaseToken: string;
+    now: Date;
+  }): Promise<void> {
+    const delivery = this.verificationDeliveries.get(
+      verificationDeliveryKey(input.authorizationId, input.deliveryNumber),
+    );
+    if (delivery?.status !== "sending" || delivery.leaseToken !== input.leaseToken) {
+      return;
+    }
+    delivery.leaseExpiresAt = null;
+    delivery.leaseToken = null;
+    delivery.status = "pending";
+    delivery.updatedAt = input.now;
   }
 
   async recordOtpFailure(id: string, now: Date): Promise<void> {
@@ -234,8 +423,15 @@ export class InMemoryAuthRepository implements AuthRepository {
     record.updatedAt = input.now;
     this.deviceFamilies.set(input.family.id, {
       absoluteExpiresAt: input.family.absoluteExpiresAt,
+      clientName: input.family.clientName,
+      createdAt: input.now,
+      id: input.family.id,
       idleExpiresAt: input.family.idleExpiresAt,
+      lastUsedAt: null,
+      revokeReason: null,
       revokedAt: null,
+      status: "active",
+      updatedAt: input.now,
       userId: input.userId,
     });
     this.refreshTokens.set(input.refresh.tokenHash, {
@@ -314,6 +510,8 @@ export class InMemoryAuthRepository implements AuthRepository {
       usedAt: null,
     });
     family.idleExpiresAt = refreshExpiresAt;
+    family.lastUsedAt = input.now;
+    family.updatedAt = input.now;
     this.tokens.set(input.access.id, {
       expiresAt: accessExpiresAt,
       kind: "device",
@@ -353,11 +551,42 @@ export class InMemoryAuthRepository implements AuthRepository {
     return [...this.users.values()].find((user) => user.id === token.userId) ?? null;
   }
 
+  async listDeviceFamilies(input: DeviceFamilyListInput): Promise<DeviceFamilyListPage> {
+    const owned = [...this.deviceFamilies.values()]
+      .filter((family) => family.userId === input.userId)
+      .sort((left, right) => {
+        const byCreatedAt = right.createdAt.getTime() - left.createdAt.getTime();
+        return byCreatedAt || right.id.localeCompare(left.id);
+      });
+    const cursor = input.cursor;
+    const afterCursor = cursor
+      ? owned.filter((family) => isAfterDeviceFamilyCursor(family, cursor))
+      : owned;
+    const page = afterCursor.slice(0, input.limit + 1);
+    return {
+      families: page.slice(0, input.limit).map((family) => ({ ...family })),
+      hasNextPage: page.length > input.limit,
+      overview: deviceFamilyOverview(owned, input.now, input.expiringBefore),
+    };
+  }
+
+  async revokeDeviceFamily(input: {
+    familyId: string;
+    now: Date;
+    reason: "owner";
+    userId: string;
+  }): Promise<boolean> {
+    const family = this.deviceFamilies.get(input.familyId);
+    if (!family || family.userId !== input.userId) return false;
+    this.revokeFamily(input.familyId, input.now, input.reason);
+    return true;
+  }
+
   async revokeSession(tokenHash: string, now: Date): Promise<void> {
     const token = [...this.tokens.values()].find((item) => item.tokenHash === tokenHash);
     if (!token) return;
     if (token.kind === "device" && token.refreshFamilyId) {
-      this.revokeFamily(token.refreshFamilyId, now);
+      this.revokeFamily(token.refreshFamilyId, now, "logout");
       return;
     }
     token.revokedAt = now;
@@ -371,9 +600,14 @@ export class InMemoryAuthRepository implements AuthRepository {
     return user;
   }
 
-  private revokeFamily(familyId: string, now: Date): void {
+  private revokeFamily(familyId: string, now: Date, reason = "refresh-reuse"): void {
     const family = this.deviceFamilies.get(familyId);
-    if (family && !family.revokedAt) family.revokedAt = now;
+    if (family && !family.revokedAt) {
+      family.revokeReason = reason;
+      family.revokedAt = now;
+      family.status = "revoked";
+      family.updatedAt = now;
+    }
     for (const token of this.tokens.values()) {
       if (token.refreshFamilyId === familyId && !token.revokedAt) token.revokedAt = now;
     }
@@ -382,4 +616,43 @@ export class InMemoryAuthRepository implements AuthRepository {
 
 function earlier(left: Date, right: Date): Date {
   return left <= right ? left : right;
+}
+
+function verificationDeliveryKey(
+  authorizationId: string,
+  deliveryNumber: number,
+): string {
+  return `${authorizationId}:${deliveryNumber}`;
+}
+
+function isAfterDeviceFamilyCursor(
+  family: DeviceFamilyRecord,
+  cursor: DeviceFamilyListCursor,
+): boolean {
+  const familyTime = family.createdAt.getTime();
+  const cursorTime = cursor.createdAt.getTime();
+  return familyTime < cursorTime ||
+    (familyTime === cursorTime && family.id < cursor.id);
+}
+
+function deviceFamilyOverview(
+  families: readonly DeviceFamilyRecord[],
+  now: Date,
+  expiringBefore: Date,
+): DeviceFamilyOverview {
+  return families.reduce<DeviceFamilyOverview>((overview, family) => {
+    const active = !family.revokedAt &&
+      family.idleExpiresAt > now &&
+      family.absoluteExpiresAt > now;
+    if (!active) {
+      return { ...overview, inactive: overview.inactive + 1 };
+    }
+    const expiring = family.idleExpiresAt <= expiringBefore ||
+      family.absoluteExpiresAt <= expiringBefore;
+    return {
+      ...overview,
+      active: overview.active + 1,
+      expiring: overview.expiring + Number(expiring),
+    };
+  }, { active: 0, expiring: 0, inactive: 0, total: families.length });
 }

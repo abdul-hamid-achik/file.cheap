@@ -135,8 +135,9 @@ Save-time content scanning does not sanitize those metadata fields.
 The interchange schema also defines strict `fcheap-cloud` and `link` variants
 for other adapters. `artifact-ref` and `fcheap_artifact_ref` do not construct
 those variants. The private, single-owner artifact service and
-[`fcheap publish`](/cli/publish) emit `fcheap-cloud`; this does not make the
-service a public hosted vault.
+[`fcheap publish`](/cli/publish) emit `fcheap-cloud`; [`fcheap pull`](/cli/pull)
+returns that same credential-free identity alongside the verified local path.
+This does not make the service a public hosted vault.
 
 ## Validation and failures
 

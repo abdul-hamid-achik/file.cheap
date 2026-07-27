@@ -4,7 +4,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { POST as commit } from "@/app/api/v1/artifacts/commits/route";
 import { POST as download } from "@/app/api/v1/artifacts/downloads/route";
 import { POST as plan } from "@/app/api/v1/artifacts/plans/route";
+import { GET as getArtifact } from "@/app/api/v1/artifacts/[artifactId]/route";
 import { ArtifactService } from "@/features/artifacts/service";
+import { testPlanReceiptKeyring } from "@/features/artifacts/plan-receipts.test-helper";
 import { InMemoryArtifactRepository } from "@/features/artifacts/repository";
 import { InMemoryArtifactObjectStore } from "@/platform/artifacts/in-memory-object-store";
 import { setArtifactServiceForTests } from "@/features/artifacts/factory";
@@ -50,7 +52,15 @@ describe("private artifact routes", () => {
     const sha256 = createHash("sha256").update(bytes).digest("hex");
     const planInput = { contentType: "application/zstd", idempotencyKey: "123e4567-e89b-42d3-a456-426614174002", kind: "chalupa.log-chunk", producer: { native_schema: "urn:chalupa:log-chunk:v1", tool: "chalupa" }, sha256, sizeBytes: bytes.byteLength };
     const store = new InMemoryArtifactObjectStore();
-    setArtifactServiceForTests(new ArtifactService(store, new InMemoryArtifactRepository()));
+    setArtifactServiceForTests(new ArtifactService(store, new InMemoryArtifactRepository(), testPlanReceiptKeyring));
+    const malformedDetail = await getArtifact(
+      new Request("https://file.cheap/api/v1/artifacts/not-an-artifact", {
+        headers: { authorization: `Bearer ${"a".repeat(32)}` },
+      }),
+      { params: Promise.resolve({ artifactId: "not-an-artifact" }) },
+    );
+    expect(malformedDetail.status).toBe(422);
+    expect((await malformedDetail.json()).code).toBe("invalid_request");
     const unauthorized = await plan(new Request("https://file.cheap/api/v1/artifacts/plans", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }));
     expect(unauthorized.status).toBe(401);
     const wrongProducer = await plan(new Request("https://file.cheap/api/v1/artifacts/plans", { method: "POST", headers: { authorization: `Bearer ${cairntraceIngest}`, "content-type": "application/json" }, body: JSON.stringify(planInput) }));

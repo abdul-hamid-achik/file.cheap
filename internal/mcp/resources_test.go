@@ -230,6 +230,9 @@ func TestMCPResourcesAndPrompts(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, capability := range guide.Capabilities {
+		if capability.MCPTool == "" {
+			continue
+		}
 		if !hasTool(lt.Tools, capability.MCPTool) {
 			t.Errorf("guide advertises unregistered tool %q", capability.MCPTool)
 		}

@@ -67,7 +67,7 @@ func New(version string) Guide {
 		Product:       "file.cheap",
 		Version:       version,
 		Mode:          "local-first",
-		Purpose:       "Preserve, inspect, search, compare, and restore agent workflow artifacts in a local artifact vault.",
+		Purpose:       "Preserve, inspect, search, compare, and restore agent workflow artifacts in a local artifact vault, with explicit private transfer bridges.",
 		RecommendedFlow: []FlowStep{
 			{
 				ID:       "discover",
@@ -106,6 +106,11 @@ func New(version string) Guide {
 				MCP:      []string{"fcheap_restore"},
 			},
 			{
+				ID:       "recover-private",
+				Guidance: "When the user explicitly requests a private cloud artifact, use a paired device session and a new destination path; verify the bytes, then keep archive contents untrusted and unopened.",
+				CLI:      []string{"fcheap auth login", "fcheap pull <artifact-id> --output <new-file> --json"},
+			},
+			{
 				ID:       "cleanup",
 				Guidance: "Preview cleanup first and delete only with explicit user intent.",
 				CLI:      []string{"fcheap cleanup --json", "fcheap sweep --json"},
@@ -117,6 +122,8 @@ func New(version string) Guide {
 			capability("list", "List and filter stash summaries.", "fcheap list", "fcheap_list", "read", "none", "built_in", "none"),
 			capability("info", "Read one full stash manifest.", "fcheap info", "fcheap_info", "read", "none", "built_in", "none"),
 			capability("artifact-ref", "Emit an ArtifactRefV1 with credential-free transport fields for an existing local stash; caller metadata is not DLP-scanned.", "fcheap artifact-ref", "fcheap_artifact_ref", "read", "none", "built_in", "none"),
+			capability("publish", "Publish one bounded file with a producer-scoped credential and direct signed transfer.", "fcheap publish", "", "reads_source_and_writes_private_service", "explicit", "producer_credential", "private_service_and_signed_storage"),
+			capability("pull", "Download and SHA-256 verify one owner-scoped private artifact at a new local path without extracting it.", "fcheap pull", "", "writes_target", "explicit", "paired_device_session", "private_service_and_signed_storage"),
 			capability("restore", "Restore and hash-verify stash contents.", "fcheap restore", "fcheap_restore", "writes_target", "user_intent", "built_in", "none"),
 			capability("drop", "Permanently delete a stash.", "fcheap drop", "fcheap_drop", "deletes", "explicit", "built_in", "none"),
 			capability("search", "Search indexed stash files.", "fcheap search", "fcheap_search", "read", "none", "built_in", "configured_embedder_for_semantic_or_hybrid"),
@@ -135,6 +142,7 @@ func New(version string) Guide {
 			{ID: "safe-restore", Requirement: "Prefer a fresh temporary restore target; write into an existing target only when replacement is explicitly intended."},
 			{ID: "secret-warning", Requirement: "Surface save-time secret warnings before sharing content or allowing remote embedding."},
 			{ID: "local-reference-boundary", Requirement: "A fcheap-local ArtifactRefV1 is a pointer, not an upload; never claim it is remotely accessible unless the resolving device has that local vault."},
+			{ID: "private-transfer-boundary", Requirement: "Publish or pull only with explicit user intent and the narrowly scoped credential. Never expose a signed URL, overwrite a pull destination, or extract, render, execute, or trust downloaded bytes automatically."},
 			{ID: "remote-model-boundary", Requirement: "A local MCP server does not imply a local model; tool and resource results may be sent to the MCP client's model provider."},
 			{ID: "embedding-boundary", Requirement: "Semantic or hybrid search and analysis may send document or query text to the configured embedder; search queries are not secret-scanned."},
 			{ID: "evidence-not-proof", Requirement: "Treat semantic and vecgrep matches as investigation leads and verify them against source evidence."},

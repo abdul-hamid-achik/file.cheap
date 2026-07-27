@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 // Console identity is deliberately separate from service credentials. The
 // first release is owner-allowlisted, but ownership is a database invariant so
@@ -24,6 +24,10 @@ export const artifacts = pgTable("artifacts", {
   state: text("state").notNull(),
   verification: text("verification").notNull(),
   planToken: text("plan_token").notNull(),
+  planReceiptScheme: text("plan_receipt_scheme"),
+  planReceiptKid: text("plan_receipt_kid"),
+  planReceiptNonce: text("plan_receipt_nonce"),
+  planReceiptLookup: text("plan_receipt_lookup"),
   planExpiresAt: timestamp("plan_expires_at", { withTimezone: true }).notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   committedAt: timestamp("committed_at", { withTimezone: true }),
@@ -55,7 +59,34 @@ export const artifacts = pgTable("artifacts", {
     "artifacts_expiry_check",
     sql`${table.expiresAt} is null or ${table.expiresAt} > ${table.createdAt}`,
   ),
+  check(
+    "artifacts_plan_receipt_shape_check",
+    sql`(
+      ${table.planReceiptScheme} is null and
+      ${table.planReceiptKid} is null and
+      ${table.planReceiptNonce} is null and
+      ${table.planReceiptLookup} is null
+    ) or (
+      ${table.planReceiptScheme} = 'hmac-sha256-v1' and
+      ${table.planReceiptKid} is not null and
+      ${table.planReceiptKid} ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$' and
+      ${table.planReceiptNonce} is not null and
+      ${table.planReceiptNonce} ~ '^[A-Za-z0-9_-]{43}$' and
+      ${table.planReceiptLookup} is not null and
+      ${table.planReceiptLookup} ~ '^[A-Za-z0-9_-]{43}$'
+    ) or (
+      ${table.planReceiptScheme} = 'legacy-random-hmac-sha256-v1' and
+      ${table.planReceiptKid} is not null and
+      ${table.planReceiptKid} ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$' and
+      ${table.planReceiptNonce} is null and
+      ${table.planReceiptLookup} is not null and
+      ${table.planReceiptLookup} ~ '^[A-Za-z0-9_-]{43}$'
+    )`,
+  ),
   uniqueIndex("artifacts_plan_token_unique").on(table.planToken),
+  uniqueIndex("artifacts_plan_receipt_lookup_unique")
+    .on(table.planReceiptKid, table.planReceiptLookup)
+    .where(sql`${table.planReceiptLookup} is not null`),
   index("artifacts_retention_index").on(table.state, table.expiresAt),
   index("artifacts_owner_created_index").on(table.ownerAccountId, table.createdAt, table.artifactId),
 ]);
@@ -134,6 +165,14 @@ export const artifactRuns = pgTable("artifact_runs", {
   check("artifact_runs_counts_check", sql`${table.stepCount} >= 0 and ${table.outcomeCount} >= 0 and ${table.artifactCount} >= 0`),
   check("artifact_runs_health_counts_check", sql`${table.healthDeclared} >= 0 and ${table.healthPresent} >= 0 and ${table.healthEmpty} >= 0 and ${table.healthMissing} >= 0 and ${table.healthChanged} >= 0`),
   index("artifact_runs_owner_started_index").on(table.ownerAccountId, table.startedAt, table.artifactId),
+  // Console run pagination orders by the effective start time so rows without
+  // a producer timestamp remain in the same keyset. Keep this expression in
+  // sync with DrizzleConsoleCatalogRepository.listRuns.
+  index("artifact_runs_owner_sort_index").on(
+    table.ownerAccountId,
+    sql`coalesce(${table.startedAt}, ${table.createdAt})`,
+    table.artifactId,
+  ),
   index("artifact_runs_owner_producer_status_index").on(table.ownerAccountId, table.producerTool, table.status),
   index("artifact_runs_owner_health_index").on(table.ownerAccountId, table.health),
   index("artifact_runs_owner_series_index").on(table.ownerAccountId, table.seriesKey, table.startedAt, table.artifactId),
@@ -228,6 +267,54 @@ export const consoleAuthorizations = pgTable("console_authorizations", {
   index("console_authorizations_expiry_index").on(table.expiresAt),
 ]);
 
+// Outbound verification is a recoverable state machine. The OTP itself is
+// derived from keyed material and is never persisted; a stable authorization
+// + delivery ordinal is enough to regenerate both the OTP and provider
+// idempotency key after a timeout or process restart.
+export const consoleVerificationDeliveries = pgTable("console_verification_deliveries", {
+  authorizationId: text("authorization_id").notNull().references(
+    () => consoleAuthorizations.id,
+    { onDelete: "cascade" },
+  ),
+  deliveryNumber: integer("delivery_number").notNull(),
+  email: text("email").notNull(),
+  status: text("status").notNull(),
+  leaseToken: text("lease_token"),
+  leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+}, (table) => [
+  primaryKey({
+    columns: [table.authorizationId, table.deliveryNumber],
+    name: "console_verification_deliveries_pk",
+  }),
+  check(
+    "console_verification_deliveries_number_check",
+    sql`${table.deliveryNumber} between 1 and 3`,
+  ),
+  check(
+    "console_verification_deliveries_email_check",
+    sql`length(${table.email}) between 3 and 320`,
+  ),
+  check(
+    "console_verification_deliveries_status_check",
+    sql`${table.status} in ('pending', 'sending', 'accepted')`,
+  ),
+  check(
+    "console_verification_deliveries_lease_check",
+    sql`(${table.status} = 'sending') = (${table.leaseToken} is not null and ${table.leaseExpiresAt} is not null)`,
+  ),
+  check(
+    "console_verification_deliveries_acceptance_check",
+    sql`(${table.status} = 'accepted') = (${table.acceptedAt} is not null)`,
+  ),
+  index("console_verification_deliveries_lease_index").on(
+    table.status,
+    table.leaseExpiresAt,
+  ),
+]);
+
 export const consoleDeviceFamilies = pgTable("console_device_families", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => consoleUsers.id, { onDelete: "cascade" }),
@@ -312,4 +399,131 @@ export const consoleRateLimits = pgTable("console_rate_limits", {
   check("console_rate_limits_expiry_check", sql`${table.expiresAt} > ${table.windowStartedAt}`),
   uniqueIndex("console_rate_limits_bucket_unique").on(table.action, table.keyHash, table.windowStartedAt),
   index("console_rate_limits_expiry_index").on(table.expiresAt),
+]);
+
+// Private operational state. One active row fences a retention worker; a
+// stale row is terminally abandoned before a replacement can start. These
+// records contain counts and allowlisted area names only, never artifact keys,
+// paths, credentials, provider payloads, or raw errors.
+export const privateRetentionRuns = pgTable("private_retention_runs", {
+  id: text("id").primaryKey(),
+  status: text("status").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }).notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  oldestDueAt: timestamp("oldest_due_at", { withTimezone: true }),
+  failedAreas: text("failed_areas").array().notNull().default(sql`'{}'::text[]`),
+  artifactCandidates: integer("artifact_candidates").notNull().default(0),
+  artifactFailures: integer("artifact_failures").notNull().default(0),
+  artifactsDeleted: integer("artifacts_deleted").notNull().default(0),
+  inboundReplayRecordsDeleted: integer("inbound_replay_records_deleted").notNull().default(0),
+  consoleAuthorizationRecordsDeleted: integer("console_authorization_records_deleted").notNull().default(0),
+  consoleDeviceFamilyRecordsDeleted: integer("console_device_family_records_deleted").notNull().default(0),
+  consoleSessionRecordsDeleted: integer("console_session_records_deleted").notNull().default(0),
+  consoleRateLimitRecordsDeleted: integer("console_rate_limit_records_deleted").notNull().default(0),
+  stagesAttempted: integer("stages_attempted").notNull().default(0),
+  stagesSucceeded: integer("stages_succeeded").notNull().default(0),
+  stagesFailed: integer("stages_failed").notNull().default(0),
+}, (table) => [
+  check(
+    "private_retention_runs_id_check",
+    sql`${table.id} ~ '^rtn_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`,
+  ),
+  check(
+    "private_retention_runs_status_check",
+    sql`${table.status} in ('running', 'succeeded', 'partial', 'failed', 'abandoned')`,
+  ),
+  check(
+    "private_retention_runs_terminal_check",
+    sql`(${table.status} = 'running') = (${table.finishedAt} is null)`,
+  ),
+  check(
+    "private_retention_runs_time_check",
+    sql`${table.heartbeatAt} >= ${table.startedAt} and (${table.finishedAt} is null or (${table.finishedAt} >= ${table.heartbeatAt} and ${table.finishedAt} >= ${table.startedAt}))`,
+  ),
+  check(
+    "private_retention_runs_failed_areas_check",
+    sql`${table.failedAreas} <@ ARRAY['artifacts', 'inbound_email_replays', 'console_authorizations', 'console_device_families', 'console_sessions', 'console_rate_limits', 'backlog_probe', 'run_lease']::text[] and cardinality(${table.failedAreas}) <= 8`,
+  ),
+  check(
+    "private_retention_runs_outcome_check",
+    sql`(
+      (${table.status} = 'running' and cardinality(${table.failedAreas}) = 0) or
+      (${table.status} = 'succeeded' and cardinality(${table.failedAreas}) = 0) or
+      (${table.status} in ('partial', 'failed') and cardinality(${table.failedAreas}) > 0) or
+      (${table.status} = 'abandoned' and ${table.failedAreas} = ARRAY['run_lease']::text[])
+    )`,
+  ),
+  check(
+    "private_retention_runs_counters_check",
+    sql`${table.artifactCandidates} >= 0 and ${table.artifactFailures} >= 0 and ${table.artifactsDeleted} >= 0 and ${table.inboundReplayRecordsDeleted} >= 0 and ${table.consoleAuthorizationRecordsDeleted} >= 0 and ${table.consoleDeviceFamilyRecordsDeleted} >= 0 and ${table.consoleSessionRecordsDeleted} >= 0 and ${table.consoleRateLimitRecordsDeleted} >= 0 and ${table.stagesAttempted} >= 0 and ${table.stagesSucceeded} >= 0 and ${table.stagesFailed} >= 0 and ${table.stagesAttempted} = ${table.stagesSucceeded} + ${table.stagesFailed}`,
+  ),
+  uniqueIndex("private_retention_runs_one_running_unique")
+    .on(table.status)
+    .where(sql`${table.status} = 'running'`),
+  index("private_retention_runs_heartbeat_index").on(table.status, table.heartbeatAt),
+  index("private_retention_runs_finished_index").on(table.finishedAt, table.id),
+]);
+
+// This ledger is append-only at both the domain port and database trigger. Its
+// JSON object is intentionally narrow: each new event family must add an
+// explicit schema branch instead of accepting free-form operational details.
+export const privateActivityEvents = pgTable("private_activity_events", {
+  id: text("id").primaryKey(),
+  eventName: text("event_name").notNull(),
+  actor: text("actor").notNull(),
+  subjectType: text("subject_type").notNull(),
+  subjectId: text("subject_id").notNull().references(
+    () => privateRetentionRuns.id,
+    { onDelete: "restrict" },
+  ),
+  details: jsonb("details").notNull(),
+  recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+}, (table) => [
+  check(
+    "private_activity_events_id_check",
+    sql`${table.id} ~ '^act_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`,
+  ),
+  check(
+    "private_activity_events_name_check",
+    sql`${table.eventName} in ('private.retention_run.started', 'private.retention_run.succeeded', 'private.retention_run.partial', 'private.retention_run.failed', 'private.retention_run.abandoned')`,
+  ),
+  check("private_activity_events_actor_check", sql`${table.actor} = 'system:retention'`),
+  check("private_activity_events_subject_check", sql`${table.subjectType} = 'retention_run'`),
+  check(
+    "private_activity_events_details_check",
+    sql`jsonb_typeof(${table.details}) = 'object' and (
+      (${table.eventName} = 'private.retention_run.started' and ${table.details} = '{}'::jsonb) or
+      (
+        ${table.eventName} <> 'private.retention_run.started' and
+        ${table.details} ?& ARRAY['counters', 'failedAreas', 'oldestDueAt', 'status'] and
+        (${table.details} - ARRAY['counters', 'failedAreas', 'oldestDueAt', 'status']::text[]) = '{}'::jsonb and
+        jsonb_typeof(${table.details}->'counters') = 'object' and
+        ${table.details}->'counters' ?& ARRAY['artifactCandidates', 'artifactFailures', 'artifactsDeleted', 'consoleAuthorizationRecordsDeleted', 'consoleDeviceFamilyRecordsDeleted', 'consoleRateLimitRecordsDeleted', 'consoleSessionRecordsDeleted', 'inboundReplayRecordsDeleted', 'stagesAttempted', 'stagesFailed', 'stagesSucceeded'] and
+        ((${table.details}->'counters') - ARRAY['artifactCandidates', 'artifactFailures', 'artifactsDeleted', 'consoleAuthorizationRecordsDeleted', 'consoleDeviceFamilyRecordsDeleted', 'consoleRateLimitRecordsDeleted', 'consoleSessionRecordsDeleted', 'inboundReplayRecordsDeleted', 'stagesAttempted', 'stagesFailed', 'stagesSucceeded']::text[]) = '{}'::jsonb and
+        jsonb_typeof(${table.details}#>'{counters,artifactCandidates}') = 'number' and (${table.details}#>>'{counters,artifactCandidates}') ~ '^(0|[1-9][0-9]*)$' and
+        jsonb_typeof(${table.details}#>'{counters,artifactFailures}') = 'number' and (${table.details}#>>'{counters,artifactFailures}') ~ '^(0|[1-9][0-9]*)$' and
+        jsonb_typeof(${table.details}#>'{counters,artifactsDeleted}') = 'number' and (${table.details}#>>'{counters,artifactsDeleted}') ~ '^(0|[1-9][0-9]*)$' and
+        jsonb_typeof(${table.details}#>'{counters,consoleAuthorizationRecordsDeleted}') = 'number' and (${table.details}#>>'{counters,consoleAuthorizationRecordsDeleted}') ~ '^(0|[1-9][0-9]*)$' and
+        jsonb_typeof(${table.details}#>'{counters,consoleDeviceFamilyRecordsDeleted}') = 'number' and (${table.details}#>>'{counters,consoleDeviceFamilyRecordsDeleted}') ~ '^(0|[1-9][0-9]*)$' and
+        jsonb_typeof(${table.details}#>'{counters,consoleRateLimitRecordsDeleted}') = 'number' and (${table.details}#>>'{counters,consoleRateLimitRecordsDeleted}') ~ '^(0|[1-9][0-9]*)$' and
+        jsonb_typeof(${table.details}#>'{counters,consoleSessionRecordsDeleted}') = 'number' and (${table.details}#>>'{counters,consoleSessionRecordsDeleted}') ~ '^(0|[1-9][0-9]*)$' and
+        jsonb_typeof(${table.details}#>'{counters,inboundReplayRecordsDeleted}') = 'number' and (${table.details}#>>'{counters,inboundReplayRecordsDeleted}') ~ '^(0|[1-9][0-9]*)$' and
+        jsonb_typeof(${table.details}#>'{counters,stagesAttempted}') = 'number' and (${table.details}#>>'{counters,stagesAttempted}') ~ '^(0|[1-9][0-9]*)$' and
+        jsonb_typeof(${table.details}#>'{counters,stagesFailed}') = 'number' and (${table.details}#>>'{counters,stagesFailed}') ~ '^(0|[1-9][0-9]*)$' and
+        jsonb_typeof(${table.details}#>'{counters,stagesSucceeded}') = 'number' and (${table.details}#>>'{counters,stagesSucceeded}') ~ '^(0|[1-9][0-9]*)$' and
+        jsonb_typeof(${table.details}->'failedAreas') = 'array' and
+        jsonb_array_length(${table.details}->'failedAreas') <= 8 and
+        not jsonb_path_exists(${table.details}, '$.failedAreas[*] ? (@.type() != "string")') and
+        not jsonb_path_exists(${table.details}, '$.failedAreas[*] ? (@ != "artifacts" && @ != "inbound_email_replays" && @ != "console_authorizations" && @ != "console_device_families" && @ != "console_sessions" && @ != "console_rate_limits" && @ != "backlog_probe" && @ != "run_lease")') and
+        jsonb_typeof(${table.details}->'oldestDueAt') in ('null', 'string') and
+        (${table.details}->'oldestDueAt' = 'null'::jsonb or (${table.details}->>'oldestDueAt') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$') and
+        jsonb_typeof(${table.details}->'status') = 'string' and
+        (${table.details}->>'status') = split_part(${table.eventName}, '.', 3) and
+        (${table.details}->>'status') in ('succeeded', 'partial', 'failed', 'abandoned')
+      )
+    )`,
+  ),
+  index("private_activity_events_recorded_index").on(table.recordedAt, table.id),
+  index("private_activity_events_subject_index").on(table.subjectType, table.subjectId, table.recordedAt),
 ]);

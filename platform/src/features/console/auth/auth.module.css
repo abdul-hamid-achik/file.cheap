@@ -13,6 +13,10 @@
 .deviceReceipt { display: grid; grid-template-columns: 1fr auto; gap: 9px 18px; padding: 16px; border: 1px dashed var(--line-strong); border-radius: 8px; background: var(--page-deep); font-family: var(--mono); font-size: 12px; }
 .deviceReceipt span { color: var(--ink-muted); }
 .message { min-height: 22px; margin: 18px 0 0; color: var(--green); font-size: 13px; }
+.done { display: grid; justify-items: center; gap: 10px; padding: 26px 20px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--page-deep); text-align: center; }
+.done span { display: grid; width: 38px; height: 38px; place-items: center; border: 1px solid var(--green); border-radius: 50%; color: var(--green); font-weight: 800; }
+.done h2 { margin: 4px 0 0; color: var(--ink); font-size: 22px; }
+.done p { margin: 0; color: var(--ink-soft); font-size: 13px; line-height: 1.55; }
 .boundary { margin: 20px 0 0; padding-top: 18px; border-top: 1px solid var(--line); color: var(--ink-muted); font-size: 12px; line-height: 1.5; }
 @media (max-width: 560px) { .brand { position: static; justify-self: start; margin-bottom: 28px; } .page { display: flex; flex-direction: column; } }
 @media (prefers-reduced-motion: reduce) { .form button { transition: none; } }

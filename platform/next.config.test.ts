@@ -43,7 +43,10 @@ describe("platform security headers", () => {
       source: "/_docs/:path*",
     });
     expect(rules[2]).toEqual({
-      headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      headers: [
+        { key: "Cache-Control", value: "private, no-store" },
+        { key: "X-Robots-Tag", value: "noindex, nofollow" },
+      ],
       source: "/console/:path*",
     });
     expect(rules[3]).toEqual({

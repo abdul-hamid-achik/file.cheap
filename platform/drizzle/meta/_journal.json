@@ -64,6 +64,34 @@
       "when": 1785103997839,
       "tag": "0008_narrow_blue_shield",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785117639506,
+      "tag": "0009_artifact_run_sort_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785118953438,
+      "tag": "0010_verification_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785119360641,
+      "tag": "0011_plan_receipt_hmac",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1785121159417,
+      "tag": "0012_private_retention_observability",
+      "breakpoints": true
     }
   ]
 }

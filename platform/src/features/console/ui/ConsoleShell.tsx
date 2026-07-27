@@ -5,6 +5,7 @@ import { LogoutButton } from "@/features/console/auth/LogoutButton";
 import styles from "./console.module.css";
 
 export interface ConsoleNavigationItem {
+  badge?: string;
   current?: boolean;
   href?: string;
   label: string;
@@ -28,6 +29,7 @@ export function ConsoleShell({
 }: ConsoleShellProps) {
   return (
     <div className={styles.shell}>
+      <a className={styles.skipLink} href="#main-content">Skip to main content</a>
       <aside className={styles.sidebar} aria-label="Console navigation">
         <div className={styles.brand}>
           <span className={styles.brandMark} aria-hidden="true">f·</span>
@@ -46,17 +48,21 @@ export function ConsoleShell({
               </a>
             ) : (
               <span
+                aria-disabled="true"
                 aria-current={item.current ? "page" : undefined}
-                className={item.current ? styles.navigationCurrent : styles.navigationLink}
+                className={styles.navigationDisabled}
                 key={item.label}
               >
-                {item.label}
+                <span>{item.label}</span>
+                {item.badge ? <small className={styles.navigationBadge}>{item.badge}</small> : null}
               </span>
             ),
           )}
         </nav>
-        <p className={styles.sessionLabel}>{sessionLabel}</p>
-        <LogoutButton />
+        <div className={styles.session}>
+          <p className={styles.sessionLabel}>{sessionLabel}</p>
+          <LogoutButton />
+        </div>
       </aside>
       <main className={styles.main} id="main-content" tabIndex={-1}>
         {children}

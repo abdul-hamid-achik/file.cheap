@@ -48,7 +48,7 @@ describe("inbound replay repository", () => {
       svixIdSha256: "b".repeat(64),
     });
     const expired = new Date(now.getTime() + inboundReplayRetentionMilliseconds + 1);
-    await repository.cleanup(expired);
+    expect(await repository.cleanup(expired)).toBe(1);
     await expect(repository.claim({
       emailIdSha256: "a".repeat(64),
       now: expired,

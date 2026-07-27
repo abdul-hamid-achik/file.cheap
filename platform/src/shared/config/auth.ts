@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const authEnvironmentSchema = z.object({
   FILECHEAP_AUTH_SECRET: z.string().min(32).max(256),
+  FILECHEAP_VERIFICATION_DELIVERY_LEASE_SECONDS: z.coerce.number().int().min(30).max(300).default(120),
   FILECHEAP_OWNER_EMAIL: z.string().trim().email().max(320),
   FILECHEAP_OWNER_ACCOUNT_ID: z.string().regex(/^acc_[A-Za-z0-9_-]{8,64}$/u),
   PLATFORM_PUBLIC_URL: z.url().default("http://127.0.0.1:3100"),
@@ -16,6 +17,7 @@ export type AuthConfig = {
   publicUrl: string;
   resendApiKey: string;
   secret: string;
+  verificationDeliveryLeaseMs: number;
 };
 
 let cached: AuthConfig | undefined;
@@ -37,6 +39,8 @@ export function getAuthConfig(): AuthConfig {
     publicUrl: publicUrl.origin,
     resendApiKey: parsed.RESEND_AUTH_SEND_API_KEY,
     secret: parsed.FILECHEAP_AUTH_SECRET,
+    verificationDeliveryLeaseMs:
+      parsed.FILECHEAP_VERIFICATION_DELIVERY_LEASE_SECONDS * 1_000,
   };
   return cached;
 }

@@ -11,7 +11,13 @@ export function getAuthService(): AuthService {
     service = new AuthService(
       new DrizzleAuthRepository(),
       new ResendAuthMailer(config.resendApiKey, config.from),
-      config,
+      {
+        allowedEmails: config.allowedEmails,
+        ownerAccountId: config.ownerAccountId,
+        publicUrl: config.publicUrl,
+        secret: config.secret,
+        verificationDeliveryLeaseMs: config.verificationDeliveryLeaseMs,
+      },
     );
   }
   return service;

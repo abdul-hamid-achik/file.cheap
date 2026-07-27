@@ -39,7 +39,7 @@ func TestAgentCommandHumanAndJSONOutput(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &guide); err != nil {
 		t.Fatalf("decode agent JSON %q: %v", stdout.String(), err)
 	}
-	if guide.SchemaVersion != agentguide.SchemaVersion || guide.Product != "file.cheap" || len(guide.Capabilities) != 15 {
+	if guide.SchemaVersion != agentguide.SchemaVersion || guide.Product != "file.cheap" || len(guide.Capabilities) != 17 {
 		t.Fatalf("agent JSON contract = %+v", guide)
 	}
 }

@@ -31,9 +31,9 @@ with `{"action":"guide"}`.
   for locations related to evidence.
 - An artifact reference points another tool to a stash without copying its
   bytes. A local reference resolves only where the matching vault exists.
-- The installed product has no shipped cloud sync, account, or HTTP API. The
-  public website and its private artifact service are separate from these local
-  agent tools; no hosted vault is available to users.
+- The local vault has no continuous cloud sync and never depends on the hosted
+  platform. Two explicit bridges are available for the private single-owner
+  service: producer-scoped `publish`, and paired owner-scoped `pull`.
 
 ## Stay inside the user's scope
 
@@ -63,6 +63,8 @@ to finish an indexing request.
 | Inspect one manifest | `fcheap info <id>` | `fcheap_info` or `fcheap://stash/{id}` | Read-only |
 | Save a snapshot | `fcheap save <path>` | `fcheap_save` | Creates durable data |
 | Emit a local artifact reference | `fcheap artifact-ref <id>` | `fcheap_artifact_ref` | Read-only |
+| Publish one bounded file privately | `fcheap publish <file>` | — | Reads the source and transfers bytes explicitly |
+| Recover one private artifact | `fcheap pull <artifact-id> --output <new-file>` | — | Writes a new verified file without extracting it |
 | Index saved text | `fcheap analyze <id>` | `fcheap_analyze` | Updates derived index |
 | Search saved files | `fcheap search <query>` | `fcheap_search` | Read-only; an embedder may receive query text |
 | Compare a matching tree | `fcheap diff <id> <dir>` | `fcheap_diff` | Read-only |
@@ -90,6 +92,8 @@ to finish an indexing request.
    reproduce the lookup.
 10. When another product needs the artifact identity, emit a versioned
     reference and state that it requires the matching local vault.
+11. Publish or pull only when the user explicitly requested the private
+    transfer. Keep signed URLs secret and treat downloaded bytes as untrusted.
 
 ## Reading content through MCP
 
@@ -168,6 +172,17 @@ fcheap restore <stash-id>
 
 Use the fresh directory printed by the command. Report verification status
 before treating the restored files as faithful evidence.
+
+### Recover a private artifact safely
+
+```bash
+fcheap auth login
+fcheap pull <artifact-id> --output ./artifact.tar.zst
+```
+
+Use a new output path. `pull` verifies the recorded size and SHA-256 but does
+not extract, render, preview, or execute the downloaded object. Verification
+proves byte identity, not that the contents are safe. See [`pull`](/cli/pull).
 
 ### Connect evidence to source code
 
