@@ -114,13 +114,13 @@ function requireExactPresignedUrl(
   delegationToken: string,
 ): string {
   if (value.length > 16_384) {
-    throw new Error("Vercel Blob returned an unsafe signed transfer URL");
+    throw new BlobGrantShapeError("length");
   }
   let url: URL;
   try {
     url = new URL(value);
   } catch {
-    throw new Error("Vercel Blob returned an unsafe signed transfer URL");
+    throw new BlobGrantShapeError("unparseable");
   }
   const exactPath =
     operation === "get"
@@ -180,9 +180,52 @@ function requireExactPresignedUrl(
     url.searchParams.getAll("vercel-blob-signature").length !== 1 ||
     !url.searchParams.get("vercel-blob-signature")
   ) {
-    throw new Error("Vercel Blob returned an unsafe signed transfer URL");
+    // Which of these failed is the whole diagnosis, and all three throw sites
+    // in this function used to raise the same bare `Error` with the same
+    // sentence. `problem.ts` keeps only `error.name` — deliberately, because
+    // this URL carries a delegation token and a signature — so production
+    // logged `errorName: "Error"` and nothing else, and a 500 here could not
+    // be told apart from any other unhandled throw.
+    //
+    // The unexpected query *keys* are safe to name: they are Vercel's own
+    // parameter names, and it is the values that are secret. If Vercel adds a
+    // parameter to its presigned URLs, this allowlist goes stale and every
+    // upload grant fails — that is the failure this makes legible in one
+    // request instead of none.
+    const unexpected = [...url.searchParams.keys()]
+      .filter((name) => !allowedQueryKeys.has(name))
+      .slice(0, 8);
+    throw new BlobGrantShapeError(
+      !exactHost
+        ? "host"
+        : !exactPath
+          ? "path"
+          : unexpected.length > 0
+            ? "query-unexpected"
+            : !exactQuery
+              ? "query-shape"
+              : "signature",
+      unexpected,
+    );
   }
   return url.toString();
+}
+
+/**
+ * A presigned URL that is not exactly the one that was asked for. Carries a
+ * reason and, when the mismatch is an unrecognized query parameter, its name —
+ * never the URL, the delegation token, or the signature.
+ */
+export class BlobGrantShapeError extends Error {
+  readonly reason: string;
+  readonly unexpectedQueryKeys: readonly string[];
+
+  constructor(reason: string, unexpectedQueryKeys: readonly string[] = []) {
+    super("Vercel Blob returned an unsafe signed transfer URL");
+    this.name = "BlobGrantShapeError";
+    this.reason = reason;
+    this.unexpectedQueryKeys = Object.freeze([...unexpectedQueryKeys]);
+  }
 }
 
 function normalizeBlobError(error: unknown, signal?: AbortSignal): unknown {

@@ -117,9 +117,30 @@ function toProblem(
     };
   }
 
+  // The message is withheld on purpose: it can carry a signed URL, a
+  // delegation token, or a connection string. But a name alone was too little
+  // to act on — a real 500 on the artifact plan route logged `errorName:
+  // "Error"` and nothing else, and three separate throw sites shared that one
+  // name and one sentence.
+  //
+  // `requestId` ties the line to the response the caller already has, and a
+  // structured error may contribute a bounded reason. What such an error may
+  // expose is its own decision; nothing here reaches into a message.
+  const structured =
+    error !== null && typeof error === "object" ? (error as Record<string, unknown>) : undefined;
+  const reason = typeof structured?.reason === "string" ? structured.reason.slice(0, 64) : undefined;
+  const details = Array.isArray(structured?.unexpectedQueryKeys)
+    ? (structured.unexpectedQueryKeys as unknown[])
+        .filter((value): value is string => typeof value === "string")
+        .slice(0, 8)
+        .map((value) => value.slice(0, 64))
+    : undefined;
   console.error({
     event: "platform_request_failed",
     errorName: error instanceof Error ? error.name : "UnknownError",
+    requestId,
+    ...(reason ? { reason } : {}),
+    ...(details && details.length > 0 ? { unexpectedQueryKeys: details } : {}),
   });
   return {
     code: "internal_error",

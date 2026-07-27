@@ -66,10 +66,61 @@ describe("RFC 9457 problem responses", () => {
         requestId: "internal-schema-01",
       });
       expect(JSON.stringify(problem)).not.toContain("secretCatalogField");
+      // The point of this assertion: a failing schema names the field it
+      // rejected, and that name is catalog data. It must not reach the log.
       expect(JSON.stringify(logged)).not.toContain("secretCatalogField");
+      // requestId ties the line to the response the caller already holds, so
+      // an operator can find the one failure they were told about. It is not
+      // new information — it is the same id the body carries.
       expect(logged).toEqual([
-        { event: "platform_request_failed", errorName: "ZodError" },
+        {
+          event: "platform_request_failed",
+          errorName: "ZodError",
+          requestId: "internal-schema-01",
+        },
       ]);
+    } finally {
+      console.error = originalConsoleError;
+    }
+  });
+
+  test("carries a structured reason without carrying the signed URL it came from", async () => {
+    // A real 500 on the artifact plan route logged `errorName: "Error"` and
+    // nothing else, and three throw sites shared that name and that sentence,
+    // so production could not be told which one fired. The reason travels; the
+    // URL, the delegation token and the signature never do.
+    class GrantShapeStub extends Error {
+      readonly reason = "query-unexpected";
+      readonly unexpectedQueryKeys = ["vercel-blob-new-parameter"];
+      constructor() {
+        super("https://vercel.com/api/blob/?vercel-blob-signature=SUPERSECRETSIG");
+        this.name = "BlobGrantShapeError";
+      }
+    }
+    const request = new Request("https://file.cheap/api/v1/artifacts/plans", {
+      headers: { "x-request-id": "grant-shape-01" },
+      method: "POST",
+    });
+    const originalConsoleError = console.error;
+    const logged: unknown[] = [];
+    console.error = (...values: unknown[]) => { logged.push(...values); };
+
+    try {
+      const response = problemResponse(new GrantShapeStub(), request);
+      expect(response.status).toBe(500);
+      expect(logged).toEqual([
+        {
+          event: "platform_request_failed",
+          errorName: "BlobGrantShapeError",
+          requestId: "grant-shape-01",
+          reason: "query-unexpected",
+          unexpectedQueryKeys: ["vercel-blob-new-parameter"],
+        },
+      ]);
+      // The message is a URL bearing a signature. Nothing reaches into it.
+      expect(JSON.stringify(logged)).not.toContain("SUPERSECRETSIG");
+      expect(JSON.stringify(logged)).not.toContain("vercel.com/api/blob");
+      expect(JSON.stringify(await response.json())).not.toContain("SUPERSECRETSIG");
     } finally {
       console.error = originalConsoleError;
     }
