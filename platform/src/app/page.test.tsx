@@ -15,6 +15,7 @@ describe("public homepage", () => {
     expect(html).toContain('id="main-content"');
     expect(html).toContain('class="navIntegrationLink"');
     expect(html).toContain('class="navOptionalLink" href="/guide/"');
+    expect(html).toContain('class="navConsoleLink" href="/console"');
     expect(html).toContain("Cairntrace or Glyphrun");
     expect(html).toContain("ArtifactRefV1");
     expect(html).toContain("Chalupa");

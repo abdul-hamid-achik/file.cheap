@@ -12,6 +12,25 @@ const bytes = new TextEncoder().encode("artifact-test");
 const sha256 = createHash("sha256").update(bytes).digest("hex");
 
 describe("ArtifactService", () => {
+  test("accepts monitor.incident as an ordinary immutable artifact plan", () => {
+    const input = artifactPlanInputSchema.parse({
+      contentType: "application/zstd",
+      idempotencyKey: "00000000-0000-4000-8000-000000000099",
+      kind: "monitor.incident",
+      producer: {
+        entrypoint: "manifest.json",
+        native_id: "incident_01",
+        native_schema: "urn:monitor.dev:incident:v1",
+        tool: "monitor",
+      },
+      sha256,
+      sizeBytes: bytes.byteLength,
+    });
+
+    expect(input.kind).toBe("monitor.incident");
+    expect(input.runIndex).toBeUndefined();
+  });
+
   test("binds a metadata-only run index to the immutable artifact plan", async () => {
     const service = newTestArtifactService(new InMemoryArtifactObjectStore(), new InMemoryArtifactRepository());
     const input = artifactPlanInputSchema.parse({

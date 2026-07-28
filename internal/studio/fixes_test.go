@@ -230,3 +230,32 @@ func TestDetailNoOverflowAcrossWidths(t *testing.T) {
 		}
 	}
 }
+
+// TestDetailLongProvenanceKeepsFilesPanelInBounds reproduces a large generated
+// bundle: long IDs, source paths, and tag rows wrap in the left column. Those
+// wrapped rows must be included in the height budget or the Files panel loses
+// its scroll indicator and bottom border below the terminal edge.
+func TestDetailLongProvenanceKeepsFilesPanelInBounds(t *testing.T) {
+	st := manyFileStash(80)
+	st.Manifest.ID = strings.Repeat("2026_07_27t21_46_16_148z_generated_bundle_", 3)
+	st.Manifest.SourcePath = "/workspace/examples/generated/bundles/" + strings.Repeat("long_fixture_name_", 8)
+	st.Manifest.Tags = []string{
+		"large-generated-bundle", "regression", "layout-fixture", "long-metadata",
+	}
+
+	const height = 44
+	m := Model{width: 200, height: height, activeView: viewDetail, focus: focusFiles,
+		searchMode: "auto", selected: st, previewImgCache: &imgCache{}}
+	out := clean(m.renderDetail(height))
+	lines := strings.Split(out, "\n")
+	if got := len(lines); got != height {
+		t.Fatalf("detail rendered %d lines, want %d; a wrapped provenance row overflowed the body", got, height)
+	}
+	if !strings.Contains(out, "more") {
+		t.Error("overflowing file list has no visible continuation indicator")
+	}
+	last := lines[len(lines)-1]
+	if !strings.Contains(last, "╰") || !strings.Contains(last, "╯") {
+		t.Errorf("last detail row does not contain the focused Files panel border: %q", last)
+	}
+}

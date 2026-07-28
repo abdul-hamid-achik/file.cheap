@@ -84,6 +84,45 @@ func TestSaveAndList(t *testing.T) {
 	}
 }
 
+func TestSaveDetectsMonitorIncident(t *testing.T) {
+	tmp := t.TempDir()
+	mgr, err := NewManager(filepath.Join(tmp, "vault"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(tmp, "incident")
+	if err := os.MkdirAll(source, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for name, contents := range map[string]string{
+		"manifest.json":     `{"kind":"monitor.incident","schema_version":"1","diagnosis":{"summary":"worker memory leak"}}`,
+		"snapshot.json":     `{}`,
+		"profile.json":      `{}`,
+		"process.json":      `{"runtime":"nodejs"}`,
+		"correlations.json": `{"matches":[]}`,
+		"semantic.json":     `{"hits":[]}`,
+	} {
+		if err := os.WriteFile(filepath.Join(source, name), []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	st, err := mgr.Save(context.Background(), &SaveOptions{
+		SourcePath: source,
+		Name:       "monitor incident",
+		Tool:       "monitor",
+	})
+	if err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if st.Manifest.BundleType != "monitor.incident" {
+		t.Fatalf("BundleType = %q, want monitor.incident", st.Manifest.BundleType)
+	}
+	if st.Manifest.Tool != "monitor" {
+		t.Fatalf("Tool = %q, want monitor", st.Manifest.Tool)
+	}
+}
+
 func TestRestore(t *testing.T) {
 	tmp := t.TempDir()
 	mgr, err := NewManager(filepath.Join(tmp, "vault"))

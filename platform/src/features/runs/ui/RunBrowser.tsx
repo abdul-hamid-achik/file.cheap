@@ -1,6 +1,7 @@
 "use client";
 
 import type { Route } from "next";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
@@ -203,7 +204,8 @@ export function RunBrowser({
         <div className={styles.emptyState}>
           <span aria-hidden="true">◇</span>
           <h2>No runs recorded</h2>
-          <p>Trusted producer runs will appear here when they publish a metadata-only RunIndexV1.</p>
+          <p>Artifacts without a metadata-only RunIndexV1 remain available under Artifacts, but they are not added to the run registry.</p>
+          <Link href="/integrations/run-index">Learn how to publish a run index</Link>
         </div>
       ) : (
         <>

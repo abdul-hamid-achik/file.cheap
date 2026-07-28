@@ -90,6 +90,92 @@ func TestBundleTypeOf(t *testing.T) {
 	}
 }
 
+func TestDetectMonitorIncident(t *testing.T) {
+	dir := writeMonitorIncident(t)
+	result := Detect(dir)
+
+	if result.Type != TypeMonitorIncident {
+		t.Fatalf("Type = %q, want monitor.incident", result.Type)
+	}
+	if got := BundleTypeOf(dir); got != TypeMonitorIncident {
+		t.Fatalf("BundleTypeOf = %q, want monitor.incident", got)
+	}
+	for _, want := range []string{
+		"node memory leak",
+		"heap-growth",
+		"service/api",
+		"runtime.HandleRequest",
+		"handleRequest",
+		"src/server.ts",
+		"retained request context",
+		"nodejs",
+		"server.mjs",
+	} {
+		if !strings.Contains(result.SearchableText, want) {
+			t.Errorf("SearchableText missing %q", want)
+		}
+	}
+	if strings.Contains(result.SearchableText, "raw heap payload") {
+		t.Fatal("SearchableText included snapshot.json, which is outside the Monitor search projection")
+	}
+	if len(result.SearchableFiles) != 0 {
+		t.Fatalf("SearchableFiles = %v, want structured units only", result.SearchableFiles)
+	}
+	wantLabels := []string{"manifest.json", "correlations.json", "semantic.json", "process.json"}
+	if len(result.Units) != len(wantLabels) {
+		t.Fatalf("Units = %d, want %d: %+v", len(result.Units), len(wantLabels), result.Units)
+	}
+	for i, want := range wantLabels {
+		if result.Units[i].Label != want {
+			t.Errorf("Units[%d].Label = %q, want %q", i, result.Units[i].Label, want)
+		}
+	}
+}
+
+func TestMonitorIncidentRequiresExactManifestIdentity(t *testing.T) {
+	for name, manifest := range map[string]string{
+		"wrong kind":      `{"kind":"monitor.snapshot","schema_version":"1"}`,
+		"wrong version":   `{"kind":"monitor.incident","schema_version":"2"}`,
+		"numeric version": `{"kind":"monitor.incident","schema_version":1}`,
+		"malformed":       `{`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(manifest), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if got := BundleTypeOf(dir); got != TypeGeneric {
+				t.Fatalf("BundleTypeOf = %q, want generic", got)
+			}
+		})
+	}
+}
+
+func writeMonitorIncident(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	files := map[string]string{
+		"manifest.json": `{
+  "kind":"monitor.incident",
+  "schema_version":"1",
+  "trigger":"node memory leak",
+  "alert":{"rule":"heap-growth"},
+  "diagnosis":{"summary":"request objects remain reachable"},
+  "context":{"component":"service/api","environment":"staging"}
+}`,
+		"correlations.json": `{"matches":[{"fqn":"runtime.HandleRequest","func":"handleRequest","file":"src/server.ts","line":42}]}`,
+		"semantic.json":     `{"hits":[{"file":"src/server.ts","symbol":"handleRequest","snippet":"retained request context"}]}`,
+		"process.json":      `{"runtime":"nodejs","main_script":"server.mjs","codebase_root":"/workspace/example","name":"example-api"}`,
+		"snapshot.json":     `{"payload":"raw heap payload"}`,
+	}
+	for name, contents := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
 func TestVidtraceMetadata(t *testing.T) {
 	meta, ok := VidtraceMetadata(writeBundle(t))
 	if !ok {

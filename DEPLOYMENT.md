@@ -129,18 +129,20 @@ never the global ceiling; a larger quota is always an explicit decision. The
 quota is enforced at plan time and rechecked at commit, so lowering it in the
 keyring also stops an already-planned oversized upload. An over-quota request
 returns `413` with a detail naming the producer and its exact quota; a request
-above the global ceiling fails schema validation with `422`. The current
-allocation is Cairntrace 33554432, Glyphrun 8388608 (the default), and Chalupa's
-OIDC identity 8388608 (the default; it is not a keyring entry). Raising a quota
-is a configuration change, not a deployment: update
+above the global ceiling fails schema validation with `422`. The approved
+allocation is Cairntrace 33554432; Glyphrun and Monitor each use 8388608 (the
+default); and Chalupa's OIDC identity uses 8388608 (the default; it is not a
+keyring entry). Monitor activation still requires its exact keyring entry.
+Raising a quota is a configuration change, not a deployment: update
 `FILECHEAP_PUBLISHER_TOKENS` for that producer only, and raise the matching
 client-side constant in that producer's repository in the same release.
 
 Keep the keyring bounded to configured producers only. Cairntrace currently
 uses `cairntrace.run` with `urn:cairntrace.dev:run:v1`; Glyphrun uses
-`glyphrun.evidence-pack` with `urn:glyphrun.dev:run:v1`. Add `fcheap` only when
-a concrete private publishing workflow and exact kind/schema have been
-approved. Do not create a wildcard producer, kind, or schema policy.
+`glyphrun.evidence-pack` with `urn:glyphrun.dev:run:v1`; Monitor uses
+`monitor.incident` with `urn:monitor.dev:incident:v1`. Add `fcheap` only when a
+concrete private publishing workflow and exact kind/schema have been approved.
+Do not create a wildcard producer, kind, or schema policy.
 
 Rotate one producer independently: add its next token, deploy the keyring,
 update only that producer's TinyVault secret, verify one complete
@@ -179,6 +181,13 @@ consumer in this release: if deferred execution is lost, repeat the same
 verification request after its 30–300 second lease expires. The regenerated OTP
 and Resend idempotency key are identical, and an older worker cannot activate a
 delivery after a newer worker reclaims it.
+
+Keep open and click tracking disabled for the authentication sending domain in
+Resend. Login messages are small transactional emails with both HTML and plain
+text bodies, and every link must remain on the same `file.cheap` domain used by
+the verified sender. Before promoting a template change, run Resend's
+Deliverability Insights and test at least one iCloud recipient without exposing
+local hostnames or other device identifiers in the message body.
 
 The receiving-forward API requires a
 team-wide full-access `RESEND_RECEIVE_API_KEY`; Resend cannot scope it to one

@@ -49,7 +49,7 @@ fcheap save /tmp/evidence --tag bug-42 --tool cortex --index
 2. Creates a stash directory at `<stash-dir>/<stash-id>/`
 3. Copies the file tree into `content/`
 4. Generates a `manifest.json` with metadata, provenance, file count, size, and content hashes
-5. Auto-detects bundle type (vidtrace, generic)
+5. Auto-detects bundle type (`monitor.incident`, vidtrace, native run bundles, or generic)
 6. Scans content for likely secrets unless you pass `--no-scan`
 7. With `--index`, indexes the stash for search and records `custom.indexed`
 8. Prints the generated stash ID and summary

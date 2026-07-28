@@ -74,6 +74,7 @@ export default function HomePage() {
           <a className="navWorkflowLink" href="#workflow">Workflow</a>
           <a className="navIntegrationLink" href="#integrations">Integrations</a>
           <a className="navOptionalLink" href="/guide/">Docs</a>
+          <Link className="navConsoleLink" href="/console">Owner console</Link>
         </div>
         <div className="navMeta">
           <span className="statusDot available" aria-hidden="true" />

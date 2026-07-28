@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -14,10 +15,11 @@ import (
 type BundleType string
 
 const (
-	TypeCairntraceRun BundleType = "cairntrace-run"
-	TypeGlyphrunRun   BundleType = "glyphrun-run"
-	TypeVidtrace      BundleType = "vidtrace"
-	TypeGeneric       BundleType = "generic"
+	TypeCairntraceRun   BundleType = "cairntrace-run"
+	TypeGlyphrunRun     BundleType = "glyphrun-run"
+	TypeMonitorIncident BundleType = "monitor.incident"
+	TypeVidtrace        BundleType = "vidtrace"
+	TypeGeneric         BundleType = "generic"
 
 	// maxSearchableTextBytes caps the synthesized SearchableText so detecting a
 	// large stash can't accumulate an unbounded string (OOM / O(n^2) churn).
@@ -145,6 +147,9 @@ func BundleTypeOf(dir string) BundleType {
 	if regularFileExists(dir, "run.json") && regularFileExists(dir, "manifest.json") {
 		return TypeGlyphrunRun
 	}
+	if _, ok := monitorManifest(dir); ok {
+		return TypeMonitorIncident
+	}
 	if regularFileExists(dir, "metadata.json") && regularFileExists(dir, "timeline.json") {
 		return TypeVidtrace
 	}
@@ -213,6 +218,7 @@ type Detector interface {
 var detectors = []Detector{
 	&cairntraceRunDetector{},
 	&glyphrunRunDetector{},
+	&monitorIncidentDetector{},
 	&vidtraceDetector{},
 	&genericDetector{},
 }
@@ -225,6 +231,154 @@ func Detect(dir string) Result {
 		}
 	}
 	return Result{Type: TypeGeneric}
+}
+
+// --- monitor.incident detector ---
+
+type monitorIncidentDetector struct{}
+
+func (d *monitorIncidentDetector) Detect(dir string) (Result, bool) {
+	manifestData, ok := monitorManifest(dir)
+	if !ok {
+		return Result{}, false
+	}
+
+	r := Result{
+		Type:     TypeMonitorIncident,
+		Metadata: map[string]any{"monitor_manifest": manifestData},
+	}
+
+	appendMonitorUnit(&r, "manifest.json", selectedJSONText(manifestData,
+		[]string{"trigger"},
+		[]string{"alert", "rule"},
+		[]string{"diagnosis", "summary"},
+		[]string{"context"},
+	))
+	appendMonitorFileUnit(dir, &r, "correlations.json", "fqn", "func", "file", "line")
+	appendMonitorFileUnit(dir, &r, "semantic.json", "file", "symbol", "snippet")
+	appendMonitorFileUnit(dir, &r, "process.json", "runtime", "main_script", "codebase_root", "name")
+
+	var searchable strings.Builder
+	for _, unit := range r.Units {
+		appendBoundedSearchText(&searchable, unit.Text)
+	}
+	r.SearchableText = searchable.String()
+	return r, true
+}
+
+func monitorManifest(dir string) (map[string]any, bool) {
+	data, err := readCappedFile(dir, "manifest.json", maxBundleJSONBytes)
+	if err != nil {
+		return nil, false
+	}
+	var value map[string]any
+	if json.Unmarshal(data, &value) != nil || value["kind"] != "monitor.incident" || value["schema_version"] != "1" {
+		return nil, false
+	}
+	return value, true
+}
+
+func appendMonitorFileUnit(dir string, result *Result, name string, keys ...string) {
+	data, err := readCappedFile(dir, name, maxBundleJSONBytes)
+	if err != nil {
+		return
+	}
+	var value any
+	if json.Unmarshal(data, &value) != nil {
+		return
+	}
+	appendMonitorUnit(result, name, keyedJSONText(value, keys...))
+}
+
+func appendMonitorUnit(result *Result, label, text string) {
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	result.Units = append(result.Units, TextUnit{Label: label, Text: text})
+}
+
+func selectedJSONText(value map[string]any, paths ...[]string) string {
+	var text strings.Builder
+	for _, path := range paths {
+		current := any(value)
+		for _, segment := range path {
+			object, ok := current.(map[string]any)
+			if !ok {
+				current = nil
+				break
+			}
+			current = object[segment]
+		}
+		appendJSONText(&text, current, true)
+	}
+	return text.String()
+}
+
+func keyedJSONText(value any, keys ...string) string {
+	wanted := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		wanted[key] = struct{}{}
+	}
+	var text strings.Builder
+	collectKeyedJSONText(&text, value, wanted)
+	return text.String()
+}
+
+func collectKeyedJSONText(text *strings.Builder, value any, wanted map[string]struct{}) {
+	switch typed := value.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(typed))
+		for key := range typed {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			child := typed[key]
+			if _, ok := wanted[key]; ok {
+				appendBoundedSearchText(text, key)
+				appendJSONText(text, child, true)
+			}
+			collectKeyedJSONText(text, child, wanted)
+		}
+	case []any:
+		for _, child := range typed {
+			collectKeyedJSONText(text, child, wanted)
+		}
+	}
+}
+
+func appendJSONText(text *strings.Builder, value any, includeKeys bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(typed))
+		for key := range typed {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			if includeKeys {
+				appendBoundedSearchText(text, key)
+			}
+			appendJSONText(text, typed[key], includeKeys)
+		}
+	case []any:
+		for _, child := range typed {
+			appendJSONText(text, child, includeKeys)
+		}
+	case string:
+		appendBoundedSearchText(text, typed)
+	case float64, bool, json.Number:
+		appendBoundedSearchText(text, fmt.Sprint(typed))
+	}
+}
+
+func appendBoundedSearchText(text *strings.Builder, value string) {
+	value = strings.TrimSpace(value)
+	if value == "" || text.Len()+len(value)+1 > maxSearchableTextBytes {
+		return
+	}
+	text.WriteString(value)
+	text.WriteByte('\n')
 }
 
 // --- vidtrace detector ---

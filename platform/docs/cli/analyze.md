@@ -26,7 +26,7 @@ fcheap analyze my_artifacts_20260622_115254 --query "checkout retry"
 
 ## What Happens
 
-1. Detects the bundle type (vidtrace, generic)
+1. Detects the bundle type (`monitor.incident`, vidtrace, native run bundles, or generic)
 2. Extracts searchable text from text files (OCR, transcripts, source code, etc.)
 3. Indexes the content using veclite (BM25 plus vectors when an embedder is configured)
 4. If `--query` is provided, searches within the stash and prints results
@@ -50,6 +50,10 @@ configured embedder. Query text is not covered by the save-time secret guard.
 
 fcheap automatically detects bundle types:
 
+- **monitor.incident**: a `manifest.json` with `kind: "monitor.incident"` and
+  `schema_version: "1"`. Indexes the bounded diagnosis/context projection,
+  code correlations, semantic hits, and process identity; raw snapshots and
+  profiles are not added to the synthesized Monitor search projection.
 - **vidtrace**: directories containing `metadata.json` + `timeline.json`. Extracts OCR text and transcript segments.
 - **generic**: any other directory. Indexes all text-readable files.
 

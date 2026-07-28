@@ -100,6 +100,66 @@ func TestIndexAndSearchPerFile(t *testing.T) {
 	}
 }
 
+func TestIndexAndSearchMonitorIncident(t *testing.T) {
+	root := t.TempDir()
+	an := NewAnalyzer(root, "")
+	stashDir := makeContent(t, root, "monitor-incident", map[string]string{
+		"manifest.json": `{
+  "kind":"monitor.incident",
+  "schema_version":"1",
+  "trigger":"node memory leak",
+  "alert":{"rule":"heap-growth"},
+  "diagnosis":{"summary":"request objects remain reachable"},
+  "context":{"component":"example-api"}
+}`,
+		"correlations.json": `{"matches":[{"fqn":"runtime.HandleRequest","func":"handleRequest","file":"src/server.ts","line":42}]}`,
+		"semantic.json":     `{"hits":[{"file":"src/server.ts","symbol":"handleRequest","snippet":"retained request context"}]}`,
+		"process.json":      `{"runtime":"nodejs","main_script":"server.mjs","codebase_root":"/workspace/example","name":"example-api"}`,
+		"snapshot.json":     `{"payload":"not-indexed-monitor-snapshot-token"}`,
+	})
+
+	indexed, err := an.IndexStash(context.Background(), stashDir)
+	if err != nil {
+		t.Fatalf("IndexStash: %v", err)
+	}
+	if indexed.BundleType != "monitor.incident" {
+		t.Fatalf("BundleType = %q, want monitor.incident", indexed.BundleType)
+	}
+	if indexed.FilesIndex != 4 {
+		t.Fatalf("FilesIndex = %d, want four bounded Monitor projections", indexed.FilesIndex)
+	}
+
+	for query, wantFile := range map[string]string{
+		"node memory leak":         "manifest.json",
+		"runtime.HandleRequest":    "correlations.json",
+		"retained request context": "semantic.json",
+		"server.mjs":               "process.json",
+	} {
+		results, searchErr := an.Search(context.Background(), query, 10, "keyword")
+		if searchErr != nil {
+			t.Fatalf("Search(%q): %v", query, searchErr)
+		}
+		found := false
+		for _, result := range results {
+			if result.StashID == "monitor-incident" && result.File == wantFile {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Search(%q) did not find %s: %+v", query, wantFile, results)
+		}
+	}
+
+	results, err := an.Search(context.Background(), "not-indexed-monitor-snapshot-token", 10, "keyword")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("snapshot payload unexpectedly indexed: %+v", results)
+	}
+}
+
 func TestSearchStashFilter(t *testing.T) {
 	root := t.TempDir()
 	an := NewAnalyzer(root, "")

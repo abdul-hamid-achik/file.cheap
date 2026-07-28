@@ -326,7 +326,6 @@ func (m Model) renderDetail(h int) string {
 	filesTitle := fmt.Sprintf("Files (%d)", man.FileCount)
 
 	infoStr := info.String()
-	provNatural := lipgloss.Height(infoStr) + 3 // content + border(2) + title(1)
 
 	if m.width >= 96 {
 		leftW := clamp(m.width/2-2, 30, m.width-4)
@@ -338,7 +337,12 @@ func (m Model) renderDetail(h int) string {
 		m.preview.SetWidth(rightW - 4)
 		m.preview.SetHeight(panelBodyHeight(h))
 		right := m.renderPanelH(m.previewTitle(), m.renderPreview(), rightW, h, m.focus == focusPreview)
-		provH := clamp(provNatural, 6, h-6)
+		// Measure after wrapping to the actual left-panel interior. Long stash IDs,
+		// source paths, and tag rows otherwise add unbudgeted rows and push the
+		// Files panel's continuation line and bottom border below the terminal.
+		provNatural := panelNaturalHeight(infoStr, leftW)
+		filesMinH := min(clamp(h/3, 6, 12), max(h/2, 3))
+		provH := clamp(provNatural, 3, h-filesMinH)
 		filesH := h - provH
 		left := lipgloss.JoinVertical(lipgloss.Left,
 			m.renderPanelClip("Provenance", infoStr, leftW, provH, false),
@@ -347,16 +351,29 @@ func (m Model) renderDetail(h int) string {
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right)
 	}
 
-	// Stacked: Provenance, Files, Preview — each capped so all three stay visible.
-	provH := clamp(provNatural, 5, h-9)
-	naturalFiles := len(m.selectedFiles()) + 1 // file rows + a possible "… more" line
-	filesH := clamp(naturalFiles+3, 4, h-provH-4)
-	previewH := h - provH - filesH
-	if previewH < 3 {
-		previewH = 3
+	// On very short terminals there is not enough room for three usable bordered
+	// panels. Keep the focused interactive pane usable instead of rendering three
+	// clipped slivers.
+	if h < 12 {
+		if m.focus == focusPreview {
+			m.preview.SetWidth(panelContentWidth(m.width - 2))
+			m.preview.SetHeight(panelBodyHeight(h))
+			return m.renderPanelH(m.previewTitle(), m.renderPreview(), m.width-2, h, true)
+		}
+		return m.renderPanelClip(filesTitle, m.renderFileTree(panelBodyHeight(h), m.width-6), m.width-2, h, true)
 	}
+
+	// Stacked: cap provenance at half the body, then share the remainder between
+	// Files and Preview. A short file list may use its natural height; a long one
+	// gets a scrollable half rather than starving the preview.
+	provNatural := panelNaturalHeight(infoStr, m.width-2)
+	provH := clamp(provNatural, 4, h/2)
+	naturalFiles := len(m.selectedFiles()) + 1 // file rows + a possible "… more" line
+	remainingH := h - provH
+	filesH := clamp(naturalFiles+3, 4, remainingH/2)
+	previewH := h - provH - filesH
 	// Full-width preview panel (m.width-2): interior is m.width-6.
-	m.preview.SetWidth(clamp(max(m.width-2, 20)-4, 1, m.width))
+	m.preview.SetWidth(panelContentWidth(m.width - 2))
 	m.preview.SetHeight(panelBodyHeight(previewH))
 	return lipgloss.JoinVertical(lipgloss.Left,
 		m.renderPanelClip("Provenance", infoStr, m.width-2, provH, false),
@@ -417,7 +434,9 @@ func (m Model) renderFileTree(bodyRows, interior int) string {
 		b.WriteString("\n")
 	}
 	if end < len(files) {
-		b.WriteString(clip(mutedStyle.Render(fmt.Sprintf("  … %d more", len(files)-end))))
+		b.WriteString(clip(mutedStyle.Render(fmt.Sprintf("  ↓ %d more", len(files)-end))))
+	} else if start > 0 {
+		b.WriteString(clip(mutedStyle.Render(fmt.Sprintf("  ↑ %d above", start))))
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
@@ -844,8 +863,30 @@ func (m Model) renderPanelH(title, body string, width, totalH int, focused bool)
 // height first (lipgloss Height only grows a box, so tall content must be
 // trimmed to keep the panel at totalH).
 func (m Model) renderPanelClip(title, body string, width, totalH int, focused bool) string {
-	body = lipgloss.NewStyle().MaxHeight(panelBodyHeight(totalH)).Render(body)
+	// Apply width and height in one render pass: width wrapping must happen before
+	// MaxHeight clips the result. Clipping only the explicit input lines lets a
+	// long line wrap later inside renderPanelH and grow beyond totalH.
+	body = lipgloss.NewStyle().
+		Width(panelContentWidth(width)).
+		MaxHeight(panelBodyHeight(totalH)).
+		Render(body)
 	return m.renderPanelH(title, body, width, totalH, focused)
+}
+
+// panelNaturalHeight returns the bordered panel height needed for body at width.
+// It deliberately measures the wrapped body, not its source-line count.
+func panelNaturalHeight(body string, width int) int {
+	wrapped := lipgloss.NewStyle().Width(panelContentWidth(width)).Render(body)
+	return lipgloss.Height(wrapped) + 3 // title + top/bottom border
+}
+
+// panelContentWidth is the usable width after the two border and padding cells
+// on each side of the standard panel styles.
+func panelContentWidth(width int) int {
+	if interior := width - 4; interior > 0 {
+		return interior
+	}
+	return 1
 }
 
 // panelBodyHeight returns the rows available for a panel's body given the

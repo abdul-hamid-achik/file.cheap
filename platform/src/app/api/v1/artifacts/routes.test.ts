@@ -16,6 +16,7 @@ import { defaultProducerMaxSizeBytes, maximumArtifactBytes } from "@/shared/conf
 const original = { ...process.env };
 const ingest = "i".repeat(43);
 const cairntraceIngest = "c".repeat(43);
+const monitorIngest = "m".repeat(43);
 
 afterEach(() => {
   for (const key of Object.keys(process.env)) if (!(key in original)) delete process.env[key];
@@ -42,6 +43,11 @@ describe("private artifact routes", () => {
         kinds: ["chalupa.log-chunk"],
         nativeSchemas: ["urn:chalupa:log-chunk:v1"],
         tokens: [ingest],
+      },
+      monitor: {
+        kinds: ["monitor.incident"],
+        nativeSchemas: ["urn:monitor.dev:incident:v1"],
+        tokens: [monitorIngest],
       },
     });
     process.env.FILECHEAP_ADMIN_TOKEN = "a".repeat(32);
@@ -76,6 +82,29 @@ describe("private artifact routes", () => {
     expect(overCeiling.status).toBe(422);
     const response = await plan(new Request("https://file.cheap/api/v1/artifacts/plans", { method: "POST", headers: { authorization: `Bearer ${ingest}`, "content-type": "application/json" }, body: JSON.stringify(planInput) }));
     expect(response.status).toBe(201);
+    const monitorResponse = await plan(new Request("https://file.cheap/api/v1/artifacts/plans", {
+      method: "POST",
+      headers: { authorization: `Bearer ${monitorIngest}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        ...planInput,
+        idempotencyKey: "123e4567-e89b-42d3-a456-426614174003",
+        kind: "monitor.incident",
+        producer: {
+          entrypoint: "manifest.json",
+          native_id: "incident_01",
+          native_schema: "urn:monitor.dev:incident:v1",
+          tool: "monitor",
+        },
+      }),
+    }));
+    expect(monitorResponse.status).toBe(201);
+    expect((await monitorResponse.json()).artifactRef).toMatchObject({
+      kind: "monitor.incident",
+      producer: {
+        native_schema: "urn:monitor.dev:incident:v1",
+        tool: "monitor",
+      },
+    });
     const planned = await response.json() as { receipt: string; upload: { url: string } };
     store.seed({ bytes, contentType: "application/zstd", key: new URL(planned.upload.url).pathname.replace(/^\/upload\//, ""), sizeBytes: bytes.byteLength });
     const crossProducerCommit = await commit(new Request("https://file.cheap/api/v1/artifacts/commits", { method: "POST", headers: { authorization: `Bearer ${cairntraceIngest}`, "content-type": "application/json" }, body: JSON.stringify({ receipt: planned.receipt }) }));

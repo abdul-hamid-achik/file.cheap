@@ -10,18 +10,10 @@ export class ResendAuthMailer implements AuthMailer {
   }
 
   async sendVerification(input: Parameters<AuthMailer["sendVerification"]>[0]): Promise<void> {
+    const message = buildVerificationEmail(input);
     const result = await this.resend.emails.send({
       from: this.from,
-      headers: { "Referrer-Policy": "no-referrer" },
-      html: verificationHtml(input),
-      subject: `${input.otp} is your file.cheap verification code`,
-      text: [
-        `Your file.cheap verification code is ${input.otp}.`,
-        `Device: ${input.clientName}`,
-        `Pairing code: ${input.userCode}`,
-        `Review and approve at ${input.verificationUri}`,
-        "This request expires in 10 minutes. Opening this email does not approve the device.",
-      ].join("\n\n"),
+      ...message,
       to: input.email,
     }, { idempotencyKey: input.idempotencyKey });
     if (result.error || !result.data?.id) {
@@ -32,12 +24,23 @@ export class ResendAuthMailer implements AuthMailer {
   }
 }
 
-function verificationHtml(input: Parameters<AuthMailer["sendVerification"]>[0]): string {
-  const clientName = escapeHtml(input.clientName);
+export function buildVerificationEmail(
+  input: Parameters<AuthMailer["sendVerification"]>[0],
+): Readonly<{ html: string; subject: string; text: string }> {
   const otp = escapeHtml(input.otp);
   const userCode = escapeHtml(input.userCode);
   const uri = escapeHtml(input.verificationUri);
-  return `<!doctype html><html><body style="background:#15140f;color:#f4efe4;font-family:ui-sans-serif,system-ui;padding:32px"><main style="max-width:520px;margin:auto;background:#1d1c17;border:1px solid #38342c;border-radius:16px;padding:28px"><p style="color:#f1774f;font-family:ui-monospace,monospace">file.cheap / device verification</p><h1 style="font-size:24px">Verify ${clientName}</h1><p>Enter this one-time code on the approval page:</p><p style="font:700 34px ui-monospace,monospace;letter-spacing:.16em">${otp}</p><p>Pairing code: <strong>${userCode}</strong></p><p><a style="color:#f1774f" href="${uri}" rel="noreferrer">Review the request</a></p><p style="color:#aaa397">Opening this email does not approve the device. The request expires in 10 minutes.</p></main></body></html>`;
+  return Object.freeze({
+    html: `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Your file.cheap sign-in code</title></head><body style="margin:0;background:#f6f4ee;color:#24231f;font-family:Arial,sans-serif"><main style="max-width:520px;margin:0 auto;padding:40px 24px"><p style="margin:0 0 24px;color:#6d675d;font-size:14px">file.cheap</p><h1 style="margin:0 0 16px;font-size:24px;line-height:1.25">Your sign-in code</h1><p style="margin:0 0 20px;line-height:1.6">Use this one-time code to continue with file.cheap:</p><p style="margin:0 0 24px;font-family:ui-monospace,monospace;font-size:32px;font-weight:700;letter-spacing:.14em">${otp}</p><p style="margin:0 0 24px;line-height:1.6">Request code: <strong>${userCode}</strong></p><p style="margin:0 0 28px"><a style="color:#a43f24" href="${uri}">Continue to file.cheap</a></p><p style="margin:0;color:#6d675d;font-size:14px;line-height:1.6">This code expires in 10 minutes. If you did not request it, you can ignore this email.</p></main></body></html>`,
+    subject: "Your file.cheap sign-in code",
+    text: [
+      "Use this one-time code to continue with file.cheap.",
+      `One-time code: ${input.otp}`,
+      `Request code: ${input.userCode}`,
+      `Open file.cheap: ${input.verificationUri}`,
+      "This code expires in 10 minutes. If you did not request it, you can ignore this email.",
+    ].join("\n\n"),
+  });
 }
 
 function escapeHtml(value: string): string {

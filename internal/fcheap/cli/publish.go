@@ -85,6 +85,9 @@ are rejected.`,
 			return printer.JSON(receipt)
 		}
 		printer.Success("Published private artifact: %s", receipt.ArtifactRef.ArtifactID)
+		if warning := missingRunIndexWarning(producer.Tool, runIndex); warning != "" {
+			printer.Warn("%s", warning)
+		}
 		printer.KeyValue("URI", receipt.ArtifactRef.URI)
 		printer.KeyValue("Kind", receipt.ArtifactRef.Kind)
 		printer.KeyValue("SHA-256", receipt.SHA256)
@@ -92,6 +95,13 @@ are rejected.`,
 		printer.KeyValue("Verification", receipt.Verification)
 		return nil
 	},
+}
+
+func missingRunIndexWarning(producerTool string, runIndex []byte) string {
+	if len(runIndex) > 0 || (producerTool != "cairntrace" && producerTool != "glyphrun") {
+		return ""
+	}
+	return "Published under Artifacts only; add --run-index to include this publication in Runs."
 }
 
 func init() {

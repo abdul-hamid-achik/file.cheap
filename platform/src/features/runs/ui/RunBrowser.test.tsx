@@ -11,6 +11,28 @@ mock.module("next/navigation", () => ({
 
 const { RunBrowser } = await import("./RunBrowser");
 
+test("explains why an artifact catalog can have no indexed runs", () => {
+  const html = renderToStaticMarkup(
+    <RunBrowser
+      facets={{ health: [], producers: [], statuses: [] }}
+      filteredTotal={0}
+      initialQuery={{ direction: "next", limit: 25 }}
+      page={1}
+      pageInfo={{
+        endCursor: null,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        startCursor: null,
+      }}
+      recordedTotal={0}
+      runs={[]}
+    />,
+  );
+
+  expect(html).toContain("Artifacts without a metadata-only RunIndexV1");
+  expect(html).toContain('href="/integrations/run-index"');
+});
+
 test("makes an API date window visible and clearable", () => {
   const run: RunSummary = {
     artifactId: "art_00000000000000000001",

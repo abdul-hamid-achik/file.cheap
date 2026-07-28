@@ -77,6 +77,53 @@ describe("private service bearer authentication", () => {
     await expect(requireServiceToken(request(), "ingest")).rejects.toThrow("valid private service credential");
   });
 
+  test("authorizes monitor only for monitor.incident and its native schema", async () => {
+    const monitorToken = "m".repeat(43);
+    Object.assign(process.env, {
+      DATABASE_URL: "postgresql://runtime",
+      FILECHEAP_PUBLISHER_TOKENS: JSON.stringify({
+        monitor: {
+          kinds: ["monitor.incident"],
+          nativeSchemas: ["urn:monitor.dev:incident:v1"],
+          tokens: [monitorToken],
+        },
+      }),
+      FILECHEAP_ADMIN_TOKEN: "a".repeat(32),
+      FILECHEAP_OWNER_ACCOUNT_ID: "acc_owner123",
+      CRON_SECRET: "z".repeat(32),
+    });
+    delete process.env.VERCEL;
+    resetConfigForTests();
+
+    const principal = await requireServiceToken(
+      new Request("https://file.cheap/api/v1/artifacts/plans", {
+        headers: { authorization: `Bearer ${monitorToken}` },
+      }),
+      "ingest",
+    );
+    expect(principal).toEqual({
+      authentication: "publisher-token",
+      kinds: ["monitor.incident"],
+      maxSizeBytes: defaultProducerMaxSizeBytes,
+      nativeSchemas: ["urn:monitor.dev:incident:v1"],
+      producerTool: "monitor",
+    });
+    expect(() => requireAuthorizedArtifact(principal, {
+      kind: "monitor.incident",
+      producer: {
+        native_schema: "urn:monitor.dev:incident:v1",
+        tool: "monitor",
+      },
+    })).not.toThrow();
+    expect(() => requireAuthorizedArtifact(principal, {
+      kind: "monitor.snapshot",
+      producer: {
+        native_schema: "urn:monitor.dev:incident:v1",
+        tool: "monitor",
+      },
+    })).toThrow("valid private service credential");
+  });
+
   test("requires a signed token with exact issuer, audience, subject, and temporal claims", async () => {
     const issuer = "https://oidc.vercel.com/filecheap-auth-test";
     const audience = "https://vercel.com/filecheap-auth-test";

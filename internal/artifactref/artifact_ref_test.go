@@ -38,6 +38,35 @@ func TestNewLocalDefaultsAndProducer(t *testing.T) {
 		}
 	})
 
+	t.Run("monitor incident", func(t *testing.T) {
+		ref, err := NewLocal(fixtureID, "monitor.incident", LocalOptions{
+			Kind: "monitor.incident",
+			Producer: Producer{
+				Tool:         "monitor",
+				NativeSchema: "urn:monitor.dev:incident:v1",
+				NativeID:     "incident_01",
+				Entrypoint:   "manifest.json",
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ref.Kind != "monitor.incident" || ref.Producer == nil || ref.Producer.Tool != "monitor" {
+			t.Fatalf("ref = %+v", ref)
+		}
+		data, err := json.Marshal(ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		roundTrip, err := ParseJSON(data)
+		if err != nil {
+			t.Fatalf("ParseJSON: %v", err)
+		}
+		if roundTrip.Kind != ref.Kind || roundTrip.Producer == nil || roundTrip.Producer.NativeSchema != "urn:monitor.dev:incident:v1" {
+			t.Fatalf("round trip = %+v", roundTrip)
+		}
+	})
+
 	t.Run("override and producer", func(t *testing.T) {
 		ref, err := NewLocal(fixtureID, "generic", LocalOptions{
 			Kind: "cairntrace.run",

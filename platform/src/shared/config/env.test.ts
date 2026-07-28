@@ -87,6 +87,31 @@ test("accepts a bounded per-producer rotation keyring alongside Vercel OIDC", ()
   expect(defaultProducerMaxSizeBytes).toBeLessThan(maximumArtifactBytes);
 });
 
+test("accepts the exact monitor incident publisher policy", () => {
+  delete process.env.VERCEL;
+  process.env.DATABASE_URL = "postgresql://runtime";
+  process.env.FILECHEAP_ADMIN_TOKEN = "a".repeat(32);
+  process.env.CRON_SECRET = "c".repeat(32);
+  process.env.FILECHEAP_PUBLISHER_TOKENS = JSON.stringify({
+    monitor: {
+      kinds: ["monitor.incident"],
+      nativeSchemas: ["urn:monitor.dev:incident:v1"],
+      tokens: ["m".repeat(43)],
+    },
+  });
+  resetConfigForTests();
+
+  expect(getConfig().publisherTokens).toEqual([
+    {
+      kinds: ["monitor.incident"],
+      maxSizeBytes: defaultProducerMaxSizeBytes,
+      nativeSchemas: ["urn:monitor.dev:incident:v1"],
+      producerTool: "monitor",
+      tokens: ["m".repeat(43)],
+    },
+  ]);
+});
+
 test("binds a Vercel deployment to one OIDC subject in its exact environment", () => {
   process.env.VERCEL = "1";
   process.env.VERCEL_ENV = "production";

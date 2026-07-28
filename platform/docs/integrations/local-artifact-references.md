@@ -125,6 +125,7 @@ No product needs a foreign key into another product's database.
 | file.cheap MCP | `fcheap_artifact_ref` returns the same reference as structured tool content |
 | Cairntrace | Save the completed run directory with `fcheap save`; Cairntrace wrapper ID forwarding is pending |
 | Glyphrun | Save the completed `.glyphrun/runs/<run-id>` pack with `fcheap save` |
+| Monitor | Save a completed `monitor.incident` bundle; detection and indexing use its bounded incident projection |
 | Chalupa | `task report REPORT=... ARTIFACTS=...` accepts an ArtifactRefV1 sidecar; its Production deployment is still pending |
 | Private artifact service | `fcheap publish` and approved service integrations emit verified `fcheap-cloud` references; `fcheap pull` recovers their verified bytes for the paired owner; this is single-owner infrastructure, not a public vault |
 
@@ -195,6 +196,33 @@ fcheap artifact-ref <stash-id> \
 
 The same pattern works for a rendered report or screenshot; choose a `kind`
 that the receiving interface can present clearly.
+
+## Monitor
+
+Monitor writes a completed incident bundle whose `manifest.json` declares
+`kind: "monitor.incident"` and `schema_version: "1"`. Save and index the bundle
+after all of its files have been finalized:
+
+```bash
+fcheap save /absolute/path/to/<completed-monitor-incident> \
+  --tool monitor \
+  --tag incident \
+  --index
+
+fcheap artifact-ref <stash-id> \
+  --kind monitor.incident \
+  --producer-tool monitor \
+  --native-schema urn:monitor.dev:incident:v1 \
+  --native-id <incident-id> \
+  --entrypoint manifest.json \
+  --json
+```
+
+The local search projection includes diagnosis/context fields, code
+correlations, semantic hits, and process identity. It does not synthesize text
+from `snapshot.json` or `profile.json`. Cloud publication uses a Monitor-bound
+publisher credential with the exact same kind/schema pair; it does not attach
+a `RunIndexV1`.
 
 ## Chalupa
 

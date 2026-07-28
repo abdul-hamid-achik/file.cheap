@@ -43,6 +43,25 @@ to infer metadata. The platform performs the complete strict validation and
 binds the sidecar digest to the immutable upload plan. See
 [Run indexes](/integrations/run-index) for the safe field boundary.
 
+A Monitor incident is published as an ordinary immutable artifact, not as a
+run index:
+
+```sh
+FILECHEAP_ARTIFACT_SERVICE_URL=https://file.cheap \
+FILECHEAP_INGEST_TOKEN='monitor-bound base64url credential' \
+fcheap publish ./incident.tar.zst \
+  --content-type application/zstd \
+  --kind monitor.incident \
+  --producer-tool monitor \
+  --native-schema urn:monitor.dev:incident:v1 \
+  --native-id incident-123
+```
+
+The server-side Monitor policy must bind exactly that producer, kind, and
+native schema. Do not pass `--run-index`: Monitor incidents remain available
+under Artifacts and are searchable after local save/analyze, but they are not
+misrepresented as Cairntrace or Glyphrun runs.
+
 Load the token from TinyVault into only the publisher process. Do not put it in
 the command line, logs, artifact metadata, a receipt, or a child process. Token
 rotation does not change the CLI: an operator activates the next credential for
