@@ -7,7 +7,10 @@ describe("public homepage", () => {
   test("renders the local product without runtime platform configuration", () => {
     const html = renderToStaticMarkup(<HomePage />);
 
+    expect(html).toContain("Agent work ends.");
     expect(html).toContain("Keep the files your agents create");
+    expect(html).toContain("manifest.json");
+    expect(html).toContain("Temporary work deserves a return path.");
     expect(html).toContain('href="/guide/getting-started"');
     expect(html).toContain('href="/integrations/local-artifact-references"');
     expect(html).toContain("Fifteen typed local tools");
