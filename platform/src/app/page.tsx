@@ -38,35 +38,11 @@ export const metadata: Metadata = {
   },
 };
 
-const workflowSteps = [
-  {
-    command: "fcheap save ./checkout-repro --tool agent",
-    copy: "Copy any file or directory into the local vault. Its manifest records source, tool, tags, sizes, hashes, and likely secret findings.",
-    number: "01",
-    signal: "snapshot",
-    title: "Save the whole thing",
-  },
-  {
-    command: "fcheap analyze 8f3a91c2",
-    copy: "Index readable files only when you need retrieval. Keyword search stays local; semantic and hybrid modes remain explicit options.",
-    number: "02",
-    signal: "index",
-    title: "Make the useful parts findable",
-  },
-  {
-    command: 'fcheap search "checkout timeout"',
-    copy: "Search across saved files and inspect provenance first. A result is a ranked lead into the evidence, never a replacement for it.",
-    number: "03",
-    signal: "retrieve",
-    title: "Follow the evidence back",
-  },
-  {
-    command: "fcheap restore 8f3a91c2 --to ./recovered",
-    copy: "Restore into a clean directory. Every recovered file is checked against the manifest before file.cheap calls the restore complete.",
-    number: "04",
-    signal: "verify",
-    title: "Recover exact bytes",
-  },
+const artifactFiles = [
+  { hash: "b66f…91a2", name: "screenshots/checkout.png", size: "1.8 MB" },
+  { hash: "2d4a…0f31", name: "logs/browser.jsonl", size: "468 KB" },
+  { hash: "883c…7ae4", name: "reports/summary.md", size: "14 KB" },
+  { hash: "15ae…b011", name: "trace/timeline.json", size: "22.5 MB" },
 ] as const;
 
 const artifactKinds = [
@@ -78,24 +54,59 @@ const artifactKinds = [
   "generated bundles",
 ] as const;
 
+const workflowSteps = [
+  {
+    command: "fcheap save ./checkout-repro --tool agent",
+    copy: "Snapshot the complete directory. The manifest records where it came from, what produced it, every file hash, and likely secret findings.",
+    label: "intake",
+    number: "01",
+    result: "stash 8f3a91c2 / 38 files",
+    title: "Give the mess an ID",
+  },
+  {
+    command: "fcheap analyze 8f3a91c2",
+    copy: "Build a local retrieval index only when you want one. The saved bytes and manifest remain authoritative if the index disappears.",
+    label: "index",
+    number: "02",
+    result: "BM25 ready / vectors optional",
+    title: "Index the readable parts",
+  },
+  {
+    command: 'fcheap search "checkout timeout"',
+    copy: "Search every indexed stash, then follow the result back to its source, producing tool, path, tags, and complete artifact.",
+    label: "locate",
+    number: "03",
+    result: "14 leads / provenance intact",
+    title: "Find the useful fragment",
+  },
+  {
+    command: "fcheap restore 8f3a91c2 --to ./recovered",
+    copy: "Recover into a clean directory. file.cheap verifies every restored file against the hashes captured at intake.",
+    label: "prove",
+    number: "04",
+    result: "38 / 38 hashes match",
+    title: "Get the exact bytes back",
+  },
+] as const;
+
 const handoffSteps = [
   {
-    copy: "Finish a native run pack before its snapshot is taken.",
+    copy: "Finish the native evidence pack before it is saved.",
     number: "01",
     title: "Cairntrace or Glyphrun",
   },
   {
-    copy: "Save the complete pack and keep its immutable bytes local.",
+    copy: "Snapshot the complete pack and keep its bytes local.",
     number: "02",
     title: "file.cheap",
   },
   {
-    copy: "Emit a versioned, credential-free pointer to the saved stash.",
+    copy: "Emit a versioned reference with no embedded credential.",
     number: "03",
     title: "ArtifactRefV1",
   },
   {
-    copy: "For a matching Cairn run ID, attach the reference during first ingestion.",
+    copy: "Attach it only when the matching Cairn run ID exists.",
     number: "04",
     title: "Optional Chalupa path",
   },
@@ -118,7 +129,7 @@ export default function HomePage() {
 
         <div className="navLinks">
           <a className="navWorkflowLink" href="#workflow">
-            How it works
+            Lifecycle
           </a>
           <a className="navIntegrationLink" href="#integrations">
             Handoff
@@ -129,135 +140,146 @@ export default function HomePage() {
         </div>
 
         <Link className="navConsoleLink" href="/console">
-          <span className="localPulse" aria-hidden="true" />
+          <span aria-hidden="true">[ local ]</span>
           Owner console
         </Link>
       </nav>
 
       <main id="main-content" tabIndex={-1}>
-        <section className="hero shell" aria-labelledby="hero-title">
-          <div className="heroRail" aria-hidden="true">
-            <span>local artifact vault</span>
-            <span>manifest / index / restore</span>
+        <section className="heroStage" aria-labelledby="hero-title">
+          <div className="hero shell">
+            <div className="heroStatement">
+              <div className="systemLabel">
+                <span>Artifact retention system</span>
+                <span>CLI / Studio / stdio MCP</span>
+              </div>
+
+              <h1 id="hero-title">
+                <span>Not in Git.</span>
+                <span>Not in chat.</span>
+                <span className="heroSignal">Not gone.</span>
+              </h1>
+
+              <p className="heroLead">
+                Keep the files your agents create between commits. file.cheap gives
+                screenshots, logs, reports, traces, and temporary folders a local ID,
+                searchable context, and a verified way back.
+              </p>
+
+              <div className="heroActions">
+                <a className="button primary" href="/guide/getting-started">
+                  Stash your first folder
+                  <span aria-hidden="true">-&gt;</span>
+                </a>
+                <a
+                  className="button secondary"
+                  href="/integrations/local-artifact-references"
+                >
+                  Inspect the handoff
+                </a>
+              </div>
+
+              <div className="installLine" aria-label="Example install command">
+                <span>install / macOS</span>
+                <code>brew install --cask --no-quarantine abdul-hamid-achik/tap/fcheap</code>
+              </div>
+            </div>
+
+            <aside className="inventoryPanel" aria-label="Example local artifact inventory">
+              <header className="inventoryHeader">
+                <div>
+                  <span className="inventoryKicker">artifact intake</span>
+                  <strong>checkout-repro</strong>
+                </div>
+                <div className="inventoryStatus">
+                  <span aria-hidden="true" />
+                  stored locally
+                </div>
+              </header>
+
+              <div className="inventoryMeta">
+                <span>STASH / 8f3a91c2</span>
+                <span>FILES / 38</span>
+                <span>SIZE / 24.8 MB</span>
+                <span>TOOL / coding-agent</span>
+              </div>
+
+              <div className="inventoryWorkspace">
+                <section className="fileIndex" aria-labelledby="file-index-title">
+                  <div className="paneHeading">
+                    <h2 id="file-index-title">content/</h2>
+                    <span>4 of 38 shown</span>
+                  </div>
+                  <div className="fileRows">
+                    {artifactFiles.map((file, index) => (
+                      <div className={index === 2 ? "fileRow selectedFile" : "fileRow"} key={file.name}>
+                        <span className="fileNumber">{String(index + 1).padStart(2, "0")}</span>
+                        <span className="fileName">{file.name}</span>
+                        <span className="fileSize">{file.size}</span>
+                        <code>{file.hash}</code>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="manifestPane" aria-labelledby="manifest-title">
+                  <div className="paneHeading">
+                    <h2 id="manifest-title">manifest.json</h2>
+                    <span>source of truth</span>
+                  </div>
+                  <pre aria-label="Manifest excerpt">
+                    <code>
+                      <span>{`{`}</span>
+                      <span>{`  "id": "8f3a91c2",`}</span>
+                      <span>{`  "source": "./checkout-repro",`}</span>
+                      <span>{`  "files": 38,`}</span>
+                      <span>{`  "indexed": true,`}</span>
+                      <span>{`  "verified": true`}</span>
+                      <span>{`}`}</span>
+                    </code>
+                  </pre>
+                </section>
+              </div>
+
+              <footer className="verificationBar">
+                <div>
+                  <span>manifest</span>
+                  <strong>WRITTEN</strong>
+                </div>
+                <div>
+                  <span>hash check</span>
+                  <strong>38 / 38 PASS</strong>
+                </div>
+                <div>
+                  <span>restore</span>
+                  <strong>READY</strong>
+                </div>
+              </footer>
+            </aside>
+
+            <dl className="heroFacts" aria-label="Product facts">
+              <div>
+                <dt>authority</dt>
+                <dd>Local manifest + original bytes</dd>
+              </div>
+              <div>
+                <dt>retrieval</dt>
+                <dd>BM25, semantic, or hybrid</dd>
+              </div>
+              <div>
+                <dt>recovery</dt>
+                <dd>SHA-256 verified restore</dd>
+              </div>
+              <div>
+                <dt>account</dt>
+                <dd>Not required</dd>
+              </div>
+            </dl>
           </div>
-
-          <div className="heroCopy">
-            <div className="eyebrow">
-              <span>CLI + stdio MCP</span>
-              <span>your machine is the vault</span>
-            </div>
-            <h1 id="hero-title">
-              <span>Agent work ends.</span>
-              <span className="heroAccent">The files shouldn&apos;t.</span>
-            </h1>
-            <p className="heroLead">
-              Keep the files your agents create. Save any file tree with provenance
-              and hashes, find it locally, and restore the exact bytes when the chat
-              that produced them is long gone.
-            </p>
-            <div className="heroActions">
-              <a className="button primary" href="/guide/getting-started">
-                Install file.cheap
-                <span aria-hidden="true">↗</span>
-              </a>
-              <a
-                className="button secondary"
-                href="/integrations/local-artifact-references"
-              >
-                Trace an artifact handoff
-              </a>
-            </div>
-            <div className="installLine" aria-label="Example install command">
-              <span aria-hidden="true">$</span>
-              <code>brew install --cask --no-quarantine abdul-hamid-achik/tap/fcheap</code>
-            </div>
-          </div>
-
-          <aside className="artifactScene" aria-label="A saved local stash">
-            <div className="folderBack" aria-hidden="true">
-              <span>checkout-repro/</span>
-            </div>
-            <div className="terminalSheet">
-              <div className="terminalBar">
-                <span>~/work</span>
-                <span>local session</span>
-              </div>
-              <div className="terminalBody">
-                <p>
-                  <span className="prompt">$</span> fcheap save ./checkout-repro
-                </p>
-                <p className="terminalMuted">scanning 38 files...</p>
-                <p className="terminalMuted">checking likely secrets...</p>
-                <p className="terminalSuccess">saved stash 8f3a91c2</p>
-                <dl className="terminalFacts">
-                  <div>
-                    <dt>files</dt>
-                    <dd>38</dd>
-                  </div>
-                  <div>
-                    <dt>size</dt>
-                    <dd>24.8 MB</dd>
-                  </div>
-                  <div>
-                    <dt>index</dt>
-                    <dd>ready</dd>
-                  </div>
-                </dl>
-              </div>
-            </div>
-
-            <div className="manifestSlip">
-              <div className="manifestHeading">
-                <span>manifest.json</span>
-                <span className="verifiedMark">verified</span>
-              </div>
-              <dl>
-                <div>
-                  <dt>stash</dt>
-                  <dd>8f3a91c2</dd>
-                </div>
-                <div>
-                  <dt>source</dt>
-                  <dd>./checkout-repro</dd>
-                </div>
-                <div>
-                  <dt>hashes</dt>
-                  <dd>38 / 38</dd>
-                </div>
-                <div>
-                  <dt>stored</dt>
-                  <dd>local</dd>
-                </div>
-              </dl>
-              <div className="manifestStamp" aria-hidden="true">
-                bytes intact
-              </div>
-            </div>
-
-            <p className="sceneCaption">
-              The manifest is durable. The indexes are rebuildable. The source of
-              truth stays on the machine that holds the evidence.
-            </p>
-          </aside>
-
-          <dl className="heroFacts" aria-label="Product facts">
-            <div>
-              <dt>01 / local</dt>
-              <dd>No account. No hosted vault.</dd>
-            </div>
-            <div>
-              <dt>02 / inspectable</dt>
-              <dd>Provenance travels with every stash.</dd>
-            </div>
-            <div>
-              <dt>03 / verifiable</dt>
-              <dd>SHA-256 checks every restored file.</dd>
-            </div>
-          </dl>
         </section>
 
         <section className="artifactTicker" aria-label="Artifacts file.cheap can preserve">
-          <div className="tickerLabel">agent residue worth keeping</div>
+          <span className="tickerLabel">the files between commits</span>
           <div className="tickerItems">
             {artifactKinds.map((kind) => (
               <span key={kind}>{kind}</span>
@@ -265,39 +287,126 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="workflowField" id="workflow" aria-labelledby="workflow-title">
-          <div className="workflow shell">
-            <header className="workflowIntro">
-              <div className="eyebrow lightEyebrow">A complete artifact lifecycle</div>
+        <section className="workflowSection" id="workflow" aria-labelledby="workflow-title">
+          <div className="shell workflowShell">
+            <header className="sectionHeader">
+              <span className="sectionCode">01 / lifecycle</span>
               <h2 id="workflow-title">
-                A chain of custody for temporary work.
+                One command in.
+                <br />
+                The same bytes out.
               </h2>
               <p>
-                Search is useful. Recovery is the point. file.cheap keeps the path
-                from a passing output to the complete, verified artifact deliberately
-                short.
+                Temporary output becomes an addressable artifact without turning
+                your machine into a cloud client or hiding the recovery contract.
               </p>
-              <div className="workflowLegend" aria-label="Lifecycle guarantee">
-                <span>manifest is authority</span>
-                <span>indexes can rebuild</span>
-              </div>
             </header>
 
-            <ol className="workflowList">
+            <ol className="workflowLedger">
               {workflowSteps.map((step) => (
                 <li key={step.number}>
-                  <div className="stepMeta">
+                  <div className="ledgerIndex">
                     <span>{step.number}</span>
-                    <span>{step.signal}</span>
+                    <span>{step.label}</span>
                   </div>
-                  <div className="stepCopy">
+                  <div className="ledgerMain">
                     <h3>{step.title}</h3>
                     <p>{step.copy}</p>
                   </div>
-                  <code>{step.command}</code>
+                  <div className="ledgerCommand">
+                    <code>$ {step.command}</code>
+                    <span>{step.result}</span>
+                  </div>
                 </li>
               ))}
             </ol>
+          </div>
+        </section>
+
+        <section className="proofSection" aria-labelledby="proof-title">
+          <div className="shell proofShell">
+            <header className="proofHeader">
+              <span className="sectionCode">02 / retrieval versus recovery</span>
+              <h2 id="proof-title">
+                Search gets you close.
+                <br />
+                <span>Restore gets you the truth.</span>
+              </h2>
+            </header>
+
+            <div className="proofWorkspace">
+              <section className="searchProof" aria-labelledby="search-proof-title">
+                <div className="proofPaneHeader">
+                  <div>
+                    <span>query</span>
+                    <h3 id="search-proof-title">checkout timeout</h3>
+                  </div>
+                  <strong>14 leads</strong>
+                </div>
+                <ol>
+                  <li>
+                    <span className="resultScore">0.91</span>
+                    <div>
+                      <strong>reports/summary.md</strong>
+                      <p>...request timed out after checkout session confirmation...</p>
+                    </div>
+                  </li>
+                  <li>
+                    <span className="resultScore">0.84</span>
+                    <div>
+                      <strong>logs/browser.jsonl</strong>
+                      <p>...payment iframe did not settle before navigation...</p>
+                    </div>
+                  </li>
+                  <li>
+                    <span className="resultScore">0.77</span>
+                    <div>
+                      <strong>trace/timeline.json</strong>
+                      <p>...event=timeout source=checkout duration_ms=30001...</p>
+                    </div>
+                  </li>
+                </ol>
+                <p className="paneFootnote">
+                  Results are bounded leads into the saved artifact, not a claim that
+                  the snippet is complete evidence.
+                </p>
+              </section>
+
+              <section className="restoreProof" aria-labelledby="restore-proof-title">
+                <div className="proofPaneHeader">
+                  <div>
+                    <span>verified restore</span>
+                    <h3 id="restore-proof-title">./recovered/</h3>
+                  </div>
+                  <strong>PASS</strong>
+                </div>
+                <div className="restoreScore">
+                  <strong>38</strong>
+                  <span>/ 38 hashes matched</span>
+                </div>
+                <dl>
+                  <div>
+                    <dt>manifest ID</dt>
+                    <dd>8f3a91c2</dd>
+                  </div>
+                  <div>
+                    <dt>files written</dt>
+                    <dd>38</dd>
+                  </div>
+                  <div>
+                    <dt>mismatches</dt>
+                    <dd>0</dd>
+                  </div>
+                  <div>
+                    <dt>source stash</dt>
+                    <dd>retained</dd>
+                  </div>
+                </dl>
+                <code className="restoreCommand">
+                  fcheap restore 8f3a91c2 --to ./recovered
+                </code>
+              </section>
+            </div>
           </div>
         </section>
 
@@ -306,41 +415,49 @@ export default function HomePage() {
           id="integrations"
           aria-labelledby="integrations-title"
         >
-          <header className="integrationHeading">
-            <div>
-              <div className="eyebrow">ArtifactRefV1 · local metadata handoff</div>
-              <h2 id="integrations-title">
-                The bytes stay put.
-                <br />
-                <span>The reference travels.</span>
-              </h2>
-            </div>
+          <header className="integrationHeader">
+            <span className="sectionCode">03 / ArtifactRefV1</span>
+            <h2 id="integrations-title">
+              Move the pointer.
+              <br />
+              Not the bytes.
+            </h2>
             <p>
-              Keep one artifact and give each tool its own job. Producers create
-              evidence; file.cheap snapshots and verifies it; other systems receive a
-              portable reference instead of a copy of the bytes.
+              A credential-free reference lets tools acknowledge one artifact
+              without inventing a sync service or copying its payload into every
+              system that mentions it.
             </p>
           </header>
 
-          <ol className="handoffMap" aria-label="Local artifact handoff">
-            {handoffSteps.map((step) => (
-              <li key={step.number}>
-                <span className="handoffNumber">{step.number}</span>
-                <div className="handoffNode">
-                  <strong>{step.title}</strong>
-                  <p>{step.copy}</p>
-                </div>
-                {step.number !== "04" ? (
-                  <span className="handoffArrow" aria-hidden="true">
-                    →
-                  </span>
-                ) : null}
-              </li>
-            ))}
-          </ol>
+          <div className="handoffWorkspace">
+            <pre className="referenceReceipt" aria-label="ArtifactRefV1 excerpt">
+              <code>
+                <span>{`{`}</span>
+                <span>{`  "version": "v1",`}</span>
+                <span>{`  "transport": "fcheap-local",`}</span>
+                <span>{`  "artifact_id": "8f3a91c2",`}</span>
+                <span>{`  "producer": "cairntrace",`}</span>
+                <span>{`  "native_run_id": "run_0142"`}</span>
+                <span>{`}`}</span>
+              </code>
+              <span className="referenceNote">reference only / zero artifact bytes</span>
+            </pre>
+
+            <ol className="handoffFlow" aria-label="Local artifact handoff">
+              {handoffSteps.map((step) => (
+                <li key={step.number}>
+                  <span className="handoffNumber">{step.number}</span>
+                  <div>
+                    <strong>{step.title}</strong>
+                    <p>{step.copy}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
 
           <aside className="integrationBoundary" aria-label="Integration boundary">
-            <span className="boundaryTag">boundary note</span>
+            <span>boundary / explicit</span>
             <p>
               This is a metadata handoff, not a sync service. Chalupa does not receive
               artifact bytes, its report adapter ships separately, and an unresolved
@@ -348,26 +465,22 @@ export default function HomePage() {
               references can also remain independent of Chalupa.
             </p>
             <a href="/integrations/local-artifact-references">
-              Read the handoff contract
-              <span aria-hidden="true">↗</span>
+              Read the complete contract <span aria-hidden="true">-&gt;</span>
             </a>
           </aside>
         </section>
 
-        <section className="operatorsSection shell" id="agents" aria-labelledby="operators-title">
-          <header>
-            <div className="eyebrow">Two ways into the same vault</div>
-            <h2 id="operators-title">Legible to people. Operable by agents.</h2>
-          </header>
+        <section className="operatorSection" id="agents" aria-labelledby="operator-title">
+          <div className="shell operatorShell">
+            <header>
+              <span className="sectionCode">04 / surfaces</span>
+              <h2 id="operator-title">One vault. Two operators.</h2>
+            </header>
 
-          <div className="operatorSplit">
-            <article>
-              <div className="operatorMarker" aria-hidden="true">
-                01
-              </div>
-              <div>
-                <span className="operatorLabel">people / CLI + Studio</span>
-                <h3>See what is saved before you touch it.</h3>
+            <div className="operatorColumns">
+              <article>
+                <span className="operatorType">people / CLI + Studio</span>
+                <h3>Inspect first. Decide second.</h3>
                 <p>
                   Browse manifests, compare a stash with current files, and choose
                   exactly when an operation may write or delete.
@@ -377,18 +490,13 @@ export default function HomePage() {
                   <li>Streaming compression and verified restore</li>
                   <li>Explicit retention and cleanup decisions</li>
                 </ul>
-              </div>
-            </article>
+              </article>
 
-            <article>
-              <div className="operatorMarker" aria-hidden="true">
-                02
-              </div>
-              <div>
-                <span className="operatorLabel">agents / stdio MCP</span>
-                <h3>Give agents a filing system, not storage folklore.</h3>
+              <article>
+                <span className="operatorType">agents / stdio MCP</span>
+                <h3>A filing system with typed boundaries.</h3>
                 <p>
-                  Typed tools, resources, prompts, and a version-matched guide let
+                  Tools, resources, prompts, and a version-matched guide let
                   compatible MCP clients preserve and retrieve evidence safely.
                 </p>
                 <ul>
@@ -396,23 +504,20 @@ export default function HomePage() {
                   <li>Queryable manifests and bounded search results</li>
                   <li>Safety guidance available inside the protocol</li>
                 </ul>
-              </div>
-            </article>
+              </article>
+            </div>
           </div>
         </section>
 
         <section className="finalCall">
           <div className="shell finalCallInner">
+            <span className="finalLabel">return address for temporary work</span>
+            <h2>Give the next investigation somewhere to look.</h2>
             <div>
-              <span className="finalIndex">/ stash something worth finding</span>
-              <h2>Temporary work deserves a return path.</h2>
-            </div>
-            <div className="finalActions">
               <a className="button finalButton" href="/guide/getting-started">
-                Make your first stash
-                <span aria-hidden="true">↗</span>
+                Make the first stash <span aria-hidden="true">-&gt;</span>
               </a>
-              <p>Local-first core. Open source. No account required.</p>
+              <p>Local-first core / open source / no account required</p>
             </div>
           </div>
         </section>
@@ -420,14 +525,14 @@ export default function HomePage() {
 
       <footer className="siteFooter">
         <div className="shell footerInner">
-          <span>file.cheap / local artifact vault</span>
+          <span>file.cheap / the files between commits</span>
           <div>
             <a href="/guide/">Documentation</a>
             <a href="/integrations/local-artifact-references">Integrations</a>
             <a href="mailto:hello@file.cheap">Email</a>
             <a href="https://github.com/abdul-hamid-achik/file.cheap">Source</a>
           </div>
-          <span>built for the files between commits</span>
+          <span>manifest is authority / indexes rebuild</span>
         </div>
       </footer>
     </div>
