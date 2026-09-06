@@ -176,6 +176,10 @@ const PAGE_META: Record<string, PageMeta> = {
     title: 'Local artifact references for agent tools',
     description: 'Connect Chalupa, Cairntrace, and Glyphrun with versioned local stash references while file.cheap keeps ownership of bytes and restore.',
   },
+  'integrations/chalupa-agent-artifacts.md': {
+    title: 'Publish Chalupa agent artifacts',
+    description: 'Store Chalupa inference receipts and redacted agent sessions in the private artifact service from a laptop CLI with one producer-bound publisher credential.',
+  },
   'integrations/run-index.md': {
     title: 'Metadata-only run indexes',
     description: 'Index Cairntrace and Glyphrun execution metadata for the private console without opening archives or exposing evidence bytes.',
@@ -366,6 +370,7 @@ const sidebar = {
       items: [
         { text: 'Agent operating guide', link: '/guide/agent-guide' },
         { text: 'Share local artifact references', link: '/integrations/local-artifact-references' },
+        { text: 'Publish Chalupa agent artifacts', link: '/integrations/chalupa-agent-artifacts' },
         { text: 'Connect MCP clients', link: '/integrations/mcp-clients' },
         { text: 'Email delivery', link: '/integrations/email-delivery' },
         { text: 'MCP server reference', link: '/mcp/overview' },
@@ -447,6 +452,7 @@ const sidebar = {
       items: [
         { text: 'Share local artifact references', link: '/integrations/local-artifact-references' },
         { text: 'Metadata-only run indexes', link: '/integrations/run-index' },
+        { text: 'Publish Chalupa agent artifacts', link: '/integrations/chalupa-agent-artifacts' },
         { text: 'Connect MCP clients', link: '/integrations/mcp-clients' },
         { text: 'Email delivery', link: '/integrations/email-delivery' },
         { text: 'Agent operating guide', link: '/guide/agent-guide' },

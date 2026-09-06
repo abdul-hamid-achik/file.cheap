@@ -22,6 +22,7 @@ export const artifactDeletionLeaseMilliseconds = 15 * 60 * 1000;
 type ArtifactIngestPolicy = Readonly<{
   kindSchemaBindings?: readonly Readonly<{
     kind: string;
+    maxSizeBytes?: number;
     nativeSchema: string;
   }>[];
   kinds: readonly string[];
@@ -30,19 +31,50 @@ type ArtifactIngestPolicy = Readonly<{
   producerTool: string;
 }>;
 
+type ProducerQuotaPolicy = Readonly<{
+  kindSchemaBindings?: readonly Readonly<{
+    kind: string;
+    maxSizeBytes?: number;
+  }>[];
+  maxSizeBytes: number;
+  producerTool: string;
+}>;
+
+/**
+ * The quota that applies to one artifact: a producer that binds a per-kind
+ * quota narrows its own ceiling for that kind, never widens it.
+ */
+function producerSizeQuota(
+  policy: ProducerQuotaPolicy,
+  kind?: string,
+): number {
+  const bound = kind === undefined
+    ? undefined
+    : policy.kindSchemaBindings?.find((binding) => binding.kind === kind)
+      ?.maxSizeBytes;
+  return bound === undefined
+    ? policy.maxSizeBytes
+    : Math.min(bound, policy.maxSizeBytes);
+}
+
 /**
  * Reject an artifact that exceeds the authenticated producer's own quota. The
- * detail names the producer and its exact quota so an operator can act on the
- * response without reading the keyring.
+ * detail names the producer, the kind it bound the quota to, and that exact
+ * quota so an operator can act on the response without reading the keyring.
  */
 export function assertProducerSizeQuota(
   sizeBytes: number,
-  policy: Readonly<{ maxSizeBytes: number; producerTool: string }>,
+  policy: ProducerQuotaPolicy,
+  kind?: string,
 ): void {
-  if (sizeBytes > policy.maxSizeBytes) {
+  const maxSizeBytes = producerSizeQuota(policy, kind);
+  if (sizeBytes > maxSizeBytes) {
+    const scope = maxSizeBytes === policy.maxSizeBytes || kind === undefined
+      ? ""
+      : ` for kind '${kind}'`;
     throw new PlatformError({
       code: "producer_quota_exceeded",
-      detail: `producer '${policy.producerTool}' allows up to ${policy.maxSizeBytes} bytes; this artifact declares ${sizeBytes} bytes.`,
+      detail: `producer '${policy.producerTool}' allows up to ${maxSizeBytes} bytes${scope}; this artifact declares ${sizeBytes} bytes.`,
       status: 413,
       title: "Artifact exceeds the producer quota",
     });
@@ -130,7 +162,9 @@ export class ArtifactService {
     if (record.state === "deleted" || record.state === "deleting") throw invalidReceipt();
     // Re-check the quota here as well as at plan time: a keyring that was
     // tightened after the plan was issued must not be able to commit.
-    if (ingestPolicy) assertProducerSizeQuota(record.sizeBytes, ingestPolicy);
+    if (ingestPolicy) {
+      assertProducerSizeQuota(record.sizeBytes, ingestPolicy, record.kind);
+    }
     const now = this.now();
     if (
       record.planExpiresAt <= now ||

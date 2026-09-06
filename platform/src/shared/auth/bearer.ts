@@ -9,6 +9,11 @@ import { PlatformError } from "@/shared/errors/platform-error";
 export type ServiceScope = "admin" | "cron" | "ingest" | "read";
 export type ArtifactKindSchemaBinding = Readonly<{
   kind: string;
+  /**
+   * Optional per-kind byte quota. It never widens the principal's own
+   * `maxSizeBytes`; a binding without one inherits it.
+   */
+  maxSizeBytes?: number;
   nativeSchema: string;
 }>;
 export type IngestPolicy = Readonly<{
@@ -30,6 +35,16 @@ export type ReadPrincipal =
       IngestPolicy & {
         authentication: "oidc";
         subject: string;
+      }
+    >
+  /**
+   * A publisher credential may read back only what its own policy authorizes
+   * it to write: the exact producer tool, kind, and native schema. Every other
+   * artifact stays not found.
+   */
+  | Readonly<
+      IngestPolicy & {
+        authentication: "publisher-token";
       }
     >;
 
@@ -92,13 +107,7 @@ export async function requireServiceToken(
       config.publisherTokens,
     );
     if (publisher) {
-      return {
-        authentication: "publisher-token",
-        kinds: publisher.kinds,
-        maxSizeBytes: publisher.maxSizeBytes,
-        nativeSchemas: publisher.nativeSchemas,
-        producerTool: publisher.producerTool,
-      };
+      return { ...publisherPolicy(publisher), authentication: "publisher-token" };
     }
     throw unauthorized();
   }
@@ -112,6 +121,13 @@ export async function requireServiceToken(
       : undefined;
     if (subject) {
       return { ...chalupaOidcPolicy, authentication: "oidc", subject };
+    }
+    const publisher = publisherForCredential(
+      credential,
+      config.publisherTokens,
+    );
+    if (publisher) {
+      return { ...publisherPolicy(publisher), authentication: "publisher-token" };
     }
     throw unauthorized();
   }
@@ -139,7 +155,19 @@ export function requireAuthorizedArtifact(
   }
 }
 
-export function ingestPolicyFor(principal: IngestPrincipal): IngestPolicy {
+function publisherPolicy(publisher: PublisherTokenSet): IngestPolicy {
+  return {
+    ...(publisher.kindSchemaBindings
+      ? { kindSchemaBindings: publisher.kindSchemaBindings }
+      : {}),
+    kinds: publisher.kinds,
+    maxSizeBytes: publisher.maxSizeBytes,
+    nativeSchemas: publisher.nativeSchemas,
+    producerTool: publisher.producerTool,
+  };
+}
+
+export function ingestPolicyFor(principal: IngestPolicy): IngestPolicy {
   return {
     ...(principal.kindSchemaBindings
       ? { kindSchemaBindings: principal.kindSchemaBindings }

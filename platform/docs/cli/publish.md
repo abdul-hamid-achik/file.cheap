@@ -62,6 +62,26 @@ native schema. Do not pass `--run-index`: Monitor incidents remain available
 under Artifacts and are searchable after local save/analyze, but they are not
 misrepresented as Cairntrace or Glyphrun runs.
 
+A Chalupa turn receipt from an operator's laptop is published the same way,
+under the `chalupa-cli` producer:
+
+```sh
+FILECHEAP_ARTIFACT_SERVICE_URL=https://file.cheap \
+FILECHEAP_INGEST_TOKEN='chalupa-cli-bound base64url credential' \
+fcheap publish ./inference-receipt.json \
+  --content-type application/json \
+  --kind chalupa.inference-receipt \
+  --producer-tool chalupa-cli \
+  --native-schema urn:chalupa:inference-receipt:v1 \
+  --native-id run-2026-08-05-17-42-01 \
+  --expires-in 720h
+```
+
+That producer binds each kind to one exact native schema and its own byte
+quota. See [Publish Chalupa agent
+artifacts](/integrations/chalupa-agent-artifacts) for the kinds, size limits,
+and the raw HTTP contract a Chalupa CLI can implement without `fcheap`.
+
 Load the token from TinyVault into only the publisher process. Do not put it in
 the command line, logs, artifact metadata, a receipt, or a child process. Token
 rotation does not change the CLI: an operator activates the next credential for

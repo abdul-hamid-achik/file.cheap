@@ -80,8 +80,12 @@ describe("private artifact OpenAPI contract", () => {
     expect(document.paths["/api/v1/artifacts/downloads"].post.security).toEqual([
       { adminBearer: [] },
       { chalupaOidc: [] },
+      { publisherBearer: [] },
     ]);
-    expect(document.paths["/api/v1/artifacts/downloads"].post.description).toContain("Publisher credentials are rejected");
+    expect(document.paths["/api/v1/artifacts/downloads"].post.description).toContain("reads back only what its own ingest policy authorizes it to write");
+    expect(document.paths["/api/v1/artifacts/downloads"].post.description).toContain("returned as not found before private storage is inspected");
+    expect(document.components.securitySchemes.publisherBearer.description).toContain("never authorizes administrator, list, or retention routes");
+    expect(document.components.securitySchemes.ingestOidcOrBearer.description).toContain("exact kind and native_schema bindings, each with its own maxSizeBytes quota");
     expect(document.paths["/api/internal/retention"].get.description).toContain("database-fenced run");
     expect(document.paths["/api/internal/retention"].get.description).toContain("terminally persisted");
     expect(document.paths["/api/internal/retention/health"].get.security).toEqual([{ cronBearer: [] }]);
