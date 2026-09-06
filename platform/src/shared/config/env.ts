@@ -18,7 +18,29 @@ const environmentSchema = z.object({
   BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
 });
 
+/**
+ * One exact `kind` ↔ `producer.native_schema` pair a publisher may use, with
+ * its own resolved byte quota. A producer configured with bindings can never
+ * publish the cross product of its kinds and schemas, and can carry one small
+ * kind (an inference receipt) next to a larger one (a session transcript)
+ * under a single credential.
+ */
+export type PublisherKindSchemaBinding = Readonly<{
+  kind: string;
+  /**
+   * Resolved per-kind byte quota. Always populated and never larger than the
+   * producer's own `maxSizeBytes`.
+   */
+  maxSizeBytes: number;
+  nativeSchema: string;
+}>;
+
 export type PublisherTokenSet = Readonly<{
+  /**
+   * Present only for a producer configured with exact pairs. When absent the
+   * producer keeps the historical `kinds` × `nativeSchemas` allowlist.
+   */
+  kindSchemaBindings?: readonly PublisherKindSchemaBinding[];
   kinds: readonly string[];
   /**
    * Per-producer byte quota. Always populated: an entry that omits
@@ -161,16 +183,18 @@ function parsePublisherTokens(raw: string | undefined): readonly PublisherTokenS
   const allTokens = new Set<string>();
   const result: PublisherTokenSet[] = [];
   for (const [producerTool, policy] of entries) {
+    const shape =
+      typeof policy === "object" && policy !== null && !Array.isArray(policy)
+        ? policyShape(Object.keys(policy))
+        : null;
     if (
       !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u.test(producerTool) ||
-      typeof policy !== "object" ||
-      policy === null ||
-      Array.isArray(policy) ||
-      !hasExactPolicyKeys(Object.keys(policy))
+      shape === null
     ) {
       throw invalidPublisherTokens();
     }
     const {
+      kindSchemaBindings,
       kinds,
       maxSizeBytes,
       nativeSchemas,
@@ -191,38 +215,31 @@ function parsePublisherTokens(raw: string | undefined): readonly PublisherTokenS
           !/^[A-Za-z0-9_-]{43,128}$/u.test(token),
       ) ||
       new Set(tokens).size !== tokens.length ||
-      tokens.some((token) => allTokens.has(token)) ||
-      !Array.isArray(kinds) ||
-      kinds.length < 1 ||
-      kinds.length > 8 ||
-      kinds.some(
-        (kind) =>
-          typeof kind !== "string" ||
-          !/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/u.test(kind),
-      ) ||
-      new Set(kinds).size !== kinds.length ||
-      !Array.isArray(nativeSchemas) ||
-      nativeSchemas.length < 1 ||
-      nativeSchemas.length > 8 ||
-      nativeSchemas.some(
-        (nativeSchema) =>
-          typeof nativeSchema !== "string" ||
-          !isSafeNativeSchema(nativeSchema),
-      ) ||
-      new Set(nativeSchemas).size !== nativeSchemas.length
+      tokens.some((token) => allTokens.has(token))
     ) {
       throw invalidPublisherTokens();
     }
+    const producerMaxSizeBytes =
+      typeof maxSizeBytes === "number"
+        ? maxSizeBytes
+        : defaultProducerMaxSizeBytes;
+    const bindings = shape === "bindings"
+      ? parseKindSchemaBindings(kindSchemaBindings, producerMaxSizeBytes)
+      : undefined;
+    const allowlists = bindings
+      ? {
+          kinds: bindings.map((binding) => binding.kind),
+          nativeSchemas: bindings.map((binding) => binding.nativeSchema),
+        }
+      : parseKindAllowlists(kinds, nativeSchemas);
     for (const token of tokens) {
       allTokens.add(token);
     }
     result.push({
-      kinds: Object.freeze([...kinds]),
-      maxSizeBytes:
-        typeof maxSizeBytes === "number"
-          ? maxSizeBytes
-          : defaultProducerMaxSizeBytes,
-      nativeSchemas: Object.freeze([...nativeSchemas]),
+      ...(bindings ? { kindSchemaBindings: bindings } : {}),
+      kinds: Object.freeze(allowlists.kinds),
+      maxSizeBytes: producerMaxSizeBytes,
+      nativeSchemas: Object.freeze(allowlists.nativeSchemas),
       producerTool,
       tokens: Object.freeze([...tokens]),
     });
@@ -230,25 +247,141 @@ function parsePublisherTokens(raw: string | undefined): readonly PublisherTokenS
   return Object.freeze(result);
 }
 
-const requiredPolicyKeys = ["kinds", "nativeSchemas", "tokens"] as const;
+const allowlistPolicyKeys = ["kinds", "nativeSchemas", "tokens"] as const;
+const bindingPolicyKeys = ["kindSchemaBindings", "tokens"] as const;
 const optionalPolicyKeys = ["maxSizeBytes"] as const;
+const bindingKeys = ["kind", "nativeSchema"] as const;
+const optionalBindingKeys = ["maxSizeBytes"] as const;
+const artifactKindPattern = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/u;
 
-function hasExactPolicyKeys(keys: readonly string[]): boolean {
+/**
+ * A producer policy declares its allowlist in exactly one of two shapes: the
+ * historical `kinds` + `nativeSchemas` cross product, or exact
+ * `kindSchemaBindings` pairs. Mixing them, or omitting `tokens`, is a
+ * configuration error rather than a silently narrower policy.
+ */
+function policyShape(
+  keys: readonly string[],
+): "allowlists" | "bindings" | null {
   const unique = new Set(keys);
+  const known = new Set<string>([
+    ...allowlistPolicyKeys,
+    ...bindingPolicyKeys,
+    ...optionalPolicyKeys,
+  ]);
+  if (unique.size !== keys.length || keys.some((name) => !known.has(name))) {
+    return null;
+  }
+  if (unique.has("kindSchemaBindings")) {
+    return bindingPolicyKeys.every((name) => unique.has(name)) &&
+      !unique.has("kinds") &&
+      !unique.has("nativeSchemas")
+      ? "bindings"
+      : null;
+  }
+  return allowlistPolicyKeys.every((name) => unique.has(name))
+    ? "allowlists"
+    : null;
+}
+
+function parseKindAllowlists(
+  kinds: unknown,
+  nativeSchemas: unknown,
+): { kinds: string[]; nativeSchemas: string[] } {
+  if (
+    !Array.isArray(kinds) ||
+    kinds.length < 1 ||
+    kinds.length > 8 ||
+    kinds.some((kind) => !isSafeArtifactKind(kind)) ||
+    new Set(kinds).size !== kinds.length ||
+    !Array.isArray(nativeSchemas) ||
+    nativeSchemas.length < 1 ||
+    nativeSchemas.length > 8 ||
+    nativeSchemas.some((nativeSchema) => !isSafeNativeSchemaValue(nativeSchema)) ||
+    new Set(nativeSchemas).size !== nativeSchemas.length
+  ) {
+    throw invalidPublisherTokens();
+  }
+  return {
+    kinds: [...(kinds as string[])],
+    nativeSchemas: [...(nativeSchemas as string[])],
+  };
+}
+
+function parseKindSchemaBindings(
+  value: unknown,
+  producerMaxSizeBytes: number,
+): readonly PublisherKindSchemaBinding[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 8) {
+    throw invalidPublisherTokens();
+  }
+  const bindings = value.map((entry) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw invalidPublisherTokens();
+    }
+    const keys = Object.keys(entry);
+    const unique = new Set(keys);
+    if (
+      unique.size !== keys.length ||
+      !bindingKeys.every((name) => unique.has(name)) ||
+      keys.some(
+        (name) =>
+          !(bindingKeys as readonly string[]).includes(name) &&
+          !(optionalBindingKeys as readonly string[]).includes(name),
+      )
+    ) {
+      throw invalidPublisherTokens();
+    }
+    const { kind, maxSizeBytes, nativeSchema } = entry as Record<
+      string,
+      unknown
+    >;
+    if (
+      !isSafeArtifactKind(kind) ||
+      !isSafeNativeSchemaValue(nativeSchema) ||
+      (maxSizeBytes !== undefined &&
+        (typeof maxSizeBytes !== "number" ||
+          !Number.isSafeInteger(maxSizeBytes) ||
+          maxSizeBytes < 1 ||
+          // A binding narrows the producer quota; it can never widen it.
+          maxSizeBytes > producerMaxSizeBytes))
+    ) {
+      throw invalidPublisherTokens();
+    }
+    return Object.freeze({
+      kind: kind as string,
+      maxSizeBytes:
+        typeof maxSizeBytes === "number" ? maxSizeBytes : producerMaxSizeBytes,
+      nativeSchema: nativeSchema as string,
+    });
+  });
+  if (
+    new Set(bindings.map((binding) => binding.kind)).size !== bindings.length ||
+    new Set(bindings.map((binding) => binding.nativeSchema)).size !==
+      bindings.length
+  ) {
+    throw invalidPublisherTokens();
+  }
+  return Object.freeze(bindings);
+}
+
+function isSafeArtifactKind(value: unknown): value is string {
   return (
-    unique.size === keys.length &&
-    requiredPolicyKeys.every((name) => unique.has(name)) &&
-    keys.every(
-      (name) =>
-        (requiredPolicyKeys as readonly string[]).includes(name) ||
-        (optionalPolicyKeys as readonly string[]).includes(name),
-    )
+    typeof value === "string" &&
+    value.length <= 128 &&
+    artifactKindPattern.test(value)
+  );
+}
+
+function isSafeNativeSchemaValue(value: unknown): value is string {
+  return (
+    typeof value === "string" && value.length <= 256 && isSafeNativeSchema(value)
   );
 }
 
 function invalidPublisherTokens(): Error {
   return new Error(
-    `FILECHEAP_PUBLISHER_TOKENS must define 1-16 exact producer policies with bounded kinds, nativeSchemas, 1-2 unique 43-128 character base64url tokens, and an optional maxSizeBytes between 1 and ${maximumArtifactBytes}`,
+    `FILECHEAP_PUBLISHER_TOKENS must define 1-16 exact producer policies with either bounded kinds and nativeSchemas or exact kindSchemaBindings pairs, 1-2 unique 43-128 character base64url tokens, and an optional maxSizeBytes between 1 and ${maximumArtifactBytes} that every binding stays within`,
   );
 }
 

@@ -68,7 +68,24 @@ describe("private service bearer authentication", () => {
     });
     await expect(requireServiceToken(request(`Bearer ${chalupaToken}`), "admin")).rejects.toThrow("valid private service credential");
     await expect(requireServiceToken(request(`Bearer ${chalupaToken}`), "cron")).rejects.toThrow("valid private service credential");
-    await expect(requireServiceToken(request(`Bearer ${chalupaToken}`), "read")).rejects.toThrow("valid private service credential");
+    // A publisher credential reads back only inside its own producer policy.
+    await expect(requireServiceToken(request(`Bearer ${chalupaToken}`), "read")).resolves.toEqual({
+      authentication: "publisher-token",
+      kinds: ["chalupa.log-chunk"],
+      maxSizeBytes: defaultProducerMaxSizeBytes,
+      nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+      producerTool: "chalupa",
+    });
+    expect(
+      readPolicyFor(
+        await requireServiceToken(request(`Bearer ${chalupaToken}`), "read"),
+      ),
+    ).toEqual({
+      kinds: ["chalupa.log-chunk"],
+      maxSizeBytes: defaultProducerMaxSizeBytes,
+      nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+      producerTool: "chalupa",
+    });
     await expect(
       requireServiceToken(request(`Bearer ${"a".repeat(32)}`), "read"),
     ).resolves.toEqual({ authentication: "admin" });
@@ -122,6 +139,109 @@ describe("private service bearer authentication", () => {
         tool: "monitor",
       },
     })).toThrow("valid private service credential");
+  });
+
+  test("binds the laptop chalupa-cli credential to exact kind and schema pairs", async () => {
+    const chalupaCliToken = "l".repeat(43);
+    Object.assign(process.env, {
+      DATABASE_URL: "postgresql://runtime",
+      FILECHEAP_PUBLISHER_TOKENS: JSON.stringify({
+        "chalupa-cli": {
+          kindSchemaBindings: [
+            {
+              kind: "chalupa.inference-receipt",
+              maxSizeBytes: 256 * 1024,
+              nativeSchema: "urn:chalupa:inference-receipt:v1",
+            },
+            {
+              kind: "chalupa.agent-session",
+              nativeSchema: "urn:chalupa:agent-session:v1",
+            },
+          ],
+          tokens: [chalupaCliToken],
+        },
+      }),
+      FILECHEAP_ADMIN_TOKEN: "a".repeat(32),
+      FILECHEAP_OWNER_ACCOUNT_ID: "acc_owner123",
+      CRON_SECRET: "z".repeat(32),
+    });
+    delete process.env.VERCEL;
+    resetConfigForTests();
+
+    const expected = {
+      kindSchemaBindings: [
+        {
+          kind: "chalupa.inference-receipt",
+          maxSizeBytes: 256 * 1024,
+          nativeSchema: "urn:chalupa:inference-receipt:v1",
+        },
+        {
+          kind: "chalupa.agent-session",
+          maxSizeBytes: defaultProducerMaxSizeBytes,
+          nativeSchema: "urn:chalupa:agent-session:v1",
+        },
+      ],
+      kinds: ["chalupa.inference-receipt", "chalupa.agent-session"],
+      maxSizeBytes: defaultProducerMaxSizeBytes,
+      nativeSchemas: [
+        "urn:chalupa:inference-receipt:v1",
+        "urn:chalupa:agent-session:v1",
+      ],
+      producerTool: "chalupa-cli",
+    };
+    const request = (path: string) =>
+      new Request(`https://file.cheap/api/v1/artifacts/${path}`, {
+        headers: { authorization: `Bearer ${chalupaCliToken}` },
+      });
+    const principal = await requireServiceToken(request("plans"), "ingest");
+    expect(principal).toEqual({
+      ...expected,
+      authentication: "publisher-token",
+    });
+    await expect(
+      requireServiceToken(request("downloads"), "read"),
+    ).resolves.toEqual({ ...expected, authentication: "publisher-token" });
+
+    for (const binding of expected.kindSchemaBindings) {
+      expect(() =>
+        requireAuthorizedArtifact(principal, {
+          kind: binding.kind,
+          producer: {
+            native_schema: binding.nativeSchema,
+            tool: "chalupa-cli",
+          },
+        }),
+      ).not.toThrow();
+    }
+    // The credential holds two kinds and two schemas, but never their cross
+    // product, and never Chalupa's Vercel-side producer tool.
+    expect(() =>
+      requireAuthorizedArtifact(principal, {
+        kind: "chalupa.inference-receipt",
+        producer: {
+          native_schema: "urn:chalupa:agent-session:v1",
+          tool: "chalupa-cli",
+        },
+      }),
+    ).toThrow("valid private service credential");
+    expect(() =>
+      requireAuthorizedArtifact(principal, {
+        kind: "chalupa.inference-receipt",
+        producer: {
+          native_schema: "urn:chalupa:inference-receipt:v1",
+          tool: "chalupa",
+        },
+      }),
+    ).toThrow("valid private service credential");
+    expect(() =>
+      requireAuthorizedArtifact(principal, {
+        kind: "chalupa.log-chunk",
+        producer: {
+          native_schema: "urn:chalupa:log-chunk:v1",
+          tool: "chalupa-cli",
+        },
+      }),
+    ).toThrow("valid private service credential");
   });
 
   test("requires a signed token with exact issuer, audience, subject, and temporal claims", async () => {
@@ -256,6 +376,8 @@ describe("private service bearer authentication", () => {
       nativeSchemas: chalupaNativeSchemas,
       producerTool: "chalupa",
     });
+    // The publisher fallback is also readable, but only under its own
+    // narrower publisher policy — never under Chalupa's OIDC bindings.
     await expect(
       requireServiceToken(
         new Request("https://file.cheap/api/v1/artifacts/downloads", {
@@ -263,7 +385,13 @@ describe("private service bearer authentication", () => {
         }),
         "read",
       ),
-    ).rejects.toThrow("valid private service credential");
+    ).resolves.toEqual({
+      authentication: "publisher-token",
+      kinds: ["chalupa.log-chunk"],
+      maxSizeBytes: defaultProducerMaxSizeBytes,
+      nativeSchemas: ["urn:chalupa:log-chunk:v1"],
+      producerTool: "chalupa",
+    });
     await expect(request(await token({ subject: "owner:filecheap-auth-test:project:other:environment:production" }))).rejects.toThrow("valid private service credential");
     await expect(request(await token({ audience: "https://vercel.com/other" }))).rejects.toThrow("valid private service credential");
     await expect(request(await token({ expires: false }))).rejects.toThrow("valid private service credential");

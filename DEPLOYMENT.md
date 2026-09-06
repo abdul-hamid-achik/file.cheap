@@ -124,25 +124,45 @@ requested immutable artifact.
 - `maxSizeBytes` (optional): that producer's byte quota, between 1 and the
   67108864-byte global ceiling.
 
+A producer whose kinds differ sharply in size may replace `kinds` and
+`nativeSchemas` with `kindSchemaBindings`: a bounded list of exact
+`{ kind, nativeSchema, maxSizeBytes? }` pairs. Bindings and the two allowlists
+are mutually exclusive, each kind and each schema appears once, and a binding
+quota may only narrow the producer's own `maxSizeBytes`. A bound producer can
+never publish the cross product of its kinds and schemas.
+
 A producer that omits `maxSizeBytes` gets the conservative 8388608-byte default,
 never the global ceiling; a larger quota is always an explicit decision. The
 quota is enforced at plan time and rechecked at commit, so lowering it in the
 keyring also stops an already-planned oversized upload. An over-quota request
-returns `413` with a detail naming the producer and its exact quota; a request
-above the global ceiling fails schema validation with `422`. The approved
-allocation is Cairntrace 33554432; Glyphrun and Monitor each use 8388608 (the
-default); and Chalupa's OIDC identity uses 8388608 (the default; it is not a
-keyring entry). Monitor activation still requires its exact keyring entry.
-Raising a quota is a configuration change, not a deployment: update
-`FILECHEAP_PUBLISHER_TOKENS` for that producer only, and raise the matching
-client-side constant in that producer's repository in the same release.
+returns `413` with a detail naming the producer, the bound kind when the quota
+is per-kind, and its exact quota; a request above the global ceiling fails
+schema validation with `422`. The approved allocation is Cairntrace 33554432;
+Glyphrun and Monitor each use 8388608 (the default); `chalupa-cli` uses 8388608
+with a 262144 binding for `chalupa.inference-receipt`; and Chalupa's OIDC
+identity uses 8388608 (the default; it is not a keyring entry). Monitor
+activation still requires its exact keyring entry. Raising a quota is a
+configuration change, not a deployment: update `FILECHEAP_PUBLISHER_TOKENS` for
+that producer only, and raise the matching client-side constant in that
+producer's repository in the same release.
 
 Keep the keyring bounded to configured producers only. Cairntrace currently
 uses `cairntrace.run` with `urn:cairntrace.dev:run:v1`; Glyphrun uses
 `glyphrun.evidence-pack` with `urn:glyphrun.dev:run:v1`; Monitor uses
-`monitor.incident` with `urn:monitor.dev:incident:v1`. Add `fcheap` only when a
-concrete private publishing workflow and exact kind/schema have been approved.
-Do not create a wildcard producer, kind, or schema policy.
+`monitor.incident` with `urn:monitor.dev:incident:v1`; the Chalupa laptop CLI
+uses `chalupa-cli` with bindings for `chalupa.inference-receipt` ↔
+`urn:chalupa:inference-receipt:v1` and `chalupa.agent-session` ↔
+`urn:chalupa:agent-session:v1`, documented in
+[Publish Chalupa agent artifacts](platform/docs/integrations/chalupa-agent-artifacts.md).
+Add `fcheap` only when a concrete private publishing workflow and exact
+kind/schema have been approved. Do not create a wildcard producer, kind, or
+schema policy.
+
+A publisher credential authorizes `/api/v1/artifacts/plans`,
+`/api/v1/artifacts/commits`, and `/api/v1/artifacts/downloads`, and on
+downloads it is restricted to artifacts matching its own producer tool, kinds,
+and native schemas — every other artifact is `404`. It never authorizes the
+administrator list route, the artifact detail route, the console, or retention.
 
 Rotate one producer independently: add its next token, deploy the keyring,
 update only that producer's TinyVault secret, verify one complete

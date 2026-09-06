@@ -211,6 +211,86 @@ describe.skipIf(!databaseUrl)("artifact receipt PostgreSQL repository", () => {
     expect((await service.commit(plan.receipt)).artifact.state).toBe("committed");
   });
 
+  test("keeps a committed chalupa-cli inference receipt readable only by its own producer policy", async () => {
+    const store = new InMemoryArtifactObjectStore();
+    const service = new ArtifactService(
+      store,
+      artifactRepository(),
+      rotatingKeyring("current"),
+      () => now,
+    );
+    const receiptBytes = new TextEncoder().encode(
+      '{"schema":"local-agent.turn-receipt.v1","run_id":"postgres-run-1"}',
+    );
+    const plan = requirePlanned(await service.plan(
+      {
+        contentType: "application/json",
+        expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+          .toISOString(),
+        idempotencyKey: "123e4567-e89b-42d3-a456-426614174050",
+        kind: "chalupa.inference-receipt",
+        producer: {
+          native_id: "postgres-run-1",
+          native_schema: "urn:chalupa:inference-receipt:v1",
+          tool: "chalupa-cli",
+        },
+        sha256: createHash("sha256").update(receiptBytes).digest("hex"),
+        sizeBytes: receiptBytes.byteLength,
+      },
+      undefined,
+      ownerAccountId,
+    ));
+    store.seed({
+      bytes: receiptBytes,
+      contentType: "application/json",
+      key: new URL(plan.upload.url).pathname.replace(/^\/upload\//u, ""),
+      sizeBytes: receiptBytes.byteLength,
+    });
+
+    const chalupaCliPolicy = {
+      kindSchemaBindings: [
+        {
+          kind: "chalupa.inference-receipt",
+          maxSizeBytes: 256 * 1024,
+          nativeSchema: "urn:chalupa:inference-receipt:v1",
+        },
+      ],
+      kinds: ["chalupa.inference-receipt"],
+      maxSizeBytes: 8 * 1024 * 1024,
+      nativeSchemas: ["urn:chalupa:inference-receipt:v1"],
+      producerTool: "chalupa-cli",
+    } as const;
+    const cairntracePolicy = {
+      kinds: ["cairntrace.run"],
+      maxSizeBytes: 8 * 1024 * 1024,
+      nativeSchemas: ["urn:cairntrace.dev:run:v1"],
+      producerTool: "cairntrace",
+    } as const;
+
+    await expect(service.commit(plan.receipt, undefined, cairntracePolicy))
+      .rejects.toMatchObject({ code: "invalid_receipt", status: 400 });
+    const committed = await service.commit(
+      plan.receipt,
+      undefined,
+      chalupaCliPolicy,
+    );
+    expect(committed.artifact.state).toBe("committed");
+    expect(committed.artifactRef).toMatchObject({
+      kind: "chalupa.inference-receipt",
+      provider: "fcheap-cloud",
+      uri: `fcheap://cloud/vaults/private/artifacts/${committed.artifact.artifactId}`,
+    });
+
+    const artifactId = committed.artifact.artifactId;
+    expect(
+      (await service.download({ artifactId }, undefined, chalupaCliPolicy))
+        .download.method,
+    ).toBe("GET");
+    await expect(
+      service.download({ artifactId }, undefined, cairntracePolicy),
+    ).rejects.toMatchObject({ code: "artifact_not_found", status: 404 });
+  });
+
   function artifactRepository(): DrizzleArtifactRepository {
     return new DrizzleArtifactRepository(
       harness.database as unknown as ReturnType<typeof getDatabase>,

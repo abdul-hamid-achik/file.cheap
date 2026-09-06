@@ -112,6 +112,170 @@ test("accepts the exact monitor incident publisher policy", () => {
   ]);
 });
 
+test("accepts exact chalupa-cli kind and schema bindings with per-kind quotas", () => {
+  delete process.env.VERCEL;
+  process.env.DATABASE_URL = "postgresql://runtime";
+  process.env.FILECHEAP_ADMIN_TOKEN = "a".repeat(32);
+  process.env.CRON_SECRET = "c".repeat(32);
+  process.env.FILECHEAP_PUBLISHER_TOKENS = JSON.stringify({
+    "chalupa-cli": {
+      kindSchemaBindings: [
+        {
+          kind: "chalupa.inference-receipt",
+          maxSizeBytes: 256 * 1024,
+          nativeSchema: "urn:chalupa:inference-receipt:v1",
+        },
+        {
+          kind: "chalupa.agent-session",
+          nativeSchema: "urn:chalupa:agent-session:v1",
+        },
+      ],
+      maxSizeBytes: 8 * 1024 * 1024,
+      tokens: [publisherToken],
+    },
+  });
+  resetConfigForTests();
+
+  expect(getConfig().publisherTokens).toEqual([
+    {
+      kindSchemaBindings: [
+        {
+          kind: "chalupa.inference-receipt",
+          maxSizeBytes: 256 * 1024,
+          nativeSchema: "urn:chalupa:inference-receipt:v1",
+        },
+        {
+          // A binding without its own quota inherits the producer's.
+          kind: "chalupa.agent-session",
+          maxSizeBytes: 8 * 1024 * 1024,
+          nativeSchema: "urn:chalupa:agent-session:v1",
+        },
+      ],
+      kinds: ["chalupa.inference-receipt", "chalupa.agent-session"],
+      maxSizeBytes: 8 * 1024 * 1024,
+      nativeSchemas: [
+        "urn:chalupa:inference-receipt:v1",
+        "urn:chalupa:agent-session:v1",
+      ],
+      producerTool: "chalupa-cli",
+      tokens: [publisherToken],
+    },
+  ]);
+});
+
+test("accepts the documented .env.example publisher keyring", async () => {
+  const example = await Bun.file(
+    new URL("../../../.env.example", import.meta.url),
+  ).text();
+  const line = example
+    .split("\n")
+    .find((value) => value.startsWith("# FILECHEAP_PUBLISHER_TOKENS="));
+  if (!line) throw new Error("Expected a documented FILECHEAP_PUBLISHER_TOKENS example");
+  let index = 0;
+  const keyring = line
+    .replace("# FILECHEAP_PUBLISHER_TOKENS=", "")
+    // The example ships placeholders; each producer needs its own credential.
+    .replaceAll("<publisher-token>", () => {
+      index += 1;
+      return String.fromCharCode(96 + index).repeat(43);
+    });
+
+  delete process.env.VERCEL;
+  process.env.DATABASE_URL = "postgresql://runtime";
+  process.env.FILECHEAP_ADMIN_TOKEN = "A".repeat(32);
+  process.env.CRON_SECRET = "C".repeat(32);
+  process.env.FILECHEAP_PUBLISHER_TOKENS = keyring;
+  resetConfigForTests();
+
+  const producers = getConfig().publisherTokens;
+  expect(producers.map((producer) => producer.producerTool).sort()).toEqual([
+    "cairntrace",
+    "chalupa-cli",
+    "glyphrun",
+    "monitor",
+  ]);
+  expect(producers.find((producer) => producer.producerTool === "chalupa-cli"))
+    .toMatchObject({
+      kindSchemaBindings: [
+        {
+          kind: "chalupa.inference-receipt",
+          maxSizeBytes: 256 * 1024,
+          nativeSchema: "urn:chalupa:inference-receipt:v1",
+        },
+        {
+          kind: "chalupa.agent-session",
+          maxSizeBytes: 8 * 1024 * 1024,
+          nativeSchema: "urn:chalupa:agent-session:v1",
+        },
+      ],
+      maxSizeBytes: 8 * 1024 * 1024,
+    });
+});
+
+test("rejects a binding policy that widens a quota, mixes shapes, or repeats a kind", () => {
+  delete process.env.VERCEL;
+  process.env.DATABASE_URL = "postgresql://runtime";
+  process.env.FILECHEAP_ADMIN_TOKEN = "a".repeat(32);
+  process.env.CRON_SECRET = "c".repeat(32);
+  const receiptBinding = {
+    kind: "chalupa.inference-receipt",
+    nativeSchema: "urn:chalupa:inference-receipt:v1",
+  };
+  for (const policy of [
+    // A binding may narrow the producer quota, never widen it.
+    {
+      kindSchemaBindings: [{ ...receiptBinding, maxSizeBytes: 512 * 1024 }],
+      maxSizeBytes: 256 * 1024,
+      tokens: [publisherToken],
+    },
+    // Bindings and the cross-product allowlists are mutually exclusive.
+    {
+      kindSchemaBindings: [receiptBinding],
+      kinds: ["chalupa.inference-receipt"],
+      nativeSchemas: ["urn:chalupa:inference-receipt:v1"],
+      tokens: [publisherToken],
+    },
+    // One kind never maps to two schemas, and one schema never to two kinds.
+    {
+      kindSchemaBindings: [
+        receiptBinding,
+        { ...receiptBinding, nativeSchema: "urn:chalupa:agent-session:v1" },
+      ],
+      tokens: [publisherToken],
+    },
+    {
+      kindSchemaBindings: [
+        receiptBinding,
+        { ...receiptBinding, kind: "chalupa.agent-session" },
+      ],
+      tokens: [publisherToken],
+    },
+    // A binding is an exact object: no unknown keys, no missing schema.
+    {
+      kindSchemaBindings: [{ ...receiptBinding, tokens: [publisherToken] }],
+      tokens: [publisherToken],
+    },
+    {
+      kindSchemaBindings: [{ kind: "chalupa.inference-receipt" }],
+      tokens: [publisherToken],
+    },
+    // A credential-bearing schema is never a native schema.
+    {
+      kindSchemaBindings: [
+        { ...receiptBinding, nativeSchema: "https://user:pass@example.test/s" },
+      ],
+      tokens: [publisherToken],
+    },
+    { kindSchemaBindings: [], tokens: [publisherToken] },
+  ]) {
+    process.env.FILECHEAP_PUBLISHER_TOKENS = JSON.stringify({
+      "chalupa-cli": policy,
+    });
+    resetConfigForTests();
+    expect(() => getConfig()).toThrow("FILECHEAP_PUBLISHER_TOKENS");
+  }
+});
+
 test("binds a Vercel deployment to one OIDC subject in its exact environment", () => {
   process.env.VERCEL = "1";
   process.env.VERCEL_ENV = "production";

@@ -14,7 +14,7 @@ export async function POST(request: Request): Promise<Response> {
     const principal = await requireServiceToken(request, "ingest");
     const input = parseRequest(artifactPlanInputSchema, await parseJson(request));
     requireAuthorizedArtifact(principal, input);
-    assertProducerSizeQuota(input.sizeBytes, principal);
+    assertProducerSizeQuota(input.sizeBytes, principal, input.kind);
     const result = artifactPlanResultSchema.parse(await getArtifactService().plan(input, request.signal, getConfig().ownerAccountId));
     return jsonResponse(request, result, { status: result.artifact.state === "committed" ? 200 : 201 });
   } catch (error) { return problemResponse(error, request); }
