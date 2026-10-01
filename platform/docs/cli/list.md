@@ -36,6 +36,8 @@ fcheap list --tool vidtrace
 fcheap list --since 24h
 fcheap list --since 7d
 
+# JSON output (for scripting). Each item carries id, name, tool, tags, file_count,
+# total_size, content_hash, compression, expires_at, created_at and custom (including --meta values).
 # JSON output (for scripting)
 fcheap list --json
 

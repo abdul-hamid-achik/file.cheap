@@ -16,6 +16,7 @@ fcheap save <path> [flags]
 | `--tag` | string slice | `[]` | Tags for categorization (repeatable) |
 | `--tool` | string | `""` | Tool that produced the content (e.g., vidtrace) |
 | `--source` | string | `""` | Original artifact this stash derives from (provenance) |
+| `--meta` | key=value | `[]` | Metadata stored in the manifest `custom` fields and returned by `list --json` (repeatable; keys `[a-z0-9_.-]`, values up to 256 bytes, at most 32 entries; file.cheap-owned keys such as `source`, `indexed` and `secrets_found` are refused) |
 | `--ttl` | string | `""` | Time-to-live (e.g. `7d`, `24h`, `30d`); empty = never expires |
 | `--no-scan` | bool | `false` | Skip the save-time secret scan |
 | `--no-compress` | bool | `false` | Skip auto-compression of large stashes |
@@ -41,6 +42,10 @@ fcheap save ./config.yaml --tag config
 
 # Save and index in one step — searchable immediately, no separate `analyze`
 fcheap save /tmp/evidence --tag bug-42 --tool cortex --index
+
+# Record a version and checksum you can filter and compare later with list --json
+fcheap save ./dataset.archive.gz --tool bench --tag kind=dataset --tag dataset=demo \
+  --meta version=v3 --meta sha256=$(shasum -a 256 dataset.archive.gz | cut -d" " -f1) --no-compress
 ```
 
 ## What Happens

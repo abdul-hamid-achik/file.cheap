@@ -105,6 +105,7 @@ Save a file or directory to the stash vault.
 - `source` (string, optional) -- original artifact this stash derives from (provenance)
 - `ttl` (string, optional) -- retention duration or date; empty means no expiry
 - `index` (bool, optional) -- index immediately after saving
+- `meta` (object of string values, optional) -- metadata stored in the manifest `custom` fields; file.cheap-owned keys such as `source` and `secrets_found` are refused
 
 **Output:** `{ manifest, secrets_warning?, secrets? }` -- the stash manifest, plus a
 secrets warning and findings (file/rule/line) when the save-time scan flags likely

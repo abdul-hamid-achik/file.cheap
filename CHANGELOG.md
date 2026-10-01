@@ -9,6 +9,15 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+### Added
+
+- `fcheap save --meta key=value` (repeatable) and the MCP `fcheap_save` `meta`
+  input store caller metadata such as a dataset version or checksum in the
+  manifest `custom` fields. Keys are validated, bounded, and may not override
+  file.cheap-owned fields such as `source`, `indexed`, or `secrets_found`.
+- `fcheap list --json` items now include `content_hash`, so callers can detect
+  an already-stored snapshot without one `info` call per stash.
+
 ## [0.33.0] - 2026-07-26
 
 ### Added

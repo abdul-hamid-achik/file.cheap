@@ -22,6 +22,7 @@ var (
 	saveNoScan     bool
 	saveNoCompress bool
 	saveIndex      bool
+	saveMeta       []string
 
 	saveIndexOperation = func(ctx context.Context, mgr *stash.Manager, id string) (*analyze.IndexResult, error) {
 		an := analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath).WithEmbedder(embSettings())
@@ -90,6 +91,15 @@ var saveCmd = &cobra.Command{
 		// (e.g. the source video for a vidtrace bundle).
 		if saveSource != "" {
 			opts.Custom = map[string]string{"source": saveSource}
+		}
+		// Caller metadata (e.g. sha256=..., version=...) lands in the manifest's
+		// custom fields and is returned by `list --json`. Reserved keys are refused.
+		meta, err := stash.ParseMetadata(saveMeta)
+		if err != nil {
+			return err
+		}
+		if opts.Custom, err = stash.MergeMetadata(opts.Custom, meta); err != nil {
+			return err
 		}
 
 		ctx := GetContext()
@@ -225,6 +235,7 @@ func init() {
 	saveCmd.Flags().StringSliceVar(&saveTags, "tag", nil, "Tags for categorization (comma-separated)")
 	saveCmd.Flags().StringVar(&saveTool, "tool", "", "Tool that produced the content (e.g., vidtrace)")
 	saveCmd.Flags().StringVar(&saveSource, "source", "", "Original artifact this stash derives from (provenance)")
+	saveCmd.Flags().StringArrayVar(&saveMeta, "meta", nil, "Metadata key=value stored in the manifest custom fields (repeatable; keys [a-z0-9_.-])")
 	saveCmd.Flags().StringVar(&saveTTL, "ttl", "", "Time-to-live for this stash (e.g. 7d, 24h, 30d); empty = never expires")
 	saveCmd.Flags().BoolVar(&saveNoScan, "no-scan", false, "Skip the save-time secret scan")
 	saveCmd.Flags().BoolVar(&saveNoCompress, "no-compress", false, "Skip auto-compression of large stashes")

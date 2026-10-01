@@ -80,13 +80,14 @@ func (s *Server) registerTools(srv *mcp.Server) {
 
 	// fcheap_save
 	type saveInput struct {
-		Path   string   `json:"path" jsonschema:"Absolute path to the file or directory to save"`
-		Name   string   `json:"name,omitempty" jsonschema:"Display name for the stash"`
-		Tags   []string `json:"tags,omitempty" jsonschema:"Tags for categorization"`
-		Tool   string   `json:"tool,omitempty" jsonschema:"Tool that produced the content (e.g., vidtrace)"`
-		Source string   `json:"source,omitempty" jsonschema:"Original artifact this stash derives from (provenance)"`
-		TTL    string   `json:"ttl,omitempty" jsonschema:"Time-to-live for this stash (e.g. 7d, 24h, 30d, or 2026-12-31); empty = never expires"`
-		Index  bool     `json:"index,omitempty" jsonschema:"Index the stash for search immediately after saving (so it's searchable without a separate fcheap_analyze call)"`
+		Path   string            `json:"path" jsonschema:"Absolute path to the file or directory to save"`
+		Name   string            `json:"name,omitempty" jsonschema:"Display name for the stash"`
+		Tags   []string          `json:"tags,omitempty" jsonschema:"Tags for categorization"`
+		Tool   string            `json:"tool,omitempty" jsonschema:"Tool that produced the content (e.g., vidtrace)"`
+		Source string            `json:"source,omitempty" jsonschema:"Original artifact this stash derives from (provenance)"`
+		TTL    string            `json:"ttl,omitempty" jsonschema:"Time-to-live for this stash (e.g. 7d, 24h, 30d, or 2026-12-31); empty = never expires"`
+		Index  bool              `json:"index,omitempty" jsonschema:"Index the stash for search immediately after saving (so it's searchable without a separate fcheap_analyze call)"`
+		Meta   map[string]string `json:"meta,omitempty" jsonschema:"Metadata key/value pairs stored in the manifest custom fields (keys [a-z0-9_.-]; file.cheap-owned keys such as source and secrets_found are refused)"`
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_save",
@@ -117,6 +118,9 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		}
 		if in.Source != "" {
 			opts.Custom = map[string]string{"source": in.Source}
+		}
+		if opts.Custom, err = stash.MergeMetadata(opts.Custom, in.Meta); err != nil {
+			return toolError("invalid metadata: %v", err), nil, nil
 		}
 		st, err := mgr.Save(ctx, opts)
 		if err != nil {

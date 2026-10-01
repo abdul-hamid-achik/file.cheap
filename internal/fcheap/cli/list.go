@@ -49,6 +49,7 @@ var listCmd = &cobra.Command{
 				Tags        []string          `json:"tags,omitempty"`
 				FileCount   int               `json:"file_count"`
 				TotalSize   int64             `json:"total_size"`
+				ContentHash string            `json:"content_hash,omitempty"`
 				Compression string            `json:"compression,omitempty"`
 				ExpiresAt   string            `json:"expires_at,omitempty"`
 				CreatedAt   string            `json:"created_at"`
@@ -63,6 +64,7 @@ var listCmd = &cobra.Command{
 					Tags:        st.Manifest.Tags,
 					FileCount:   st.Manifest.FileCount,
 					TotalSize:   st.Manifest.TotalSize,
+					ContentHash: st.Manifest.ContentHash,
 					Compression: st.Manifest.Compression,
 					ExpiresAt:   st.Manifest.ExpiresAt,
 					CreatedAt:   st.Manifest.CreatedAt,
