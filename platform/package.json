@@ -6,8 +6,9 @@
   "overrides": {
     "nanoid": "3.3.18",
     "postcss": "8.5.23",
-    "sharp": "0.35.3",
-    "undici": "6.28.0"
+    "sharp": "0.35.4",
+    "undici": "6.28.1",
+    "baseline-browser-mapping": "2.11.0"
   },
   "scripts": {
     "audit:production": "bun audit --production",
@@ -36,7 +37,7 @@
     "@vercel/blob": "2.6.1",
     "drizzle-orm": "^0.45.2",
     "jose": "^6.2.4",
-    "next": "16.2.11",
+    "next": "16.3.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "resend": "6.18.0",
@@ -50,7 +51,7 @@
     "@types/react-dom": "19.2.3",
     "drizzle-kit": "^0.31.10",
     "eslint": "9.39.2",
-    "eslint-config-next": "16.2.11",
+    "eslint-config-next": "16.3.6",
     "pg": "^8.22.0",
     "typescript": "5.9.3"
   }

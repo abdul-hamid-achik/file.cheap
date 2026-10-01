@@ -9,6 +9,12 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+### Security
+
+- Platform: bump next to 16.3.6 (critical RCE advisories in 16.2.x) and pin
+  patched sharp 0.35.4, undici 6.28.1 and baseline-browser-mapping 2.11.0; docs:
+  pin sharp 0.35.4. Unblocks the release dependency audits.
+
 ### Added
 
 - `fcheap save --meta key=value` (repeatable) and the MCP `fcheap_save` `meta`

@@ -6,7 +6,8 @@
   "overrides": {
     "nanoid": "3.3.18",
     "postcss": "8.5.23",
-    "vite": "6.4.3"
+    "vite": "6.4.3",
+    "sharp": "0.35.4"
   },
   "scripts": {
     "docs:dev": "vitepress dev",
