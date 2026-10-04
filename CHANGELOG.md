@@ -9,6 +9,8 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-10-04
+
 ### Added
 
 - `fcheap save --json` now includes a `secrets` object: `enabled`, `found`,
@@ -612,7 +614,8 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.36.1...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.37.0...HEAD
+[0.37.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.36.1...v0.37.0
 [0.36.1]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.36.0...v0.36.1
 [0.36.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.34.0...v0.35.0
