@@ -16,6 +16,7 @@ import (
 	"github.com/abdul-hamid-achik/file.cheap/internal/artifactref"
 	"github.com/abdul-hamid-achik/file.cheap/internal/cleanup"
 	"github.com/abdul-hamid-achik/file.cheap/internal/diff"
+	"github.com/abdul-hamid-achik/file.cheap/internal/secrets"
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
 	doccontent "github.com/abdul-hamid-achik/file.cheap/platform/docs"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -80,14 +81,15 @@ func (s *Server) registerTools(srv *mcp.Server) {
 
 	// fcheap_save
 	type saveInput struct {
-		Path   string            `json:"path" jsonschema:"Absolute path to the file or directory to save"`
-		Name   string            `json:"name,omitempty" jsonschema:"Display name for the stash"`
-		Tags   []string          `json:"tags,omitempty" jsonschema:"Tags for categorization"`
-		Tool   string            `json:"tool,omitempty" jsonschema:"Tool that produced the content (e.g., vidtrace)"`
-		Source string            `json:"source,omitempty" jsonschema:"Original artifact this stash derives from (provenance)"`
-		TTL    string            `json:"ttl,omitempty" jsonschema:"Time-to-live for this stash (e.g. 7d, 24h, 30d, or 2026-12-31); empty = never expires"`
-		Index  bool              `json:"index,omitempty" jsonschema:"Index the stash for search immediately after saving (so it's searchable without a separate fcheap_analyze call)"`
-		Meta   map[string]string `json:"meta,omitempty" jsonschema:"Metadata key/value pairs stored in the manifest custom fields (keys [a-z0-9_.-]; file.cheap-owned keys such as source and secrets_found are refused)"`
+		Path          string            `json:"path" jsonschema:"Absolute path to the file or directory to save"`
+		Name          string            `json:"name,omitempty" jsonschema:"Display name for the stash"`
+		Tags          []string          `json:"tags,omitempty" jsonschema:"Tags for categorization"`
+		Tool          string            `json:"tool,omitempty" jsonschema:"Tool that produced the content (e.g., vidtrace)"`
+		Source        string            `json:"source,omitempty" jsonschema:"Original artifact this stash derives from (provenance)"`
+		TTL           string            `json:"ttl,omitempty" jsonschema:"Time-to-live for this stash (e.g. 7d, 24h, 30d, or 2026-12-31); empty = never expires"`
+		Index         bool              `json:"index,omitempty" jsonschema:"Index the stash for search immediately after saving (so it's searchable without a separate fcheap_analyze call)"`
+		Meta          map[string]string `json:"meta,omitempty" jsonschema:"Metadata key/value pairs stored in the manifest custom fields (keys [a-z0-9_.-]; file.cheap-owned keys such as source and secrets_found are refused)"`
+		FailOnSecrets bool              `json:"fail_on_secrets,omitempty" jsonschema:"Refuse to save when the secret scan finds likely secrets: nothing is written and the result is an error carrying the findings (file, rule, line; never values)"`
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_save",
@@ -115,6 +117,8 @@ func (s *Server) registerTools(srv *mcp.Server) {
 			Tags:       in.Tags,
 			Tool:       in.Tool,
 			TTL:        in.TTL,
+
+			FailOnSecrets: in.FailOnSecrets,
 		}
 		if in.Source != "" {
 			opts.Custom = map[string]string{"source": in.Source}
@@ -124,6 +128,10 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		}
 		st, err := mgr.Save(ctx, opts)
 		if err != nil {
+			var blocked *stash.SecretsFoundError
+			if errors.As(err, &blocked) {
+				return blockedSaveResult(blocked), nil, nil
+			}
 			return toolError("save failed: %v", err), nil, nil
 		}
 		out := map[string]any{"manifest": st.Manifest}
@@ -596,13 +604,13 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		Tag        string   `json:"tag,omitempty" jsonschema:"Scoring mode: only analyze stashes with this tag"`
 		DropOnly   bool     `json:"drop_only,omitempty" jsonschema:"Scoring mode: only show stashes scored as drop (default: show all)"`
 		Expired    bool     `json:"expired,omitempty" jsonschema:"Scoring mode: include stashes with an expired TTL even if not yet swept"`
-		Smart      bool     `json:"smart,omitempty" jsonschema:"Use category-based smart analysis (expired/orphaned/superseded/duplicate/branch-gone/stale/keep) instead of scoring mode"`
-		Categories []string `json:"categories,omitempty" jsonschema:"Smart mode: filter to specific categories (comma-separated: expired,orphaned,superseded,duplicate,branch-gone,stale,keep)"`
+		Smart      bool     `json:"smart,omitempty" jsonschema:"Use category-based smart analysis (expired/orphaned/superseded/duplicate/evidence/branch-gone/stale/keep) instead of scoring mode"`
+		Categories []string `json:"categories,omitempty" jsonschema:"Smart mode: filter to specific categories (comma-separated: expired,orphaned,superseded,duplicate,evidence,branch-gone,stale,keep)"`
 		StaleDays  int      `json:"stale_days,omitempty" jsonschema:"Smart mode: days without access to be considered stale (0 = disabled)"`
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "fcheap_cleanup",
-		Description: "Analyze stashes for cleanup. Two modes: (1) scoring mode (default) scores each stash 0-100 on droppability with weighted heuristics and returns verdicts (drop/review/keep); (2) smart mode (smart=true) categorizes each stash into exactly one cleanup category (expired/orphaned/superseded/duplicate/branch-gone/stale/keep). By default a dry-run; pass apply=true to drop candidates.",
+		Description: "Analyze stashes for cleanup. Two modes: (1) scoring mode (default) scores each stash 0-100 on droppability with weighted heuristics and returns verdicts (drop/review/keep); (2) smart mode (smart=true) categorizes each stash into exactly one cleanup category (expired/orphaned/superseded/duplicate/evidence/branch-gone/stale/keep). By default a dry-run; pass apply=true to drop candidates.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &t,
 			OpenWorldHint:   &f,
@@ -619,6 +627,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 			result, err := mgr.AnalyzeCleanup(ctx, stash.CleanupOptions{
 				StaleDays:  in.StaleDays,
 				Categories: in.Categories,
+				KeepTag:    in.KeepTag,
 			})
 			if err != nil {
 				return toolError("cleanup failed: %v", err), nil, nil
@@ -742,6 +751,9 @@ func (s *Server) registerTools(srv *mcp.Server) {
 }
 
 func mcpSmartCleanupAutoDeletable(rec stash.CleanupRecommendation) bool {
+	if rec.Category == stash.CatKeep || rec.Category == stash.CatEvidence {
+		return false
+	}
 	if rec.Category == stash.CatExpired {
 		return true
 	}
@@ -803,4 +815,38 @@ func readDocPage(page string) (string, error) {
 		return "", err
 	}
 	return embeddedPage.Content, nil
+}
+
+// maxBlockedSaveFindings bounds the findings echoed in a refused fcheap_save.
+const maxBlockedSaveFindings = 200
+
+// blockedSaveResult is the tool error for a save refused by fail_on_secrets.
+// It carries file, rule and line of each finding and the scan coverage, never
+// a matched value. Nothing was written to the vault.
+func blockedSaveResult(blocked *stash.SecretsFoundError) *mcp.CallToolResult {
+	findings := blocked.Findings
+	truncated := false
+	if len(findings) > maxBlockedSaveFindings {
+		findings, truncated = findings[:maxBlockedSaveFindings], true
+	}
+	reasons := blocked.Scan.SkippedReasons
+	if reasons == nil {
+		reasons = map[string]int{}
+	}
+	res := textResult(map[string]any{
+		"status": "blocked_secrets_found",
+		"saved":  false,
+		"error":  blocked.Error(),
+		"secrets": map[string]any{
+			"found":              len(blocked.Findings),
+			"rules":              secrets.Rules(blocked.Findings),
+			"findings":           findings,
+			"findings_truncated": truncated,
+			"files_scanned":      blocked.Scan.FilesScanned,
+			"files_skipped":      blocked.Scan.FilesSkipped,
+			"skipped_reasons":    reasons,
+		},
+	})
+	res.IsError = true
+	return res
 }

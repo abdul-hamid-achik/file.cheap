@@ -1,0 +1,22 @@
+{
+  "$schema": "urn:cairntrace.dev:run:v1",
+  "version": "1",
+  "runId": "2026-07-01T12-00-00Z_checkout_alpha",
+  "spec": {"name": "checkout_alpha"},
+  "status": "failed",
+  "startedAt": "2026-07-01T12:00:00Z",
+  "endedAt": "2026-07-01T12:00:02Z",
+  "durationMs": 2000,
+  "environment": "staging",
+  "backend": "agent-browser",
+  "exitCode": 1,
+  "summary": "synthetic",
+  "steps": [{"id": "s1", "status": "passed"}, {"id": "s2", "status": "passed"}, {"id": "s3", "status": "failed"}],
+  "outcomes": [
+    {"id": "cart-total", "status": "passed"},
+    {"id": "order-confirmed", "status": "failed"},
+    {"id": "receipt-emailed", "status": "skipped"},
+    {"id": "weird\u0007id", "status": "passed"},
+    {"id": "no-status"}
+  ]
+}

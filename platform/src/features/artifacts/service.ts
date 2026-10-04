@@ -14,6 +14,7 @@ import {
 } from "@/features/artifacts/plan-receipts";
 import type { ArtifactPlanReceiptMatch, ArtifactRecord, ArtifactRepository, RetainableArtifactState } from "@/platform/database/repository";
 import type { ArtifactObjectStore } from "@/platform/artifacts/object-store";
+import { artifactWebUrl } from "@/features/artifacts/web-url";
 import { PlatformError } from "@/shared/errors/platform-error";
 
 const grantLifetimeMilliseconds = 15 * 60 * 1000;
@@ -82,7 +83,7 @@ export function assertProducerSizeQuota(
 }
 
 export class ArtifactService {
-  constructor(private readonly store: ArtifactObjectStore, private readonly repository: ArtifactRepository, private readonly receiptKeyring: PlanReceiptKeyring, private readonly now: () => Date = () => new Date()) {}
+  constructor(private readonly store: ArtifactObjectStore, private readonly repository: ArtifactRepository, private readonly receiptKeyring: PlanReceiptKeyring, private readonly now: () => Date = () => new Date(), private readonly publicOrigin?: string) {}
 
   async plan(input: ArtifactPlanInput, signal?: AbortSignal, ownerAccountId?: string): Promise<ArtifactPlanResult> {
     const now = this.now();
@@ -105,7 +106,7 @@ export class ArtifactService {
       throw new PlatformError({ code: "idempotency_conflict", detail: "The idempotency key is already bound to different artifact metadata or content.", status: 409, title: "Idempotency conflict" });
     }
     if (record?.state === "committed") {
-      return committedPlanResult(record);
+      return committedPlanResult(record, this.publicOrigin);
     }
     if (record?.state === "deleted" && record.committedAt === null) {
       record = await this.repository.restartDeletedPlan(artifactId, {
@@ -132,7 +133,7 @@ export class ArtifactService {
       throw new PlatformError({ code: "idempotency_conflict", detail: "The idempotency key is already bound to different artifact metadata or content.", status: 409, title: "Idempotency conflict" });
     }
     if (record.state === "committed") {
-      return committedPlanResult(record);
+      return committedPlanResult(record, this.publicOrigin);
     }
     const grantNow = this.now();
     if (record.expiresAt !== null && record.expiresAt <= grantNow) {
@@ -143,7 +144,7 @@ export class ArtifactService {
     }
     const receipt = receiptForRecord(this.receiptKeyring, record);
     const upload = await this.store.issueUploadGrant({ contentType: record.contentType, key: record.objectKey, sizeBytes: record.sizeBytes, validUntil: record.planExpiresAt }, signal);
-    return plannedPlanResult(record, receipt, { ...upload, method: "PUT" });
+    return plannedPlanResult(record, receipt, { ...upload, method: "PUT" }, this.publicOrigin);
   }
 
   async commit(
@@ -183,7 +184,7 @@ export class ArtifactService {
     if (!committed) {
       throw new PlatformError({ code: "commit_conflict", detail: "The upload plan expired or entered retention before it could be committed. Retry the plan request with the same idempotency key.", status: 409, title: "Commit conflict" });
     }
-    return summary(committed);
+    return summary(committed, this.publicOrigin);
   }
 
   async download(
@@ -209,13 +210,13 @@ export class ArtifactService {
       ),
     );
     const grant = await this.store.issueDownloadGrant({ key: record.objectKey, validUntil: grantExpiresAt }, signal);
-    return { ...summary(record), download: { ...grant, method: "GET" } };
+    return { ...summary(record, this.publicOrigin), download: { ...grant, method: "GET" } };
   }
 
-  async get(artifactId: string, ownerAccountId?: string): Promise<ArtifactSummary> { return summary(await this.requireCommitted(artifactId, ownerAccountId)); }
+  async get(artifactId: string, ownerAccountId?: string): Promise<ArtifactSummary> { return summary(await this.requireCommitted(artifactId, ownerAccountId), this.publicOrigin); }
   async list(query: ArtifactListQuery, ownerAccountId?: string): Promise<{ artifacts: ArtifactSummary[]; nextCursor: string | null }> {
     const records = await this.repository.list(query.limit + 1, query.after, ownerAccountId);
-    const page = records.slice(0, query.limit).map(summary);
+    const page = records.slice(0, query.limit).map((record) => summary(record, this.publicOrigin));
     return { artifacts: page, nextCursor: records.length > query.limit ? page.at(-1)?.artifact.artifactId ?? null : null };
   }
   async delete(artifactId: string, ownerAccountId: string): Promise<{ artifactId: string; state: "deleted" }> {
@@ -325,15 +326,16 @@ function retainableState(record: ArtifactRecord): RetainableArtifactState | null
 
 export function objectKey(artifactId: string, sha256: string): string { return `v1/private/artifacts/${artifactId}/${sha256}`; }
 
-function summary(record: ArtifactRecord): ArtifactSummary {
-  return { artifact: { artifactId: record.artifactId, committedAt: record.committedAt?.toISOString() ?? null, contentType: record.contentType, expiresAt: record.expiresAt?.toISOString() ?? null, kind: record.kind, producer: record.producer, sha256: record.sha256, sizeBytes: record.sizeBytes, state: record.state, verification: "server-sha256" }, artifactRef: { $schema: "urn:filecheap.dev:artifact-ref:v1", artifact_id: record.artifactId, kind: record.kind, producer: record.producer, provider: "fcheap-cloud", uri: `fcheap://cloud/vaults/private/artifacts/${record.artifactId}`, version: 1 } };
+function summary(record: ArtifactRecord, publicOrigin?: string): ArtifactSummary {
+  const webUrl = artifactWebUrl(publicOrigin, record.artifactId);
+  return { artifact: { artifactId: record.artifactId, committedAt: record.committedAt?.toISOString() ?? null, contentType: record.contentType, expiresAt: record.expiresAt?.toISOString() ?? null, kind: record.kind, producer: record.producer, sha256: record.sha256, sizeBytes: record.sizeBytes, state: record.state, verification: "server-sha256" }, artifactRef: { $schema: "urn:filecheap.dev:artifact-ref:v1", artifact_id: record.artifactId, kind: record.kind, producer: record.producer, provider: "fcheap-cloud", uri: `fcheap://cloud/vaults/private/artifacts/${record.artifactId}`, version: 1, ...(webUrl ? { web_url: webUrl } : {}) } };
 }
 
-function committedPlanResult(record: ArtifactRecord): ArtifactPlanReplayResponse {
+function committedPlanResult(record: ArtifactRecord, publicOrigin?: string): ArtifactPlanReplayResponse {
   if (record.state !== "committed" || record.committedAt === null) {
     throw new Error("Committed artifact metadata is incomplete");
   }
-  const value = summary(record);
+  const value = summary(record, publicOrigin);
   return {
     artifact: {
       ...value.artifact,
@@ -348,11 +350,12 @@ function plannedPlanResult(
   record: ArtifactRecord,
   receipt: string,
   upload: ArtifactPlanResponse["upload"],
+  publicOrigin?: string,
 ): ArtifactPlanResponse {
   if (record.state !== "planned" || record.committedAt !== null) {
     throw new Error("Planned artifact metadata is inconsistent");
   }
-  const value = summary(record);
+  const value = summary(record, publicOrigin);
   return {
     artifact: {
       ...value.artifact,

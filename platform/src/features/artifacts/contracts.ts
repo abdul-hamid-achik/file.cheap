@@ -104,6 +104,7 @@ export const artifactSummarySchema = z.object({
     provider: z.literal("fcheap-cloud"),
     uri: z.string().regex(/^fcheap:\/\/cloud\/vaults\/private\/artifacts\//),
     version: z.literal(1),
+    web_url: z.string().url().max(2048).regex(/^https:\/\/[^?#\s]+$/).optional(),
   }).strict(),
 }).strict();
 

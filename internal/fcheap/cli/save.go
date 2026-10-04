@@ -2,32 +2,42 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/analyze"
 	"github.com/abdul-hamid-achik/file.cheap/internal/fcheap/config"
 	"github.com/abdul-hamid-achik/file.cheap/internal/manifest"
+	"github.com/abdul-hamid-achik/file.cheap/internal/secrets"
 	"github.com/abdul-hamid-achik/file.cheap/internal/stash"
 	"github.com/spf13/cobra"
 )
 
 var (
-	saveName       string
-	saveTags       []string
-	saveTool       string
-	saveSource     string
-	saveTTL        string
-	saveNoScan     bool
-	saveNoCompress bool
-	saveIndex      bool
-	saveMeta       []string
+	saveName          string
+	saveTags          []string
+	saveTool          string
+	saveSource        string
+	saveTTL           string
+	saveNoScan        bool
+	saveFailOnSecrets bool
+	saveScanBudgetMiB int
+	saveNoCompress    bool
+	saveIndex         bool
+	saveMeta          []string
 
 	saveIndexOperation = func(ctx context.Context, mgr *stash.Manager, id string) (*analyze.IndexResult, error) {
 		an := analyze.NewAnalyzer(cfg.StashDir, cfg.VecgrepPath).WithEmbedder(embSettings())
 		return an.IndexStash(ctx, mgr.StashDir(id))
 	}
+	// exitProcess ends the process with a specific exit code. It is a variable so
+	// tests can observe the code without terminating the test binary.
+	exitProcess = os.Exit
+
 	saveCompressOperation = func(ctx context.Context, mgr *stash.Manager, id, algorithm string) (*stash.CompressResult, error) {
 		return mgr.Compress(ctx, id, algorithm)
 	}
@@ -49,6 +59,57 @@ type saveOutput struct {
 	AutoCompressionRequested bool          `json:"auto_compression_requested"`
 	AutoCompressed           bool          `json:"auto_compressed"`
 	Failed                   []saveFailure `json:"failed"`
+	Secrets                  saveSecrets   `json:"secrets"`
+}
+
+// saveSecrets reports the save-time secret scan without ever carrying a value
+// or line content. Found == 0 only means "clean" for the files that were
+// scanned: check FilesSkipped (and Enabled) before reading it as "no secrets".
+type saveSecrets struct {
+	Enabled        bool           `json:"enabled"`
+	Found          int            `json:"found"`
+	Rules          []string       `json:"rules"`
+	FilesScanned   int            `json:"files_scanned"`
+	FilesSkipped   int            `json:"files_skipped"`
+	SkippedReasons map[string]int `json:"skipped_reasons"`
+	// Findings lists file, rule and line for up to maxSaveSecretFindings matches;
+	// FindingsTruncated is set when there were more. Matched values are never
+	// included.
+	Findings          []secrets.Finding `json:"findings"`
+	FindingsTruncated bool              `json:"findings_truncated"`
+}
+
+// maxSaveSecretFindings bounds the findings echoed in save --json.
+const maxSaveSecretFindings = 200
+
+// ExitSecretsFound is the exit code of `fcheap save --fail-on-secrets` when the
+// scan found likely secrets and the save was refused. 1 stays the generic
+// failure code.
+const ExitSecretsFound = 4
+
+func newSaveSecrets(enabled bool, findings []secrets.Finding, scan secrets.Report) saveSecrets {
+	out := saveSecrets{
+		Enabled:        enabled,
+		Found:          len(findings),
+		Rules:          []string{},
+		FilesScanned:   scan.FilesScanned,
+		FilesSkipped:   scan.FilesSkipped,
+		SkippedReasons: map[string]int{},
+		Findings:       []secrets.Finding{},
+	}
+	if rules := secrets.Rules(findings); rules != nil {
+		out.Rules = rules
+	}
+	for reason, count := range scan.SkippedReasons {
+		out.SkippedReasons[reason] = count
+	}
+	shown := findings
+	if len(shown) > maxSaveSecretFindings {
+		shown = shown[:maxSaveSecretFindings]
+		out.FindingsTruncated = true
+	}
+	out.Findings = append(out.Findings, shown...)
+	return out
 }
 
 var saveCmd = &cobra.Command{
@@ -62,6 +123,13 @@ var saveCmd = &cobra.Command{
 		}
 		if _, err := os.Stat(srcPath); err != nil {
 			return fmt.Errorf("source not found: %w", err)
+		}
+
+		if saveFailOnSecrets && saveNoScan {
+			return errors.New("--fail-on-secrets cannot be combined with --no-scan")
+		}
+		if saveScanBudgetMiB < 0 {
+			return errors.New("--scan-budget-mib must be zero (default) or positive")
 		}
 
 		// Auto-apply TTL from config when --ttl was not explicitly set.
@@ -80,12 +148,14 @@ var saveCmd = &cobra.Command{
 		}
 
 		opts := &stash.SaveOptions{
-			SourcePath: srcPath,
-			Name:       saveName,
-			Tags:       saveTags,
-			Tool:       saveTool,
-			TTL:        appliedTTL,
-			NoScan:     saveNoScan,
+			SourcePath:       srcPath,
+			Name:             saveName,
+			Tags:             saveTags,
+			Tool:             saveTool,
+			TTL:              appliedTTL,
+			NoScan:           saveNoScan,
+			FailOnSecrets:    saveFailOnSecrets,
+			SecretScanBudget: int64(saveScanBudgetMiB) << 20,
 		}
 		// Optional provenance: the original artifact this stash derives from
 		// (e.g. the source video for a vidtrace bundle).
@@ -105,6 +175,10 @@ var saveCmd = &cobra.Command{
 		ctx := GetContext()
 		st, err := mgr.Save(ctx, opts)
 		if err != nil {
+			var blocked *stash.SecretsFoundError
+			if errors.As(err, &blocked) {
+				return reportBlockedSave(blocked)
+			}
 			return err
 		}
 
@@ -171,6 +245,7 @@ var saveCmd = &cobra.Command{
 			AutoCompressionRequested: autoCompressionRequested,
 			AutoCompressed:           autoCompressed,
 			Failed:                   failures,
+			Secrets:                  newSaveSecrets(!saveNoScan, st.Secrets, st.SecretScan),
 		}
 
 		if printer.IsJSON() {
@@ -220,6 +295,9 @@ var saveCmd = &cobra.Command{
 				shown++
 			}
 		}
+		if out.Secrets.FilesSkipped > 0 {
+			printer.Warn("%d file(s) were not scanned for secrets (%s); no findings does not cover them", out.Secrets.FilesSkipped, describeSkippedReasons(out.Secrets.SkippedReasons))
+		}
 		for _, failure := range failures {
 			printer.Warn("%s after save failed: %s", failure.Stage, failure.Error)
 		}
@@ -238,8 +316,23 @@ func init() {
 	saveCmd.Flags().StringArrayVar(&saveMeta, "meta", nil, "Metadata key=value stored in the manifest custom fields (repeatable; keys [a-z0-9_.-])")
 	saveCmd.Flags().StringVar(&saveTTL, "ttl", "", "Time-to-live for this stash (e.g. 7d, 24h, 30d); empty = never expires")
 	saveCmd.Flags().BoolVar(&saveNoScan, "no-scan", false, "Skip the save-time secret scan")
+	saveCmd.Flags().BoolVar(&saveFailOnSecrets, "fail-on-secrets", false, "Refuse to save (exit code 4, nothing written) when the secret scan finds likely secrets")
+	saveCmd.Flags().IntVar(&saveScanBudgetMiB, "scan-budget-mib", 0, "Total MiB of content the secret scan may inspect (default 256); files beyond it are counted as skipped (budget)")
 	saveCmd.Flags().BoolVar(&saveNoCompress, "no-compress", false, "Skip auto-compression of large stashes")
 	saveCmd.Flags().BoolVar(&saveIndex, "index", false, "Index the stash for search immediately after saving (so it's searchable without a separate 'fcheap analyze' step)")
+}
+
+func describeSkippedReasons(reasons map[string]int) string {
+	names := make([]string, 0, len(reasons))
+	for reason := range reasons {
+		names = append(names, reason)
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names))
+	for _, reason := range names {
+		parts = append(parts, fmt.Sprintf("%s: %d", reason, reasons[reason]))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func formatSize(bytes int64) string {
@@ -274,4 +367,51 @@ func normalizeTTL(v string) string {
 		return ""
 	}
 	return v
+}
+
+// saveBlockedOutput is the --json document printed when --fail-on-secrets
+// refuses a save. Nothing was written to the vault.
+type saveBlockedOutput struct {
+	Status   string      `json:"status"`
+	Saved    bool        `json:"saved"`
+	Error    string      `json:"error"`
+	ExitCode int         `json:"exit_code"`
+	Secrets  saveSecrets `json:"secrets"`
+}
+
+// maxBlockedFindingsShown bounds the findings listed in human output.
+const maxBlockedFindingsShown = 50
+
+// reportBlockedSave prints the findings of a save refused by --fail-on-secrets
+// (file, rule and line only, never values), then ends the process with
+// ExitSecretsFound. The returned error is only reached when exitProcess is
+// stubbed, as in tests.
+func reportBlockedSave(blocked *stash.SecretsFoundError) error {
+	out := saveBlockedOutput{
+		Status:   "blocked_secrets_found",
+		Saved:    false,
+		Error:    blocked.Error(),
+		ExitCode: ExitSecretsFound,
+		Secrets:  newSaveSecrets(true, blocked.Findings, blocked.Scan),
+	}
+	if printer.IsJSON() {
+		if err := printer.JSON(out); err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stderr, blocked)
+	} else {
+		printer.Error("%d potential secret(s) detected; nothing was saved (--fail-on-secrets)", len(blocked.Findings))
+		for i, f := range blocked.Findings {
+			if i >= maxBlockedFindingsShown {
+				printer.Error("  ... and %d more", len(blocked.Findings)-i)
+				break
+			}
+			printer.Error("  %s:%d [%s]", f.File, f.Line, f.Rule)
+		}
+		if out.Secrets.FilesSkipped > 0 {
+			printer.Error("%d file(s) were not scanned (%s)", out.Secrets.FilesSkipped, describeSkippedReasons(out.Secrets.SkippedReasons))
+		}
+	}
+	exitProcess(ExitSecretsFound)
+	return blocked
 }

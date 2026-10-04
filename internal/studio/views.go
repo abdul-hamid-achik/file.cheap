@@ -52,7 +52,7 @@ func (m Model) render() string {
 		body = m.renderDetail(bodyH)
 	case viewSearch:
 		body = m.renderSearch(bodyH)
-	case viewTimeline:
+	case viewTimeline, viewRun:
 		body = m.renderTimeline(bodyH)
 	case viewDiff:
 		body = m.renderDiff(bodyH)
@@ -579,8 +579,11 @@ func (m Model) renderSearchResults(bodyRows int) string {
 
 func (m Model) renderTimeline(h int) string {
 	title := "Timeline"
+	if m.activeView == viewRun {
+		title = "Run"
+	}
 	if m.selected != nil && m.selected.Manifest != nil && m.selected.Manifest.Name != "" {
-		title = "Timeline · " + m.selected.Manifest.Name
+		title += " · " + m.selected.Manifest.Name
 	}
 	// Full-width panel: fill its interior (the side-by-side widths from resize()
 	// would otherwise leave the right half blank and wrap lines early).
@@ -690,6 +693,7 @@ func (m Model) renderHelp(h int) string {
 		help("a", "analyze / index for search"),
 		help("x", "diff against a directory"),
 		help("t", "vidtrace timeline (bundles)"),
+		help("v / V", "run summary / restore + report.html path (cairntrace, glyphrun)"),
 		help("d", "drop (confirm y/n) — list / files pane"),
 		help("f", "filter list (name / tool / tag)"),
 		help("o / O", "cycle sort / reverse direction"),
@@ -764,6 +768,9 @@ func (m Model) contextHints() string {
 		if m.selected != nil && m.selected.Manifest != nil && m.selected.Manifest.BundleType == "vidtrace" {
 			hints = append(hints, keyHint("t", "timeline"))
 		}
+		if m.selectedIsRun() {
+			hints = append(hints, keyHint("v", "run"), keyHint("V", "report"))
+		}
 		if m.playing {
 			hints = append(hints, keyHint("p", "stop ▶"))
 		} else if m.hasFrames() {
@@ -782,7 +789,7 @@ func (m Model) contextHints() string {
 		}
 		hints = append(hints, keyHint("esc", "back"))
 		return strings.Join(hints, "  ")
-	case viewTimeline, viewDiff:
+	case viewTimeline, viewRun, viewDiff:
 		return strings.Join([]string{
 			keyHint("j/k", "scroll"), keyHint("g/G", "top/btm"), keyHint("esc", "back"), keyHint("q", "quit"),
 		}, "  ")

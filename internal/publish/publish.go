@@ -19,10 +19,12 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/artifactref"
+	"github.com/abdul-hamid-achik/file.cheap/internal/httpproblem"
 )
 
 const (
@@ -61,7 +63,12 @@ type Receipt struct {
 	SHA256       string                    `json:"sha256"`
 	SizeBytes    int64                     `json:"size_bytes"`
 	Verification string                    `json:"verification"`
-	PublishedAt  string                    `json:"published_at"`
+	// PublishedAt is the CLI clock when the receipt was produced. CommittedAt and
+	// ExpiresAt are the artifact service's own values (RFC 3339), omitted when the
+	// service did not report them. They are additive optional fields.
+	PublishedAt string `json:"published_at"`
+	CommittedAt string `json:"committed_at,omitempty"`
+	ExpiresAt   string `json:"expires_at,omitempty"`
 }
 
 type Client struct {
@@ -81,6 +88,10 @@ func NewClient(httpClient *http.Client) *Client {
 // stays constant regardless of artifact size. The plan can be retried once with
 // the same generated idempotency key; the PUT is never retried after an
 // ambiguous response; the final commit can be retried with its opaque receipt.
+// The key lives for one invocation, so a repeated plan can only replay work
+// from this invocation. If the service nevertheless answers a plan with a
+// committed summary (200, no upload grant), that replay is accepted as final
+// after the same checks a commit receives.
 func (c *Client) Publish(ctx context.Context, filePath string, opts Options) (Receipt, error) {
 	if err := validateOptions(opts); err != nil {
 		return Receipt{}, err
@@ -95,6 +106,8 @@ func (c *Client) Publish(ctx context.Context, filePath string, opts Options) (Re
 	}
 	defer source.close()
 
+	// One key per invocation: generated once here and reused by every plan
+	// attempt, so a retry after a lost response replays the same artifact.
 	idempotencyKey, err := newUUID()
 	if err != nil {
 		return Receipt{}, err
@@ -103,12 +116,15 @@ func (c *Client) Publish(ctx context.Context, filePath string, opts Options) (Re
 	if err != nil {
 		return Receipt{}, err
 	}
-	if err := c.upload(ctx, plan.Upload, source); err != nil {
-		return Receipt{}, err
-	}
-	committed, err := c.commitWithRetry(ctx, opts, plan.Receipt)
-	if err != nil {
-		return Receipt{}, err
+	committed := plan
+	if plan.Artifact.State != "committed" {
+		if err := c.upload(ctx, plan.Upload, source); err != nil {
+			return Receipt{}, err
+		}
+		committed, err = c.commitWithRetry(ctx, opts, plan.Receipt)
+		if err != nil {
+			return Receipt{}, err
+		}
 	}
 	if err := validateCommitted(committed, source.sha, source.size); err != nil {
 		return Receipt{}, err
@@ -120,7 +136,22 @@ func (c *Client) Publish(ctx context.Context, filePath string, opts Options) (Re
 		SizeBytes:    source.size,
 		Verification: committed.Artifact.Verification,
 		PublishedAt:  c.now().UTC().Format(time.RFC3339),
+		CommittedAt:  serverTimestamp(committed.Artifact.CommittedAt),
+		ExpiresAt:    serverTimestamp(committed.Artifact.ExpiresAt),
 	}, nil
+}
+
+// serverTimestamp returns the service-reported timestamp when it is a valid
+// RFC 3339 value, and "" (omitted from the receipt) otherwise. The service's
+// string is passed through unchanged so consumers see what the server stored.
+func serverTimestamp(value *string) string {
+	if value == nil || *value == "" {
+		return ""
+	}
+	if _, err := time.Parse(time.RFC3339Nano, *value); err != nil {
+		return ""
+	}
+	return *value
 }
 
 type planRequest struct {
@@ -168,15 +199,30 @@ func (c *Client) plan(ctx context.Context, opts Options, sha string, size int64,
 	}
 	var response serviceResponse
 	var requestErr error
+	var status int
 	for attempt := 0; attempt < 2; attempt++ {
 		response = serviceResponse{}
-		requestErr = c.doJSON(ctx, http.MethodPost, endpoint(opts.ServiceURL, "/api/v1/artifacts/plans"), opts.Token, body, http.StatusCreated, &response)
+		status, requestErr = c.doJSON(ctx, http.MethodPost, endpoint(opts.ServiceURL, "/api/v1/artifacts/plans"), opts.Token, body, &response, http.StatusCreated, http.StatusOK)
 		if requestErr == nil || !isRetryable(requestErr) {
 			break
 		}
 	}
 	if requestErr != nil {
 		return serviceResponse{}, fmt.Errorf("plan artifact publication: %w", requestErr)
+	}
+	// 200 is the documented replay of an already committed artifact: a
+	// summary with no receipt or upload grant. 201 must be a fresh plan.
+	if status == http.StatusOK {
+		if response.Artifact.State != "committed" {
+			return serviceResponse{}, errors.New("artifact service plan replay did not return a committed artifact")
+		}
+		if response.ArtifactRef.Kind != opts.Kind {
+			return serviceResponse{}, errors.New("artifact service plan replay returned a different artifact kind")
+		}
+		return response, nil
+	}
+	if response.Artifact.State == "committed" {
+		return serviceResponse{}, errors.New("artifact service returned a committed artifact for a new plan")
 	}
 	if response.Receipt == "" || response.Upload == nil {
 		return serviceResponse{}, errors.New("artifact service plan did not include an upload receipt and grant")
@@ -280,7 +326,7 @@ func (c *Client) commitWithRetry(ctx context.Context, opts Options, receipt stri
 	}
 	for attempt := 0; attempt < 2; attempt++ {
 		var response serviceResponse
-		err := c.doJSON(ctx, http.MethodPost, endpoint(opts.ServiceURL, "/api/v1/artifacts/commits"), opts.Token, body, http.StatusOK, &response)
+		_, err := c.doJSON(ctx, http.MethodPost, endpoint(opts.ServiceURL, "/api/v1/artifacts/commits"), opts.Token, body, &response, http.StatusOK)
 		if err == nil {
 			return response, nil
 		}
@@ -291,37 +337,41 @@ func (c *Client) commitWithRetry(ctx context.Context, opts Options, receipt stri
 	return serviceResponse{}, errors.New("commit artifact publication failed")
 }
 
-func (c *Client) doJSON(ctx context.Context, method, target, token string, body []byte, expectedStatus int, destination any) error {
+// doJSON sends one control request and decodes an expected-status response
+// into destination. Responses are server-owned documents, so unknown fields are
+// ignored (an additive server field must not break installed CLIs); every field
+// the CLI relies on is validated by the callers. The returned status is the one
+// that matched.
+func (c *Client) doJSON(ctx context.Context, method, target, token string, body []byte, destination any, expectedStatuses ...int) (int, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, controlTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, method, target, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("create service request: %w", err)
+		return 0, fmt.Errorf("create service request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	response, err := c.httpClient.Do(req)
 	if err != nil {
-		return transientError{err: err}
+		return 0, transientError{err: err}
 	}
 	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != expectedStatus {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxControlBody+1))
+	if !slices.Contains(expectedStatuses, response.StatusCode) {
+		problem := httpproblem.Read(response.Body, token).Suffix()
+		failure := fmt.Errorf("artifact service returned unexpected status %d%s", response.StatusCode, problem)
 		if response.StatusCode >= 500 {
-			return transientError{err: fmt.Errorf("artifact service returned unexpected status %d", response.StatusCode)}
+			return response.StatusCode, transientError{err: failure}
 		}
-		return fmt.Errorf("artifact service returned unexpected status %d", response.StatusCode)
+		return response.StatusCode, failure
 	}
-	limited := io.LimitReader(response.Body, maxControlBody+1)
-	decoder := json.NewDecoder(limited)
-	decoder.DisallowUnknownFields()
+	decoder := json.NewDecoder(io.LimitReader(response.Body, maxControlBody+1))
 	if err := decoder.Decode(destination); err != nil {
-		return fmt.Errorf("decode artifact service response: %w", err)
+		return response.StatusCode, fmt.Errorf("decode artifact service response: %w", err)
 	}
 	if err := ensureEOF(decoder); err != nil {
-		return err
+		return response.StatusCode, err
 	}
-	return nil
+	return response.StatusCode, nil
 }
 
 func ensureEOF(decoder *json.Decoder) error {

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/abdul-hamid-achik/file.cheap/internal/detect"
 	"github.com/abdul-hamid-achik/file.cheap/internal/manifest"
 )
 
@@ -21,10 +22,14 @@ const (
 	CatOrphaned   CleanupCategory = "orphaned"    // source path no longer exists
 	CatSuperseded CleanupCategory = "superseded"  // newer stash for same tool+source_path exists
 	CatDuplicate  CleanupCategory = "duplicate"   // same content_hash as another stash
+	CatEvidence   CleanupCategory = "evidence"    // run evidence whose source is gone: the stash is the last copy
 	CatBranchGone CleanupCategory = "branch-gone" // branch tag references deleted git branch
 	CatStale      CleanupCategory = "stale"       // not accessed/restored in N days
-	CatKeep       CleanupCategory = "keep"        // no cleanup reason found
+	CatKeep       CleanupCategory = "keep"        // no cleanup reason found, or protected by the keep tag
 )
+
+// defaultKeepTag protects a stash from every cleanup category.
+const defaultKeepTag = "keep"
 
 // CleanupRecommendation is the analysis result for a single stash.
 type CleanupRecommendation struct {
@@ -48,6 +53,9 @@ type CleanupResult struct {
 type CleanupOptions struct {
 	StaleDays  int      // days without access to be considered stale (0 = disable)
 	Categories []string // filter to specific categories (empty = all)
+	// KeepTag is an additional tag that protects a stash. The default "keep"
+	// tag always protects, so a pinned stash is never reclaimable.
+	KeepTag string
 }
 
 // categoryPriority defines the order in which categories are checked.
@@ -57,6 +65,7 @@ var categoryPriority = []CleanupCategory{
 	CatOrphaned,
 	CatSuperseded,
 	CatDuplicate,
+	CatEvidence,
 	CatBranchGone,
 	CatStale,
 	CatKeep,
@@ -158,8 +167,9 @@ func (m *Manager) AnalyzeCleanup(ctx context.Context, opts CleanupOptions) (*Cle
 		res.Recommendations = append(res.Recommendations, rec)
 		res.ByCategory[rec.Category]++
 
-		// Reclaimable size: only non-keep categories contribute.
-		if rec.Category != CatKeep {
+		// Reclaimable size: keep and evidence (the last copy of a run whose
+		// source is gone) are retained, so they never contribute.
+		if rec.Category != CatKeep && rec.Category != CatEvidence {
 			res.Reclaimable += rec.Size
 		}
 	}
@@ -189,6 +199,15 @@ func (m *Manager) classifyStash(ctx context.Context, st *Stash, opts CleanupOpti
 		Size: man.TotalSize,
 	}
 
+	// A pinned stash is never a cleanup candidate, whatever else is true of it
+	// (expired TTL, missing source, newer copy). sweep and cleanup apply the
+	// same rule when deleting; reporting must agree with them.
+	if tag := protectingTag(man, opts.KeepTag); tag != "" {
+		rec.Category = CatKeep
+		rec.Reason = fmt.Sprintf("protected by keep tag (%s)", tag)
+		return rec
+	}
+
 	// Check categories in priority order.
 	for _, cat := range categoryPriority {
 		reason, match := m.checkCategory(ctx, st, man, cat, opts, supersededIDs, duplicateIDs)
@@ -215,8 +234,21 @@ func (m *Manager) checkCategory(ctx context.Context, st *Stash, man *manifest.Ma
 		}
 
 	case CatOrphaned:
+		// Run evidence is reported under CatEvidence instead: its source being
+		// gone is expected, and the stash may be the only copy left.
+		if isRunEvidence(man) {
+			return "", false
+		}
 		if reason, ok := m.checkOrphaned(man); ok {
 			return reason, true
+		}
+
+	case CatEvidence:
+		if !isRunEvidence(man) {
+			return "", false
+		}
+		if reason, ok := m.checkOrphaned(man); ok {
+			return reason + "; run evidence is retained, this stash is the last copy", true
 		}
 
 	case CatSuperseded:
@@ -248,6 +280,28 @@ func (m *Manager) checkCategory(ctx context.Context, st *Stash, man *manifest.Ma
 	}
 
 	return "", false
+}
+
+// protectingTag returns the tag that exempts a stash from cleanup: the default
+// "keep" tag, or the caller's additional keep tag. Empty means unprotected.
+func protectingTag(man *manifest.Manifest, extra string) string {
+	for _, tag := range []string{defaultKeepTag, strings.TrimSpace(extra)} {
+		if tag != "" && man.HasTag(tag) {
+			return tag
+		}
+	}
+	return ""
+}
+
+// isRunEvidence reports whether a stash holds cairntrace or glyphrun run
+// evidence. Retention prunes the run directory after stashing it, so a missing
+// source is the normal state of such a stash, not evidence that it is disposable.
+func isRunEvidence(man *manifest.Manifest) bool {
+	switch detect.BundleType(man.BundleType) {
+	case detect.TypeCairntraceRun, detect.TypeGlyphrunRun:
+		return true
+	}
+	return man.Tool == "cairntrace" || man.Tool == "glyphrun"
 }
 
 // checkOrphaned checks only whether the recorded source itself no longer
@@ -476,6 +530,8 @@ func CategoryDisplay(cat CleanupCategory) string {
 		return "Superseded"
 	case CatDuplicate:
 		return "Duplicate"
+	case CatEvidence:
+		return "Evidence"
 	case CatBranchGone:
 		return "Branch Gone"
 	case CatStale:

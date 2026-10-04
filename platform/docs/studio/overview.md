@@ -43,6 +43,20 @@ mode actually used (semantic/hybrid require a configured embedder).
 Press `t` on a vidtrace bundle to see its evidence timeline — each entry's
 timestamp, frame, OCR text, and transcript — in a scrollable, colored panel.
 
+### Run view (Cairntrace and Glyphrun bundles)
+
+On a stash whose bundle type is `cairntrace-run` or `glyphrun-run`, press `v`
+for a run summary in a scrollable panel: status, spec name, run ID, environment
+and backend, start time and duration, exit code, step count, outcome totals
+(passed / failed / other), whether `report.html` exists, and up to 50 outcomes
+with their status. Reads are bounded to `run.json` and `report.json`
+(`report.json` fills fields `run.json` lacks) and never touch evidence files.
+
+Press `V` to restore the stash into a fresh temp directory (works for compressed
+stashes), verify it, and print the exact path of `report.html` in the footer and
+the panel; open that file in a browser. Studio does not launch a browser itself.
+A compressed stash needs `V`; `v` reads in place and asks you to restore first.
+
 ### Diff
 
 Press `x` to diff a stash against a directory. The prompt is pre-filled with the
@@ -70,6 +84,7 @@ search index exist, and vecgrep availability. `?` shows the keybinding reference
 | `a` | Analyze / index for search |
 | `x` | Diff against a directory |
 | `t` | vidtrace timeline (bundles only) |
+| `v` / `V` | Run summary / restore and print the `report.html` path (cairntrace-run, glyphrun-run bundles only) |
 | `d` | Drop (with `y/n` confirm) — from the list or the files pane |
 | `f` | Filter the list live by name / tool / tag (`enter` keeps it, `esc` clears) |
 | `o` / `O` | Cycle the list sort (age / name / tool / files / size) / reverse direction (list view) |

@@ -23,6 +23,7 @@ For each `tool` value, the table shows:
 | `OLDEST` | Age in whole days of the oldest stash |
 | `EXPIRED` | Stashes whose TTL has elapsed |
 | `ORPHANED` | Stashes whose recorded source path no longer exists |
+| `EVIDENCE` | Cairntrace or Glyphrun run evidence whose source path no longer exists |
 
 Stashes without a tool are grouped under `-`. Unlike the default `list`
 command, the dashboard includes expired stashes so its totals describe the
@@ -34,7 +35,15 @@ The summary distinguishes:
   manifests;
 - **stored content estimate**: current payload bytes after compression;
 - **recommended cleanup savings**: the size of candidates identified by the
-  smart cleanup analysis with a 30-day stale threshold.
+  smart cleanup analysis with a 30-day stale threshold;
+- **retained run evidence**: run evidence whose source is gone, shown only when
+  present and excluded from the savings estimate.
+
+Two kinds of stash are never counted as reclaimable. A stash tagged `keep` is
+pinned, whatever else is true of it. A Cairntrace or Glyphrun run directory is
+pruned by its own retention after it has been saved, so a missing source is the
+normal state of run evidence and the stash is usually the last copy; it is
+reported as `EVIDENCE` rather than `ORPHANED`.
 
 ## Safety
 
@@ -56,14 +65,16 @@ and confirming that unique evidence is not being treated as a regenerable cache.
 ```text
 Ecosystem Status
 
-TOOL       COUNT  STORED  OLDEST  EXPIRED  ORPHANED
-codemap        8  42 MB   18d            3         1
-vidtrace       3  1.2 GB  41d            0         0
--              2  16 KB   2d             0         0
+TOOL       COUNT  STORED  OLDEST  EXPIRED  ORPHANED  EVIDENCE
+cairntrace     5  600 MB  30d            0         0         4
+codemap        8  42 MB   18d            3         1         0
+vidtrace       3  1.2 GB  41d            0         0         0
+-              2  16 KB   2d             0         0         0
 
-Total: 13 stashes, 1.8 GB logical
-Stored content estimate: 1.2 GB
+Total: 18 stashes, 2.4 GB logical
+Stored content estimate: 1.8 GB
 Recommended cleanup savings: 42 MB
+Retained run evidence: 4 stashes, 580 MB (last copy, not reclaimable)
 ```
 
 Values depend on the current vault; this example illustrates the fields rather
@@ -78,10 +89,11 @@ fcheap ecosystem-status --json
 ```
 
 The top level contains `tools` and `overall`. Per-tool values include `count`,
-`logical_size`, `stored_size`, `oldest_age_seconds`, `expired`, and `orphaned`.
-The overall object includes `total_stashes`, logical and stored sizes,
-human-readable usage strings, `reclaimable_size`, and the underlying
-`cleanup_result`.
+`logical_size`, `stored_size`, `oldest_age_seconds`, `expired`, `orphaned`, and
+`evidence`. The overall object includes `total_stashes`, logical and stored
+sizes, human-readable usage strings, `reclaimable_size`, `evidence_count`,
+`evidence_size`, `evidence_usage`, and the underlying `cleanup_result`, whose
+`by_category` map uses the `evidence` category for retained run evidence.
 
 `total_size` remains as a deprecated alias for `logical_size`; new integrations
 should use the explicit field names.

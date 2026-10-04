@@ -304,7 +304,7 @@ func TestSupersededKey(t *testing.T) {
 }
 
 // TestAnalyzeCleanupKeepTag verifies that a stash with the keep tag is never
-// dropped even in smart mode apply.
+// reclaimable, even when its TTL has expired.
 func TestAnalyzeCleanupKeepTag(t *testing.T) {
 	tmp := t.TempDir()
 	mgr, err := NewManager(filepath.Join(tmp, "vault"))
@@ -328,14 +328,15 @@ func TestAnalyzeCleanupKeepTag(t *testing.T) {
 	info, _ := mgr.Info(context.Background(), st.Manifest.ID)
 	assert.True(t, info.Manifest.HasTag("keep"))
 
-	// Analyze: the stash will be categorized as "expired" (highest priority).
+	// Analyze: the keep tag outranks every category, so an expired but pinned
+	// stash is retained and contributes nothing to the reclaimable total.
 	res, err := mgr.AnalyzeCleanup(context.Background(), CleanupOptions{})
 	assert.NoError(t, err)
-	assert.Equal(t, CatExpired, res.Recommendations[0].Category)
+	assert.Equal(t, CatKeep, res.Recommendations[0].Category)
+	assert.Contains(t, res.Recommendations[0].Reason, "keep tag")
+	assert.Equal(t, int64(0), res.Reclaimable)
 
-	// The analysis itself doesn't filter by keep-tag; the caller (CLI/MCP)
-	// is responsible for respecting keep-tag during apply. Verify the stash
-	// still exists.
+	// Analysis never deletes; verify the stash still exists.
 	assert.True(t, mgr.Exists(st.Manifest.ID))
 }
 
@@ -391,4 +392,101 @@ func TestAnalyzeCleanupBranchGone(t *testing.T) {
 	}
 	assert.NotNil(t, rec)
 	assert.Equal(t, CatBranchGone, rec.Category)
+}
+
+func saveForCleanup(t *testing.T, mgr *Manager, root, name string, opts SaveOptions, files map[string]string) (*Stash, string) {
+	t.Helper()
+	src := filepath.Join(root, name)
+	assert.NoError(t, os.MkdirAll(src, 0o755))
+	for file, body := range files {
+		assert.NoError(t, os.WriteFile(filepath.Join(src, file), []byte(body), 0o644))
+	}
+	opts.SourcePath = src
+	st, err := mgr.Save(context.Background(), &opts)
+	assert.NoError(t, err)
+	return st, src
+}
+
+func TestAnalyzeCleanupKeepTagProtectsEveryCategory(t *testing.T) {
+	root := t.TempDir()
+	mgr, err := NewManager(filepath.Join(root, "vault"))
+	assert.NoError(t, err)
+
+	pinned, src := saveForCleanup(t, mgr, root, "pinned", SaveOptions{Tags: []string{"keep"}}, map[string]string{"f.txt": "x"})
+	custom, customSrc := saveForCleanup(t, mgr, root, "custom", SaveOptions{Tags: []string{"pinned"}}, map[string]string{"f.txt": "y"})
+	assert.NoError(t, os.RemoveAll(src))
+	assert.NoError(t, os.RemoveAll(customSrc))
+
+	res, err := mgr.AnalyzeCleanup(context.Background(), CleanupOptions{KeepTag: "pinned"})
+	assert.NoError(t, err)
+	assert.Equal(t, 2, res.ByCategory[CatKeep])
+	assert.Equal(t, int64(0), res.Reclaimable)
+	for _, rec := range res.Recommendations {
+		assert.Equal(t, CatKeep, rec.Category, rec.ID)
+	}
+	assert.True(t, mgr.Exists(pinned.Manifest.ID))
+	assert.True(t, mgr.Exists(custom.Manifest.ID))
+
+	// Without the custom tag the custom-pinned stash is an ordinary orphan again.
+	res, err = mgr.AnalyzeCleanup(context.Background(), CleanupOptions{})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, res.ByCategory[CatOrphaned])
+	assert.Equal(t, 1, res.ByCategory[CatKeep])
+}
+
+func TestAnalyzeCleanupReportsRunEvidenceAsLastCopyNotOrphaned(t *testing.T) {
+	root := t.TempDir()
+	mgr, err := NewManager(filepath.Join(root, "vault"))
+	assert.NoError(t, err)
+
+	byTool, toolSrc := saveForCleanup(t, mgr, root, "run-a", SaveOptions{Tool: "cairntrace"}, map[string]string{"report.html": "<p>a</p>"})
+	byBundle, bundleSrc := saveForCleanup(t, mgr, root, "run-b", SaveOptions{}, map[string]string{
+		"artifact-manifest.json": `{}`,
+	})
+	assert.Equal(t, "cairntrace-run", byBundle.Manifest.BundleType)
+	generic, genericSrc := saveForCleanup(t, mgr, root, "scratch", SaveOptions{Tool: "scratchpad"}, map[string]string{"f.txt": "z"})
+	live, _ := saveForCleanup(t, mgr, root, "run-live", SaveOptions{Tool: "glyphrun"}, map[string]string{"report.html": "<p>live</p>"})
+	for _, src := range []string{toolSrc, bundleSrc, genericSrc} {
+		assert.NoError(t, os.RemoveAll(src))
+	}
+
+	res, err := mgr.AnalyzeCleanup(context.Background(), CleanupOptions{})
+	assert.NoError(t, err)
+	got := map[string]CleanupRecommendation{}
+	for _, rec := range res.Recommendations {
+		got[rec.ID] = rec
+	}
+	assert.Equal(t, CatEvidence, got[byTool.Manifest.ID].Category)
+	assert.Contains(t, got[byTool.Manifest.ID].Reason, "last copy")
+	assert.Equal(t, CatOrphaned, got[generic.Manifest.ID].Category)
+	assert.Equal(t, CatKeep, got[live.Manifest.ID].Category, "run evidence with a live source is not a candidate")
+	assert.Equal(t, CatEvidence, got[byBundle.Manifest.ID].Category, "bundle detection alone marks run evidence")
+
+	assert.Equal(t, 2, res.ByCategory[CatEvidence])
+	assert.Equal(t, 1, res.ByCategory[CatOrphaned])
+	assert.Equal(t, got[generic.Manifest.ID].Size, res.Reclaimable, "only the generic orphan is reclaimable")
+}
+
+func TestIsRunEvidenceUsesBundleTypeOrTool(t *testing.T) {
+	assert.True(t, isRunEvidence(&manifest.Manifest{BundleType: "cairntrace-run"}))
+	assert.True(t, isRunEvidence(&manifest.Manifest{BundleType: "glyphrun-run"}))
+	assert.True(t, isRunEvidence(&manifest.Manifest{Tool: "cairntrace"}))
+	assert.True(t, isRunEvidence(&manifest.Manifest{Tool: "glyphrun"}))
+	assert.False(t, isRunEvidence(&manifest.Manifest{Tool: "codemap", BundleType: "generic"}))
+	assert.False(t, isRunEvidence(&manifest.Manifest{}))
+}
+
+func TestAnalyzeCleanupExpiredTTLStillOutranksEvidence(t *testing.T) {
+	root := t.TempDir()
+	mgr, err := NewManager(filepath.Join(root, "vault"))
+	assert.NoError(t, err)
+	st, src := saveForCleanup(t, mgr, root, "run", SaveOptions{Tool: "cairntrace", TTL: "1s"}, map[string]string{"report.html": "x"})
+	assert.NoError(t, os.RemoveAll(src))
+	time.Sleep(2 * time.Second)
+
+	res, err := mgr.AnalyzeCleanup(context.Background(), CleanupOptions{})
+	assert.NoError(t, err)
+	// An explicit TTL is retention intent and still outranks evidence retention.
+	assert.Equal(t, CatExpired, res.Recommendations[0].Category)
+	assert.Equal(t, st.Manifest.ID, res.Recommendations[0].ID)
 }

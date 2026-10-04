@@ -90,9 +90,12 @@ cleanup category based on why it might be droppable:
   orphaned    — recorded source path no longer exists
   superseded  — a newer stash exists for the same tool + source path
   duplicate   — same content hash as a newer stash
+  evidence    — cairntrace/glyphrun run evidence whose source is gone: the
+                stash is the last copy, so it is retained, never reclaimable
   branch-gone — a "branch:" tag references a deleted git branch
   stale       — older than --stale-days (uses created_at as proxy)
-  keep        — no cleanup reason found
+  keep        — no cleanup reason found, or the stash carries the "keep" tag
+                (which overrides every other category)
 
 Priority order ensures each stash gets only its first matching category
 (expired beats orphaned beats superseded, etc.) — no double counting.
@@ -219,6 +222,7 @@ func runSmartCleanup(mgr *stash.Manager) error {
 	result, err := mgr.AnalyzeCleanup(GetContext(), stash.CleanupOptions{
 		StaleDays:  cleanupStaleDays,
 		Categories: cleanupCategories,
+		KeepTag:    cleanupKeepTag,
 	})
 	if err != nil {
 		return err
@@ -302,6 +306,7 @@ func runSmartCleanup(mgr *stash.Manager) error {
 		stash.CatOrphaned,
 		stash.CatSuperseded,
 		stash.CatDuplicate,
+		stash.CatEvidence,
 		stash.CatBranchGone,
 		stash.CatStale,
 		stash.CatKeep,
@@ -418,6 +423,10 @@ func applySmartCleanup(
 // trail rather than disposable data. Expired TTLs are explicit retention
 // intent, while these tool types are documented regenerable caches.
 func smartCleanupAutoDeletable(rec stash.CleanupRecommendation) bool {
+	if rec.Category == stash.CatKeep || rec.Category == stash.CatEvidence {
+		// Retained: a pinned stash, or run evidence that may be the last copy.
+		return false
+	}
 	if rec.Category == stash.CatExpired {
 		return true
 	}
@@ -450,7 +459,7 @@ func init() {
 	cleanupCmd.Flags().StringVar(&cleanupTag, "tag", "", "Only analyze stashes with this tag")
 	cleanupCmd.Flags().BoolVar(&cleanupDropOnly, "drop-only", false, "Only show stashes scored as drop (default: show all)")
 	cleanupCmd.Flags().BoolVar(&cleanupExpired, "expired", false, "Include stashes with an expired TTL (sweep handles these by default)")
-	cleanupCmd.Flags().BoolVar(&cleanupSmart, "smart", false, "Use category-based smart analysis (expired/orphaned/superseded/duplicate/branch-gone/stale/keep)")
-	cleanupCmd.Flags().StringSliceVar(&cleanupCategories, "categories", nil, "Smart mode: filter to specific categories (comma-separated: expired,orphaned,superseded,duplicate,branch-gone,stale,keep)")
+	cleanupCmd.Flags().BoolVar(&cleanupSmart, "smart", false, "Use category-based smart analysis (expired/orphaned/superseded/duplicate/evidence/branch-gone/stale/keep)")
+	cleanupCmd.Flags().StringSliceVar(&cleanupCategories, "categories", nil, "Smart mode: filter to specific categories (comma-separated: expired,orphaned,superseded,duplicate,evidence,branch-gone,stale,keep)")
 	cleanupCmd.Flags().IntVar(&cleanupStaleDays, "stale-days", 0, "Smart mode: days without access to be considered stale (0 = disabled)")
 }

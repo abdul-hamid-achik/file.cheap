@@ -286,3 +286,63 @@ func downloadServer(
 	}))
 	return server, ref
 }
+
+func grantServer(t *testing.T, status int, contentType, body string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+}
+
+func TestRequestGrantIgnoresUnknownServerFields(t *testing.T) {
+	t.Parallel()
+	body := `{"artifact":{"artifactId":"art_abcdefghijklmnop","sha256":"` + strings.Repeat("a", 64) + `","sizeBytes":3,"state":"committed","verification":"server-sha256","futureField":{"x":1}},"download":{"method":"GET","url":"https://blob.example/x","headers":{},"expiresAt":"2030-01-01T00:00:00Z"},"newTopLevel":true}`
+	server := grantServer(t, http.StatusCreated, "application/json", body)
+	defer server.Close()
+	grant, err := NewClient(server.Client()).requestGrant(context.Background(), server.URL, "art_abcdefghijklmnop", testDeviceToken)
+	if err != nil {
+		t.Fatalf("additive server fields must decode: %v", err)
+	}
+	if grant.Artifact.ArtifactID != "art_abcdefghijklmnop" || grant.Artifact.SizeBytes != 3 {
+		t.Fatalf("known fields were not decoded: %#v", grant.Artifact)
+	}
+}
+
+func TestRequestGrantStillRejectsMalformedAndTrailingJSON(t *testing.T) {
+	t.Parallel()
+	for name, body := range map[string]string{
+		"malformed": `{"artifact":`,
+		"trailing":  `{"artifact":{}}{"again":true}`,
+		"wrongtype": `{"artifact":{"sizeBytes":"big"}}`,
+	} {
+		server := grantServer(t, http.StatusCreated, "application/json", body)
+		_, err := NewClient(server.Client()).requestGrant(context.Background(), server.URL, "art_abcdefghijklmnop", testDeviceToken)
+		server.Close()
+		if err == nil {
+			t.Fatalf("%s response must fail", name)
+		}
+	}
+}
+
+func TestRequestGrantReportsProblemDetail(t *testing.T) {
+	t.Parallel()
+	problem := `{"type":"https://file.cheap/problems/not-found","code":"artifact_not_found","title":"Artifact not found","detail":"no artifact\u001b[31m for ` + testDeviceToken + `"}`
+	server := grantServer(t, http.StatusNotFound, "application/problem+json", problem)
+	defer server.Close()
+	_, err := NewClient(server.Client()).requestGrant(context.Background(), server.URL, "art_abcdefghijklmnop", testDeviceToken)
+	if err == nil || !strings.Contains(err.Error(), "unexpected status 404 (artifact_not_found): Artifact not found") {
+		t.Fatalf("expected problem detail, got %v", err)
+	}
+	if strings.Contains(err.Error(), testDeviceToken) || strings.ContainsRune(err.Error(), 0x1b) {
+		t.Fatalf("error leaked a token or control character: %q", err.Error())
+	}
+
+	plain := grantServer(t, http.StatusBadRequest, "text/html", "<html>bad gateway page</html>")
+	defer plain.Close()
+	_, err = NewClient(plain.Client()).requestGrant(context.Background(), plain.URL, "art_abcdefghijklmnop", testDeviceToken)
+	if err == nil || err.Error() != "artifact download grant returned unexpected status 400" {
+		t.Fatalf("a non-JSON body must never be echoed, got %v", err)
+	}
+}

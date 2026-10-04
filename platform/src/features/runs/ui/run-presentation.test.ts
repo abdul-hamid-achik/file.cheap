@@ -8,7 +8,10 @@ import {
   filterRuns,
   formatRunDuration,
   getNextRunDetailTab,
+  isGzipRunBundle,
   runEvidenceCountLabel,
+  runRestoreCommand,
+  runRestoreName,
 } from "./run-presentation";
 
 const baseRun: RunSummary = {
@@ -94,5 +97,39 @@ describe("run dashboard presentation", () => {
     expect(getNextRunDetailTab("evidence", "Home")).toBe("summary");
     expect(getNextRunDetailTab("outcomes", "End")).toBe("provenance");
     expect(getNextRunDetailTab("summary", "Enter")).toBeNull();
+  });
+});
+
+describe("run restore command", () => {
+  const gzipRun: RunSummary = {
+    ...baseRun,
+    run: { ...baseRun.run, nativeId: "run_2026-07-01.abc" },
+    source: { ...baseRun.source, contentType: "application/gzip" },
+  };
+
+  test("pulls, extracts into a per-run directory, and uses the exact fcheap flags", () => {
+    expect(runRestoreCommand(gzipRun)).toBe(
+      "fcheap pull art_0123456789abcdef --output ./run_2026-07-01.abc.tar.gz && mkdir -p ./run_2026-07-01.abc && tar -xzf ./run_2026-07-01.abc.tar.gz -C ./run_2026-07-01.abc",
+    );
+  });
+
+  test("never lets a producer-supplied native ID escape the working directory or the shell", () => {
+    const hostile = runRestoreCommand({
+      ...gzipRun,
+      run: { ...gzipRun.run, nativeId: "../../x; rm -rf ~ $(id) 'q'" },
+    });
+    expect(runRestoreName("../../x; rm -rf ~ $(id) 'q'")).toBe("x_rm_-rf_id_q_");
+    expect(hostile).not.toMatch(/[;$()'`~]/u);
+    expect(hostile).not.toContain("..");
+    expect(runRestoreName("...")).toBe("run");
+    expect(runRestoreName("a".repeat(300))).toHaveLength(96);
+  });
+
+  test("offers only the verified pull for non-gzip bundles", () => {
+    expect(runRestoreCommand({ ...gzipRun, source: { ...gzipRun.source, contentType: "application/zstd" } })).toBe(
+      "fcheap pull art_0123456789abcdef --output ./run_2026-07-01.abc.bin",
+    );
+    expect(isGzipRunBundle("application/x-gzip; charset=binary")).toBe(true);
+    expect(isGzipRunBundle("application/gzipped")).toBe(false);
   });
 });

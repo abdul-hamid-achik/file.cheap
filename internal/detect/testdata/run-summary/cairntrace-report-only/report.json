@@ -1,0 +1,6 @@
+{
+  "run": {"runId": "other", "specName": "login_flow", "environment": "local", "backend": "ignored", "status": "passed", "durationMs": 1500, "exitCode": 0},
+  "summary": {"outcomes": {"passed": 1}},
+  "outcomes": [{"id": "dashboard-visible", "status": "passed"}],
+  "steps": [{"id": "a"}, {"id": "b"}]
+}

@@ -106,6 +106,7 @@ Save a file or directory to the stash vault.
 - `ttl` (string, optional) -- retention duration or date; empty means no expiry
 - `index` (bool, optional) -- index immediately after saving
 - `meta` (object of string values, optional) -- metadata stored in the manifest `custom` fields; file.cheap-owned keys such as `source` and `secrets_found` are refused
+- `fail_on_secrets` (bool, optional) -- refuse to save when the scan finds likely secrets; nothing is written and the result is a tool error `{ status: "blocked_secrets_found", saved: false, error, secrets }` carrying file/rule/line findings (never values) and the scan coverage. See [`save`](/cli/save#failing-a-save-on-findings)
 
 **Output:** `{ manifest, secrets_warning?, secrets? }` -- the stash manifest, plus a
 secrets warning and findings (file/rule/line) when the save-time scan flags likely

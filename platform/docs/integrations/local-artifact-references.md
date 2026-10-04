@@ -69,7 +69,10 @@ constructors for an existing local stash emit only `fcheap-local`.
   by [`fcheap publish`](/cli/publish). It uses a canonical
   `fcheap://cloud/vaults/<vault-id>/artifacts/<artifact-id>` identity and may
   include one stable HTTPS `web_url` without credentials, query string, or
-  fragment. It is not a public hosted vault or multi-user account service.
+  fragment. The artifact service sets it to its console page for the artifact,
+  `https://<public-origin>/console/artifacts/<artifact-id>` (see
+  [run indexes](/integrations/run-index#console-links-web-url)). It is not a
+  public hosted vault or multi-user account service.
 - `link` uses a stable HTTP(S) `uri` and omits `artifact_id` and `web_url`.
 
 No variant defines a dedicated secret field or permits query-bearing signed

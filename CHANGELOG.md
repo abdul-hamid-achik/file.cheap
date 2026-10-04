@@ -9,11 +9,84 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-10-04
+
+### Added
+
+- `fcheap save --json` now includes a `secrets` object: `enabled`, `found`,
+  `rules` (rule IDs only), `files_scanned`, `files_skipped`,
+  `skipped_reasons` (`budget`, `zip_guard`, `not_regular`, `unreadable`), and
+  `findings` (`{file, rule, line}`, capped at 200, with `findings_truncated`).
+  It never carries values or line content, so "no findings" can be told apart
+  from "not scanned". `custom.secrets_found` and `custom.secrets_rules` are
+  unchanged, the manifest records `secrets_files_scanned` and
+  `secrets_files_skipped` (reserved: `--meta` cannot set them), and the human
+  output warns when files were not scanned.
+- `fcheap save --fail-on-secrets` scans before anything is committed; on
+  findings it writes nothing, prints file, rule and line (never values) and
+  exits 4. With `--json` it prints `{status: "blocked_secrets_found", saved:
+  false, exit_code: 4, secrets: {...}}`. The MCP `fcheap_save` tool accepts
+  `fail_on_secrets`.
+- Secret scanning of ZIP archives, Playwright trace zips included: the
+  `trace.network`, `trace.trace`, `*.har`, `*.ndjson`, `*.json`, `*.txt` and
+  `*.log` members are scanned in memory (never extracted) and reported as
+  `archive.zip!member`, with a 64 MiB per-member cap and a compression-ratio
+  guard.
+- Secret rules `bearer-token`, `cookie-session`, `sk-api-key`,
+  `stripe-secret-key`, `digitalocean-token` and `npm-token`, which also match
+  the HAR / `trace.network` JSON header form.
+- `fcheap save --scan-budget-mib` (default 256 MiB of scanned content per save).
+- `list --json` items gain `bundle_type` and `compressed_size`.
+- The `filecheap-publish/1` receipt gains optional `committed_at` and
+  `expires_at` (the service's values, RFC 3339, omitted when absent);
+  `published_at` is unchanged.
+- Cloud `ArtifactRefV1` responses carry an optional https `web_url`
+  (`<public origin>/console/artifacts/<id>`, built from the configured public
+  origin, omitted on a non-https origin); the new console route redirects to
+  the run or artifact panel after sign-in. OpenAPI updated.
+- Console run detail shows the exact, shell-safe restore command
+  (`fcheap pull … && tar -xzf …`) with a copy button; non-gzip bundles show the
+  pull step only.
+- Studio: `v` shows a Cairntrace or Glyphrun run summary (status, spec, env,
+  outcomes, steps, report presence) and `V` restores the stash to a temporary
+  directory and prints the `report.html` path.
+- `fcheap cleanup --smart` and `fcheap ecosystem-status` report Cairntrace and
+  Glyphrun run evidence whose source directory is gone under a new `evidence`
+  category instead of `orphaned`. `ecosystem-status` gains an `EVIDENCE` column
+  and additive JSON fields (`evidence` per tool; `evidence_count`,
+  `evidence_size`, `evidence_usage` overall).
+- Publish documentation now covers `--service-url`, `--producer-version`,
+  `--entrypoint`, the failure format, and the 12 KiB run index sidecar limit.
+
+### Changed
+
+- `fcheap publish` and `fcheap pull` ignore unknown fields in service responses,
+  so an additive server field no longer breaks installed CLIs. Every field the
+  CLI relies on is still validated, malformed or trailing JSON still fails, and
+  `ArtifactRefV1` and `RunIndexV1` documents stay strictly decoded.
+- Publish and pull failures now include the service's RFC 9457 `code`, `title`,
+  and a bounded, sanitized `detail` (for example `producer_quota_exceeded`)
+  instead of only the HTTP status. `5xx` responses remain transient.
+- `fcheap publish` accepts a `200` plan response with a committed artifact
+  (the documented idempotent replay) as a finished publication.
+- The secret scan streams with no per-file size limit (secrets past 1 MiB and
+  on very long minified lines are found; line numbers are exact) and a total
+  byte budget; files are scanned smallest first and those beyond the budget are
+  counted as skipped with reason `budget`.
+- Stashes tagged `keep` (or the `--keep-tag` value) are classified `keep` by
+  the smart cleanup analysis, so they are never counted as reclaimable.
+  Run evidence is excluded from the reclaimable total and is never auto-deleted
+  by `sweep --auto` or `cleanup --smart --apply`.
+
+## [0.36.1] - 2026-10-01
+
 ### Security
 
 - Platform: bump next to 16.3.6 (critical RCE advisories in 16.2.x) and pin
   patched sharp 0.35.4, undici 6.28.1 and baseline-browser-mapping 2.11.0; docs:
   pin sharp 0.35.4. Unblocks the release dependency audits.
+
+## [0.36.0] - 2026-10-01
 
 ### Added
 
@@ -23,6 +96,55 @@ Per-release binaries and notes are also on the
   file.cheap-owned fields such as `source`, `indexed`, or `secrets_found`.
 - `fcheap list --json` items now include `content_hash`, so callers can detect
   an already-stored snapshot without one `info` call per stash.
+- Accepted Chalupa laptop receipts through a bound publisher token. A publisher
+  policy can declare exact `kindSchemaBindings` pairs, each with its own quota
+  that narrows the producer's `maxSizeBytes`, and a publisher credential can now
+  read back artifacts of its own producer, kind, and native schema.
+- Redesigned the public landing page around the artifact inventory.
+
+### Security
+
+- Bumped the Go patch version to clear four reachable standard library
+  advisories and the `nanoid` override to 3.3.18.
+
+### Fixed
+
+- Unblocked the production dependency audit for the platform.
+
+## [0.35.0] - 2026-07-27
+
+### Added
+
+- Recognized Monitor incident bundles (`monitor.incident`) in bundle detection,
+  Studio, and local analysis, and documented publishing them as ordinary
+  artifacts.
+- Authorized Chalupa CI artifacts through Vercel OIDC.
+- `fcheap publish` warns when a Cairntrace or Glyphrun archive is published
+  without `--run-index`, since it then appears under Artifacts only.
+
+### Fixed
+
+- A broken plan-receipt keyring now fails only the artifacts retention stage
+  instead of aborting all six, and the health route keeps reporting backlog
+  data.
+- An unsafe download grant error now names the check that refused it, and a
+  bare error logs where it was thrown without logging its message.
+
+## [0.34.0] - 2026-07-26
+
+### Added
+
+- Added `fcheap pull <artifact-id>`, which downloads one owner-scoped artifact
+  through a one-minute grant, verifies its size and SHA-256 before installing it,
+  refuses to overwrite an existing file, rejects redirects, and never prints the
+  signed URL.
+- Added the production release workflow, deployment runbook, and agent guide
+  updates for verified recovery.
+
+### Changed
+
+- Hardened the artifact console with additional retention observability,
+  plan-receipt HMAC, and verification-delivery migrations.
 
 ## [0.33.0] - 2026-07-26
 
@@ -492,7 +614,13 @@ Versions **0.1.0 – 0.15.1** (January–February 2026) predate the stash rewrit
 See the [GitHub releases page](https://github.com/abdul-hamid-achik/file.cheap/releases)
 for their notes and binaries.
 
-[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.32.1...HEAD
+[Unreleased]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.37.0...HEAD
+[0.37.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.36.1...v0.37.0
+[0.36.1]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.36.0...v0.36.1
+[0.36.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.35.0...v0.36.0
+[0.35.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.34.0...v0.35.0
+[0.34.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.33.0...v0.34.0
+[0.33.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.32.1...v0.33.0
 [0.32.1]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.32.0...v0.32.1
 [0.32.0]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.31.1...v0.32.0
 [0.31.1]: https://github.com/abdul-hamid-achik/file.cheap/compare/v0.31.0...v0.31.1

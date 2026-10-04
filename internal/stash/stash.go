@@ -36,6 +36,34 @@ type SaveOptions struct {
 	TTL        string            // optional time-to-live, e.g. "7d", "24h"; empty = never expires
 	Custom     map[string]string // agent-provided metadata
 	NoScan     bool              // skip the secret scan
+
+	// FailOnSecrets aborts the save, before anything is committed, when the scan
+	// finds likely secrets. Save then returns a *SecretsFoundError and leaves no
+	// stash directory or database row behind. It cannot be combined with NoScan.
+	FailOnSecrets bool
+	// SecretScanBudget is the total content bytes the secret scan may inspect;
+	// 0 uses secrets.DefaultBudgetBytes and a negative value disables the budget.
+	SecretScanBudget int64
+}
+
+// SecretsFoundError reports a save refused by FailOnSecrets. It carries the
+// findings (file, rule, line; never values) and the scan accounting.
+type SecretsFoundError struct {
+	Findings []secrets.Finding
+	Scan     secrets.Report
+}
+
+func (e *SecretsFoundError) Error() string {
+	return fmt.Sprintf("save refused: %d potential secret(s) detected in %d file(s) (rules: %s); nothing was saved",
+		len(e.Findings), distinctFiles(e.Findings), strings.Join(secrets.Rules(e.Findings), ", "))
+}
+
+func distinctFiles(findings []secrets.Finding) int {
+	seen := map[string]struct{}{}
+	for _, f := range findings {
+		seen[f.File] = struct{}{}
+	}
+	return len(seen)
 }
 
 // Stash represents a saved snapshot with its manifest.
@@ -43,6 +71,9 @@ type Stash struct {
 	Manifest *manifest.Manifest
 	Dir      string            // path to the stash directory on disk
 	Secrets  []secrets.Finding // likely-secret findings from the save-time scan
+	// SecretScan accounts for what the save-time scan inspected and skipped. It
+	// is the zero value when the scan was disabled.
+	SecretScan secrets.Report
 }
 
 // Manager provides stash operations against a root directory.
@@ -227,6 +258,9 @@ func (m *Manager) Save(ctx context.Context, opts *SaveOptions) (*Stash, error) {
 	if opts == nil || opts.SourcePath == "" {
 		return nil, apperror.New("invalid_input", "source path is required")
 	}
+	if opts.FailOnSecrets && opts.NoScan {
+		return nil, apperror.New("invalid_input", "FailOnSecrets cannot be combined with NoScan")
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -361,16 +395,28 @@ func (m *Manager) Save(ctx context.Context, opts *SaveOptions) (*Stash, error) {
 	// Scan for likely secrets so the caller can warn before this stash is
 	// shared or restored elsewhere. Recorded in the manifest; never the values.
 	var findings []secrets.Finding
+	var scan secrets.Report
 	if !opts.NoScan {
-		findings, err = secrets.ScanContext(ctx, contentDir)
+		scan, err = secrets.ScanReportOptions(ctx, contentDir, secrets.Options{BudgetBytes: opts.SecretScanBudget})
+		findings = scan.Findings
 		if err != nil {
 			_ = os.RemoveAll(stashDir)
 			return nil, fmt.Errorf("scan for secrets: %w", err)
 		}
+		if opts.FailOnSecrets && len(findings) > 0 {
+			// Abort before the manifest is written or the DB row is synced, so a
+			// refused save leaves no trace in the vault.
+			_ = os.RemoveAll(stashDir)
+			return nil, &SecretsFoundError{Findings: findings, Scan: scan}
+		}
+		if man.Custom == nil {
+			man.Custom = make(map[string]string)
+		}
+		// Persist what the scan actually covered, so an absent secrets_found is
+		// never mistaken for "clean" when files were skipped.
+		man.Custom["secrets_files_scanned"] = fmt.Sprintf("%d", scan.FilesScanned)
+		man.Custom["secrets_files_skipped"] = fmt.Sprintf("%d", scan.FilesSkipped)
 		if len(findings) > 0 {
-			if man.Custom == nil {
-				man.Custom = make(map[string]string)
-			}
 			man.Custom["secrets_found"] = fmt.Sprintf("%d", len(findings))
 			man.Custom["secrets_rules"] = strings.Join(secrets.Rules(findings), ",")
 		}
@@ -389,7 +435,7 @@ func (m *Manager) Save(ctx context.Context, opts *SaveOptions) (*Stash, error) {
 
 	slog.Debug("stash saved", "id", id, "files", man.FileCount, "size", man.TotalSize,
 		"bundle", man.BundleType, "secrets", len(findings))
-	return &Stash{Manifest: man, Dir: stashDir, Secrets: findings}, nil
+	return &Stash{Manifest: man, Dir: stashDir, Secrets: findings, SecretScan: scan}, nil
 }
 
 // RestoreResult reports the outcome of a restore, including hash verification

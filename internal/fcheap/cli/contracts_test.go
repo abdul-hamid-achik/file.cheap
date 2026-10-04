@@ -100,8 +100,10 @@ func TestSmartCleanupJSONAppliesAndReportsActualResult(t *testing.T) {
 	if got.Reclaimed != dropStash.Manifest.TotalSize {
 		t.Fatalf("reclaimed = %d, want %d", got.Reclaimed, dropStash.Manifest.TotalSize)
 	}
-	if len(got.Skipped) != 1 || got.Skipped[0].ID != keepStash.Manifest.ID {
-		t.Fatalf("skipped = %+v, want protected %s", got.Skipped, keepStash.Manifest.ID)
+	// The keep tag outranks the expired category in the analysis itself, so the
+	// pinned stash is never even a candidate (nothing to skip).
+	if len(got.Skipped) != 0 {
+		t.Fatalf("skipped = %+v, want none: %s is classified keep", got.Skipped, keepStash.Manifest.ID)
 	}
 	if len(got.Failed) != 0 {
 		t.Fatalf("failed = %+v, want none", got.Failed)
@@ -628,5 +630,175 @@ func TestSaveJSONReportsPostSaveFailuresThenReturnsError(t *testing.T) {
 	}
 	if got.Manifest == nil || !mgr.Exists(got.ID) {
 		t.Fatalf("saved manifest missing or stash does not exist: %+v", got.Manifest)
+	}
+}
+
+func TestSmartCleanupApplyStillRefusesKeepTaggedAndEvidenceRecommendations(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	mgr, err := stash.NewManager(filepath.Join(root, "vault"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	save := func(name, tool string, tags []string) *stash.Stash {
+		source := filepath.Join(root, name)
+		if err := os.MkdirAll(source, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(source, "f.txt"), []byte(name), 0600); err != nil {
+			t.Fatal(err)
+		}
+		st, err := mgr.Save(ctx, &stash.SaveOptions{SourcePath: source, Tool: tool, Tags: tags})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return st
+	}
+	pinned := save("pinned", "codemap", []string{"keep"})
+	evidence := save("evidence", "cairntrace", nil)
+
+	// A hand-built plan: even a stale or buggy analysis cannot make these deletable.
+	plan := &stash.CleanupResult{Recommendations: []stash.CleanupRecommendation{
+		{ID: pinned.Manifest.ID, Tool: "codemap", Category: stash.CatOrphaned},
+		{ID: evidence.Manifest.ID, Tool: "cairntrace", Category: stash.CatEvidence},
+		{ID: evidence.Manifest.ID, Tool: "codemap", Category: stash.CatEvidence},
+	}}
+	result := applySmartCleanup(ctx, mgr, plan, "keep", nil)
+	if len(result.Dropped) != 0 || !mgr.Exists(pinned.Manifest.ID) || !mgr.Exists(evidence.Manifest.ID) {
+		t.Fatalf("protected stashes were deleted: %+v", result)
+	}
+	if smartCleanupAutoDeletable(stash.CleanupRecommendation{Tool: "codemap", Category: stash.CatEvidence}) {
+		t.Fatal("evidence must never be auto-deletable, whatever its tool")
+	}
+	if smartCleanupAutoDeletable(stash.CleanupRecommendation{Tool: "codemap", Category: stash.CatKeep}) {
+		t.Fatal("keep must never be auto-deletable")
+	}
+}
+
+func TestBuildEcosystemStatusSeparatesEvidenceFromOrphaned(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	stashes := []*stash.Stash{
+		{Manifest: &manifest.Manifest{ID: "run", Tool: "cairntrace", TotalSize: 100, CreatedAt: now.Format(time.RFC3339)}},
+		{Manifest: &manifest.Manifest{ID: "scratch", Tool: "scratchpad", TotalSize: 5, CreatedAt: now.Format(time.RFC3339)}},
+	}
+	cleanupResult := &stash.CleanupResult{
+		Recommendations: []stash.CleanupRecommendation{
+			{ID: "run", Tool: "cairntrace", Category: stash.CatEvidence, Size: 100},
+			{ID: "scratch", Tool: "scratchpad", Category: stash.CatOrphaned, Size: 5},
+		},
+		ByCategory:  map[stash.CleanupCategory]int{stash.CatEvidence: 1, stash.CatOrphaned: 1},
+		Reclaimable: 5,
+	}
+	got := buildEcosystemStatus(stashes, cleanupResult, now)
+	if run := got.Tools["cairntrace"]; run.Evidence != 1 || run.Orphaned != 0 {
+		t.Fatalf("cairntrace stats = %+v, want evidence 1, orphaned 0", run)
+	}
+	if scratch := got.Tools["scratchpad"]; scratch.Evidence != 0 || scratch.Orphaned != 1 {
+		t.Fatalf("scratchpad stats = %+v", scratch)
+	}
+	if got.Overall.EvidenceCount != 1 || got.Overall.EvidenceSize != 100 || got.Overall.EvidenceUsage != "100 B" || got.Overall.ReclaimableSize != 5 {
+		t.Fatalf("overall = %+v", got.Overall)
+	}
+	data, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Existing keys stay; the new ones are additive.
+	for _, key := range []string{`"orphaned"`, `"reclaimable_size"`, `"cleanup_result"`, `"evidence"`, `"evidence_count"`, `"evidence_size"`} {
+		if !strings.Contains(string(data), key) {
+			t.Fatalf("JSON %s missing %s", data, key)
+		}
+	}
+}
+
+func TestEcosystemStatusDoesNotCallLastCopyEvidenceOrPinnedStashesReclaimable(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	vault := filepath.Join(root, "vault")
+	mgr, err := stash.NewManager(vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	save := func(name, tool string, tags []string) *stash.Stash {
+		source := filepath.Join(root, name)
+		if err := os.MkdirAll(source, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(source, "f.txt"), []byte(name), 0600); err != nil {
+			t.Fatal(err)
+		}
+		st, err := mgr.Save(ctx, &stash.SaveOptions{SourcePath: source, Tool: tool, Tags: tags})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.RemoveAll(source); err != nil {
+			t.Fatal(err)
+		}
+		return st
+	}
+	run := save("run", "cairntrace", nil)
+	pinned := save("pinned", "scratchpad", []string{"keep"})
+	scratch := save("scratch", "scratchpad", nil)
+
+	oldCfg, oldPrinter, oldRootCtx := cfg, printer, rootCtx
+	t.Cleanup(func() { cfg, printer, rootCtx = oldCfg, oldPrinter, oldRootCtx })
+	var stdout bytes.Buffer
+	cfg = &config.Config{StashDir: vault}
+	printer = output.New(output.WithJSON(true), output.WithOutput(&stdout), output.WithNoColor(true))
+	rootCtx = context.Background()
+	if err := ecosystemStatusCmd.RunE(ecosystemStatusCmd, nil); err != nil {
+		t.Fatal(err)
+	}
+	var got ecosystemStatusOutput
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("decode %q: %v", stdout.String(), err)
+	}
+	if got.Tools["cairntrace"].Evidence != 1 || got.Tools["cairntrace"].Orphaned != 0 {
+		t.Fatalf("cairntrace = %+v", got.Tools["cairntrace"])
+	}
+	if got.Tools["scratchpad"].Orphaned != 1 {
+		t.Fatalf("only the unpinned scratch stash is orphaned: %+v", got.Tools["scratchpad"])
+	}
+	if got.Overall.ReclaimableSize != scratch.Manifest.TotalSize {
+		t.Fatalf("reclaimable = %d, want only %s (%d)", got.Overall.ReclaimableSize, scratch.Manifest.ID, scratch.Manifest.TotalSize)
+	}
+	if got.Overall.EvidenceSize != run.Manifest.TotalSize {
+		t.Fatalf("evidence size = %d, want %d", got.Overall.EvidenceSize, run.Manifest.TotalSize)
+	}
+	if !mgr.Exists(run.Manifest.ID) || !mgr.Exists(pinned.Manifest.ID) {
+		t.Fatal("status is read-only and must not delete anything")
+	}
+}
+
+func TestAutoDeletionPathsRefuseLastCopyRunEvidence(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	mgr, err := stash.NewManager(filepath.Join(root, "vault"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(root, "run")
+	if err := os.MkdirAll(source, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "report.html"), []byte("<p>evidence</p>"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := mgr.Save(ctx, &stash.SaveOptions{SourcePath: source, Tool: "cairntrace"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Retention pruned the run directory: the stash is now the only copy.
+	if err := os.RemoveAll(source); err != nil {
+		t.Fatal(err)
+	}
+	analysis, err := mgr.AnalyzeCleanup(ctx, stash.CleanupOptions{StaleDays: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sweep := runAutoSweep(ctx, mgr, analysis, true, "keep", "", true, nil)
+	smart := applySmartCleanup(ctx, mgr, analysis, "keep", nil)
+	if len(sweep.Candidates) != 0 || len(sweep.Dropped) != 0 || len(smart.Dropped) != 0 || !mgr.Exists(st.Manifest.ID) {
+		t.Fatalf("last-copy evidence was targeted: sweep=%+v smart=%+v", sweep, smart)
 	}
 }
