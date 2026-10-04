@@ -93,6 +93,9 @@ are rejected.`,
 		printer.KeyValue("SHA-256", receipt.SHA256)
 		printer.KeyValue("Size", formatSize(receipt.SizeBytes))
 		printer.KeyValue("Verification", receipt.Verification)
+		if receipt.ExpiresAt != "" {
+			printer.KeyValue("Expires", receipt.ExpiresAt)
+		}
 		return nil
 	},
 }

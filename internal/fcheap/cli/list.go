@@ -43,32 +43,37 @@ var listCmd = &cobra.Command{
 
 		if printer.IsJSON() {
 			type listItem struct {
-				ID          string            `json:"id"`
-				Name        string            `json:"name,omitempty"`
-				Tool        string            `json:"tool,omitempty"`
-				Tags        []string          `json:"tags,omitempty"`
-				FileCount   int               `json:"file_count"`
-				TotalSize   int64             `json:"total_size"`
-				ContentHash string            `json:"content_hash,omitempty"`
-				Compression string            `json:"compression,omitempty"`
-				ExpiresAt   string            `json:"expires_at,omitempty"`
-				CreatedAt   string            `json:"created_at"`
-				Custom      map[string]string `json:"custom,omitempty"`
+				ID          string   `json:"id"`
+				Name        string   `json:"name,omitempty"`
+				Tool        string   `json:"tool,omitempty"`
+				Tags        []string `json:"tags,omitempty"`
+				FileCount   int      `json:"file_count"`
+				TotalSize   int64    `json:"total_size"`
+				ContentHash string   `json:"content_hash,omitempty"`
+				BundleType  string   `json:"bundle_type,omitempty"`
+				Compression string   `json:"compression,omitempty"`
+				// CompressedSize is the on-disk archive size once compressed.
+				CompressedSize int64             `json:"compressed_size,omitempty"`
+				ExpiresAt      string            `json:"expires_at,omitempty"`
+				CreatedAt      string            `json:"created_at"`
+				Custom         map[string]string `json:"custom,omitempty"`
 			}
 			items := make([]listItem, 0, len(stashes))
 			for _, st := range stashes {
 				items = append(items, listItem{
-					ID:          st.Manifest.ID,
-					Name:        st.Manifest.Name,
-					Tool:        st.Manifest.Tool,
-					Tags:        st.Manifest.Tags,
-					FileCount:   st.Manifest.FileCount,
-					TotalSize:   st.Manifest.TotalSize,
-					ContentHash: st.Manifest.ContentHash,
-					Compression: st.Manifest.Compression,
-					ExpiresAt:   st.Manifest.ExpiresAt,
-					CreatedAt:   st.Manifest.CreatedAt,
-					Custom:      st.Manifest.Custom,
+					ID:             st.Manifest.ID,
+					Name:           st.Manifest.Name,
+					Tool:           st.Manifest.Tool,
+					Tags:           st.Manifest.Tags,
+					FileCount:      st.Manifest.FileCount,
+					TotalSize:      st.Manifest.TotalSize,
+					ContentHash:    st.Manifest.ContentHash,
+					BundleType:     st.Manifest.BundleType,
+					Compression:    st.Manifest.Compression,
+					CompressedSize: st.Manifest.CompressedSize,
+					ExpiresAt:      st.Manifest.ExpiresAt,
+					CreatedAt:      st.Manifest.CreatedAt,
+					Custom:         st.Manifest.Custom,
 				})
 			}
 			return printer.JSON(items)

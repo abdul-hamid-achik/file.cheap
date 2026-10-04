@@ -83,7 +83,9 @@ func TestSaveMetaRejectsReservedKeysBeforeSaving(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldCfg, oldPrinter, oldRootCtx, oldMeta, oldNoScan := cfg, printer, rootCtx, saveMeta, saveNoScan
-	t.Cleanup(func() { cfg, printer, rootCtx, saveMeta, saveNoScan = oldCfg, oldPrinter, oldRootCtx, oldMeta, oldNoScan })
+	t.Cleanup(func() {
+		cfg, printer, rootCtx, saveMeta, saveNoScan = oldCfg, oldPrinter, oldRootCtx, oldMeta, oldNoScan
+	})
 
 	var stdout bytes.Buffer
 	cfg = &config.Config{StashDir: vault}

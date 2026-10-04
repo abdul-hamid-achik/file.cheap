@@ -32,7 +32,7 @@ fcheap cleanup --smart [flags]       # category-based smart mode
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--smart` | bool | `false` | Use category-based smart analysis |
-| `--categories` | string | — | Filter to specific categories (comma-separated: expired,orphaned,superseded,duplicate,branch-gone,stale,keep) |
+| `--categories` | string | — | Filter to specific categories (comma-separated: expired,orphaned,superseded,duplicate,evidence,branch-gone,stale,keep) |
 | `--stale-days` | int | `0` | Days without access to be considered stale (0 = disabled) |
 
 ## Scoring mode (default)
@@ -66,9 +66,10 @@ Categorizes every stash into exactly one cleanup category based on why it might 
 | `orphaned` | The recorded source path no longer exists |
 | `superseded` | A newer stash exists for the same tool + source path |
 | `duplicate` | Same content hash as a newer stash |
+| `evidence` | Cairntrace or Glyphrun run evidence whose source path no longer exists: retention prunes run directories after saving them, so the stash is usually the last copy. Retained, never reclaimable, never auto-deleted |
 | `branch-gone` | A `branch:` tag references a deleted git branch |
 | `stale` | Older than `--stale-days` (uses `created_at` as proxy) |
-| `keep` | No cleanup reason found |
+| `keep` | No cleanup reason found, or the stash carries the keep tag, which overrides every other category |
 
 Priority order ensures each stash gets only its first matching category (expired beats orphaned beats superseded, etc.) — no double counting.
 
@@ -88,7 +89,7 @@ itself authorize deletion. The same rule protects evidence stashes such as
 In both modes, stashes bearing the keep-tag (default: `keep`) are never dropped:
 
 - **Scoring mode**: the keep-tag is a **hard floor** — the stash always gets a `keep` verdict regardless of its score. Even a cache-tool stash with expired TTL and source-gone will not be dropped if it has the keep tag.
-- **Smart mode**: stashes with the keep-tag are skipped during `--apply` even if they're categorized as expired/orphaned/etc.
+- **Smart mode**: stashes with the keep-tag (the default `keep` tag always applies, plus `--keep-tag` if set) are classified `keep`, so they are never reclaimable and never dropped, even when their TTL has expired or their source is gone.
 
 This is a safety net for pinning important stashes that should survive any cleanup.
 

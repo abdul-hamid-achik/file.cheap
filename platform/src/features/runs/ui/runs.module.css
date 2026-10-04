@@ -90,6 +90,12 @@
 .copyButton { min-height: 28px; flex: 0 0 auto; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 4px; background: transparent; color: var(--ink-soft); font: inherit; font-family: var(--mono); font-size: 10px; font-weight: 700; cursor: pointer; }
 .copyButton:hover { border-color: var(--accent); color: var(--ink); }
 .copyButton:focus-visible { outline: 2px solid var(--paper); outline-offset: 3px; }
+.restoreSection { display: grid; gap: 10px; margin-top: 26px; padding: 14px; border: 1px solid var(--line-strong); }
+.restoreSection h3 { margin: 0; font-size: 14px; }
+.restoreSection p { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.55; }
+.commandCopy { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: stretch; }
+.commandCopy code { min-width: 0; padding: 10px 11px; border: 1px solid var(--line); background: var(--page-deep); color: var(--paper); font-family: var(--mono); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; user-select: all; }
+.commandCopy .copyButton { min-height: 38px; }
 .reasonsSection { margin-top: 26px; }
 .reasonsSection h3 { margin: 0; font-size: 14px; }
 .reasonsSection > p { color: var(--ink-soft); font-size: 13px; }

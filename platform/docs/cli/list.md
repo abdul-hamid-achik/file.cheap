@@ -37,8 +37,8 @@ fcheap list --since 24h
 fcheap list --since 7d
 
 # JSON output (for scripting). Each item carries id, name, tool, tags, file_count,
-# total_size, content_hash, compression, expires_at, created_at and custom (including --meta values).
-# JSON output (for scripting)
+# total_size, content_hash, bundle_type, compression, compressed_size, expires_at,
+# created_at and custom (including --meta values). See "JSON output" below.
 fcheap list --json
 
 # Include expired stashes (past their TTL)
@@ -60,3 +60,22 @@ logs_20260622              -         logs        42     1.2 MiB   1d ago   -    
 ```
 
 The `EXP` column shows the remaining TTL (e.g. `7d`, `12h`) or `EXPIRED` when past. A `-` means no TTL (permanent).
+
+## JSON output
+
+`fcheap list --json` prints an array. Keys marked optional are omitted when empty.
+
+| Field | Meaning |
+|---|---|
+| `id` | Stash ID |
+| `name`, `tool`, `tags` | Optional display name, producing tool, and tags |
+| `file_count`, `total_size` | Files in the stash and their logical size in bytes |
+| `content_hash` | Digest of the content (optional) |
+| `bundle_type` | Detected bundle type, such as `generic`, `vidtrace`, `monitor.incident`, `cairntrace-run`, or `glyphrun-run` (optional). Filter run bundles with it instead of calling `info` per stash |
+| `compression` | `zstd`, `gzip`, or `none` once compressed (optional) |
+| `compressed_size` | On-disk archive size in bytes once compressed (optional; omitted for an uncompressed stash). Compare with `total_size` for the saving |
+| `expires_at`, `created_at` | RFC 3339 timestamps (`expires_at` is optional) |
+| `custom` | Manifest custom fields, including `--meta` values and the scan accounting `secrets_files_scanned` / `secrets_files_skipped` (see [`save`](/cli/save#secret-scanning)) |
+
+`bundle_type` and `compressed_size` are additive; existing consumers that ignore
+unknown keys are unaffected.

@@ -1,4 +1,5 @@
 import type { RunHealth, RunStatus, RunSummary } from "@/features/runs/contracts";
+import { artifactPullCommand, shellQuote } from "@/features/console/ui/ArtifactDetail";
 
 export const runDetailTabOrder = ["summary", "outcomes", "evidence", "provenance"] as const;
 
@@ -25,6 +26,33 @@ export const defaultRunFilters: RunFilters = {
   query: "",
   status: "all",
 };
+
+/** A producer-supplied native ID reduced to a safe, non-hidden local file stem. */
+export function runRestoreName(nativeId: string): string {
+  const stem = nativeId.replace(/[^A-Za-z0-9._-]+/gu, "_").replace(/^[._-]+/u, "").slice(0, 96);
+  return stem === "" ? "run" : stem;
+}
+
+export function isGzipRunBundle(contentType: string): boolean {
+  return /^application\/(?:x-)?gzip$/iu.test(contentType.split(";")[0]?.trim() ?? "");
+}
+
+/**
+ * Exact CLI sequence that restores a published run bundle: a verified
+ * `fcheap pull` followed by extraction into its own directory. The console
+ * never fetches or extracts bytes itself. Only gzip tarballs (what cairntrace
+ * and glyphrun publish) get the extraction step; any other content type gets
+ * the pull alone.
+ */
+export function runRestoreCommand(run: RunSummary): string {
+  const name = runRestoreName(run.run.nativeId);
+  if (!isGzipRunBundle(run.source.contentType)) {
+    return artifactPullCommand(run.artifactId, `./${name}.bin`);
+  }
+  const archive = shellQuote(`./${name}.tar.gz`);
+  const directory = shellQuote(`./${name}`);
+  return `${artifactPullCommand(run.artifactId, `./${name}.tar.gz`)} && mkdir -p ${directory} && tar -xzf ${archive} -C ${directory}`;
+}
 
 export function getNextRunDetailTab(current: RunDetailTab, key: string): RunDetailTab | null {
   if (key === "Home") return runDetailTabOrder[0];

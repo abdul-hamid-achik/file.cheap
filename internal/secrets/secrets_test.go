@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -88,5 +90,50 @@ func mustWrite(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestScanReportAccountsForSkippedFiles(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "config.env", "aws_id = AKIAIOSFODNN7EXAMPLE\n")
+	mustWrite(t, dir, "clean.txt", "harmless\n")
+	// There is no per-file size cap: a secret past 1 MiB is still found.
+	mustWrite(t, dir, "trace.bin", strings.Repeat("x", 1<<20)+"\nAKIAIOSFODNN7EXAMPLE\n")
+	if err := os.Symlink(filepath.Join(dir, "clean.txt"), filepath.Join(dir, "link.txt")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	report, err := ScanReportContext(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int{}
+	for _, f := range report.Findings {
+		got[f.File] = f.Line
+	}
+	if got["config.env"] != 1 || got["trace.bin"] != 2 || len(got) != 2 {
+		t.Fatalf("findings = %+v, want config.env:1 and trace.bin:2", report.Findings)
+	}
+	if report.FilesScanned != 3 || report.FilesSkipped != 1 {
+		t.Fatalf("scanned/skipped = %d/%d, want 3/1", report.FilesScanned, report.FilesSkipped)
+	}
+	if report.SkippedReasons[SkipNotRegular] != 1 || len(report.SkippedReasons) != 1 {
+		t.Fatalf("skipped reasons = %v", report.SkippedReasons)
+	}
+}
+
+func TestScanContextMatchesScanReportFindings(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "config.env", "AWS_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE\n")
+	findings, err := ScanContext(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := ScanReportContext(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) == 0 || !slices.Equal(findings, report.Findings) {
+		t.Fatalf("ScanContext %+v diverged from ScanReportContext %+v", findings, report.Findings)
 	}
 }

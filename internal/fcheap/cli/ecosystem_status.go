@@ -19,6 +19,9 @@ type ecosystemToolStats struct {
 	OldestAgeSeconds int64 `json:"oldest_age_seconds"`
 	Expired          int   `json:"expired"`
 	Orphaned         int   `json:"orphaned"`
+	// Evidence counts run evidence whose source is gone. It is the last copy,
+	// so it is reported here rather than as orphaned, and is never reclaimable.
+	Evidence int `json:"evidence"`
 }
 
 type ecosystemOverall struct {
@@ -31,6 +34,11 @@ type ecosystemOverall struct {
 	ReclaimableSize    int64                `json:"reclaimable_size"`
 	ReclaimableSavings string               `json:"reclaimable_savings"`
 	CleanupResult      *stash.CleanupResult `json:"cleanup_result"`
+	// Evidence is run evidence retained as the last copy; excluded from
+	// reclaimable_size.
+	EvidenceCount int    `json:"evidence_count"`
+	EvidenceSize  int64  `json:"evidence_size"`
+	EvidenceUsage string `json:"evidence_usage"`
 }
 
 type ecosystemStatusOutput struct {
@@ -44,7 +52,13 @@ var ecosystemStatusCmd = &cobra.Command{
 	Long: `Ecosystem-status lists all stashes grouped by their tool field, showing
 per-tool counts, sizes, oldest age, and expired counts. The overall
 summary includes total stashes, total size, and recommended cleanup
-savings (from AnalyzeCleanup).`,
+savings (from AnalyzeCleanup).
+
+Stashes tagged "keep" are never counted as reclaimable. Cairntrace and
+glyphrun run evidence whose source directory is gone is reported as EVIDENCE,
+not ORPHANED: retention prunes run directories after stashing them, so the
+stash is usually the only copy left. Evidence is excluded from the cleanup
+savings estimate and is never auto-deleted.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mgr, err := stash.NewManager(cfg.StashDir)
@@ -90,7 +104,7 @@ savings (from AnalyzeCleanup).`,
 
 		printer.Header("Ecosystem Status")
 
-		table := output.NewTable([]string{"TOOL", "COUNT", "STORED", "OLDEST", "EXPIRED", "ORPHANED"}, printer.IsQuiet())
+		table := output.NewTable([]string{"TOOL", "COUNT", "STORED", "OLDEST", "EXPIRED", "ORPHANED", "EVIDENCE"}, printer.IsQuiet())
 		for _, tool := range tools {
 			ts := byTool[tool]
 			oldest := "-"
@@ -105,6 +119,7 @@ savings (from AnalyzeCleanup).`,
 				oldest,
 				fmt.Sprintf("%d", ts.Expired),
 				fmt.Sprintf("%d", ts.Orphaned),
+				fmt.Sprintf("%d", ts.Evidence),
 			})
 		}
 		table.Render()
@@ -114,6 +129,9 @@ savings (from AnalyzeCleanup).`,
 		printer.Info("Total: %d stashes, %s logical", len(stashes), formatSize(status.Overall.LogicalSize))
 		printer.KeyValue("Stored content estimate", formatSize(status.Overall.StoredSize))
 		printer.KeyValue("Recommended cleanup savings", formatSize(cleanupRes.Reclaimable))
+		if status.Overall.EvidenceCount > 0 {
+			printer.KeyValue("Retained run evidence", fmt.Sprintf("%d stashes, %s (last copy, not reclaimable)", status.Overall.EvidenceCount, status.Overall.EvidenceUsage))
+		}
 
 		return nil
 	},
@@ -167,16 +185,26 @@ func buildEcosystemStatus(stashes []*stash.Stash, cleanupRes *stash.CleanupResul
 			ByCategory:      map[stash.CleanupCategory]int{},
 		}
 	}
+	var evidenceCount int
+	var evidenceSize int64
 	for _, rec := range cleanupRes.Recommendations {
-		if rec.Category != stash.CatOrphaned {
+		if rec.Category != stash.CatOrphaned && rec.Category != stash.CatEvidence {
 			continue
 		}
 		tool := rec.Tool
 		if tool == "" {
 			tool = "-"
 		}
+		if rec.Category == stash.CatEvidence {
+			evidenceCount++
+			evidenceSize += rec.Size
+		}
 		if ts, ok := byTool[tool]; ok {
-			ts.Orphaned++
+			if rec.Category == stash.CatEvidence {
+				ts.Evidence++
+			} else {
+				ts.Orphaned++
+			}
 		}
 	}
 
@@ -192,6 +220,9 @@ func buildEcosystemStatus(stashes []*stash.Stash, cleanupRes *stash.CleanupResul
 			ReclaimableSize:    cleanupRes.Reclaimable,
 			ReclaimableSavings: formatSize(cleanupRes.Reclaimable),
 			CleanupResult:      cleanupRes,
+			EvidenceCount:      evidenceCount,
+			EvidenceSize:       evidenceSize,
+			EvidenceUsage:      formatSize(evidenceSize),
 		},
 	}
 }

@@ -97,6 +97,7 @@ evidence and generic checkpoints remain review-only. Like the standard sweep,
 		if sweepAuto {
 			autoRes, err = mgr.AnalyzeCleanup(GetContext(), stash.CleanupOptions{
 				StaleDays: 30,
+				KeepTag:   keepTag,
 			})
 			if err != nil {
 				return err

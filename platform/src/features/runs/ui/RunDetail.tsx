@@ -18,6 +18,7 @@ import {
   runDetailTabOrder,
   runEvidenceCountLabel,
   runHealthLabel,
+  runRestoreCommand,
   runStatusLabel,
   type RunDetailTab,
 } from "./run-presentation";
@@ -145,7 +146,9 @@ export function RunDetail({ onClose, returnFocusRef, run }: RunDetailProps) {
         </div>
         <div className={styles.detailBody}>
           <section aria-labelledby={`run-tab-${tab}`} id={`run-panel-${tab}`} role="tabpanel" tabIndex={0}>
-            {tab === "summary" ? <Summary run={run} /> : null}
+            {tab === "summary" ? (
+              <Summary copiedField={currentCopyFeedback?.field} onCopy={copyMetadata} run={run} />
+            ) : null}
             {tab === "outcomes" ? <Outcomes run={run} /> : null}
             {tab === "evidence" ? <Evidence run={run} /> : null}
             {tab === "provenance" ? (
@@ -163,7 +166,16 @@ export function RunDetail({ onClose, returnFocusRef, run }: RunDetailProps) {
   );
 }
 
-function Summary({ run }: { run: RunSummary }) {
+function Summary({
+  copiedField,
+  onCopy,
+  run,
+}: {
+  copiedField?: string;
+  onCopy: (label: string, value: string) => Promise<void>;
+  run: RunSummary;
+}) {
+  const restoreCommand = runRestoreCommand(run);
   return (
     <>
       <p className={styles.detailIntro}>This run was indexed from a metadata-only artifact. Counts and health reflect the recorded index.</p>
@@ -181,6 +193,16 @@ function Summary({ run }: { run: RunSummary }) {
         <DetailItem label="Exit code" value={run.run.exitCode === undefined ? "Not recorded" : String(run.run.exitCode)} />
         {run.run.errorKind ? <DetailItem label="Error kind" value={run.run.errorKind} /> : null}
       </dl>
+      <section aria-labelledby="run-restore-title" className={styles.restoreSection}>
+        <h3 id="run-restore-title">Restore this run</h3>
+        <p>Run this on a machine paired with <code>fcheap auth login</code>. The CLI verifies the bundle&apos;s SHA-256 before keeping it; the console never fetches or extracts it. Extract only bundles you trust.</p>
+        <div className={styles.commandCopy}>
+          <code>{restoreCommand}</code>
+          <button aria-label="Copy run restore command" className={styles.copyButton} onClick={() => void onCopy("Restore command", restoreCommand)} type="button">
+            {copiedField === "Restore command" ? "Copied" : "Copy command"}
+          </button>
+        </div>
+      </section>
       <section aria-labelledby="health-reasons-title" className={styles.reasonsSection}>
         <h3 id="health-reasons-title">Health reasons</h3>
         {run.health.reasons.length > 0 ? <ul className={styles.labels}>{run.health.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul> : <p>No health reasons recorded.</p>}

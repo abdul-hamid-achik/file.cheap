@@ -23,14 +23,18 @@ var metadataKeyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,63}$`)
 // itself. Callers must not set them: a forged secrets_found or indexed flag
 // would misreport the save-time scan or index state.
 var reservedMetadataKeys = map[string]bool{
-	"source":           true, // set through --source / the source input
-	"indexed":          true,
-	"indexed_files":    true,
-	"secrets_found":    true,
-	"secrets_rules":    true,
-	"source_video":     true,
-	"duration_seconds": true,
-	"frame_rate":       true,
+	"source":        true, // set through --source / the source input
+	"indexed":       true,
+	"indexed_files": true,
+	"secrets_found": true,
+	"secrets_rules": true,
+	// The scan accounting is written by Save; a forged value would claim
+	// coverage the scan never had.
+	"secrets_files_scanned": true,
+	"secrets_files_skipped": true,
+	"source_video":          true,
+	"duration_seconds":      true,
+	"frame_rate":            true,
 }
 
 // IsReservedMetadataKey reports whether key is written by file.cheap itself.

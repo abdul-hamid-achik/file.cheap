@@ -1,0 +1,7 @@
+{
+  "artifacts": [
+    {"path": "run.json", "kind": "run"},
+    {"path": "report.html", "kind": "report"},
+    {"path": "report.json", "kind": "report"}
+  ]
+}

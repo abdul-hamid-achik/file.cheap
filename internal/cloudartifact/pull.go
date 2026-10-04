@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/abdul-hamid-achik/file.cheap/internal/artifactref"
+	"github.com/abdul-hamid-achik/file.cheap/internal/httpproblem"
 )
 
 const (
@@ -164,14 +165,16 @@ func (c *Client) requestGrant(
 	}
 	defer response.Body.Close() //nolint:errcheck
 	if response.StatusCode != http.StatusCreated {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxControlBody+1))
 		return serviceResponse{}, fmt.Errorf(
-			"artifact download grant returned unexpected status %d",
+			"artifact download grant returned unexpected status %d%s",
 			response.StatusCode,
+			httpproblem.Read(response.Body, token).Suffix(),
 		)
 	}
+	// The grant is a server-owned document: ignore additive fields so a newer
+	// service does not break installed CLIs. validateGrant checks every field
+	// the pull relies on.
 	decoder := json.NewDecoder(io.LimitReader(response.Body, maxControlBody+1))
-	decoder.DisallowUnknownFields()
 	var value serviceResponse
 	if err := decoder.Decode(&value); err != nil {
 		return serviceResponse{}, fmt.Errorf("decode artifact download grant: %w", err)

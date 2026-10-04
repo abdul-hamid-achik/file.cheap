@@ -30,6 +30,7 @@ const (
 	viewHelp
 	viewTimeline
 	viewDiff
+	viewRun
 )
 
 // focusArea tracks which pane receives navigation/input in multi-pane views.
@@ -431,6 +432,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusMessage = msg.message
 		return m, nil
 
+	case runLoadedMsg:
+		m.working = false
+		if msg.err != nil {
+			m.errMessage = msg.err.Error()
+			return m, nil
+		}
+		m.errMessage = ""
+		m.preview.SetContent(msg.content)
+		m.preview.GotoTop()
+		m.activeView = viewRun
+		m.focus = focusPreview
+		m.statusMessage = msg.status
+		return m, nil
+
 	case timelineLoadedMsg:
 		if msg.err != nil {
 			m.errMessage = msg.err.Error()
@@ -577,7 +592,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return m.handleDetailKey(key)
 	case viewSearch:
 		return m.handleSearchKey(key)
-	case viewTimeline:
+	case viewTimeline, viewRun:
 		return m.handleTimelineKey(key)
 	case viewDiff:
 		return m.handleDiffKey(key)
@@ -822,6 +837,18 @@ func (m *Model) handleDetailKey(key string) (tea.Cmd, bool) {
 		}
 		m.statusMessage = "timeline view is only available for vidtrace bundles"
 		return nil, true
+	case "v":
+		if m.selectedIsRun() {
+			return m.loadRunViewCmd(), true
+		}
+		m.statusMessage = "run view is only available for cairntrace-run and glyphrun-run bundles"
+		return nil, true
+	case "V":
+		if m.selectedIsRun() {
+			return m.restoreRunCmd(), true
+		}
+		m.statusMessage = "run report is only available for cairntrace-run and glyphrun-run bundles"
+		return nil, true
 	case "p", " ", "space":
 		// Play/pause the frame sequence (vidtrace bundles, or any stash with ≥2
 		// images). stopPlayback already ran above for non-toggle keys.
@@ -917,7 +944,7 @@ func (m *Model) handleTimelineKey(key string) (tea.Cmd, bool) {
 	switch key {
 	case "q":
 		return tea.Quit, true
-	case "esc", "h", "t":
+	case "esc", "h", "t", "v":
 		m.activeView = viewDetail
 		m.focus = focusFiles
 		return nil, true

@@ -294,8 +294,14 @@ export function ArtifactDetail({
   );
 }
 
-export function artifactPullCommand(artifactId: string): string {
-  return `fcheap pull ${artifactId} --output ./artifact-download.bin`;
+/** Single-quote a shell word only when it contains characters the shell would interpret. */
+export function shellQuote(value: string): string {
+  return /^[A-Za-z0-9_@%+=:,./-]+$/u.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+/** `output` is the new local file that fcheap pull writes; it is shell-quoted here. */
+export function artifactPullCommand(artifactId: string, output = "./artifact-download.bin"): string {
+  return `fcheap pull ${shellQuote(artifactId)} --output ${shellQuote(output)}`;
 }
 
 export function ArtifactDeleteConfirmation({

@@ -75,3 +75,9 @@ describe("artifact detail", () => {
     expect(html).not.toContain('role="alert"');
   });
 });
+
+test("shell-quotes an unusual output path and keeps the default", () => {
+  expect(artifactPullCommand("art_0123456789abcdef", "./it's a run.tar.gz")).toBe(
+    "fcheap pull art_0123456789abcdef --output './it'\\''s a run.tar.gz'",
+  );
+});
