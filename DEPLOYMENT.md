@@ -108,8 +108,8 @@ operator access. Publisher credentials never authorize downloads, artifact
 listing, metadata reads, administration, or retention.
 
 Download authorization and retention are separate gates. The service returns an
-expired committed artifact as not found even before the hourly reconciler has
-deleted its object, and caps every signed GET grant at the artifact's own
+expired committed artifact as not found even before the six-hourly reconciler
+(`17 */6 * * *`, chosen so Neon can sleep between runs) has deleted its object, and caps every signed GET grant at the artifact's own
 `expiresAt`. The Vercel Blob adapter also rejects a presigned URL whose host,
 operation path, object identity, or signed query is inconsistent with the
 requested immutable artifact.

@@ -9,6 +9,8 @@ import { jsonResponse } from "@/shared/http/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Bounded batches (see artifactRetentionBatchSize) must finish inside this.
+export const maxDuration = 300;
 
 export type RetentionRouteDependencies = Readonly<{
   authorize(request: Request): Promise<void>;

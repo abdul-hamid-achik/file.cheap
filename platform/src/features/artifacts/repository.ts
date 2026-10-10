@@ -3,11 +3,12 @@ import type {
   IssuedPlanReceipt,
   PlanReceiptLookupCandidate,
 } from "@/features/artifacts/plan-receipts";
-import type {
-  ArtifactPlanReceiptMatch,
-  ArtifactRecord,
-  ArtifactRepository,
-  RetainableArtifactState,
+import {
+  artifactRetentionBatchSize,
+  type ArtifactPlanReceiptMatch,
+  type ArtifactRecord,
+  type ArtifactRepository,
+  type RetainableArtifactState,
 } from "@/platform/database/repository";
 
 export class InMemoryArtifactRepository implements ArtifactRepository {
@@ -31,7 +32,7 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
   async reclaimDeletion(artifactId: string, staleBefore: Date, now: Date): Promise<boolean> { const record = this.records.get(artifactId); if (!record || record.state !== "deleting" || record.deletingAt === null || record.deletingAt > staleBefore) return false; record.deletingAt = now; return true; }
   async markDeleted(artifactId: string): Promise<void> { const record = this.records.get(artifactId); if (record) record.state = "deleted"; }
   async restoreAfterDeletionFailure(artifactId: string, state: RetainableArtifactState): Promise<void> { const record = this.records.get(artifactId); if (record?.state === "deleting") { record.state = state; record.deletingAt = null; } }
-  async retentionCandidates(now: Date, staleBefore: Date): Promise<ArtifactRecord[]> { return [...this.records.values()].filter((record) => (record.state === "planned" && record.planExpiresAt <= now) || (record.state === "committed" && record.expiresAt !== null && record.expiresAt <= now) || (record.state === "deleting" && record.deletingAt !== null && record.deletingAt <= staleBefore)).sort((left, right) => left.artifactId.localeCompare(right.artifactId)).slice(0, 50); }
+  async retentionCandidates(now: Date, staleBefore: Date): Promise<ArtifactRecord[]> { return [...this.records.values()].filter((record) => (record.state === "planned" && record.planExpiresAt <= now) || (record.state === "committed" && record.expiresAt !== null && record.expiresAt <= now) || (record.state === "deleting" && record.deletingAt !== null && record.deletingAt <= staleBefore)).sort((left, right) => left.artifactId.localeCompare(right.artifactId)).slice(0, artifactRetentionBatchSize); }
 }
 
 function matchesReceipt(

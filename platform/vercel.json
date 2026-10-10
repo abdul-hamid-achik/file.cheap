@@ -4,6 +4,6 @@
   "installCommand": "bun install --frozen-lockfile && bun install --cwd docs --frozen-lockfile",
   "buildCommand": "bun run build",
   "crons": [
-    { "path": "/api/internal/retention", "schedule": "17 * * * *" }
+    { "path": "/api/internal/retention", "schedule": "17 */6 * * *" }
   ]
 }

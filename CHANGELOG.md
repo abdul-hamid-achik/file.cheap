@@ -9,6 +9,13 @@ Per-release binaries and notes are also on the
 
 ## [Unreleased]
 
+### Changed
+
+- The platform retention cron now runs every six hours (`17 */6 * * *`) instead
+  of hourly so Neon can sleep between runs. Per-run batch caps rose to keep the
+  daily drain capacity (artifacts 50 to 150, console and inbound-replay cleanup
+  100 to 600), and the retention route declares `maxDuration = 300`.
+
 ## [0.37.0] - 2026-10-04
 
 ### Added

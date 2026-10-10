@@ -5,7 +5,8 @@ export const inboundProcessingLeaseMilliseconds = 2 * 60 * 1_000;
 // Resend can deliver a webhook up to eight times, so retain a lease for each
 // provider attempt before terminally suppressing further retries.
 export const maxInboundReplayAttempts = 8;
-export const inboundReplayCleanupBatchSize = 100;
+// Sized for the six-hourly retention cron (600 x 4 = 2,400/day, as 100 x 24 hourly).
+export const inboundReplayCleanupBatchSize = 600;
 
 export type InboundReplayClaim =
   | { leaseToken: string; state: "claimed" }

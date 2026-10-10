@@ -63,6 +63,14 @@ export interface ArtifactRepository {
   retentionCandidates(now: Date, staleBefore: Date): Promise<ArtifactRecord[]>;
 }
 
+/**
+ * Artifacts reconciled per retention run. Each one is a sequential private
+ * Blob delete, so this stays bounded by wall-clock time (about 150 x <=1s)
+ * under the route's 300s maxDuration and the 15-minute run lease. At the
+ * six-hourly cadence it drains 600/day, enough for a single-owner service.
+ */
+export const artifactRetentionBatchSize = 150;
+
 export class DrizzleArtifactRepository implements ArtifactRepository {
   constructor(private readonly db: ReturnType<typeof getDatabase> = getDatabase()) {}
 
@@ -222,7 +230,7 @@ export class DrizzleArtifactRepository implements ArtifactRepository {
       and(eq(artifacts.state, "planned"), lte(artifacts.planExpiresAt, now)),
       and(eq(artifacts.state, "committed"), lte(artifacts.expiresAt, now)),
       and(eq(artifacts.state, "deleting"), lte(artifacts.deletingAt, staleBefore)),
-    )).orderBy(asc(artifacts.artifactId)).limit(50);
+    )).orderBy(asc(artifacts.artifactId)).limit(artifactRetentionBatchSize);
     return rows.map((row) => mapRow(row.artifact, row.object, null));
   }
 }

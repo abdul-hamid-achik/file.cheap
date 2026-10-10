@@ -11,7 +11,13 @@ import {
 export interface ConsoleCleanupDatabase {
   execute(query: SQL): PromiseLike<{ rows: unknown[] }>;
 }
-export const consoleCleanupBatchSize = 100;
+/**
+ * Rows deleted per cleanup stage per retention run. The cron runs every six
+ * hours (4 runs/day) to limit Neon wake-ups, so the cap is sized to keep the
+ * daily drain capacity of the former hourly cadence (100 x 24 = 2,400/day).
+ * Each stage is a single bounded DELETE, well inside the run lease.
+ */
+export const consoleCleanupBatchSize = 600;
 
 export async function cleanupConsoleAuthorizations(
   now: Date,
