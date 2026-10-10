@@ -50,7 +50,7 @@ jobs:
         with:
           # The main test job validates the repository's go.mod version.
           # Glyphrun v0.15.0 requires Go 1.26.
-          go-version: '1.26.5'
+          go-version: '1.26.9'
           cache: true
 
       - name: Verify CLI and MCP contract surfaces

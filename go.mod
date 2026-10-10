@@ -1,6 +1,6 @@
 module github.com/abdul-hamid-achik/file.cheap
 
-go 1.25.13
+go 1.26.9
 
 require (
 	charm.land/bubbles/v2 v2.1.0
