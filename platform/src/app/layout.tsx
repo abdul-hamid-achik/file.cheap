@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 
 import "./globals.css";
 
+import { Analytics } from "@vercel/analytics/react";
+
 const geistSans = Geist({
   display: "swap",
   subsets: ["latin"],
@@ -37,7 +39,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body>{children}</body>
+      <body>
+      {children}
+      <Analytics />
+    </body>
     </html>
   );
 }
